@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Central de Controle de Estoque</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#0A0B23;
+    --surface:#0B1934;
+    --ink:#F2F1F7;
+    --ink-soft:#AEB2C6;
+    --line:#34353F;
+    --accent:#FA4616;
+    --accent-deep:#C83812;
+    --accent-bright:#FB6B45;
+    --stamp:#1A3180;
+    --success:#FFFFFF;
+    --success-bg:#1A3180;
+    --danger:#E13F14;
+    --danger-bg:rgba(225,63,20,.14);
+    --sidebar-bg:#1D1F2A;
+    --sidebar-text:#F2F1F7;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Inter',sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    line-height:1.45;
+  }
+  h1,h2,h3{
+    font-family:'Oswald',sans-serif;
+    margin:0 0 4px 0;
+    letter-spacing:.01em;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  a{color:var(--accent-deep);}
+  button{font-family:'Inter',sans-serif;cursor:pointer;}
+  :focus-visible{outline:2px solid var(--accent-bright);outline-offset:2px;}
+
+  .shell{display:flex;min-height:100vh;}
+  .sidebar{
+    width:240px;flex-shrink:0;background:var(--sidebar-bg);color:var(--sidebar-text);
+    display:flex;flex-direction:column;padding:20px 0;
+  }
+  .brand{display:flex;align-items:center;gap:12px;padding:0 20px 20px 20px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:14px;}
+  .stamp-mark{
+    width:42px;height:42px;border:2px dashed var(--accent);border-radius:50%;
+    display:flex;align-items:center;justify-content:center;transform:rotate(-6deg);
+    font-family:'Oswald',sans-serif;font-weight:700;font-size:13px;letter-spacing:.04em;color:var(--accent);
+    flex-shrink:0;
+  }
+  .brand-text{font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:.03em;line-height:1.25;}
+  .brand-text small{display:block;color:var(--sidebar-text);opacity:.6;font-family:'Inter',sans-serif;font-size:11px;letter-spacing:.05em;text-transform:uppercase;}
+  nav{display:flex;flex-direction:column;gap:2px;padding:0 10px;flex:1;}
+  .nav-item{
+    text-align:left;background:none;border:none;color:var(--sidebar-text);opacity:.72;
+    padding:10px 12px;border-radius:var(--radius);font-size:14px;letter-spacing:.02em;
+    transition:background .15s, opacity .15s;
+  }
+  .nav-item:hover{opacity:1;background:rgba(255,255,255,.06);}
+  .nav-item.active{opacity:1;background:rgba(250,70,22,.18);color:#fff;border-left:3px solid var(--accent);padding-left:9px;}
+  .nav-rename-input{width:100%;background:rgba(255,255,255,.08);border:1px dashed var(--accent-bright);border-radius:4px;color:var(--sidebar-text);font-size:14px;padding:6px 8px;font-family:'Inter',sans-serif;}
+  .sidebar-footer{padding:14px 20px 0 20px;border-top:1px solid rgba(255,255,255,.12);margin-top:10px;font-size:11px;color:var(--sidebar-text);opacity:.55;letter-spacing:.02em;}
+  .sidebar-footer p{margin:0 0 8px 0;}
+  .sidebar-footer button{display:block;width:100%;margin-top:10px;background:none;border:1px dashed rgba(255,255,255,.3);color:var(--sidebar-text);opacity:.7;border-radius:var(--radius);padding:6px;font-size:11px;letter-spacing:.03em;}
+  .sidebar-footer button:hover{opacity:1;border-color:var(--danger);color:#f0c9bf;}
+
+  .content{flex:1;padding:28px 36px;max-width:1140px;}
+  .topbar{margin-bottom:22px;}
+  .topbar h1{font-size:24px;text-transform:uppercase;letter-spacing:.03em;}
+  .topbar p{margin:0;color:var(--ink-soft);font-size:13.5px;}
+  .storage-warning{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger);border-radius:var(--radius);padding:8px 14px;font-size:13px;margin-bottom:16px;}
+
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:22px;}
+  .stat-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;position:relative;}
+  .stat-card .num{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:600;}
+  .stat-card .label{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin-top:2px;}
+  .stat-card.alert .num{color:var(--danger);}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:22px;}
+  .panel h3{font-size:15px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:12px;}
+  .panel-row{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;}
+
+  .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:6px;}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:12.5px;}
+  .bar-label{width:120px;flex-shrink:0;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bar-track{flex:1;background:var(--paper);border:1px solid var(--line);border-radius:4px;height:14px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:3px 0 0 3px;transition:width .3s ease;}
+  .bar-value{width:34px;text-align:right;color:var(--ink);flex-shrink:0;}
+  .hist-row{display:flex;justify-content:space-between;align-items:flex-end;gap:6px;height:128px;padding-top:10px;}
+  .hist-col{display:flex;flex-direction:column;align-items:center;flex:1;}
+  .hist-bar-wrap{height:70px;display:flex;align-items:flex-end;}
+  .hist-bar{width:22px;border-radius:3px 3px 0 0;transition:height .3s ease;}
+  .hist-value{font-size:11px;color:var(--ink-soft);margin-top:4px;}
+  .hist-label{font-size:10.5px;color:var(--ink-soft);margin-top:2px;}
+
+  .action-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+  .action-bar .btn-group{display:flex;gap:8px;flex-wrap:wrap;}
+  .action-bar .filters{display:flex;gap:8px;flex-wrap:wrap;}
+  .action-bar input[type=text], .action-bar select{
+    border:1px solid var(--line);border-radius:var(--radius);padding:7px 10px;font-size:13.5px;background:var(--surface);color:var(--ink);
+  }
+
+  .btn{border-radius:var(--radius);padding:8px 16px;font-size:13.5px;letter-spacing:.01em;border:1px solid transparent;transition:filter .12s;}
+  .btn:hover{filter:brightness(.96);}
+  .btn-primary{background:var(--accent);color:#0A0B23;font-weight:700;}
+  .btn-secondary{background:var(--surface);border:1px solid var(--line);color:var(--ink);}
+  .btn-danger-text{background:none;border:none;color:var(--danger);font-size:12.5px;padding:4px 6px;}
+  .btn-link{background:none;border:none;color:var(--accent-bright);font-size:12.5px;padding:4px 6px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{
+    text-align:left;background:#001A72;color:#FFFFFF;font-family:'Oswald',sans-serif;
+    font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;padding:9px 12px;
+  }
+  tbody td{padding:10px 12px;border-bottom:1px dashed var(--line);vertical-align:middle;}
+  tbody tr:hover{background:rgba(250,70,22,.07);}
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);}
+  .table-wrap table{min-width:560px;}
+
+  .stamp-tag{
+    display:inline-block;font-family:'Oswald',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.06em;
+    text-transform:uppercase;padding:3px 9px;border:1.5px dashed rgba(255,255,255,.35);border-radius:3px;transform:rotate(-2deg);
+  }
+  .tag-ok{color:var(--success);background:var(--success-bg);}
+  .tag-alert{color:#0A0B23;background:var(--accent);}
+  .tag-neutral{color:#FFFFFF;background:#33488E;}
+  .tag-muted{color:var(--ink-soft);background:#1D1F2A;}
+
+  .empty-state{text-align:center;padding:36px 20px;color:var(--ink-soft);}
+  .empty-state .stamp-mark{margin:0 auto 12px auto;}
+  .empty-state h3{color:var(--ink);font-size:15px;text-transform:none;}
+  .empty-state p{font-size:13.5px;margin-bottom:14px;}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(5,6,18,.8);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50;}
+  .modal-card{background:var(--surface);border-radius:8px;border-top:4px solid var(--accent);padding:24px 26px;max-width:460px;width:100%;max-height:88vh;overflow-y:auto;}
+  .modal-card h2{font-size:18px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:14px;}
+  form label{display:block;font-size:12.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin:12px 0 4px 0;}
+  form input, form select, form textarea{
+    width:100%;border:1px solid var(--line);border-radius:var(--radius);padding:9px 11px;font-size:14px;font-family:'Inter',sans-serif;color:var(--ink);background:var(--paper);
+  }
+  form textarea{resize:vertical;min-height:64px;}
+  .checkbox-row{display:flex;align-items:center;gap:8px;margin-top:14px;}
+  .checkbox-row input{width:auto;}
+  .checkbox-row label{margin:0;text-transform:none;font-size:13.5px;color:var(--ink);}
+  .form-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+  .field-hint{font-size:11.5px;color:var(--ink-soft);margin-top:3px;text-transform:none;letter-spacing:0;}
+  .field-section-title{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin:18px 0 2px 0;border-top:1px dashed var(--line);padding-top:14px;}
+
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:var(--paper);padding:11px 18px;border-radius:var(--radius);font-size:13.5px;z-index:60;box-shadow:0 4px 14px rgba(0,0,0,.18);}
+  .toast.error{background:var(--danger);}
+  .toast.hidden{display:none;}
+
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+
+  .kanban{display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;}
+  .kanban-col{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);min-width:260px;flex:1;display:flex;flex-direction:column;max-height:70vh;}
+  .kanban-col.drag-over{border-color:var(--accent-bright);}
+  .kanban-col-header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);font-family:'Oswald',sans-serif;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);}
+  .kanban-cards{padding:10px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;}
+  .kanban-empty{font-size:12.5px;color:var(--ink-soft);text-align:center;padding:14px 0;}
+  .kanban-card{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px;cursor:grab;}
+  .kanban-card:active{cursor:grabbing;}
+  .kanban-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .kanban-card-title{font-size:13.5px;font-weight:600;margin-bottom:4px;}
+  .kanban-card-desc{font-size:12px;color:var(--ink-soft);margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .kanban-card-footer{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-soft);}
+  .kanban-overdue{color:var(--danger);font-weight:600;}
+
+  @media (max-width:760px){
+    .shell{flex-direction:column;}
+    .sidebar{width:100%;flex-direction:row;align-items:center;padding:12px;overflow-x:auto;}
+    .brand{border-bottom:none;margin-bottom:0;padding:0 10px;}
+    .sidebar-footer{display:none;}
+    nav{flex-direction:row;}
+    .content{padding:18px;}
+    .two-col{grid-template-columns:1fr;}
+    .dash-grid{grid-template-columns:1fr;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="stamp-mark">EC</div>
+      <div class="brand-text">Central de Estoque<small>controle compartilhado</small></div>
+    </div>
+    <nav id="nav">
+      <button class="nav-item" data-tab="painel">Painel</button>
+      <button class="nav-item" data-tab="pessoas">Pessoas</button>
+      <button class="nav-item" data-tab="gestao">Gestão de Estoque</button>
+      <button class="nav-item" data-tab="tarefas">Gestão de Atividades</button>
+      <button class="nav-item" data-tab="atividades">Atividades</button>
+    </nav>
+    <div class="sidebar-footer">
+      <p>Dados salvos no Supabase. Acessível de qualquer dispositivo. Duplo clique numa aba para renomear.</p>
+      <button onclick="clearAllData()">Apagar todos os dados</button>
+    </div>
+  </aside>
+
+  <main class="content">
+    <div class="topbar">
+      <h1 id="tab-title">Painel</h1>
+      <p id="tab-subtitle">Visão geral do estoque e da equipe.</p>
+    </div>
+    <div id="storage-banner"></div>
+    <div id="view-root"><p class="mono">Carregando…</p></div>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script>
+/* ===== CONFIGURAÇÃO SUPABASE =====
+   1. Crie conta gratuita em supabase.com
+   2. Crie um projeto. Vá em Settings > API e copie:
+      - Project URL     -> SUPABASE_URL abaixo
+      - anon public key -> SUPABASE_KEY abaixo
+   3. No Supabase, vá em SQL Editor e execute o SQL nas instrucoes
+   4. Cole os valores abaixo e salve o arquivo
+   5. Suba o HTML no netlify.com (arrastar e soltar) para ter o site */
+const SUPABASE_URL = 'https://jfvnswafpeshyfweoadg.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impmdm5zd2FmcGVzaHlmd2VvYWRnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MDQ3MzEsImV4cCI6MjA5NzM4MDczMX0.MYKM8WodyF7mYuDN33MoD8VA0kn4wYqG0xN1kdxkP_E';
+const TABLE = 'app_estoque';
+
+const KEYS = ['pessoas','locais','classes','atividades','restricoes','pessoasColunas','tarefas','tabNomes','tiposAtividade'];
+const CORE_KEYS = ['pessoas','locais','classes','atividades','restricoes','tarefas'];
+let STATE = {pessoas:[],locais:[],classes:[],atividades:[],restricoes:[],pessoasColunas:[],tarefas:[],tabNomes:{},tiposAtividade:[]};
+let CURRENT_TAB = 'painel';
+const BACKEND_OK = !!(SUPABASE_URL && !SUPABASE_URL.startsWith('COLE'));
+
+const TAB_LABELS = {
+  painel:['Painel','Visão geral, indicadores e gráficos do estoque e da equipe.'],
+  pessoas:['Pessoas','Quadro de pessoas responsáveis pelo controle de estoque.'],
+  gestao:['Gestão de Estoque','Locais, classes (e suas finalidades) e restrições (e sua situação).'],
+  tarefas:['Gestão de Atividades','Quadro de tarefas da equipe, organizado por status, como em apps de gestão de projetos.'],
+  atividades:['Atividades','Registro de entradas, saídas, contagens e observações, por colaborador.']
+};
+
+function uid(){return 'id_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function esc(v){if(v===undefined||v===null)return '';return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmtDate(d){if(!d)return '—';const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('pt-BR');}
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function findById(list,id){return list.find(x=>x.id===id);}
+function nameOf(list,id,fallback){const f=findById(list,id);return f?f.nome:(fallback||'—');}
+
+/* --- API Supabase (REST direto, sem SDK) --- */
+function sbHeaders(){
+  return {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=minimal'
+  };
+}
+async function sbGetAll(){
+  const url = SUPABASE_URL + '/rest/v1/' + TABLE + '?select=chave,valor';
+  const res = await fetch(url, {headers: sbHeaders()});
+  if(!res.ok) throw new Error('Supabase GET HTTP ' + res.status);
+  const rows = await res.json();
+  const obj = {};
+  rows.forEach(r => { obj[r.chave] = r.valor; });
+  return obj;
+}
+async function sbUpsert(chave, valor){
+  const url = SUPABASE_URL + '/rest/v1/' + TABLE;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: Object.assign({}, sbHeaders(), {'Prefer': 'resolution=merge-duplicates'}),
+    body: JSON.stringify({chave, valor})
+  });
+  if(!res.ok){ const t=await res.text(); throw new Error('Supabase UPSERT ' + res.status + ': ' + t); }
+}
+async function sbDeleteAll(){
+  const url = SUPABASE_URL + '/rest/v1/' + TABLE + '?chave=neq.___';
+  const res = await fetch(url, {method:'DELETE', headers: sbHeaders()});
+  if(!res.ok) throw new Error('Supabase DELETE HTTP ' + res.status);
+}
+
+async function loadAll(){
+  if(!BACKEND_OK){
+    document.getElementById('storage-banner').innerHTML =
+      '<div class="storage-warning"><b>Banco de dados não configurado.</b> Cole a URL e a chave do Supabase no topo do arquivo HTML para começar a salvar dados.</div>';
+    return;
+  }
+  try{
+    document.getElementById('storage-banner').innerHTML =
+      '<div class="storage-warning" style="background:rgba(26,49,128,.25);border-color:#33488E;color:#AEB2C6;">Carregando dados...</div>';
+    const all = await sbGetAll();
+    for(const k of KEYS){
+      const raw = all[k];
+      if(k==='tabNomes'){
+        STATE.tabNomes = raw ? JSON.parse(raw) : {};
+      } else {
+        STATE[k] = raw ? JSON.parse(raw) : [];
+      }
+    }
+    document.getElementById('storage-banner').innerHTML = '';
+  }catch(e){
+    document.getElementById('storage-banner').innerHTML =
+      '<div class="storage-warning"><b>Erro ao conectar com o banco de dados.</b> Verifique se a URL e a chave do Supabase estão corretas e se a tabela foi criada. Erro: ' + e.message + '</div>';
+  }
+  STATE.restricoes = STATE.restricoes.map(r=>{
+    if(r.finalizada===undefined){ r.finalizada = (r.ativa===false); }
+    return r;
+  });
+  STATE.classes = STATE.classes.map(c=>{
+    if(c.finalidade===undefined){ c.finalidade = c.descricao || ''; }
+    return c;
+  });
+  STATE.pessoas = STATE.pessoas.map(p=>{
+    if(p.extras===undefined) p.extras = {};
+    if(p.fretado===undefined) p.fretado = 'Não';
+    return p;
+  });
+  // init default tipos if empty
+  if(!STATE.tiposAtividade) STATE.tiposAtividade = [];
+}
+async function persist(key){
+  if(!BACKEND_OK) return;
+  try{
+    const val = (key==='tabNomes') ? STATE.tabNomes : STATE[key];
+    await sbUpsert(key, JSON.stringify(val));
+  }catch(e){ showToast('Erro ao salvar: ' + e.message, true); }
+}
+
+function showToast(msg, isError){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(()=>{ t.className='toast hidden'; }, 2400);
+}
+
+function switchTab(tab){
+  CURRENT_TAB = tab;
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.getElementById('tab-title').textContent = STATE.tabNomes[tab] || TAB_LABELS[tab][0];
+  document.getElementById('tab-subtitle').textContent = TAB_LABELS[tab][1];
+  renderView();
+}
+
+function renderView(){
+  const root = document.getElementById('view-root');
+  if(CURRENT_TAB==='painel') root.innerHTML = renderPainel();
+  if(CURRENT_TAB==='pessoas') root.innerHTML = renderPessoas();
+  if(CURRENT_TAB==='gestao') root.innerHTML = renderGestaoEstoque();
+  if(CURRENT_TAB==='tarefas') root.innerHTML = renderGestaoAtividades();
+  if(CURRENT_TAB==='atividades') root.innerHTML = renderAtividades();
+}
+
+/* ---------- NOMES DE ABA EDITÁVEIS (duplo clique) ---------- */
+function applyTabNames(){
+  document.querySelectorAll('.nav-item').forEach(b=>{
+    const tab = b.dataset.tab;
+    b.textContent = STATE.tabNomes[tab] || TAB_LABELS[tab][0];
+  });
+}
+function startRenameTab(btn){
+  const tab = btn.dataset.tab;
+  const current = STATE.tabNomes[tab] || TAB_LABELS[tab][0];
+  btn.innerHTML = `<input type="text" class="nav-rename-input" value="${esc(current)}">`;
+  const input = btn.querySelector('input');
+  input.focus(); input.select();
+  let done = false;
+  const finish = async (save)=>{
+    if(done) return; done = true;
+    if(save){
+      const val = input.value.trim();
+      const defaultLabel = TAB_LABELS[tab][0];
+      if(val && val!==defaultLabel){ STATE.tabNomes[tab] = val; } else { delete STATE.tabNomes[tab]; }
+      await persist('tabNomes');
+    }
+    applyTabNames();
+    if(CURRENT_TAB===tab){ document.getElementById('tab-title').textContent = STATE.tabNomes[tab] || TAB_LABELS[tab][0]; }
+  };
+  input.addEventListener('blur', ()=>finish(true));
+  input.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+    if(e.key==='Escape'){ e.preventDefault(); finish(false); }
+  });
+}
+
+/* ---------- COMPONENTES DE GRÁFICO (sem dependências externas) ---------- */
+function barList(title, dataPairs, color){
+  const max = Math.max(1, ...dataPairs.map(d=>d.value));
+  return `<div class="panel">
+    <h3>${esc(title)}</h3>
+    ${dataPairs.length ? dataPairs.map(d=>`
+      <div class="bar-row">
+        <span class="bar-label">${esc(d.label)}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(d.value/max*100)}%;background:${color};"></div></div>
+        <span class="bar-value mono">${d.value}</span>
+      </div>`).join('') : `<p style="color:var(--ink-soft);font-size:13.5px;">Sem dados suficientes ainda.</p>`}
+  </div>`;
+}
+function miniHistogram(title, dataPairs, color){
+  const max = Math.max(1, ...dataPairs.map(d=>d.value));
+  return `<div class="panel">
+    <h3>${esc(title)}</h3>
+    <div class="hist-row">
+      ${dataPairs.map(d=>`
+        <div class="hist-col">
+          <div class="hist-bar-wrap"><div class="hist-bar" style="height:${Math.max(4,Math.round(d.value/max*70))}px;background:${color};"></div></div>
+          <span class="hist-value mono">${d.value}</span>
+          <span class="hist-label">${esc(d.label)}</span>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+/* ---------- PAINEL ---------- */
+function renderPainel(){
+  const ativos = STATE.pessoas.filter(p=>p.status==='Ativo').length;
+  const hoje = STATE.atividades.filter(a=>a.data===todayStr()).length;
+  const restricoesAndamento = STATE.restricoes.filter(r=>!r.finalizada).length;
+  const tarefasPendentes = STATE.tarefas.filter(t=>t.status!=='Concluído').length;
+  const tarefasAtrasadas = STATE.tarefas.filter(t=>t.prazo && t.prazo<todayStr() && t.status!=='Concluído').length;
+  const tudoVazio = CORE_KEYS.every(k=>STATE[k].length===0);
+
+  let html = `<div class="stat-grid">
+    <div class="stat-card"><div class="num">${ativos}</div><div class="label">Pessoas ativas</div></div>
+    <div class="stat-card"><div class="num">${hoje}</div><div class="label">Atividades hoje</div></div>
+    <div class="stat-card"><div class="num">${STATE.locais.length}</div><div class="label">Locais cadastrados</div></div>
+    <div class="stat-card"><div class="num">${restricoesAndamento}</div><div class="label">Restrições em andamento</div></div>
+    <div class="stat-card"><div class="num">${tarefasPendentes}</div><div class="label">Tarefas pendentes</div></div>
+    <div class="stat-card ${tarefasAtrasadas?'alert':''}"><div class="num">${tarefasAtrasadas}</div><div class="label">Tarefas atrasadas</div></div>
+  </div>`;
+
+  if(tudoVazio){
+    html += `<div class="empty-state panel">
+      <div class="stamp-mark" style="margin:0 auto 10px;">EC</div>
+      <h3>Ainda não há dados cadastrados</h3>
+      <p>Comece cadastrando o quadro de pessoas, depois locais, classes e tarefas.</p>
+      <button class="btn btn-primary" onclick="loadSampleData()">Carregar dados de exemplo</button>
+    </div>`;
+    return html;
+  }
+
+  const turnoData = ['Manhã','Tarde','Noite','Integral']
+    .map(t=>({label:t, value:STATE.pessoas.filter(p=>p.turno===t).length}))
+    .filter(d=>d.value>0);
+
+  const statusTarefaData = ['A Fazer','Em Andamento','Concluído']
+    .map(s=>({label:s, value:STATE.tarefas.filter(t=>t.status===s).length}))
+    .filter(d=>d.value>0);
+
+  const colabMap = {};
+  STATE.atividades.forEach(a=>{ if(!a.pessoaId) return; colabMap[a.pessoaId]=(colabMap[a.pessoaId]||0)+1; });
+  const colaboradorData = Object.entries(colabMap)
+    .map(([pid,v])=>({label:nameOf(STATE.pessoas,pid), value:v}))
+    .sort((a,b)=>b.value-a.value).slice(0,6);
+
+  const diasData = [];
+  for(let i=6;i>=0;i--){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const ds = d.toISOString().slice(0,10);
+    diasData.push({label:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}), value: STATE.atividades.filter(a=>a.data===ds).length});
+  }
+
+  html += `<div class="dash-grid">
+    ${barList('Pessoas por turno', turnoData, '#1A3180')}
+    ${barList('Tarefas por status', statusTarefaData, 'var(--accent)')}
+    ${barList('Atividades por colaborador', colaboradorData, '#33488E')}
+    ${miniHistogram('Atividades nos últimos 7 dias', diasData, 'var(--accent-bright)')}
+  </div>`;
+
+  const recentAtividades = [...STATE.atividades].sort((a,b)=> (b.data+b.criadoEm).localeCompare(a.data+a.criadoEm)).slice(0,5);
+  const tarefasDestaque = STATE.tarefas.filter(t=>t.status!=='Concluído')
+    .sort((a,b)=>(a.prazo||'9999-99-99').localeCompare(b.prazo||'9999-99-99')).slice(0,5);
+
+  html += `<div class="two-col">
+    <div class="panel">
+      <h3>Atividades recentes</h3>
+      ${recentAtividades.length ? recentAtividades.map(a=>`
+        <div class="panel-row" style="margin-bottom:8px;border-bottom:1px dashed var(--line);padding-bottom:8px;">
+          <span class="mono" style="font-size:12.5px;">${fmtDate(a.data)}</span>
+          <span class="stamp-tag tag-neutral">${esc(a.tipo)}</span>
+          <span style="font-size:12.5px;color:var(--ink-soft);">${nameOf(STATE.pessoas,a.pessoaId)}</span>
+        </div>`).join('') : `<p style="color:var(--ink-soft);font-size:13.5px;">Nenhuma atividade registrada ainda.</p>`}
+    </div>
+    <div class="panel">
+      <h3>Próximas tarefas</h3>
+      ${tarefasDestaque.length ? tarefasDestaque.map(t=>{
+        const overdue = t.prazo && t.prazo<todayStr();
+        return `<div class="panel-row" style="margin-bottom:8px;border-bottom:1px dashed var(--line);padding-bottom:8px;">
+          <span style="font-size:12.5px;">${esc(t.titulo)}</span>
+          <span class="mono ${overdue?'kanban-overdue':''}" style="font-size:12.5px;">${t.prazo?fmtDate(t.prazo):'sem prazo'}</span>
+        </div>`;
+      }).join('') : `<p style="color:var(--ink-soft);font-size:13.5px;">Nenhuma tarefa pendente.</p>`}
+    </div>
+  </div>`;
+  return html;
+}
+
+async function loadSampleData(){
+  STATE.pessoas = [
+    {id:uid(), nome:'Marina Souza', cargo:'Conferente de estoque', turno:'Manhã', contato:'marina@empresa.com', localId:'', status:'Ativo', fretado:'Sim', extras:{}},
+    {id:uid(), nome:'Carlos Lima', cargo:'Repositor', turno:'Tarde', contato:'(11) 90000-0000', localId:'', status:'Ativo', fretado:'Não', extras:{}}
+  ];
+  STATE.locais = [{id:uid(), nome:'Depósito Central', descricao:'Setor principal de armazenagem'}];
+  STATE.classes = [
+    {id:uid(), nome:'Bebidas', finalidade:'Itens consumíveis para revenda imediata'},
+    {id:uid(), nome:'Limpeza', finalidade:'Suprimentos de limpeza para uso interno'}
+  ];
+  STATE.pessoas[0].localId = STATE.locais[0].id;
+  STATE.tiposAtividade = ['Inventário','Auditoria de Movimentação','Auditoria de Ocupação','Auditoria de Crítico','Inventário de Curva'].map(n=>({id:uid(),nome:n}));
+  STATE.atividades = [{id:uid(), criadoEm:String(Date.now()), tipoId:STATE.tiposAtividade[0].id, pessoaId:STATE.pessoas[0].id, periodo:'Dia', dataRef:todayStr(), obs:'Contagem inicial do mês.'}];
+  STATE.restricoes = [{id:uid(), pessoaId:'', cargoFuncao:'Repositor', tipoRestricao:'Acesso a local', localId:STATE.locais[0].id, descricao:'Repositores não retiram itens sem autorização do conferente.', finalizada:false}];
+  const colId = uid();
+  STATE.pessoasColunas = [{id:colId, nome:'Vale transporte'}];
+  STATE.pessoas[0].extras = {[colId]:'Sim'};
+  STATE.pessoas[1].extras = {[colId]:'Não'};
+  const d = new Date();
+  const futuro = new Date(d); futuro.setDate(futuro.getDate()+5);
+  const passado = new Date(d); passado.setDate(passado.getDate()-3);
+  STATE.tarefas = [
+    {id:uid(), criadoEm:String(Date.now()), titulo:'Organizar depósito central', descricao:'Reorganizar prateleiras por classe de produto.', responsavelId:STATE.pessoas[1].id, status:'A Fazer', prioridade:'Média', prazo:futuro.toISOString().slice(0,10)},
+    {id:uid(), criadoEm:String(Date.now()), titulo:'Conferir contagem mensal', descricao:'Validar contagem física do depósito.', responsavelId:STATE.pessoas[0].id, status:'Em Andamento', prioridade:'Alta', prazo:todayStr()},
+    {id:uid(), criadoEm:String(Date.now()), titulo:'Atualizar cadastro de fornecedores', descricao:'', responsavelId:STATE.pessoas[0].id, status:'Concluído', prioridade:'Baixa', prazo:passado.toISOString().slice(0,10)}
+  ];
+  for(const k of KEYS) await persist(k);
+  renderView();
+  showToast('Dados de exemplo carregados.');
+}
+
+async function clearAllData(){
+  if(!confirm('Isso vai apagar TODOS os dados do banco (pessoas, atividades, locais, classes, restrições, tarefas, colunas e nomes de aba). Esta ação não pode ser desfeita. Confirmar?')) return;
+  try{
+    if(BACKEND_OK) await sbDeleteAll();
+    for(const k of KEYS){ if(k==='tabNomes') STATE.tabNomes={}; else STATE[k]=[]; }
+    applyTabNames();
+    document.getElementById('tab-title').textContent = TAB_LABELS[CURRENT_TAB][0];
+    renderView();
+    showToast('Todos os dados foram apagados.');
+  }catch(e){ showToast('Erro ao apagar: ' + e.message, true); }
+}
+
+/* ---------- PESSOAS ---------- */
+let pessoaFiltro = 'Todos';
+function renderPessoas(){
+  const filtroSel = `<select onchange="pessoaFiltro=this.value;renderView()">
+    ${['Todos','Ativo','Inativo'].map(v=>`<option value="${v}" ${pessoaFiltro===v?'selected':''}>${v}</option>`).join('')}
+  </select>`;
+  const lista = STATE.pessoas.filter(p=> pessoaFiltro==='Todos' || p.status===pessoaFiltro);
+
+  let html = `<div class="action-bar">
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="openPessoaForm()">+ Nova pessoa</button>
+      <button class="btn btn-secondary" onclick="openColumnManager()">Gerenciar colunas</button>
+    </div>
+    <div class="filters">${filtroSel}</div>
+  </div>`;
+
+  if(STATE.pessoas.length===0){
+    html += emptyState('Nenhuma pessoa cadastrada', 'Adicione quem faz parte do controle de estoque.', "openPessoaForm()", "Adicionar pessoa");
+    return html;
+  }
+
+  html += `<div class="table-wrap"><table><thead><tr>
+    <th>Colaborador</th><th>Turno</th><th>Cargo</th><th>Fretado</th><th>Contato</th><th>Local responsável</th><th>Status</th>
+    ${STATE.pessoasColunas.map(c=>`<th>${esc(c.nome)}</th>`).join('')}
+    <th></th>
+  </tr></thead><tbody>
+    ${lista.map(p=>`<tr>
+      <td>${esc(p.nome)}</td>
+      <td>${esc(p.turno)}</td>
+      <td>${esc(p.cargo)}</td>
+      <td>${esc(p.fretado)||'Não'}</td>
+      <td>${esc(p.contato)||'—'}</td>
+      <td>${nameOf(STATE.locais,p.localId)}</td>
+      <td><span class="stamp-tag ${p.status==='Ativo'?'tag-ok':'tag-muted'}">${esc(p.status)}</span></td>
+      ${STATE.pessoasColunas.map(c=>`<td>${esc(p.extras&&p.extras[c.id])||'—'}</td>`).join('')}
+      <td>
+        <button class="btn-link" onclick="openPessoaForm('${p.id}')">Editar</button>
+        <button class="btn-danger-text" onclick="deletePessoa('${p.id}')">Excluir</button>
+      </td>
+    </tr>`).join('')}
+  </tbody></table></div>`;
+  return html;
+}
+
+function openColumnManager(){
+  openModal(`
+    <h2>Colunas personalizadas</h2>
+    <p class="field-hint" style="margin-bottom:10px;">Colunas extras aparecem na tabela de Pessoas e no formulário de cadastro.</p>
+    <div id="col-list">${STATE.pessoasColunas.length ? STATE.pessoasColunas.map(c=>`
+      <div class="panel-row" style="margin-bottom:8px;align-items:center;">
+        <span>${esc(c.nome)}</span>
+        <button class="btn-danger-text" onclick="deleteColuna('${c.id}')">Remover</button>
+      </div>`).join('') : '<p style="color:var(--ink-soft);font-size:13.5px;">Nenhuma coluna adicionada ainda.</p>'}
+    </div>
+    <form onsubmit="return submitColuna(event)">
+      <label>Nova coluna</label><input id="inp-coluna-nome" placeholder="ex: Vale transporte" required>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Fechar</button>
+        <button type="submit" class="btn btn-primary">Adicionar coluna</button>
+      </div>
+    </form>`);
+  setTimeout(()=>document.getElementById('inp-coluna-nome')?.focus(),20);
+}
+async function submitColuna(e){
+  e.preventDefault();
+  const nome = document.getElementById('inp-coluna-nome').value.trim();
+  if(!nome){ showToast('Informe o nome da coluna.', true); return false; }
+  STATE.pessoasColunas.push({id:uid(), nome});
+  await persist('pessoasColunas');
+  renderView();
+  openColumnManager();
+  showToast('Coluna adicionada.');
+  return false;
+}
+async function deleteColuna(id){
+  if(!confirm('Remover esta coluna da tabela?')) return;
+  STATE.pessoasColunas = STATE.pessoasColunas.filter(c=>c.id!==id);
+  await persist('pessoasColunas');
+  renderView();
+  openColumnManager();
+  showToast('Coluna removida.');
+}
+
+function openPessoaForm(id){
+  const p = id ? findById(STATE.pessoas,id) : null;
+  const extrasHtml = STATE.pessoasColunas.length ? `
+    <div class="field-section-title">Campos adicionais</div>
+    ${STATE.pessoasColunas.map(c=>`<label>${esc(c.nome)}</label><input id="extra-${c.id}" value="${esc(p&&p.extras?p.extras[c.id]:'')}">`).join('')}
+  ` : '';
+  openModal(`
+    <h2>${id?'Editar pessoa':'Nova pessoa'}</h2>
+    <form onsubmit="return submitPessoa(event,'${id||''}')">
+      <label>Nome*</label><input id="inp-nome" required value="${esc(p?p.nome:'')}">
+      <label>Turno</label>
+      <select id="inp-turno">${['Manhã','Tarde','Noite','Integral'].map(t=>`<option ${p&&p.turno===t?'selected':''}>${t}</option>`).join('')}</select>
+      <label>Cargo/Função*</label><input id="inp-cargo" required value="${esc(p?p.cargo:'')}">
+      <label>Fretado</label>
+      <select id="inp-fretado"><option ${!p||p.fretado==='Não'?'selected':''}>Não</option><option ${p&&p.fretado==='Sim'?'selected':''}>Sim</option></select>
+      <label>Contato</label><input id="inp-contato" placeholder="telefone ou e-mail" value="${esc(p?p.contato:'')}">
+      <label>Local responsável</label>
+      <select id="inp-local"><option value="">—</option>${STATE.locais.map(l=>`<option value="${l.id}" ${p&&p.localId===l.id?'selected':''}>${esc(l.nome)}</option>`).join('')}</select>
+      <label>Status</label>
+      <select id="inp-status"><option ${!p||p.status==='Ativo'?'selected':''}>Ativo</option><option ${p&&p.status==='Inativo'?'selected':''}>Inativo</option></select>
+      ${extrasHtml}
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">${id?'Salvar':'Adicionar'}</button>
+      </div>
+    </form>`);
+  setTimeout(()=>document.getElementById('inp-nome')?.focus(),20);
+}
+async function submitPessoa(e,id){
+  e.preventDefault();
+  const nome = document.getElementById('inp-nome').value.trim();
+  if(!nome){ showToast('Informe o nome.', true); return false; }
+  const extras = {};
+  STATE.pessoasColunas.forEach(c=>{
+    const el = document.getElementById('extra-'+c.id);
+    extras[c.id] = el ? el.value.trim() : '';
+  });
+  const data = {
+    nome, turno: document.getElementById('inp-turno').value,
+    cargo: document.getElementById('inp-cargo').value.trim(),
+    fretado: document.getElementById('inp-fretado').value,
+    contato: document.getElementById('inp-contato').value.trim(),
+    localId: document.getElementById('inp-local').value,
+    status: document.getElementById('inp-status').value,
+    extras
+  };
+  if(id){ Object.assign(findById(STATE.pessoas,id), data); }
+  else { STATE.pessoas.push({id:uid(), ...data}); }
+  await persist('pessoas'); closeModal(); renderView();
+  showToast(id?'Pessoa atualizada.':'Pessoa adicionada.');
+  return false;
+}
+async function deletePessoa(id){
+  if(!confirm('Remover esta pessoa do quadro?')) return;
+  STATE.pessoas = STATE.pessoas.filter(x=>x.id!==id);
+  await persist('pessoas'); renderView();
+  showToast('Pessoa removida.');
+}
+
+/* ---------- GESTÃO DE ESTOQUE (Locais, Classes, Restrições) ---------- */
+function renderGestaoEstoque(){
+  let html = `<div class="two-col">
+    <div class="panel">
+      <div class="action-bar"><h3 style="margin:0;">Locais</h3><button class="btn btn-primary" onclick="openLocalForm()">+ Novo local</button></div>
+      ${STATE.locais.length ? `<div class="table-wrap"><table><thead><tr><th>Nome</th><th>Descrição</th><th></th></tr></thead><tbody>
+        ${STATE.locais.map(l=>`<tr><td>${esc(l.nome)}</td><td>${esc(l.descricao)||'—'}</td><td>
+          <button class="btn-link" onclick="openLocalForm('${l.id}')">Editar</button>
+          <button class="btn-danger-text" onclick="deleteLocal('${l.id}')">Excluir</button></td></tr>`).join('')}
+      </tbody></table></div>` : emptyState('Nenhum local cadastrado','Cadastre os setores ou depósitos usados no estoque.',"openLocalForm()","Adicionar local")}
+    </div>
+    <div class="panel">
+      <div class="action-bar"><h3 style="margin:0;">Classes</h3><button class="btn btn-primary" onclick="openClasseForm()">+ Nova classe</button></div>
+      ${STATE.classes.length ? `<div class="table-wrap"><table><thead><tr><th>Nome</th><th>Finalidade</th><th></th></tr></thead><tbody>
+        ${STATE.classes.map(c=>`<tr><td>${esc(c.nome)}</td><td>${esc(c.finalidade)||'—'}</td><td>
+          <button class="btn-link" onclick="openClasseForm('${c.id}')">Editar</button>
+          <button class="btn-danger-text" onclick="deleteClasse('${c.id}')">Excluir</button></td></tr>`).join('')}
+      </tbody></table></div>` : emptyState('Nenhuma classe cadastrada','Cadastre categorias e diga para que cada uma serve.',"openClasseForm()","Adicionar classe")}
+    </div>
+  </div>
+  <div class="panel">
+    <div class="action-bar"><h3 style="margin:0;">Restrições</h3><button class="btn btn-primary" onclick="openRestricaoForm()">+ Nova restrição</button></div>
+    ${STATE.restricoes.length ? `<div class="table-wrap"><table><thead><tr>
+      <th>Aplicado a</th><th>Tipo</th><th>Local</th><th>Descrição</th><th>Situação</th><th></th>
+    </tr></thead><tbody>
+      ${STATE.restricoes.map(r=>{
+        const alvo = r.pessoaId ? nameOf(STATE.pessoas,r.pessoaId) : (r.cargoFuncao||'—');
+        return `<tr>
+          <td>${esc(alvo)}</td>
+          <td>${esc(r.tipoRestricao)}</td>
+          <td>${nameOf(STATE.locais,r.localId,'—')}</td>
+          <td style="max-width:240px;">${esc(r.descricao)||'—'}</td>
+          <td><span class="stamp-tag ${r.finalizada?'tag-muted':'tag-ok'}">${r.finalizada?'Finalizada':'Em andamento'}</span></td>
+          <td><button class="btn-link" onclick="openRestricaoForm('${r.id}')">Editar</button>
+          <button class="btn-danger-text" onclick="deleteRestricao('${r.id}')">Excluir</button></td>
+        </tr>`;
+      }).join('')}
+    </tbody></table></div>` : emptyState('Nenhuma restrição cadastrada','Defina regras de acesso ou limites para pessoas ou funções.',"openRestricaoForm()","Adicionar restrição")}
+  </div>`;
+  return html;
+}
+
+function openLocalForm(id){
+  const l = id?findById(STATE.locais,id):null;
+  openModal(`<h2>${id?'Editar local':'Novo local'}</h2>
+    <form onsubmit="return submitLocal(event,'${id||''}')">
+      <label>Nome*</label><input id="inp-nome" required value="${esc(l?l.nome:'')}">
+      <label>Descrição</label><textarea id="inp-desc">${esc(l?l.descricao:'')}</textarea>
+      <div class="form-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button type="submit" class="btn btn-primary">${id?'Salvar':'Adicionar'}</button></div>
+    </form>`);
+  setTimeout(()=>document.getElementById('inp-nome')?.focus(),20);
+}
+async function submitLocal(e,id){
+  e.preventDefault();
+  const nome=document.getElementById('inp-nome').value.trim();
+  if(!nome){showToast('Informe o nome.',true);return false;}
+  const data={nome, descricao:document.getElementById('inp-desc').value.trim()};
+  if(id) Object.assign(findById(STATE.locais,id),data); else STATE.locais.push({id:uid(),...data});
+  await persist('locais'); closeModal(); renderView();
+  showToast(id?'Local atualizado.':'Local adicionado.');
+  return false;
+}
+async function deleteLocal(id){
+  if(!confirm('Remover este local?')) return;
+  STATE.locais = STATE.locais.filter(x=>x.id!==id);
+  await persist('locais'); renderView();
+  showToast('Local removido.');
+}
+
+function openClasseForm(id){
+  const c = id?findById(STATE.classes,id):null;
+  openModal(`<h2>${id?'Editar classe':'Nova classe'}</h2>
+    <form onsubmit="return submitClasse(event,'${id||''}')">
+      <label>Nome*</label><input id="inp-nome" required value="${esc(c?c.nome:'')}">
+      <label>Finalidade</label><textarea id="inp-finalidade" placeholder="Para que essa classe é usada?">${esc(c?c.finalidade:'')}</textarea>
+      <div class="form-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button type="submit" class="btn btn-primary">${id?'Salvar':'Adicionar'}</button></div>
+    </form>`);
+  setTimeout(()=>document.getElementById('inp-nome')?.focus(),20);
+}
+async function submitClasse(e,id){
+  e.preventDefault();
+  const nome=document.getElementById('inp-nome').value.trim();
+  if(!nome){showToast('Informe o nome.',true);return false;}
+  const data={nome, finalidade:document.getElementById('inp-finalidade').value.trim()};
+  if(id) Object.assign(findById(STATE.classes,id),data); else STATE.classes.push({id:uid(),...data});
+  await persist('classes'); closeModal(); renderView();
+  showToast(id?'Classe atualizada.':'Classe adicionada.');
+  return false;
+}
+async function deleteClasse(id){
+  if(!confirm('Remover esta classe?')) return;
+  STATE.classes = STATE.classes.filter(x=>x.id!==id);
+  await persist('classes'); renderView();
+  showToast('Classe removida.');
+}
+
+function openRestricaoForm(id){
+  const r = id?findById(STATE.restricoes,id):null;
+  openModal(`<h2>${id?'Editar restrição':'Nova restrição'}</h2>
+    <form onsubmit="return submitRestricao(event,'${id||''}')">
+      <label>Pessoa específica (opcional)</label>
+      <select id="inp-pessoa"><option value="">—</option>${STATE.pessoas.map(p=>`<option value="${p.id}" ${r&&r.pessoaId===p.id?'selected':''}>${esc(p.nome)}</option>`).join('')}</select>
+      <label>Ou cargo/função</label><input id="inp-cargo" placeholder="ex: Repositor" value="${r?esc(r.cargoFuncao):''}">
+      <p class="field-hint">Preencha a pessoa específica ou o cargo/função, conforme a regra se aplicar.</p>
+      <label>Tipo de restrição*</label>
+      <select id="inp-tipo">${['Acesso a local','Limite de retirada','Aprovação obrigatória','Outro'].map(t=>`<option ${r&&r.tipoRestricao===t?'selected':''}>${t}</option>`).join('')}</select>
+      <label>Local relacionado</label>
+      <select id="inp-local"><option value="">—</option>${STATE.locais.map(l=>`<option value="${l.id}" ${r&&r.localId===l.id?'selected':''}>${esc(l.nome)}</option>`).join('')}</select>
+      <label>Descrição</label><textarea id="inp-desc">${r?esc(r.descricao):''}</textarea>
+      <div class="checkbox-row"><input type="checkbox" id="inp-finalizada" ${r&&r.finalizada?'checked':''}><label for="inp-finalizada">Restrição finalizada (encerrada)</label></div>
+      <p class="field-hint">Deixe desmarcado enquanto a restrição estiver em andamento.</p>
+      <div class="form-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button type="submit" class="btn btn-primary">${id?'Salvar':'Adicionar'}</button></div>
+    </form>`);
+  setTimeout(()=>document.getElementById('inp-pessoa')?.focus(),20);
+}
+async function submitRestricao(e,id){
+  e.preventDefault();
+  const pessoaId=document.getElementById('inp-pessoa').value;
+  const cargoFuncao=document.getElementById('inp-cargo').value.trim();
+  if(!pessoaId && !cargoFuncao){ showToast('Informe uma pessoa específica ou um cargo/função.', true); return false; }
+  const data={
+    pessoaId, cargoFuncao, tipoRestricao:document.getElementById('inp-tipo').value,
+    localId:document.getElementById('inp-local').value,
+    descricao:document.getElementById('inp-desc').value.trim(),
+    finalizada:document.getElementById('inp-finalizada').checked
+  };
+  if(id) Object.assign(findById(STATE.restricoes,id),data); else STATE.restricoes.push({id:uid(),...data});
+  await persist('restricoes'); closeModal(); renderView();
+  showToast(id?'Restrição atualizada.':'Restrição adicionada.');
+  return false;
+}
+async function deleteRestricao(id){
+  if(!confirm('Remover esta restrição?')) return;
+  STATE.restricoes = STATE.restricoes.filter(x=>x.id!==id);
+  await persist('restricoes'); renderView();
+  showToast('Restrição removida.');
+}
+
+/* ---------- GESTÃO DE ATIVIDADES (quadro estilo ClickUp) ---------- */
+const TAREFA_STATUSES = ['A Fazer','Em Andamento','Concluído'];
+function renderGestaoAtividades(){
+  let html = `<div class="action-bar">
+    <button class="btn btn-primary" onclick="openTarefaForm()">+ Nova tarefa</button>
+  </div>`;
+  if(STATE.tarefas.length===0){
+    html += emptyState('Nenhuma tarefa cadastrada','Organize as atividades da equipe em um quadro, como em um app de gestão de projetos.',"openTarefaForm()","Criar tarefa");
+    return html;
+  }
+  html += `<div class="kanban">
+    ${TAREFA_STATUSES.map(st=>{
+      const cards = STATE.tarefas.filter(t=>t.status===st);
+      return `<div class="kanban-col" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="onDropTarefa(event,'${st}')">
+        <div class="kanban-col-header"><span>${st}</span><span class="mono">${cards.length}</span></div>
+        <div class="kanban-cards">
+          ${cards.length ? cards.map(t=>renderTarefaCard(t)).join('') : '<p class="kanban-empty">Arraste tarefas para aqui.</p>'}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+  return html;
+}
+function renderTarefaCard(t){
+  const overdue = t.prazo && t.prazo < todayStr() && t.status!=='Concluído';
+  const prioClass = {'Baixa':'tag-muted','Média':'tag-neutral','Alta':'tag-alert','Urgente':'tag-alert'}[t.prioridade] || 'tag-neutral';
+  return `<div class="kanban-card" draggable="true" ondragstart="onDragTarefa(event,'${t.id}')" onclick="openTarefaForm('${t.id}')">
+    <div class="kanban-card-top">
+      <span class="stamp-tag ${prioClass}">${esc(t.prioridade)}</span>
+      <button class="btn-danger-text" onclick="event.stopPropagation();deleteTarefa('${t.id}')" title="Excluir">×</button>
+    </div>
+    <div class="kanban-card-title">${esc(t.titulo)}</div>
+    ${t.descricao?`<div class="kanban-card-desc">${esc(t.descricao)}</div>`:''}
+    <div class="kanban-card-footer">
+      <span>${nameOf(STATE.pessoas,t.responsavelId)}</span>
+      <span class="mono ${overdue?'kanban-overdue':''}">${t.prazo?fmtDate(t.prazo):'—'}</span>
+    </div>
+  </div>`;
+}
+function onDragTarefa(e,id){ e.dataTransfer.setData('text/plain', id); }
+async function onDropTarefa(e, status){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const id = e.dataTransfer.getData('text/plain');
+  const t = findById(STATE.tarefas, id);
+  if(t && t.status!==status){
+    t.status = status;
+    await persist('tarefas');
+    renderView();
+    showToast('Tarefa movida para "'+status+'".');
+  }
+}
+function openTarefaForm(id){
+  const t = id?findById(STATE.tarefas,id):null;
+  openModal(`<h2>${id?'Editar tarefa':'Nova tarefa'}</h2>
+    <form onsubmit="return submitTarefa(event,'${id||''}')">
+      <label>Título*</label><input id="inp-titulo" required value="${esc(t?t.titulo:'')}">
+      <label>Descrição</label><textarea id="inp-desc">${t?esc(t.descricao):''}</textarea>
+      <label>Responsável</label>
+      <select id="inp-resp"><option value="">—</option>${STATE.pessoas.map(p=>`<option value="${p.id}" ${t&&t.responsavelId===p.id?'selected':''}>${esc(p.nome)}</option>`).join('')}</select>
+      <label>Status</label>
+      <select id="inp-status">${TAREFA_STATUSES.map(s=>`<option ${t&&t.status===s?'selected':''}>${s}</option>`).join('')}</select>
+      <label>Prioridade</label>
+      <select id="inp-prio">${['Baixa','Média','Alta','Urgente'].map(p=>`<option ${t&&t.prioridade===p?'selected':''}>${p}</option>`).join('')}</select>
+      <label>Prazo</label><input id="inp-prazo" type="date" value="${t&&t.prazo?t.prazo:''}">
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">${id?'Salvar':'Criar tarefa'}</button>
+      </div>
+    </form>`);
+  setTimeout(()=>document.getElementById('inp-titulo')?.focus(),20);
+}
+async function submitTarefa(e,id){
+  e.preventDefault();
+  const titulo=document.getElementById('inp-titulo').value.trim();
+  if(!titulo){showToast('Informe o título da tarefa.',true);return false;}
+  const data={
+    titulo, descricao:document.getElementById('inp-desc').value.trim(),
+    responsavelId:document.getElementById('inp-resp').value,
+    status:document.getElementById('inp-status').value,
+    prioridade:document.getElementById('inp-prio').value,
+    prazo:document.getElementById('inp-prazo').value
+  };
+  if(id) Object.assign(findById(STATE.tarefas,id),data); else STATE.tarefas.push({id:uid(), criadoEm:String(Date.now()), ...data});
+  await persist('tarefas'); closeModal(); renderView();
+  showToast(id?'Tarefa atualizada.':'Tarefa criada.');
+  return false;
+}
+async function deleteTarefa(id){
+  if(!confirm('Excluir esta tarefa?')) return;
+  STATE.tarefas = STATE.tarefas.filter(x=>x.id!==id);
+  await persist('tarefas'); renderView();
+  showToast('Tarefa excluída.');
+}
+
+/* ---------- ATIVIDADES — quadro de responsabilidades ---------- */
+const TIPOS_DEFAULT = ['Inventário','Auditoria de Movimentação','Auditoria de Ocupação','Auditoria de Crítico','Inventário de Curva'];
+const PERIODOS = ['Dia','Semana','Mês','Ciclo'];
+
+function ensureTipos(){
+  if(STATE.tiposAtividade.length===0){
+    STATE.tiposAtividade = TIPOS_DEFAULT.map(n=>({id:uid(), nome:n}));
+  }
+}
+
+let atividadePeriodo = 'Dia';
+let atividadeData = todayStr();
+
+function renderAtividades(){
+  ensureTipos();
+  const assignments = STATE.atividades.filter(a=> a.periodo===atividadePeriodo && a.dataRef===atividadeData);
+  const assignMap = {};
+  assignments.forEach(a=>{ assignMap[a.tipoId] = a; });
+
+  const periodBtns = PERIODOS.map(p=>`<button class="btn ${atividadePeriodo===p?'btn-primary':'btn-secondary'}" onclick="atividadePeriodo='${p}';renderView()">${p}</button>`).join('');
+
+  let html = `
+  <div class="action-bar" style="flex-wrap:wrap;gap:10px;">
+    <div class="btn-group">${periodBtns}</div>
+    <div class="filters" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <input type="date" value="${atividadeData}" onchange="atividadeData=this.value;renderView()" style="border:1px solid var(--line);border-radius:var(--radius);padding:7px 10px;font-size:13.5px;background:var(--surface);color:var(--ink);">
+      <button class="btn btn-secondary" onclick="openGerenciarTipos()">Editar atividades</button>
+      <button class="btn btn-primary" onclick="abrirCompartilhar()">Compartilhar</button>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <h3 style="margin:0;">Responsaveis - ${atividadePeriodo} - ${fmtDate(atividadeData)}</h3>
+      <span style="font-size:12px;color:var(--ink-soft);">${assignments.length} de ${STATE.tiposAtividade.length} atribuidas</span>
+    </div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Atividade</th><th>Responsavel</th><th>Inicio</th><th>Fim</th><th>O que fazer</th><th></th>
+    </tr></thead><tbody>
+      ${STATE.tiposAtividade.map(t=>{
+        const a = assignMap[t.id];
+        const pessoa = a ? findById(STATE.pessoas, a.pessoaId) : null;
+        return `<tr>
+          <td style="font-weight:500;">${esc(t.nome)}</td>
+          <td>${pessoa
+            ? `<span class="stamp-tag tag-ok">${esc(pessoa.nome)}</span>`
+            : `<span style="color:var(--ink-soft);font-size:12.5px;">nao atribuido</span>`
+          }</td>
+          <td class="mono" style="font-size:12.5px;">${a&&a.inicio?a.inicio:'--'}</td>
+          <td class="mono" style="font-size:12.5px;">${a&&a.fim?a.fim:'--'}</td>
+          <td style="font-size:12.5px;color:var(--ink-soft);max-width:180px;">${a?esc(a.obs)||'--':'--'}</td>
+          <td style="display:flex;gap:4px;flex-wrap:wrap;">
+            <button class="btn-link" onclick="openAtribuirForm('${t.id}','${atividadePeriodo}','${atividadeData}')">${a?'Editar':'+ Atribuir'}</button>
+            ${a?`<button class="btn-danger-text" onclick="removerAtribuicao('${a.id}')">Remover</button>`:''}
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody></table></div>
+  </div>`;
+
+  const colabMap = {};
+  STATE.atividades.forEach(a=>{
+    if(!a.pessoaId) return;
+    if(!colabMap[a.pessoaId]) colabMap[a.pessoaId] = [];
+    const tipo = findById(STATE.tiposAtividade, a.tipoId);
+    if(tipo) colabMap[a.pessoaId].push({nome:tipo.nome, periodo:a.periodo, inicio:a.inicio, fim:a.fim});
+  });
+  if(Object.keys(colabMap).length>0){
+    html += `<div class="panel">
+      <h3>Visao por colaborador</h3>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Colaborador</th><th>Cargo</th><th>Atividades atribuidas</th><th>Total</th>
+      </tr></thead><tbody>
+        ${STATE.pessoas.filter(p=>colabMap[p.id]).map(p=>{
+          const ativs = colabMap[p.id];
+          return `<tr>
+            <td>${esc(p.nome)}</td>
+            <td>${esc(p.cargo)}</td>
+            <td style="font-size:12.5px;">${ativs.map(a=>`<span class="stamp-tag tag-neutral" style="margin:2px;">${esc(a.nome)}</span>`).join(' ')}</td>
+            <td class="mono">${ativs.length}</td>
+          </tr>`;
+        }).join('')}
+      </tbody></table></div>
+    </div>`;
+  }
+  return html;
+}
+
+function openAtribuirForm(tipoId, periodo, dataRef){
+  const tipo = findById(STATE.tiposAtividade, tipoId);
+  const ex = STATE.atividades.find(a=>a.tipoId===tipoId && a.periodo===periodo && a.dataRef===dataRef);
+  openModal(`<h2>${ex?'Editar':'Atribuir'} responsavel</h2>
+    <p style="color:var(--ink-soft);font-size:13.5px;margin-bottom:14px;">
+      <strong style="color:var(--ink);">${esc(tipo?tipo.nome:'')}</strong> &mdash; ${periodo} &middot; ${fmtDate(dataRef)}
+    </p>
+    <form onsubmit="return submitAtribuicao(event,'${tipoId}','${periodo}','${dataRef}','${ex?ex.id:''}')">
+      <label>Responsavel*</label>
+      <select id="inp-pessoa" required>
+        <option value="">selecione</option>
+        ${STATE.pessoas.filter(p=>p.status==='Ativo').map(p=>`<option value="${p.id}" ${ex&&ex.pessoaId===p.id?'selected':''}>${esc(p.nome)} - ${esc(p.cargo)}</option>`).join('')}
+      </select>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;">
+        <div><label>Horario de inicio</label><input id="inp-inicio" type="time" value="${ex&&ex.inicio?ex.inicio:''}"></div>
+        <div><label>Horario de fim</label><input id="inp-fim" type="time" value="${ex&&ex.fim?ex.fim:''}"></div>
+      </div>
+      <label>O que deve ser feito</label>
+      <textarea id="inp-obs" placeholder="Descreva o que a pessoa deve executar..." rows="3">${ex?esc(ex.obs):''}</textarea>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">${ex?'Salvar':'Atribuir'}</button>
+      </div>
+    </form>`);
+  setTimeout(()=>document.getElementById('inp-pessoa')?.focus(),20);
+}
+
+async function submitAtribuicao(e, tipoId, periodo, dataRef, existingId){
+  e.preventDefault();
+  const pessoaId = document.getElementById('inp-pessoa').value;
+  if(!pessoaId){ showToast('Selecione o responsavel.',true); return false; }
+  const data = {
+    pessoaId,
+    inicio: document.getElementById('inp-inicio').value,
+    fim: document.getElementById('inp-fim').value,
+    obs: document.getElementById('inp-obs').value.trim()
+  };
+  if(existingId){
+    const a = findById(STATE.atividades, existingId);
+    if(a) Object.assign(a, data);
+  } else {
+    STATE.atividades.push({id:uid(), criadoEm:String(Date.now()), tipoId, periodo, dataRef, ...data});
+  }
+  await persist('atividades');
+  closeModal(); renderView();
+  showToast(existingId?'Responsavel atualizado.':'Responsavel atribuido.');
+  return false;
+}
+
+async function removerAtribuicao(id){
+  if(!confirm('Remover esta atribuicao?')) return;
+  STATE.atividades = STATE.atividades.filter(a=>a.id!==id);
+  await persist('atividades'); renderView();
+  showToast('Atribuicao removida.');
+}
+
+function openGerenciarTipos(){
+  openModal(`<h2>Editar atividades</h2>
+    <p class="field-hint" style="margin-bottom:10px;">Renomeie, remova ou adicione tipos de atividade.</p>
+    <div id="tipos-list">
+      ${STATE.tiposAtividade.map(t=>`
+        <div class="panel-row" style="margin-bottom:10px;align-items:center;">
+          <input value="${esc(t.nome)}" id="tipo-inp-${t.id}" style="flex:1;border:1px solid var(--line);border-radius:var(--radius);padding:7px 10px;font-size:13.5px;background:var(--paper);color:var(--ink);" onblur="renameTipo('${t.id}',this.value)">
+          <button class="btn-danger-text" onclick="deleteTipo('${t.id}')">Remover</button>
+        </div>`).join('')}
+    </div>
+    <form onsubmit="return addTipo(event)">
+      <label>Nova atividade</label>
+      <input id="inp-tipo-novo" placeholder="ex: Auditoria de Validade" required>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Fechar</button>
+        <button type="submit" class="btn btn-primary">Adicionar</button>
+      </div>
+    </form>`);
+  setTimeout(()=>document.getElementById('inp-tipo-novo')?.focus(),20);
+}
+
+async function renameTipo(id, nome){
+  const t = findById(STATE.tiposAtividade, id);
+  if(t && nome.trim() && nome.trim()!==t.nome){ t.nome=nome.trim(); await persist('tiposAtividade'); showToast('Atividade renomeada.'); }
+}
+async function deleteTipo(id){
+  if(!confirm('Remover este tipo? As atribuicoes vinculadas tambem serao removidas.')) return;
+  STATE.tiposAtividade = STATE.tiposAtividade.filter(t=>t.id!==id);
+  STATE.atividades = STATE.atividades.filter(a=>a.tipoId!==id);
+  await persist('tiposAtividade'); await persist('atividades');
+  renderView(); openGerenciarTipos();
+  showToast('Atividade removida.');
+}
+async function addTipo(e){
+  e.preventDefault();
+  const nome = document.getElementById('inp-tipo-novo').value.trim();
+  if(!nome){ showToast('Informe o nome.',true); return false; }
+  STATE.tiposAtividade.push({id:uid(), nome});
+  await persist('tiposAtividade');
+  renderView(); openGerenciarTipos();
+  showToast('Atividade adicionada.');
+  return false;
+}
+
+function abrirCompartilhar(){
+  ensureTipos();
+  const assignments = STATE.atividades.filter(a=>a.periodo===atividadePeriodo && a.dataRef===atividadeData);
+  const assignMap = {};
+  assignments.forEach(a=>{ assignMap[a.tipoId]=a; });
+
+  const dataLabel = fmtDate(atividadeData);
+  const diaSemana = new Date(atividadeData+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long'});
+
+  const rows = STATE.tiposAtividade.map(t=>{
+    const a = assignMap[t.id];
+    const pessoa = a ? findById(STATE.pessoas, a.pessoaId) : null;
+    return {atividade:t.nome, pessoa:pessoa?pessoa.nome:null, cargo:pessoa?pessoa.cargo:'', inicio:a?a.inicio:'', fim:a?a.fim:'', obs:a?a.obs:''};
+  });
+  const atribuidas = rows.filter(r=>r.pessoa);
+  const naoAtribuidas = rows.filter(r=>!r.pessoa);
+
+  const byPerson = {};
+  atribuidas.forEach(r=>{
+    if(!byPerson[r.pessoa]) byPerson[r.pessoa]={cargo:r.cargo,items:[]};
+    byPerson[r.pessoa].items.push(r);
+  });
+
+  const initial = n => n.charAt(0).toUpperCase();
+
+  const cardsHtml = Object.entries(byPerson).map(([nome,data])=>
+    '<div style="background:#fff;border:1.5px solid #e8e4f0;border-radius:10px;padding:14px 16px;break-inside:avoid;margin-bottom:12px;">'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+    +'<div style="width:38px;height:38px;border-radius:50%;background:#001A72;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0;">'+initial(nome)+'</div>'
+    +'<div><div style="font-weight:700;font-size:14px;color:#1D1F2A;">'+nome+'</div>'
+    +'<div style="font-size:11px;color:#888;">'+data.cargo+'</div></div></div>'
+    +data.items.map(item=>
+      '<div style="padding:8px 10px;background:#f7f6fb;border-radius:6px;margin-bottom:6px;border-left:3px solid #FA4616;">'
+      +'<div style="font-weight:600;font-size:13px;color:#1D1F2A;">'+item.atividade+'</div>'
+      +(item.inicio||item.fim?'<div style="font-size:11.5px;color:#555;margin-top:2px;">&#128336; '+(item.inicio||'?')+(item.fim?' ate '+item.fim:'')+'</div>':'')
+      +(item.obs?'<div style="font-size:11.5px;color:#666;margin-top:3px;font-style:italic;">'+item.obs+'</div>':'')
+      +'</div>'
+    ).join('')
+    +'</div>'
+  ).join('');
+
+  const rowsHtml = rows.map(r=>
+    '<tr>'
+    +'<td style="padding:11px 14px;border-bottom:1px solid #e8e4f0;font-weight:600;color:#1D1F2A;">'+r.atividade+'</td>'
+    +'<td style="padding:11px 14px;border-bottom:1px solid #e8e4f0;">'
+    +(r.pessoa
+      ? '<div style="display:inline-flex;align-items:center;gap:8px;background:#001A72;color:#fff;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600;">'+r.pessoa+'</div>'
+        +'<br><span style="font-size:11px;color:#888;margin-top:2px;display:block;">'+r.cargo+'</span>'
+      : '<span style="color:#bbb;font-size:13px;">nao atribuido</span>')
+    +'</td>'
+    +'<td style="padding:11px 14px;border-bottom:1px solid #e8e4f0;font-family:monospace;font-size:13px;color:#444;text-align:center;white-space:nowrap;">'
+    +(r.inicio&&r.fim?'<strong>'+r.inicio+'</strong><br><span style="color:#aaa;font-size:10px;">ate</span><br><strong>'+r.fim+'</strong>':r.inicio?r.inicio:'--')
+    +'</td>'
+    +'<td style="padding:11px 14px;border-bottom:1px solid #e8e4f0;font-size:12.5px;color:#555;">'+(r.obs||'--')+'</td>'
+    +'</tr>'
+  ).join('');
+
+  const warnHtml = naoAtribuidas.length>0
+    ? '<div style="margin-top:20px;"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#e13f14;margin-bottom:8px;">Sem responsavel ('+naoAtribuidas.length+')</div>'
+      +'<div style="background:#fff8f6;border:1px solid #fcc;border-radius:8px;padding:10px 14px;">'
+      +naoAtribuidas.map(r=>'<span style="display:inline-block;margin:3px;background:#fff;border:1px solid #fcc;border-radius:4px;padding:3px 10px;font-size:12.5px;color:#c00;">'+r.atividade+'</span>').join('')
+      +'</div></div>'
+    : '';
+
+  const printHtml = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
+    +'<meta name="viewport" content="width=device-width,initial-scale=1">'
+    +'<title>Responsaveis '+atividadePeriodo+' '+dataLabel+'</title>'
+    +'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">'
+    +'<style>*{box-sizing:border-box;}body{margin:0;font-family:Inter,sans-serif;background:#f4f3f9;color:#1D1F2A;}'
+    +'.page{max-width:860px;margin:0 auto;padding:28px 20px;}'
+    +'.header{background:linear-gradient(135deg,#001A72 0%,#1A3180 55%,#0A0B23 100%);border-radius:14px;padding:26px 28px;margin-bottom:22px;position:relative;overflow:hidden;}'
+    +'.header::before{content:"";position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:rgba(250,70,22,.12);}'
+    +'.hrow{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;}'
+    +'.htitle{color:#fff;font-size:22px;font-weight:700;margin:0 0 4px;}'
+    +'.hsub{color:rgba(255,255,255,.6);font-size:13px;}'
+    +'.hstats{display:flex;gap:10px;margin-top:12px;}'
+    +'.hstat{background:rgba(255,255,255,.12);border-radius:8px;padding:7px 14px;color:#fff;}'
+    +'.hstat .n{font-size:20px;font-weight:700;line-height:1;}'
+    +'.hstat .l{font-size:10px;opacity:.7;margin-top:2px;}'
+    +'.dbadge{background:#FA4616;color:#fff;border-radius:10px;padding:10px 18px;font-weight:700;text-align:center;line-height:1.4;min-width:120px;flex-shrink:0;}'
+    +'.dbadge .dw{font-size:11px;opacity:.85;text-transform:capitalize;}'
+    +'.dbadge .dd{font-size:18px;}'
+    +'.dbadge .dp{font-size:11px;opacity:.85;letter-spacing:.04em;}'
+    +'.stitle{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;margin:20px 0 10px;}'
+    +'.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;}'
+    +'table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.07);}'
+    +'thead th{background:#001A72;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:10px 14px;text-align:left;}'
+    +'.footer{text-align:center;font-size:11px;color:#bbb;margin-top:24px;padding-top:14px;border-top:1px solid #e8e4f0;}'
+    +'.noprint{margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap;}'
+    +'.bp{background:#001A72;color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer;}'
+    +'.bc{background:#f0f0f0;color:#333;border:none;border-radius:8px;padding:10px 18px;font-size:14px;cursor:pointer;}'
+    +'@media print{.noprint{display:none!important;}body{background:#fff;}.page{padding:0 12px;}}</style></head>'
+    +'<body><div class="page">'
+    +'<div class="noprint"><button class="bp" onclick="window.print()">Imprimir / Salvar PDF</button><button class="bc" onclick="window.close()">Fechar</button></div>'
+    +'<div class="header"><div class="hrow">'
+    +'<div><div class="htitle">Responsaveis de '+atividadePeriodo+'</div><div class="hsub">Central de Controle de Estoque</div>'
+    +'<div class="hstats"><div class="hstat"><div class="n">'+atribuidas.length+'</div><div class="l">atividades</div></div>'
+    +'<div class="hstat"><div class="n">'+Object.keys(byPerson).length+'</div><div class="l">colaboradores</div></div></div></div>'
+    +'<div class="dbadge"><div class="dw">'+diaSemana+'</div><div class="dd">'+dataLabel+'</div><div class="dp">'+atividadePeriodo.toUpperCase()+'</div></div>'
+    +'</div></div>'
+    +(atribuidas.length>0?'<div class="stitle">Por colaborador</div><div class="cards">'+cardsHtml+'</div>':'')
+    +'<div class="stitle">Quadro completo</div>'
+    +'<table><thead><tr><th>Atividade</th><th>Responsavel</th><th style="text-align:center;white-space:nowrap;">Horario</th><th>O que fazer</th></tr></thead>'
+    +'<tbody>'+rowsHtml+'</tbody></table>'
+    +warnHtml
+    +'<div class="footer">Central de Estoque - Gerado em '+new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})+'</div>'
+    +'</div></body></html>';
+
+  const w = window.open('','_blank','width=940,height=720,scrollbars=yes,resizable=yes');
+  if(w){ w.document.write(printHtml); w.document.close(); }
+  else { showToast('Permita pop-ups no navegador para ver o relatorio.', true); }
+}
+
+
+/* ---------- HELPERS: modal & empty state ---------- */
+function openModal(html){
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+      <div class="modal-card" role="dialog" aria-modal="true">${html}</div>
+    </div>`;
+}
+function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
+function emptyState(title, desc, onclickFn, btnLabel){
+  return `<div class="empty-state panel">
+    <div class="stamp-mark" style="margin:0 auto 10px;">EC</div>
+    <h3>${title}</h3><p>${desc}</p>
+    <button class="btn btn-primary" onclick="${onclickFn}">${btnLabel}</button>
+  </div>`;
+}
+
+/* ---------- INIT ---------- */
+document.getElementById('nav').addEventListener('click', (e)=>{
+  if(e.target.classList.contains('nav-rename-input')) return;
+  const btn = e.target.closest('.nav-item');
+  if(btn) switchTab(btn.dataset.tab);
+});
+document.getElementById('nav').addEventListener('dblclick', (e)=>{
+  if(e.target.classList.contains('nav-rename-input')) return;
+  const btn = e.target.closest('.nav-item');
+  if(btn) startRenameTab(btn);
+});
+(async function init(){
+  await loadAll();
+  applyTabNames();
+  document.querySelector('.nav-item[data-tab="painel"]').classList.add('active');
+  document.getElementById('tab-title').textContent = STATE.tabNomes['painel'] || TAB_LABELS['painel'][0];
+  renderView();
+})();
+</script>
+</body>
+</html>
