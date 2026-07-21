@@ -3,13 +3,14 @@
    100% client-side. Nenhuma chamada de rede, nenhum servidor.
    ============================================================ */
 const AUD_DB_NAME = 'auditoria_divergencias_v1';
-const AUD_DB_VERSION = 1;
+const AUD_DB_VERSION = 2;
 
 const AUD_STORES = {
   netConfig: 'net_config',          // regras da legenda -> considerar NET
   divergencias: 'divergencias',     // base tratada + diagnóstico (uma linha por divergência)
   indicadores: 'indicadores',       // snapshot de KPIs por importação/ano
-  importMeta: 'import_meta'         // metadados de cada processamento (arquivos, datas, contagens)
+  importMeta: 'import_meta',        // metadados de cada processamento (arquivos, datas, contagens)
+  kpiHistory: 'kpi_history'         // snapshot diário de KPIs (para comparação dia-a-dia)
 };
 
 function audOpenDB(){
@@ -36,6 +37,10 @@ function audOpenDB(){
       }
       if(!db.objectStoreNames.contains(AUD_STORES.importMeta)){
         db.createObjectStore(AUD_STORES.importMeta, {keyPath:'ano'});
+      }
+      if(!db.objectStoreNames.contains(AUD_STORES.kpiHistory)){
+        const k = db.createObjectStore(AUD_STORES.kpiHistory, {keyPath:'chave'});
+        k.createIndex('ano', 'ano', {unique:false});
       }
     };
     req.onsuccess = ()=>resolve(req.result);
@@ -214,4 +219,33 @@ async function audGetAllImportMeta(){
     req.onsuccess = ()=>resolve(req.result || []);
     req.onerror = ()=>reject(req.error);
   });
+}
+
+/* ---------- Histórico de KPIs (comparação dia-a-dia) ---------- */
+async function audSaveKpiSnapshot(ano, dataStr, kpis){
+  const store = await audTx(AUD_STORES.kpiHistory, 'readwrite');
+  return new Promise((resolve, reject)=>{
+    const req = store.put({chave: ano+'|'+dataStr, ano, data: dataStr, kpis, savedAt: new Date().toISOString()});
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function audGetKpiHistory(ano){
+  const store = await audTx(AUD_STORES.kpiHistory, 'readonly');
+  return new Promise((resolve, reject)=>{
+    const idx = store.index('ano');
+    const out = [];
+    const req = idx.openCursor(IDBKeyRange.only(ano));
+    req.onsuccess = (e)=>{
+      const cursor = e.target.result;
+      if(cursor){ out.push(cursor.value); cursor.continue(); }
+      else resolve(out.sort((a,b)=>a.data<b.data?-1:1));
+    };
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function audGetPreviousKpiSnapshot(ano, dataStrAtual){
+  const historico = await audGetKpiHistory(ano);
+  const anteriores = historico.filter(h=>h.data < dataStrAtual);
+  return anteriores.length ? anteriores[anteriores.length-1] : null;
 }

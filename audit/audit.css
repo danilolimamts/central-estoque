@@ -2,8 +2,8 @@
    Estilos do módulo de Auditoria de Divergências de Inventário
    Reutiliza as variáveis de tema definidas no shell principal.
    ============================================================ */
-.aud-pos{ color:#7FD0A0; }
-.aud-neg{ color:#FB6B45; }
+.aud-pos{ color:#1F8A52; }
+.aud-neg{ color:#C83812; }
 
 .aud-dz-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
 @media(max-width:900px){ .aud-dz-grid{ grid-template-columns:1fr; } }
@@ -70,3 +70,145 @@
   border-bottom:2px solid transparent; cursor:pointer;
 }
 .aud-subtab.active{ color:var(--accent); border-bottom-color:var(--accent); }
+
+/* ============================================================
+   REESTRUTURAÇÃO OPERACIONAL — layout corporativo denso
+   Institucional: azul #001A72 / laranja #FE5000
+   ============================================================ */
+:root{
+  --aud-blue:#001A72; --aud-orange:#FE5000;
+}
+
+/* ---- tema claro institucional, isolado ao módulo de auditoria ----
+   Sobrescreve as variáveis do shell escuro só dentro de .aud-shell;
+   componentes compartilhados (panel/btn/table/stat-card) herdam e
+   viram claros automaticamente, sem afetar os outros módulos do app. */
+.aud-shell{
+  --paper:#FFFFFF; --surface:#FFFFFF; --surface2:#F4F6FA;
+  --ink:#12172B; --ink-soft:#5B6472; --line:#E2E6EE;
+  --accent:var(--aud-orange); --accent-light:rgba(254,80,0,.10);
+  --blue:var(--aud-blue); --blue2:var(--aud-blue); --blue3:#33488E;
+  background:#FFFFFF; min-height:100%;
+  margin:-20px -24px; padding:0 16px 16px;
+}
+@media(max-width:760px){ .aud-shell{ margin:-14px; padding:0 10px 10px; } }
+.aud-shell .btn-primary{ background:var(--aud-blue); color:#fff; font-weight:600; }
+.aud-shell .btn-secondary{ background:#fff; border:1px solid var(--aud-blue); color:var(--aud-blue); }
+.aud-shell thead th{ background:var(--aud-blue); }
+.aud-shell table, .aud-shell .table-wrap{ border-color:var(--line); }
+.aud-shell tbody tr:hover td{ background:rgba(254,80,0,.05); }
+.aud-shell .field-hint{ color:var(--ink-soft); }
+.aud-shell form input, .aud-shell form select, .aud-shell form textarea{ background:#fff; }
+
+/* ---- header compacto ---- */
+.aud-headerbar{
+  display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+  background:var(--surface2); border-bottom:1px solid var(--line);
+  padding:8px 16px; margin:0 -16px 12px; position:sticky; top:0; z-index:5;
+}
+.aud-hb-group{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-soft); white-space:nowrap; }
+.aud-hb-group b{ color:var(--ink); font-weight:600; }
+.aud-hb-sep{ width:1px; height:16px; background:var(--line); flex-shrink:0; }
+.aud-hb-status{ display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:100px; font-size:10.5px; font-weight:600; }
+.aud-hb-status.ok{ background:rgba(58,174,111,.12); color:#2C8F5C; }
+.aud-hb-status.pend{ background:rgba(254,80,0,.12); color:var(--aud-orange); }
+.aud-headerbar .btn{ margin-left:auto; padding:6px 16px; font-size:12px; }
+
+/* ---- KPI grid denso ---- */
+.aud-kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(128px,1fr)); gap:6px; margin-bottom:10px; }
+.aud-kpi{
+  background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:8px 10px;
+  position:relative; overflow:hidden;
+}
+.aud-kpi::before{ content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--aud-blue); }
+.aud-kpi.orange::before{ background:var(--aud-orange); }
+.aud-kpi.good::before{ background:#3AAE6F; }
+.aud-kpi .num{ font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:600; color:var(--ink); line-height:1.15; }
+.aud-kpi .label{ font-size:9px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.aud-kpi .delta{ font-size:9.5px; margin-top:3px; font-family:'IBM Plex Mono',monospace; }
+.aud-kpi .delta.up{ color:#FB6B45; } .aud-kpi .delta.down{ color:#7FD0A0; } .aud-kpi .delta.flat{ color:var(--ink-soft); }
+
+/* ---- linhas de ranking (Top10) ---- */
+.aud-rank-row3{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
+@media(max-width:1100px){ .aud-rank-row3{ grid-template-columns:1fr; } }
+.aud-rank-card{ background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:8px 10px; }
+.aud-rank-card h4{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
+.aud-rank-card select{ font-size:10px; border:1px solid var(--line); border-radius:4px; background:var(--paper); color:var(--ink); padding:2px 4px; }
+.aud-rank-list{ display:flex; flex-direction:column; gap:0; }
+.aud-rank-item{ display:flex; align-items:center; gap:6px; padding:4px 0; border-bottom:1px dashed var(--line); font-size:11.5px; }
+.aud-rank-item:last-child{ border-bottom:none; }
+.aud-rank-pos{ width:16px; color:var(--ink-soft); font-size:10px; flex-shrink:0; }
+.aud-rank-key{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
+.aud-rank-val{ font-family:'IBM Plex Mono',monospace; font-size:11px; flex-shrink:0; }
+
+/* ---- gráficos leves (SVG inline, sem libs externas) ---- */
+.aud-chart-row{ display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:8px; margin-bottom:10px; }
+@media(max-width:1100px){ .aud-chart-row{ grid-template-columns:1fr; } }
+.aud-chart-card{ background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:8px 10px; }
+.aud-chart-card h4{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); margin-bottom:6px; }
+.aud-chart-card svg{ display:block; width:100%; height:auto; }
+.aud-dist-row{ display:flex; align-items:flex-end; gap:6px; height:90px; }
+.aud-dist-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:3px; }
+.aud-dist-bar{ width:100%; border-radius:3px 3px 0 0; background:var(--aud-blue); }
+.aud-dist-label{ font-size:9px; color:var(--ink-soft); }
+.aud-dist-value{ font-size:10px; font-family:'IBM Plex Mono',monospace; color:var(--ink); }
+
+/* ---- chips de filtro rápido ---- */
+.aud-chips{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+.aud-chip{
+  background:var(--surface); border:1px solid var(--line); color:var(--ink-soft);
+  border-radius:100px; padding:5px 12px; font-size:11.5px; cursor:pointer; white-space:nowrap;
+  transition:all .12s;
+}
+.aud-chip:hover{ border-color:var(--aud-orange); color:var(--ink); }
+.aud-chip.active{ background:rgba(254,80,0,.14); border-color:var(--aud-orange); color:var(--aud-orange); font-weight:600; }
+
+/* ---- tabela operacional densa ---- */
+.aud-optable-wrap{ border:1px solid var(--line); border-radius:6px; background:var(--paper); overflow:hidden; }
+.aud-optable-toolbar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 10px; background:var(--surface); border-bottom:1px solid var(--line); }
+.aud-optable-toolbar select, .aud-optable-toolbar input{ font-size:11.5px; border:1px solid var(--line); border-radius:4px; background:var(--paper); color:var(--ink); padding:5px 8px; }
+.aud-optable-scroll{ overflow:auto; height:calc(100vh - 560px); min-height:280px; position:relative; }
+.aud-optable{ width:100%; border-collapse:collapse; font-size:11.5px; table-layout:fixed; }
+.aud-optable thead th{
+  position:sticky; top:0; z-index:2; background:var(--aud-blue); color:#fff; text-align:left;
+  padding:6px 8px; font-size:10px; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; user-select:none;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-right:1px solid rgba(255,255,255,.08);
+}
+.aud-optable thead th .arrow{ opacity:.6; margin-left:3px; }
+.aud-optable tbody td{ padding:5px 8px; border-bottom:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.aud-optable tbody tr:hover td{ background:rgba(254,80,0,.05); }
+.aud-optable .grp-row td{ background:var(--surface2); font-weight:600; color:var(--ink); position:sticky; }
+.aud-col-menu{ position:relative; }
+.aud-col-menu-panel{
+  position:absolute; right:0; top:100%; margin-top:4px; background:var(--surface); border:1px solid var(--line);
+  border-radius:6px; padding:8px 10px; z-index:20; min-width:180px; box-shadow:0 8px 24px rgba(0,0,0,.4);
+}
+.aud-col-menu-panel label{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink); padding:3px 0; text-transform:none; }
+.aud-col-menu-panel input{ width:auto; }
+
+/* ---- percentuais de compensação (barras finas em tabela) ---- */
+.aud-mini-bar{ display:inline-block; width:60px; height:6px; background:var(--line); border-radius:100px; overflow:hidden; vertical-align:middle; margin-right:6px; }
+.aud-mini-bar span{ display:block; height:100%; background:#3AAE6F; }
+
+/* ---- criticidade (matriz de ofensores) ---- */
+.aud-crit-badge{
+  display:inline-flex; align-items:center; justify-content:center; width:40px; height:24px; border-radius:5px;
+  font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:12px; color:#fff;
+}
+
+/* ---- folha de impressão operacional ---- */
+#aud-print-sheet{ display:none; }
+@media print{
+  body *{ visibility:hidden; }
+  #aud-print-sheet, #aud-print-sheet *{ visibility:visible; }
+  #aud-print-sheet{ display:block; position:absolute; top:0; left:0; width:100%; }
+  @page{ size:A4; margin:12mm; }
+}
+.aud-print-page{ background:#fff; color:#000; font-family:Arial,sans-serif; }
+.aud-print-head{ display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #000; padding-bottom:6px; margin-bottom:8px; font-size:11px; }
+.aud-print-head h2{ font-size:15px; margin:0 0 2px; }
+.aud-print-table{ width:100%; border-collapse:collapse; font-size:10px; }
+.aud-print-table th, .aud-print-table td{ border:1px solid #333; padding:4px 6px; text-align:left; }
+.aud-print-table th{ background:#eee; text-transform:uppercase; font-size:9px; }
+.aud-print-table td.tall{ height:34px; }
+.aud-print-scope-bar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
