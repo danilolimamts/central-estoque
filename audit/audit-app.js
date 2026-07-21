@@ -23,7 +23,8 @@ const AUD = {
   importMeta:null,
   kpiPrev:null,
   list:[],
-  itemFilters:{search:'', local:'', inventario:'', diagnostico:'', prioridade:''},
+  itemFilters:{search:'', local:'', inventario:'', diagnostico:'', prioridade:'', dia:''},
+  validarTopN:15,
   itemSort:{key:'valorAbs', dir:'desc'},
   itemExpanded: new Set(),
   printScope:'pendentes'
@@ -92,13 +93,15 @@ function audOnRender(tab){
    HEADER COMPACTO — presente em todas as telas do módulo
    ============================================================ */
 function audWrap(inner){
-  return `<div class="aud-shell">${audRenderHeaderBar()}${inner}</div>`;
+  return `<div class="aud-shell">${audRenderHeaderBar()}${inner}<div id="aud-print-sheet"></div></div>`;
 }
 function audRenderHeaderBar(){
   const m = AUD.importMeta;
   const dt = m ? new Date(m.processedAt) : null;
   const statusChip = (ok)=>`<span class="aud-hb-status ${ok?'ok':'pend'}">${ok?'OK':'Pendente'}</span>`;
   return `<div class="aud-headerbar">
+    <img class="aud-hb-logo" src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico">
+    <div class="aud-hb-sep"></div>
     <div class="aud-hb-group">Atualizado em <b>${dt?dt.toLocaleDateString('pt-BR'):'—'}</b></div>
     <div class="aud-hb-group">às <b>${dt?dt.toLocaleTimeString('pt-BR'):'—'}</b></div>
     <div class="aud-hb-sep"></div>
@@ -346,8 +349,42 @@ function audKpiDelta(atual, campo){
 function audRenderHome(){
   return `
     ${audRenderKpiRow()}
+    ${audRenderNetExplicacao()}
     ${audRenderResumoTables()}
   `;
+}
+
+function audRenderNetExplicacao(){
+  const itens = audAggItens();
+  if(!itens.length) return '';
+  const negativos = itens.filter(i=>i.valor<0).sort((a,b)=>a.valor-b.valor);
+  const positivos = itens.filter(i=>i.valor>0).sort((a,b)=>b.valor-a.valor);
+  const somaNeg = negativos.reduce((s,i)=>s+i.valor,0);
+  const somaPos = positivos.reduce((s,i)=>s+i.valor,0);
+  const netTotal = somaNeg + somaPos;
+  const maior = negativos[0];
+  const linha = (list)=>list.slice(0,5).map(i=>`<div class="aud-rank-item">
+    <span class="aud-rank-key">${esc(i.chave)} — ${esc(i.descricao||'')}</span>
+    <span class="aud-rank-val mono ${i.valor>=0?'aud-pos':'aud-neg'}">${audFmtMoney(i.valor)}</span>
+  </div>`).join('') || '<div class="field-hint">Sem registros</div>';
+  return `<div class="panel" style="border-left:4px solid ${netTotal<0?'#C83812':'#1F8A52'};">
+    <h3>Por que o NET está ${netTotal<0?'negativo':'positivo'}?</h3>
+    <p class="field-hint" style="margin-bottom:10px;">
+      ${maior ? `O item que mais puxa o NET para baixo é <b>${esc(maior.chave)} — ${esc(maior.descricao||'')}</b>, com ${audFmtMoney(maior.valor)} acumulado em ${maior.ocorrencias} divergência(s) no local <b>${esc(maior.localPrincipal||'—')}</b>.` : 'Nenhum item com saldo negativo no período.'}
+      Perdas somam ${audFmtMoney(somaNeg)} e ganhos somam ${audFmtMoney(somaPos)} — saldo líquido ${audFmtMoney(netTotal)}.
+    </p>
+    <div class="two-col">
+      <div>
+        <h4 style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin-bottom:6px;">Maiores perdas (puxam o NET para baixo)</h4>
+        <div class="aud-rank-list">${linha(negativos)}</div>
+      </div>
+      <div>
+        <h4 style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin-bottom:6px;">Maiores ganhos (compensam o NET)</h4>
+        <div class="aud-rank-list">${linha(positivos)}</div>
+      </div>
+    </div>
+    <div class="form-actions" style="margin-top:10px;"><button class="btn btn-secondary" onclick="switchTab('aud-audit')">Ir para Auditoria e tratar</button></div>
+  </div>`;
 }
 
 function audRenderKpiRow(){
@@ -407,6 +444,7 @@ function audAuditoriaOccurrences(){
     if(f.inventario && r.inventario!==f.inventario) return false;
     if(f.diagnostico && r.diagnostico!==f.diagnostico) return false;
     if(f.prioridade && r.prioridade!==f.prioridade) return false;
+    if(f.dia && r.dataFim!==f.dia) return false;
     if(search){
       const hay = (r.itemWms+' '+r.ean+' '+r.descricao).toLowerCase();
       if(!hay.includes(search)) return false;
@@ -460,8 +498,18 @@ function audRenderAuditoria(){
           <option value="media" ${f.prioridade==='media'?'selected':''}>Média</option>
           <option value="baixa" ${f.prioridade==='baixa'?'selected':''}>Baixa</option>
         </select>
+        <input type="date" value="${esc(f.dia)}" onchange="audItemSetFilter('dia', this.value)" title="Filtrar por dia">
         <button class="btn btn-secondary" onclick="audItemClearFilters()">Limpar</button>
         <button class="btn btn-secondary" onclick="audExportItensCsv()">Exportar (Item/EAN/Descrição/Local/Qtd)</button>
+      </div>
+    </div>
+    <div class="aud-toolbar" style="background:rgba(254,80,0,.06);border:1px solid rgba(254,80,0,.25);border-radius:8px;padding:10px 14px;">
+      <div class="aud-hb-group"><b>Validar hoje os</b>
+        <input type="number" min="1" max="500" value="${AUD.validarTopN}" style="width:60px;" onchange="audSetValidarTopN(this.value)">
+        <b>itens mais divergentes</b> (por valor)
+      </div>
+      <div class="aud-toolbar-actions">
+        <button class="btn btn-primary" onclick="audPrintTopItens()">🖨️ Imprimir esses itens agora</button>
       </div>
     </div>
     <div class="aud-result-count" id="aud-item-count">${audFmtInt(audAuditoriaItens().length)} itens consolidados</div>
@@ -481,7 +529,8 @@ function audItemSort(key){
   renderView();
 }
 function audItemSetFilter(key, val){ AUD.itemFilters[key] = val; renderView(); }
-function audItemClearFilters(){ AUD.itemFilters = {search:AUD.itemFilters.search, local:'', inventario:'', diagnostico:'', prioridade:''}; renderView(); }
+function audItemClearFilters(){ AUD.itemFilters = {search:AUD.itemFilters.search, local:'', inventario:'', diagnostico:'', prioridade:'', dia:''}; renderView(); }
+function audSetValidarTopN(val){ AUD.validarTopN = Math.max(1, parseInt(val,10)||15); }
 let audItemSearchDebounce = null;
 function audItemOnSearch(val){
   AUD.itemFilters.search = val;
@@ -819,7 +868,6 @@ function audRenderRelatorios(){
       <tr id="aud-history-body"><td colspan="5" style="text-align:center;color:var(--ink-soft);">Carregando...</td></tr>
       </tbody></table></div>
     </div>
-    <div id="aud-print-sheet"></div>
   `;
 }
 function audPrintFolha(scope){
@@ -845,6 +893,27 @@ function audPrintFolha(scope){
       <tbody>${rows.map(r=>`<tr>
         <td>${esc(r.itemWms)}</td><td>${esc(r.ean)}</td><td>${esc(r.descricao)}</td><td>${esc(r.endereco)}</td>
         <td>${audFmtInt(r.diferenca)}</td><td class="tall"></td><td class="tall"></td><td class="tall"></td><td class="tall"></td><td class="tall"></td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>`;
+  setTimeout(()=>window.print(), 80);
+}
+function audPrintTopItens(){
+  const itens = audAuditoriaItens().slice().sort((a,b)=>b.valorAbs-a.valorAbs).slice(0, AUD.validarTopN);
+  const sheet = document.getElementById('aud-print-sheet');
+  if(!itens.length){ showToast('Nenhum item para imprimir com os filtros atuais.', true); return; }
+  const inventarios = Array.from(new Set(itens.flatMap(i=>Array.from(i.inventarios)))).slice(0,4).join(', ');
+  sheet.innerHTML = `<div class="aud-print-page">
+    <div class="aud-print-head">
+      <div><h2>Folha Operacional — Validar Hoje (Top ${itens.length})</h2>
+      <div>Inventário(s): ${esc(inventarios)}${itens.some(i=>i.numInventarios>4)?' (+)':''}</div></div>
+      <div style="text-align:right;">Data: ${new Date().toLocaleDateString('pt-BR')}<br>Itens: ${itens.length}<br>Página 1</div>
+    </div>
+    <table class="aud-print-table">
+      <thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local Principal</th><th>Qtde Div. Acum.</th><th>Qtde Encontrada</th><th>Endereço Encontrado</th><th>Observações</th><th>Auditor</th><th>Data</th></tr></thead>
+      <tbody>${itens.map(r=>`<tr>
+        <td>${esc(r.chave)}</td><td>${esc(r.ean)}</td><td>${esc(r.descricao)}</td><td>${esc(r.localPrincipal)}</td>
+        <td>${audFmtInt(r.qtd)}</td><td class="tall"></td><td class="tall"></td><td class="tall"></td><td class="tall"></td><td class="tall"></td>
       </tr>`).join('')}</tbody>
     </table>
   </div>`;
