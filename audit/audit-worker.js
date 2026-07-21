@@ -45,6 +45,9 @@ function parseDateVal(v){
   return isNaN(d.getTime()) ? null : d;
 }
 function isoDate(d){ return d ? d.toISOString().slice(0,10) : ''; }
+function isLiquidado(situacao){
+  return audNormKey(situacao).includes('liquidad');
+}
 
 function buildAliasResolver(headers, aliasMap){
   const resolved = {};
@@ -187,23 +190,32 @@ async function runPipeline({buf0114, buf390, buf845, netConfig, anoFiltro}){
   }
 
   post('progress', {stage:'Indexando QUERY 390 (estoque por local)...', pct:22});
-  const map390 = new Map(); // item -> {total, enderecos:[{local,qtd}], classeSku, codTerceiro}
+  // Locais com Situação "Liquidado" já foram baixados/encerrados: não representam
+  // estoque físico recuperável, então são contados à parte e não entram no saldo
+  // usado para diagnosticar "sem localização" / "erro de posição".
+  const map390 = new Map(); // item -> {total, enderecos:[{local,qtd}], totalLiquidado, enderecosLiquidados, classeSku, codTerceiro}
   for(const row of rows390raw){
     const item = String(getVal(row, r390.item) ?? '').trim();
     if(!item) continue;
     const local = String(getVal(row, r390.local) ?? '').trim();
     const qtd = parseNumber(getVal(row, r390.quantidade));
+    const situacaoLocal = String(getVal(row, r390.situacao) ?? '').trim();
     let entry = map390.get(item);
     if(!entry){
       entry = {
-        total:0, enderecos:[],
+        total:0, enderecos:[], totalLiquidado:0, enderecosLiquidados:[],
         classeSku: String(getVal(row, r390.classeSku) ?? '').trim(),
         codTerceiro: String(getVal(row, r390.codTerceiro) ?? '').trim()
       };
       map390.set(item, entry);
     }
-    entry.total += qtd;
-    entry.enderecos.push({local, quantidade: qtd});
+    if(isLiquidado(situacaoLocal)){
+      entry.totalLiquidado += qtd;
+      entry.enderecosLiquidados.push({local, quantidade: qtd});
+    } else {
+      entry.total += qtd;
+      entry.enderecos.push({local, quantidade: qtd});
+    }
   }
 
   post('progress', {stage:'Normalizando e eliminando duplicidades...', pct:32});
@@ -262,12 +274,17 @@ async function runPipeline({buf0114, buf390, buf845, netConfig, anoFiltro}){
     }
     const considerarNet = classificada && netCfg ? !!netCfg.net : false;
 
-    const est390 = map390.get(itemWms) || {total:0, enderecos:[]};
+    const est390 = map390.get(itemWms) || {total:0, enderecos:[], totalLiquidado:0, enderecosLiquidados:[]};
     const noEndereco = est390.enderecos.filter(e=>e.local===endereco);
     const qtdNoEndereco = noEndereco.reduce((s,e)=>s+e.quantidade,0);
     const presenteNoEndereco = noEndereco.length>0 && qtdNoEndereco !== 0;
     const enderecosDistintos = new Set(est390.enderecos.map(e=>e.local)).size;
     const qtdOutrosEnderecos = est390.total - qtdNoEndereco;
+    const enderecosLiquidadosDistintos = new Set(est390.enderecosLiquidados.map(e=>e.local)).size;
+
+    const sitLocalDet = det845 ? (det845.sitLocal||'') : '';
+    const sitInventarioDet = det845 ? (det845.sitInventario||'') : '';
+    const situacaoLiquidada = isLiquidado(situacao) || isLiquidado(sitLocalDet) || isLiquidado(sitInventarioDet);
 
     enriched.push({
       inventario, local, endereco, situacao, itemWms, itemSige, descricao, ean, codTerceiro,
@@ -275,8 +292,9 @@ async function runPipeline({buf0114, buf390, buf845, netConfig, anoFiltro}){
       dataInicio: isoDate(dataInicio), dataFim: isoDate(dataFim), usuario, ano,
       obsInventario: det845 ? (det845.obsInventario||'') : '',
       usuarioConferencia: det845 ? (det845.usuarioConferencia||'') : '',
-      sitInventario: det845 ? (det845.sitInventario||'') : '',
-      sitLocal: det845 ? (det845.sitLocal||'') : '',
+      sitInventario: sitInventarioDet,
+      sitLocal: sitLocalDet,
+      situacaoLiquidada,
       codLegenda, descLegenda, legendaClassificada: classificada,
       considerarNet,
       classeSku: est390.classeSku || '',
@@ -286,7 +304,10 @@ async function runPipeline({buf0114, buf390, buf845, netConfig, anoFiltro}){
       estoquePresenteNoEndereco: presenteNoEndereco,
       estoqueQtdOutrosEnderecos: qtdOutrosEnderecos,
       estoqueNumEnderecos: enderecosDistintos,
-      estoqueEnderecos: est390.enderecos.slice(0, 30).map(e=>({local:e.local, quantidade:e.quantidade}))
+      estoqueEnderecos: est390.enderecos.slice(0, 30).map(e=>({local:e.local, quantidade:e.quantidade})),
+      estoqueTotalLiquidado: est390.totalLiquidado,
+      estoqueNumEnderecosLiquidados: enderecosLiquidadosDistintos,
+      estoqueEnderecosLiquidados: est390.enderecosLiquidados.slice(0, 30).map(e=>({local:e.local, quantidade:e.quantidade}))
     });
   }
 
@@ -347,6 +368,18 @@ async function runPipeline({buf0114, buf390, buf845, netConfig, anoFiltro}){
   });
 }
 
+function aplicarAjusteLiquidado(r){
+  // Local/inventário com Situação "Liquidado" já foi baixado/encerrado administrativamente.
+  // A divergência já está com o ciclo fechado: mantém o diagnóstico, mas reduz a
+  // necessidade de validação individual (exceto para valores altos) e explica o motivo.
+  if(!r.situacaoLiquidada) return;
+  r.justificativa += ' Local/inventário com situação "Liquidado" (já encerrado administrativamente).';
+  if(Math.abs(r.vlDivergencia) < 1000){
+    r.necessitaValidacao = false;
+    r.prioridade = 'baixa';
+  }
+}
+
 function diagnosticar(r, grupoItem){
   const abs = Math.abs(r.diferenca);
   const valorAbs = Math.abs(r.vlDivergencia);
@@ -360,6 +393,7 @@ function diagnosticar(r, grupoItem){
       r.necessitaValidacao = false;
       r.prioridade = 'baixa';
       r.justificativa = `Item ${r.itemWms} teve ${grupoItem.pos} ajuste(s) positivo(s) e ${grupoItem.neg} negativo(s) no período, com saldo líquido residual de ${grupoItem.soma.toLocaleString('pt-BR')} (${(proporcaoResidual*100).toFixed(1)}% do total movimentado). Efeito líquido compensado, sem necessidade de validação individual.`;
+      aplicarAjusteLiquidado(r);
       return;
     }
     if(proporcaoResidual <= 0.6){
@@ -367,6 +401,7 @@ function diagnosticar(r, grupoItem){
       r.necessitaValidacao = true;
       r.prioridade = valorAbs>=1000?'media':'baixa';
       r.justificativa = `Item ${r.itemWms} apresenta ajustes de sinais opostos (${grupoItem.pos} positivo(s), ${grupoItem.neg} negativo(s)) que compensam parte da divergência, mas resta saldo líquido de ${grupoItem.soma.toLocaleString('pt-BR')} não explicado. Validar o residual.`;
+      aplicarAjusteLiquidado(r);
       return;
     }
   }
@@ -376,6 +411,7 @@ function diagnosticar(r, grupoItem){
     r.necessitaValidacao = true;
     r.prioridade = valorAbs>=1000?'alta':(valorAbs>=200?'media':'baixa');
     r.justificativa = 'Observação do inventário (QUERY 845) vazia ou fora do padrão "CÓDIGO - DESCRIÇÃO". Legenda não classificada, tratada como divergência real e fora do NET por padrão.';
+    aplicarAjusteLiquidado(r);
     return;
   }
 
@@ -383,7 +419,10 @@ function diagnosticar(r, grupoItem){
     r.diagnostico = 'sem_localizacao';
     r.necessitaValidacao = true;
     r.prioridade = valorAbs>=1000?'alta':'media';
-    r.justificativa = `Item ${r.itemWms} não foi localizado em nenhum endereço da QUERY 390 (estoque atual). Diferença de ${r.diferenca.toLocaleString('pt-BR')} un. sem lastro físico identificado.`;
+    r.justificativa = r.estoqueTotalLiquidado !== 0
+      ? `Item ${r.itemWms} não possui saldo ativo na QUERY 390: só aparece em ${r.estoqueNumEnderecosLiquidados} endereço(s) já liquidado(s) (${r.estoqueTotalLiquidado.toLocaleString('pt-BR')} un.), que não conta como estoque físico recuperável. Diferença de ${r.diferenca.toLocaleString('pt-BR')} un. sem lastro ativo.`
+      : `Item ${r.itemWms} não foi localizado em nenhum endereço da QUERY 390 (estoque atual). Diferença de ${r.diferenca.toLocaleString('pt-BR')} un. sem lastro físico identificado.`;
+    aplicarAjusteLiquidado(r);
     return;
   }
 
@@ -392,6 +431,7 @@ function diagnosticar(r, grupoItem){
     r.necessitaValidacao = true;
     r.prioridade = valorAbs>=1000?'alta':'media';
     r.justificativa = `Item ${r.itemWms} não está no endereço auditado (${r.endereco||'—'}), mas foi localizado em ${r.estoqueNumEnderecos} outro(s) endereço(s) com saldo total de ${r.estoqueTotal.toLocaleString('pt-BR')} un. Possível erro de posição/endereçamento.`;
+    aplicarAjusteLiquidado(r);
     return;
   }
 
@@ -400,6 +440,7 @@ function diagnosticar(r, grupoItem){
     r.necessitaValidacao = true;
     r.prioridade = valorAbs>=1000?'media':'baixa';
     r.justificativa = `Item ${r.itemWms} está fragmentado em ${r.estoqueNumEnderecos} endereços distintos (total ${r.estoqueTotal.toLocaleString('pt-BR')} un.). A dispersão do estoque dificulta a contagem e pode explicar a divergência de ${r.diferenca.toLocaleString('pt-BR')} un.`;
+    aplicarAjusteLiquidado(r);
     return;
   }
 
@@ -408,6 +449,7 @@ function diagnosticar(r, grupoItem){
     r.necessitaValidacao = true;
     r.prioridade = valorAbs>=1000?'media':'baixa';
     r.justificativa = `Legenda "${r.codLegenda} - ${r.descLegenda}" indica movimentação/transferência. Quantidade encontrada em outros endereços (${r.estoqueQtdOutrosEnderecos.toLocaleString('pt-BR')} un.) é compatível com a diferença apurada (${r.diferenca.toLocaleString('pt-BR')} un.), sugerindo erro de movimentação.`;
+    aplicarAjusteLiquidado(r);
     return;
   }
 
@@ -415,6 +457,7 @@ function diagnosticar(r, grupoItem){
   r.necessitaValidacao = r.considerarNet ? true : (valorAbs>=500);
   r.prioridade = valorAbs>=1000?'alta':(valorAbs>=200?'media':'baixa');
   r.justificativa = `Divergência de ${r.diferenca.toLocaleString('pt-BR')} un. (${r.vlDivergencia.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}) sem padrão de compensação, posição ou fragmentação identificado. Legenda "${r.codLegenda} - ${r.descLegenda}". Requer validação manual.`;
+  aplicarAjusteLiquidado(r);
 }
 
 function topN(map, n){

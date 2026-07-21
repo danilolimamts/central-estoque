@@ -377,13 +377,17 @@ function audCardHtml(r){
   const diag = AUD_DIAG[r.diagnostico] || {label:r.diagnostico, cor:'#7B80A0'};
   const diffCls = r.diferenca>0 ? 'aud-pos' : (r.diferenca<0 ? 'aud-neg' : '');
   const enderecos = (r.estoqueEnderecos||[]).slice(0,4).map(e=>`${esc(e.local)}: ${audFmtInt(e.quantidade)}`).join(' · ');
+  const liquidadoInfo = r.estoqueTotalLiquidado ? ` · Liquidado: <b class="mono">${audFmtInt(r.estoqueTotalLiquidado)}</b> em ${r.estoqueNumEnderecosLiquidados} endereço(s)` : '';
   return `<div class="aud-card">
     <div class="aud-card-top">
       <div class="aud-card-item">
         <span class="mono">${esc(r.itemWms)}</span>
         <span class="aud-card-desc">${esc(r.descricao||'—')}</span>
       </div>
-      <span class="stamp-tag" style="background:${diag.cor}22;color:${diag.cor};border:1px solid ${diag.cor}55;">${diag.label}</span>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        ${r.situacaoLiquidada ? '<span class="stamp-tag tag-muted">Liquidado</span>' : ''}
+        <span class="stamp-tag" style="background:${diag.cor}22;color:${diag.cor};border:1px solid ${diag.cor}55;">${diag.label}</span>
+      </div>
     </div>
     <div class="aud-card-grid">
       <div><span class="aud-k">Endereço</span><span class="aud-v">${esc(r.endereco||'—')}</span></div>
@@ -397,7 +401,7 @@ function audCardHtml(r){
     </div>
     <div class="aud-card-estoque">
       <span class="aud-k">Estoque atual (QUERY 390)</span>
-      <span class="aud-v">Total: <b class="mono">${audFmtInt(r.estoqueTotal)}</b> · No endereço: <b class="mono">${audFmtInt(r.estoqueQtdNoEndereco)}</b> · ${r.estoqueNumEnderecos} endereço(s)${enderecos?' — '+enderecos:''}</span>
+      <span class="aud-v">Total: <b class="mono">${audFmtInt(r.estoqueTotal)}</b> · No endereço: <b class="mono">${audFmtInt(r.estoqueQtdNoEndereco)}</b> · ${r.estoqueNumEnderecos} endereço(s)${enderecos?' — '+enderecos:''}${liquidadoInfo}</span>
     </div>
     <div class="aud-card-just">${esc(r.justificativa||'')}</div>
   </div>`;
@@ -405,7 +409,7 @@ function audCardHtml(r){
 
 function audExportCsv(rows, filename){
   if(!rows || !rows.length){ showToast('Nada para exportar.', true); return; }
-  const cols = ['inventario','local','endereco','itemWms','itemSige','descricao','ean','codTerceiro','qtdeLogica','qtdeFisica','diferenca','vlLogico','vlFisico','vlDivergencia','dataInicio','dataFim','usuario','codLegenda','descLegenda','considerarNet','diagnostico','prioridade','necessitaValidacao','justificativa','estoqueTotal','estoqueQtdNoEndereco','estoqueNumEnderecos','ano'];
+  const cols = ['inventario','local','endereco','itemWms','itemSige','descricao','ean','codTerceiro','qtdeLogica','qtdeFisica','diferenca','vlLogico','vlFisico','vlDivergencia','dataInicio','dataFim','usuario','codLegenda','descLegenda','considerarNet','diagnostico','prioridade','necessitaValidacao','situacaoLiquidada','justificativa','estoqueTotal','estoqueQtdNoEndereco','estoqueNumEnderecos','estoqueTotalLiquidado','estoqueNumEnderecosLiquidados','ano'];
   const header = cols.join(';');
   const lines = rows.map(r=>cols.map(c=>{
     let v = r[c];
@@ -639,8 +643,10 @@ function audExportXlsx(){
     Diferenca:r.diferenca, VlLogico:r.vlLogico, VlFisico:r.vlFisico, VlDivergencia:r.vlDivergencia,
     DataInicio:r.dataInicio, DataFim:r.dataFim, Usuario:r.usuario, CodLegenda:r.codLegenda, DescLegenda:r.descLegenda,
     ConsiderarNET:r.considerarNet?'Sim':'Não', Diagnostico:(AUD_DIAG[r.diagnostico]||{}).label||r.diagnostico,
-    Prioridade:r.prioridade, NecessitaValidacao:r.necessitaValidacao?'Sim':'Não', Justificativa:r.justificativa,
-    EstoqueTotal:r.estoqueTotal, EstoqueNoEndereco:r.estoqueQtdNoEndereco, EstoqueNumEnderecos:r.estoqueNumEnderecos, Ano:r.ano
+    Prioridade:r.prioridade, NecessitaValidacao:r.necessitaValidacao?'Sim':'Não', SituacaoLiquidada:r.situacaoLiquidada?'Sim':'Não',
+    Justificativa:r.justificativa, EstoqueTotal:r.estoqueTotal, EstoqueNoEndereco:r.estoqueQtdNoEndereco,
+    EstoqueNumEnderecos:r.estoqueNumEnderecos, EstoqueTotalLiquidado:r.estoqueTotalLiquidado,
+    EstoqueNumEnderecosLiquidados:r.estoqueNumEnderecosLiquidados, Ano:r.ano
   })));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Auditoria');
