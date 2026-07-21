@@ -23,19 +23,11 @@ const AUD = {
   importMeta:null,
   kpiPrev:null,
   list:[],
-  filtered:[],
-  showAll:false,
-  filtersOpen:false,
-  filters:{search:'', inventario:'', usuario:'', diagnostico:'', necessita:'', valorMin:'', valorMax:'', qtdMin:'', qtdMax:'', dataIni:'', dataFim:'', legenda:'', prioridade:''},
-  quickChip:'',
-  scrollHandler:null,
-  rankSort:{itens:'valorAbs', enderecos:'valorAbs', inventarios:'qtdAbs'},
-  op:{sortKey:'vlDivergenciaAbs', sortDir:'desc', groupBy:'', hiddenCols:{}, colMenuOpen:false},
+  itemFilters:{search:'', local:'', inventario:'', diagnostico:'', prioridade:''},
+  itemSort:{key:'valorAbs', dir:'desc'},
+  itemExpanded: new Set(),
   printScope:'pendentes'
 };
-
-const AUD_ROW_H = 272;
-const AUD_OP_ROW_H = 30;
 
 function audFmtInt(n){ return Math.round(n||0).toLocaleString('pt-BR'); }
 function audFmtNum(n, dec){ return (n||0).toLocaleString('pt-BR', {minimumFractionDigits:dec||0, maximumFractionDigits:dec||2}); }
@@ -70,7 +62,6 @@ async function audLoadMetaAndIndicadores(ano){
 }
 async function audLoadLista(){
   AUD.list = await audGetDivergenciasByAno(AUD.currentAno);
-  audApplyFilters();
 }
 
 /* ============================================================
@@ -93,8 +84,7 @@ function audRenderTab(tab){
   return '';
 }
 function audOnRender(tab){
-  if(tab==='aud-audit') audMountCardsScroll();
-  if(tab==='aud-home') audMountOpTableScroll();
+  if(tab==='aud-audit') audMountAuditoriaScroll();
   if(tab==='aud-reports') audFillHistory();
 }
 
@@ -136,43 +126,57 @@ async function audChangeAno(ano){
 function audAnoSelector(){ return ''; }
 
 /* ============================================================
+   REGRA DE NEGÓCIO: "Considerar NET" = Não → ignorar completamente
+   esse registro em KPIs, rankings, auditoria, exportação e painéis.
+   O worker (audit-worker.js) já calcula r.considerarNet por linha;
+   aqui só decidimos QUAIS linhas entram nas agregações de exibição —
+   nenhum cálculo/diagnóstico é refeito ou alterado.
+   ============================================================ */
+function audNetFilteredList(){
+  return AUD.list.filter(r=>r.considerarNet);
+}
+
+/* ============================================================
    AGREGAÇÕES DE APRESENTAÇÃO (não recalculam diagnóstico/NET)
    ============================================================ */
+const AUD_PRIORIDADE_RANK = {alta:3, media:2, baixa:1};
 function audAggregateBy(rows, keyFn){
   const map = new Map();
   for(const r of rows){
     const key = keyFn(r);
     if(!key) continue;
     let g = map.get(key);
-    if(!g) g = {chave:key, valor:0, valorAbs:0, qtd:0, qtdAbs:0, ocorrencias:0, inventarios:new Set(), enderecos:new Set(), itens:new Set(), usuarios:new Set(), compensadas:0, pendentes:0, ultimaData:''};
+    if(!g) g = {chave:key, valor:0, valorAbs:0, qtd:0, qtdAbs:0, ocorrencias:0, inventarios:new Set(), enderecos:new Set(), itens:new Set(), compensadas:0, pendentes:0, ultimaData:'', enderecoCounts:new Map(), diagCounts:new Map(), prioridadeMax:'baixa', ean:'', descricao:''};
     g.valor += r.vlDivergencia; g.valorAbs += Math.abs(r.vlDivergencia);
     g.qtd += r.diferenca; g.qtdAbs += Math.abs(r.diferenca);
     g.ocorrencias++;
-    g.inventarios.add(r.inventario); g.enderecos.add(r.endereco); g.itens.add(r.itemWms); if(r.usuario) g.usuarios.add(r.usuario);
+    g.inventarios.add(r.inventario); g.enderecos.add(r.endereco); g.itens.add(r.itemWms);
     if(r.diagnostico==='compensacao_historica' || r.diagnostico==='compensacao_parcial') g.compensadas++;
     if(r.necessitaValidacao) g.pendentes++;
     if(r.dataFim && r.dataFim > g.ultimaData) g.ultimaData = r.dataFim;
+    if(r.endereco) g.enderecoCounts.set(r.endereco, (g.enderecoCounts.get(r.endereco)||0)+1);
+    if(r.diagnostico) g.diagCounts.set(r.diagnostico, (g.diagCounts.get(r.diagnostico)||0)+1);
+    if((AUD_PRIORIDADE_RANK[r.prioridade]||0) > (AUD_PRIORIDADE_RANK[g.prioridadeMax]||0)) g.prioridadeMax = r.prioridade;
+    if(!g.ean && r.ean) g.ean = r.ean;
+    if(!g.descricao && r.descricao) g.descricao = r.descricao;
     map.set(key, g);
   }
-  return Array.from(map.values()).map(g=>({
-    ...g,
-    numInventarios: g.inventarios.size, numEnderecos: g.enderecos.size, numItens: g.itens.size, numUsuarios: g.usuarios.size,
-    pctCompensado: g.ocorrencias ? (g.compensadas/g.ocorrencias*100) : 0
-  }));
+  return Array.from(map.values()).map(g=>{
+    let localPrincipal = '', maxCount = 0;
+    for(const [end,cnt] of g.enderecoCounts) if(cnt>maxCount){ maxCount=cnt; localPrincipal=end; }
+    let diagPredominante = '', maxDiag = 0;
+    for(const [d,cnt] of g.diagCounts) if(cnt>maxDiag){ maxDiag=cnt; diagPredominante=d; }
+    return {
+      ...g,
+      numInventarios: g.inventarios.size, numEnderecos: g.enderecos.size, numItens: g.itens.size,
+      pctCompensado: g.ocorrencias ? (g.compensadas/g.ocorrencias*100) : 0,
+      localPrincipal, diagnosticoPredominante: diagPredominante
+    };
+  });
 }
-function audAggItens(){ return audAggregateBy(AUD.list, r=>r.itemWms+'|'+r.descricao); }
-function audAggEnderecos(){ return audAggregateBy(AUD.list, r=>r.endereco); }
-function audAggInventarios(){ return audAggregateBy(AUD.list, r=>r.inventario); }
-
-const AUD_RANK_SORTERS = {
-  valor: (a,b)=>b.valor-a.valor,
-  valorAbs: (a,b)=>b.valorAbs-a.valorAbs,
-  qtd: (a,b)=>b.qtd-a.qtd,
-  qtdAbs: (a,b)=>b.qtdAbs-a.qtdAbs,
-  ocorrencias: (a,b)=>b.ocorrencias-a.ocorrencias,
-  numInventarios: (a,b)=>b.numInventarios-a.numInventarios,
-  numItens: (a,b)=>b.numItens-a.numItens
-};
+function audAggItens(){ return audAggregateBy(audNetFilteredList(), r=>r.itemWms); }
+function audAggEnderecos(){ return audAggregateBy(audNetFilteredList(), r=>r.endereco); }
+function audAggInventarios(){ return audAggregateBy(audNetFilteredList(), r=>r.inventario); }
 
 /* ============================================================
    IMPORTAÇÃO
@@ -307,14 +311,21 @@ function audUpdateProgressUI(){
    ============================================================ */
 function audBuildKpiSnapshot(){
   const ind = AUD.indicadores || {};
+  const net = audNetFilteredList();
+  const qtdDivergenteNet = net.reduce((s,r)=>s+r.diferenca,0);
+  const valorDivergenteNet = net.reduce((s,r)=>s+r.vlDivergencia,0);
+  const qtdAbsolutaNet = net.reduce((s,r)=>s+Math.abs(r.diferenca),0);
+  const valorAbsolutoNet = net.reduce((s,r)=>s+Math.abs(r.vlDivergencia),0);
+  const itensUnicosNet = new Set(net.map(r=>r.itemWms)).size;
+  const necessitaValidacaoNet = net.filter(r=>r.necessitaValidacao).length;
   return {
-    netAtual: ind.saldoLiquido||0, netAcumulado: ind.saldoLiquido||0,
-    divergenciasImportadas: ind.totalImportadas||0, considerNetSim: ind.considerNetSim||0, considerNetNao: ind.considerNetNao||0,
-    qtdDivergente: ind.qtdDivergente||0, qtdAbsoluta: ind.qtdAbsoluta||0,
-    valorDivergente: ind.valorDivergente||0, valorAbsoluto: ind.valorAbsoluto||0,
-    compensadas: (ind.porDiagnostico && (ind.porDiagnostico.compensacao_historica||0)+(ind.porDiagnostico.compensacao_parcial||0)) || 0,
-    pendentes: ind.necessitaValidacao||0, necessitaValidacao: ind.necessitaValidacao||0,
-    itensUnicos: ind.itensUnicos||0, inventarios: ind.inventarios||0, usuarios: ind.usuarios||0, enderecos: ind.enderecos||0
+    divergenciasImportadas: ind.totalImportadas||0,
+    considerNetSim: ind.considerNetSim||0,
+    considerNetNao: ind.considerNetNao||0,
+    netQuantidade: qtdDivergenteNet, netValor: valorDivergenteNet,
+    qtdAbsoluta: qtdAbsolutaNet, valorAbsoluto: valorAbsolutoNet,
+    itensUnicos: itensUnicosNet,
+    necessitaValidacao: necessitaValidacaoNet
   };
 }
 function audKpiDelta(atual, campo){
@@ -329,37 +340,28 @@ function audKpiDelta(atual, campo){
 }
 
 /* ============================================================
-   VISÃO GERAL (home) — KPIs + Top10 + gráficos + tabela operacional
+   DASHBOARD (home) — 9 KPIs estratégicos + 3 tabelas resumidas
+   Sem gráficos, sem excesso de indicadores.
    ============================================================ */
 function audRenderHome(){
-  const ind = AUD.indicadores;
   return `
-    ${audRenderKpiRow(ind)}
-    ${audRenderRankRow()}
-    ${audRenderChartRow(ind)}
-    ${audRenderOpTable()}
+    ${audRenderKpiRow()}
+    ${audRenderResumoTables()}
   `;
 }
 
-function audRenderKpiRow(ind){
+function audRenderKpiRow(){
   const k = audBuildKpiSnapshot();
   const kpis = [
-    ['netAtual','NET atual', audFmtInt(k.netAtual), 'orange'],
-    ['netAcumulado','NET acumulado', audFmtInt(k.netAcumulado), 'orange'],
-    ['divergenciasImportadas','Divergências importadas', audFmtInt(k.divergenciasImportadas), ''],
-    ['considerNetSim','Considerados no NET', audFmtInt(k.considerNetSim), ''],
-    ['considerNetNao','Desconsiderados', audFmtInt(k.considerNetNao), ''],
-    ['qtdDivergente','Qtde divergente', audFmtInt(k.qtdDivergente), ''],
-    ['qtdAbsoluta','Qtde divergente absoluta', audFmtInt(k.qtdAbsoluta), ''],
-    ['valorDivergente','Valor divergente', audFmtMoney(k.valorDivergente), ''],
-    ['valorAbsoluto','Valor divergente absoluto', audFmtMoney(k.valorAbsoluto), ''],
-    ['compensadas','Compensadas', audFmtInt(k.compensadas), 'good'],
-    ['pendentes','Pendentes', audFmtInt(k.pendentes), 'orange'],
-    ['necessitaValidacao','Necessitam validação', audFmtInt(k.necessitaValidacao), 'orange'],
-    ['itensUnicos','Qtde de itens', audFmtInt(k.itensUnicos), ''],
-    ['inventarios','Qtde de inventários', audFmtInt(k.inventarios), ''],
-    ['usuarios','Qtde de usuários', audFmtInt(k.usuarios), ''],
-    ['enderecos','Qtde de endereços', audFmtInt(k.enderecos), '']
+    ['divergenciasImportadas','Divergências Importadas', audFmtInt(k.divergenciasImportadas), ''],
+    ['considerNetSim','Consideradas no NET', audFmtInt(k.considerNetSim), ''],
+    ['considerNetNao','Desconsideradas', audFmtInt(k.considerNetNao), ''],
+    ['netQuantidade','NET Quantidade', audFmtInt(k.netQuantidade), 'orange'],
+    ['netValor','NET Valor', audFmtMoney(k.netValor), 'orange'],
+    ['qtdAbsoluta','Quantidade Absoluta', audFmtInt(k.qtdAbsoluta), ''],
+    ['valorAbsoluto','Valor Absoluto', audFmtMoney(k.valorAbsoluto), ''],
+    ['itensUnicos','Itens Únicos', audFmtInt(k.itensUnicos), ''],
+    ['necessitaValidacao','Necessitam Validação', audFmtInt(k.necessitaValidacao), 'orange']
   ];
   return `<div class="aud-kpi-grid">
     ${kpis.map(([campo,label,val,cls])=>`<div class="aud-kpi ${cls}">
@@ -370,472 +372,198 @@ function audRenderKpiRow(ind){
   </div>`;
 }
 
-function audRenderRankRow(){
-  const itens = audAggItens().sort(AUD_RANK_SORTERS[AUD.rankSort.itens]).slice(0,10);
-  const enderecos = audAggEnderecos().sort(AUD_RANK_SORTERS[AUD.rankSort.enderecos]).slice(0,10);
-  const invs = audAggInventarios().sort(AUD_RANK_SORTERS[AUD.rankSort.inventarios]).slice(0,10);
-
-  const itemSortOpts = [['valorAbs','Maior valor'],['qtdAbs','Maior quantidade absoluta'],['qtd','Maior quantidade'],['ocorrencias','Maior nº divergências'],['numInventarios','Maior nº inventários'],['valor','Maior valor acumulado'],['qtd','Maior quantidade acumulada']];
-  const list = (rows, valueFn)=>rows.length ? rows.map((r,i)=>`<div class="aud-rank-item"><span class="aud-rank-pos">${i+1}</span><span class="aud-rank-key" title="${esc(r.chave)}">${esc(r.chave)}</span><span class="aud-rank-val mono">${valueFn(r)}</span></div>`).join('')
-    : '<div class="field-hint">Sem dados</div>';
-
-  return `<div class="aud-rank-row3">
-    <div class="aud-rank-card">
-      <h4>Top 10 itens ofensores <select onchange="audSetRankSort('itens', this.value)">${itemSortOpts.map(([k,l])=>`<option value="${k}" ${AUD.rankSort.itens===k?'selected':''}>${l}</option>`).join('')}</select></h4>
-      <div class="aud-rank-list">${list(itens, r=>AUD.rankSort.itens.includes('valor')?audFmtMoney(r.valor):audFmtInt(r.qtdAbs))}</div>
+function audRenderResumoTables(){
+  const itens = audAggItens().sort((a,b)=>b.valorAbs-a.valorAbs).slice(0,20);
+  const enderecos = audAggEnderecos().sort((a,b)=>b.valorAbs-a.valorAbs).slice(0,20);
+  const invs = audAggInventarios().sort((a,b)=>b.valorAbs-a.valorAbs).slice(0,20);
+  return `<div class="two-col">
+    <div class="panel">
+      <h3>Top 20 Itens Ofensores</h3>
+      <div class="table-wrap"><table><thead><tr><th>Item</th><th>Descrição</th><th>Qtde Acumulada</th><th>Valor Acumulado</th></tr></thead>
+      <tbody>${itens.map(i=>`<tr><td class="mono">${esc(i.chave)}</td><td>${esc(i.descricao||'—')}</td><td class="mono">${audFmtInt(i.qtd)}</td><td class="mono ${i.valor>=0?'aud-pos':'aud-neg'}">${audFmtMoney(i.valor)}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);">Sem registros</td></tr>'}</tbody></table></div>
     </div>
-    <div class="aud-rank-card">
-      <h4>Top endereços <select onchange="audSetRankSort('enderecos', this.value)">
-        <option value="qtdAbs" ${AUD.rankSort.enderecos==='qtdAbs'?'selected':''}>Quantidade</option>
-        <option value="valorAbs" ${AUD.rankSort.enderecos==='valorAbs'?'selected':''}>Valor</option>
-        <option value="numItens" ${AUD.rankSort.enderecos==='numItens'?'selected':''}>Nº itens</option>
-        <option value="ocorrencias" ${AUD.rankSort.enderecos==='ocorrencias'?'selected':''}>Nº divergências</option>
-      </select></h4>
-      <div class="aud-rank-list">${list(enderecos, r=>AUD.rankSort.enderecos==='valorAbs'?audFmtMoney(r.valorAbs):audFmtInt(r[AUD.rankSort.enderecos]))}</div>
+    <div class="panel">
+      <h3>Top 20 Endereços</h3>
+      <div class="table-wrap"><table><thead><tr><th>Endereço</th><th>Qtde Divergente</th><th>Valor Divergente</th><th>Nº Itens</th></tr></thead>
+      <tbody>${enderecos.map(e=>`<tr><td>${esc(e.chave)}</td><td class="mono">${audFmtInt(e.qtd)}</td><td class="mono ${e.valor>=0?'aud-pos':'aud-neg'}">${audFmtMoney(e.valor)}</td><td class="mono">${e.numItens}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);">Sem registros</td></tr>'}</tbody></table></div>
     </div>
-    <div class="aud-rank-card">
-      <h4>Top inventários <select onchange="audSetRankSort('inventarios', this.value)">
-        <option value="ocorrencias" ${AUD.rankSort.inventarios==='ocorrencias'?'selected':''}>Nº divergências</option>
-        <option value="valorAbs" ${AUD.rankSort.inventarios==='valorAbs'?'selected':''}>Valor</option>
-        <option value="qtdAbs" ${AUD.rankSort.inventarios==='qtdAbs'?'selected':''}>Quantidade</option>
-      </select></h4>
-      <div class="aud-rank-list">${list(invs, r=>AUD.rankSort.inventarios==='valorAbs'?audFmtMoney(r.valorAbs):audFmtInt(r[AUD.rankSort.inventarios]))}</div>
-    </div>
+  </div>
+  <div class="panel">
+    <h3>Top Inventários</h3>
+    <div class="table-wrap"><table><thead><tr><th>Inventário</th><th>Qtde Divergente</th><th>Valor Divergente</th></tr></thead>
+    <tbody>${invs.map(i=>`<tr><td>${esc(i.chave)}</td><td class="mono">${audFmtInt(i.qtd)}</td><td class="mono ${i.valor>=0?'aud-pos':'aud-neg'}">${audFmtMoney(i.valor)}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--ink-soft);">Sem registros</td></tr>'}</tbody></table></div>
   </div>`;
-}
-function audSetRankSort(painel, key){ AUD.rankSort[painel] = key; renderView(); }
-
-function audRenderChartRow(ind){
-  return `<div class="aud-chart-row">
-    <div class="aud-chart-card"><h4>Evolução diária (Qtde / Valor / NET)</h4>${audEvolutionSvg()}</div>
-    <div class="aud-chart-card"><h4>Pareto de perdas (80x20)</h4>${audParetoSvg(ind)}</div>
-    <div class="aud-chart-card"><h4>Distribuição das divergências</h4>${audDistribuicaoHtml()}</div>
-  </div>`;
-}
-async function audEvolutionSvgData(){ return audGetKpiHistory(AUD.currentAno); }
-function audEvolutionSvg(){
-  // Renderiza com o histórico já carregado de forma síncrona via cache leve
-  const w=280,h=90;
-  if(!AUD._evolCache || AUD._evolCache.ano!==AUD.currentAno){
-    audGetKpiHistory(AUD.currentAno).then(hist=>{ AUD._evolCache = {ano:AUD.currentAno, hist}; if(document.querySelector('.aud-chart-row')) renderView(); });
-    return `<p class="field-hint">Carregando histórico...</p>`;
-  }
-  const hist = AUD._evolCache.hist;
-  if(hist.length<2) return `<p class="field-hint">Histórico insuficiente (é gerado a cada processamento). ${hist.length} ponto(s) até agora.</p>`;
-  const vals = hist.map(p=>p.kpis.valorAbsoluto||0);
-  const max = Math.max(1,...vals), min = Math.min(0,...vals);
-  const pts = vals.map((v,i)=>{
-    const x = (i/(vals.length-1))*(w-10)+5;
-    const y = h-6 - ((v-min)/(max-min||1))*(h-16);
-    return x+','+y;
-  }).join(' ');
-  return `<svg viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="#FE5000" stroke-width="2"/></svg>
-  <div class="field-hint">${hist[0].data} → ${hist[hist.length-1].data} · Valor absoluto</div>`;
-}
-function audParetoSvg(ind){
-  const pareto = (ind && ind.pareto) || [];
-  if(!pareto.length) return `<p class="field-hint">Sem dados de perdas.</p>`;
-  const w=280,h=90;
-  const bars = pareto.slice(0,10);
-  const maxV = Math.max(1,...bars.map(p=>Math.abs(p.valor)));
-  const barW = (w-10)/bars.length;
-  const barsHtml = bars.map((p,i)=>{
-    const bh = Math.abs(p.valor)/maxV*(h-24);
-    return `<rect x="${5+i*barW}" y="${h-10-bh}" width="${barW*0.7}" height="${bh}" fill="#001A72"/>`;
-  }).join('');
-  const linePts = bars.map((p,i)=>{
-    const x = 5+i*barW+barW*0.35;
-    const y = h-10-(p.pctAcumulado/100)*(h-24);
-    return x+','+y;
-  }).join(' ');
-  return `<svg viewBox="0 0 ${w} ${h}">${barsHtml}<polyline points="${linePts}" fill="none" stroke="#FE5000" stroke-width="1.5"/></svg>
-  <div class="field-hint">Top 10 perdas · linha = % acumulado</div>`;
-}
-function audDistribuicaoHtml(){
-  const porItem = new Map();
-  for(const r of AUD.list){ porItem.set(r.itemWms, (porItem.get(r.itemWms)||0)+1); }
-  const faixas = [[1,1,'1'],[2,5,'2-5'],[6,10,'6-10'],[11,20,'11-20'],[21,Infinity,'20+']];
-  const counts = faixas.map(([min,max,label])=>{
-    let c=0; for(const v of porItem.values()) if(v>=min && v<=max) c++;
-    return {label, count:c};
-  });
-  const maxC = Math.max(1,...counts.map(c=>c.count));
-  return `<div class="aud-dist-row">${counts.map(c=>`<div class="aud-dist-col">
-    <div class="aud-dist-value">${c.count}</div>
-    <div class="aud-dist-bar" style="height:${(c.count/maxC*100).toFixed(0)}%;"></div>
-    <div class="aud-dist-label">${c.label}</div>
-  </div>`).join('')}</div>`;
 }
 
 /* ============================================================
-   TABELA OPERACIONAL (principal) — sort/filter/group/hide/export
+   AUDITORIA — tabela única consolidada por item (sem cards)
    ============================================================ */
-const AUD_OP_COLS = [
-  {key:'itemWms', label:'Item', w:90},
-  {key:'ean', label:'EAN', w:110},
-  {key:'descricao', label:'Descrição', w:220},
-  {key:'endereco', label:'Endereço', w:110},
-  {key:'diferenca', label:'Qtde Divergente', w:110, num:true},
-  {key:'vlDivergencia', label:'Valor Divergente', w:120, num:true, money:true},
-  {key:'inventario', label:'Inventário', w:90},
-  {key:'usuario', label:'Usuário', w:120},
-  {key:'diagnostico', label:'Diagnóstico', w:130, diag:true},
-  {key:'necessitaValidacao', label:'Necessita Validação', w:110, bool:true},
-  {key:'prioridade', label:'Prioridade', w:80},
-  {key:'justificativa', label:'Observação', w:260}
-];
-function audOpRelevantRows(){
-  return AUD.list.filter(r=>r.necessitaValidacao || Math.abs(r.vlDivergencia)>=1000);
-}
-function audOpSortedGrouped(){
-  const rows = audOpRelevantRows().slice();
-  const {sortKey, sortDir} = AUD.op;
-  rows.sort((a,b)=>{
-    let av=a[sortKey], bv=b[sortKey];
-    if(typeof av==='string') av=av.toLowerCase(); if(typeof bv==='string') bv=bv.toLowerCase();
-    if(av<bv) return sortDir==='asc'?-1:1;
-    if(av>bv) return sortDir==='asc'?1:-1;
-    return 0;
-  });
-  return rows;
-}
-function audRenderOpTable(){
-  const rows = audOpSortedGrouped();
-  const visibleCols = AUD_OP_COLS.filter(c=>!AUD.op.hiddenCols[c.key]);
-  return `<div class="panel" style="padding:0;overflow:hidden;">
-    <div class="aud-optable-toolbar">
-      <b style="font-size:11.5px;color:var(--ink);">Tabela operacional</b>
-      <span class="field-hint">${audFmtInt(rows.length)} itens relevantes</span>
-      <select onchange="audOpSetGroup(this.value)">
-        <option value="">Sem agrupamento</option>
-        <option value="inventario" ${AUD.op.groupBy==='inventario'?'selected':''}>Agrupar por Inventário</option>
-        <option value="endereco" ${AUD.op.groupBy==='endereco'?'selected':''}>Agrupar por Endereço</option>
-        <option value="usuario" ${AUD.op.groupBy==='usuario'?'selected':''}>Agrupar por Usuário</option>
-        <option value="diagnostico" ${AUD.op.groupBy==='diagnostico'?'selected':''}>Agrupar por Diagnóstico</option>
-      </select>
-      <div class="aud-col-menu">
-        <button class="btn btn-secondary" onclick="audToggleColMenu()">Colunas</button>
-        ${AUD.op.colMenuOpen ? `<div class="aud-col-menu-panel">${AUD_OP_COLS.map(c=>`<label><input type="checkbox" ${AUD.op.hiddenCols[c.key]?'':'checked'} onchange="audToggleCol('${c.key}')"> ${c.label}</label>`).join('')}</div>` : ''}
-      </div>
-      <button class="btn btn-secondary" onclick="audExportXlsxRows(audOpSortedGrouped(), 'tabela_operacional_'+AUD.currentAno+'.xlsx')">Exportar Excel</button>
-    </div>
-    <div class="aud-optable-scroll" id="aud-op-scroll">
-      <table class="aud-optable">
-        <thead><tr>${visibleCols.map(c=>`<th style="width:${c.w}px;" onclick="audOpSort('${c.key}')">${c.label}${AUD.op.sortKey===c.key?`<span class="arrow">${AUD.op.sortDir==='asc'?'▲':'▼'}</span>`:''}</th>`).join('')}</tr></thead>
-        <tbody id="aud-op-window"></tbody>
-      </table>
-    </div>
-  </div>`;
-}
-function audOpSort(key){
-  if(AUD.op.sortKey===key) AUD.op.sortDir = AUD.op.sortDir==='asc'?'desc':'asc';
-  else { AUD.op.sortKey = key; AUD.op.sortDir = 'desc'; }
-  renderView();
-}
-function audOpSetGroup(val){ AUD.op.groupBy = val; renderView(); }
-function audToggleColMenu(){ AUD.op.colMenuOpen = !AUD.op.colMenuOpen; renderView(); }
-function audToggleCol(key){ AUD.op.hiddenCols[key] = !AUD.op.hiddenCols[key]; renderView(); }
-
-function audOpRowHtml(r, visibleCols){
-  return `<tr style="height:${AUD_OP_ROW_H}px;">${visibleCols.map(c=>{
-    let v = r[c.key];
-    if(c.money) v = audFmtMoney(v);
-    else if(c.num) v = audFmtInt(v);
-    else if(c.bool) v = v ? '<span class="stamp-tag tag-alert">Sim</span>' : '<span class="stamp-tag tag-muted">Não</span>';
-    else if(c.diag) v = (AUD_DIAG[v]||{label:v}).label;
-    else v = esc(v==null?'—':v);
-    return `<td style="width:${c.w}px;" title="${typeof r[c.key]==='string'?esc(r[c.key]):''}">${v}</td>`;
-  }).join('')}</tr>`;
-}
-function audMountOpTableScroll(){
-  const el = document.getElementById('aud-op-scroll');
-  if(!el) return;
-  let ticking = false;
-  const handler = ()=>{ if(ticking) return; ticking=true; requestAnimationFrame(()=>{ audRenderOpWindow(); ticking=false; }); };
-  el.addEventListener('scroll', handler);
-  audRenderOpWindow();
-}
-function audOpFlattenGrouped(){
-  let rows = audOpSortedGrouped();
-  if(AUD.op.groupBy){
-    const groups = new Map();
-    rows.forEach(r=>{ const k=r[AUD.op.groupBy]||'—'; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); });
-    const flat = [];
-    for(const [k, grows] of groups){
-      flat.push({__group:true, label:k, count:grows.length});
-      grows.forEach(r=>flat.push(r));
-    }
-    rows = flat;
-  }
-  return rows;
-}
-function audRenderOpWindow(){
-  const el = document.getElementById('aud-op-scroll');
-  const winEl = document.getElementById('aud-op-window');
-  if(!el || !winEl) return;
-  const visibleCols = AUD_OP_COLS.filter(c=>!AUD.op.hiddenCols[c.key]);
-  const rows = audOpFlattenGrouped();
-  if(!rows.length){
-    winEl.innerHTML = `<tr><td colspan="${visibleCols.length}" style="text-align:center;color:var(--ink-soft);padding:20px;">Nenhum item relevante encontrado.</td></tr>`;
-    return;
-  }
-  const viewH = el.clientHeight || 400;
-  const scrollTop = el.scrollTop;
-  const buffer = 6;
-  const start = Math.max(0, Math.floor(scrollTop/AUD_OP_ROW_H) - buffer);
-  const visibleCount = Math.ceil(viewH/AUD_OP_ROW_H) + buffer*2;
-  const end = Math.min(rows.length, start+visibleCount);
-  const topSpacer = start*AUD_OP_ROW_H;
-  const bottomSpacer = (rows.length-end)*AUD_OP_ROW_H;
-  const body = rows.slice(start,end).map(r=>{
-    if(r.__group) return `<tr class="grp-row" style="height:${AUD_OP_ROW_H}px;"><td colspan="${visibleCols.length}">${esc(r.label)} (${r.count})</td></tr>`;
-    return audOpRowHtml(r, visibleCols);
-  }).join('');
-  winEl.innerHTML =
-    `<tr style="height:${topSpacer}px;"><td colspan="${visibleCols.length}" style="padding:0;border:none;"></td></tr>`
-    + body
-    + `<tr style="height:${bottomSpacer}px;"><td colspan="${visibleCols.length}" style="padding:0;border:none;"></td></tr>`;
-}
-function audExportXlsxRows(rows, filename){
-  if(!rows || !rows.length){ showToast('Nada para exportar.', true); return; }
-  const ws = XLSX.utils.json_to_sheet(rows.map(r=>({
-    Item:r.itemWms, EAN:r.ean, Descricao:r.descricao, Endereco:r.endereco,
-    QtdeDivergente:r.diferenca, ValorDivergente:r.vlDivergencia, Inventario:r.inventario, Usuario:r.usuario,
-    Diagnostico:(AUD_DIAG[r.diagnostico]||{}).label||r.diagnostico, NecessitaValidacao:r.necessitaValidacao?'Sim':'Não',
-    Prioridade:r.prioridade, Observacao:r.justificativa
-  })));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Tabela Operacional');
-  XLSX.writeFile(wb, filename);
-}
-
-/* ============================================================
-   TELA DE AUDITORIA (fila de pendências) — cartões + chips rápidos
-   ============================================================ */
-const AUD_QUICK_CHIPS = [
-  ['perdas','Perdas'], ['ganhos','Ganhos'],
-  ['sem_localizacao','Sem localização'], ['erro_movimentacao','Erro de movimentação'], ['erro_posicao','Erro de posição'],
-  ['compensacao_parcial','Compensação parcial'], ['compensacao_historica','Compensação histórica'], ['divergencia_real','Divergência real'],
-  ['alta','Alta prioridade'], ['maiorValor','Maior valor'], ['maiorQtd','Maior quantidade']
-];
-function audRenderAuditoria(){
-  if(!AUD.list.length){
-    return emptyState('Nenhuma divergência carregada', 'Processe uma auditoria na aba Importação para ver a lista priorizada aqui.', "switchTab('aud-import')", 'Ir para Importação');
-  }
-  const uniq = (field)=>Array.from(new Set(AUD.list.map(r=>r[field]).filter(Boolean))).sort();
-  const invs = uniq('inventario'), users = uniq('usuario'), legendas = uniq('codLegenda');
-
-  return `
-    <div class="aud-chips">
-      ${AUD_QUICK_CHIPS.map(([k,l])=>`<button class="aud-chip ${AUD.quickChip===k?'active':''}" onclick="audSetQuickChip('${k}')">${l}</button>`).join('')}
-    </div>
-    <div class="aud-toolbar">
-      <div class="aud-search-wrap">
-        <input type="text" id="aud-search" placeholder="Buscar por item, descrição, EAN, endereço, inventário, usuário, fornecedor ou legenda..." value="${esc(AUD.filters.search)}" oninput="audOnSearch(this.value)">
-      </div>
-      <div class="aud-toolbar-actions">
-        <label class="aud-toggle"><input type="checkbox" ${AUD.showAll?'checked':''} onchange="audToggleShowAll(this.checked)"> Mostrar todos</label>
-        <button class="btn btn-secondary" onclick="audToggleFilters()">${AUD.filtersOpen?'Ocultar filtros':'Filtros'} (${audCountActiveFilters()})</button>
-        <button class="btn btn-secondary" onclick="audExportCsv(AUD.filtered, 'auditoria_'+AUD.currentAno+'.csv')">Exportar lista</button>
-      </div>
-    </div>
-    ${AUD.filtersOpen ? audRenderFiltersPanel(invs, users, legendas) : ''}
-    <div class="aud-result-count">${audFmtInt(AUD.filtered.length)} de ${audFmtInt(AUD.list.length)} divergências ${AUD.showAll?'':'(necessitam validação)'}</div>
-    <div class="aud-cards-scroll" id="aud-cards-scroll">
-      <div id="aud-cards-total-height" style="position:relative;">
-        <div id="aud-cards-window" style="position:absolute;top:0;left:0;right:0;"></div>
-      </div>
-    </div>
-  `;
-}
-function audSetQuickChip(chip){
-  AUD.quickChip = (AUD.quickChip===chip) ? '' : chip;
-  audApplyFilters();
-  renderView();
-}
-
-function audRenderFiltersPanel(invs, users, legendas){
-  const flt = AUD.filters;
-  const diagOpts = Object.entries(AUD_DIAG).map(([k,v])=>`<option value="${k}" ${flt.diagnostico===k?'selected':''}>${v.label}</option>`).join('');
-  return `<div class="panel aud-filters-panel">
-    <div class="aud-filters-grid">
-      <div><label>Inventário</label><select onchange="audSetFilter('inventario', this.value)">
-        <option value="">Todos</option>${invs.map(i=>`<option value="${esc(i)}" ${flt.inventario===i?'selected':''}>${esc(i)}</option>`).join('')}
-      </select></div>
-      <div><label>Usuário</label><select onchange="audSetFilter('usuario', this.value)">
-        <option value="">Todos</option>${users.map(u=>`<option value="${esc(u)}" ${flt.usuario===u?'selected':''}>${esc(u)}</option>`).join('')}
-      </select></div>
-      <div><label>Diagnóstico</label><select onchange="audSetFilter('diagnostico', this.value)">
-        <option value="">Todos</option>${diagOpts}
-      </select></div>
-      <div><label>Necessita validação</label><select onchange="audSetFilter('necessita', this.value)">
-        <option value="">Todos</option>
-        <option value="sim" ${flt.necessita==='sim'?'selected':''}>Sim</option>
-        <option value="nao" ${flt.necessita==='nao'?'selected':''}>Não</option>
-      </select></div>
-      <div><label>Prioridade</label><select onchange="audSetFilter('prioridade', this.value)">
-        <option value="">Todas</option>
-        <option value="alta" ${flt.prioridade==='alta'?'selected':''}>Alta</option>
-        <option value="media" ${flt.prioridade==='media'?'selected':''}>Média</option>
-        <option value="baixa" ${flt.prioridade==='baixa'?'selected':''}>Baixa</option>
-      </select></div>
-      <div><label>Legenda</label><select onchange="audSetFilter('legenda', this.value)">
-        <option value="">Todas</option>${legendas.map(l=>`<option value="${esc(l)}" ${flt.legenda===l?'selected':''}>${esc(l)}</option>`).join('')}
-      </select></div>
-      <div><label>Valor mín. (R$)</label><input type="number" value="${flt.valorMin}" onchange="audSetFilter('valorMin', this.value)"></div>
-      <div><label>Valor máx. (R$)</label><input type="number" value="${flt.valorMax}" onchange="audSetFilter('valorMax', this.value)"></div>
-      <div><label>Qtde mín.</label><input type="number" value="${flt.qtdMin}" onchange="audSetFilter('qtdMin', this.value)"></div>
-      <div><label>Qtde máx.</label><input type="number" value="${flt.qtdMax}" onchange="audSetFilter('qtdMax', this.value)"></div>
-      <div><label>Data início</label><input type="date" value="${flt.dataIni}" onchange="audSetFilter('dataIni', this.value)"></div>
-      <div><label>Data fim</label><input type="date" value="${flt.dataFim}" onchange="audSetFilter('dataFim', this.value)"></div>
-    </div>
-    <div class="form-actions"><button class="btn btn-secondary" onclick="audClearFilters()">Limpar filtros</button></div>
-  </div>`;
-}
-
-function audCountActiveFilters(){
-  return Object.values(AUD.filters).filter(v=>v!=='' && v!==null && v!==undefined).length;
-}
-function audToggleFilters(){ AUD.filtersOpen = !AUD.filtersOpen; renderView(); }
-function audSetFilter(key, val){ AUD.filters[key] = val; audApplyFilters(); renderView(); }
-function audClearFilters(){
-  AUD.filters = {search:AUD.filters.search, inventario:'', usuario:'', diagnostico:'', necessita:'', valorMin:'', valorMax:'', qtdMin:'', qtdMax:'', dataIni:'', dataFim:'', legenda:'', prioridade:''};
-  audApplyFilters(); renderView();
-}
-let audSearchDebounce = null;
-function audOnSearch(val){
-  AUD.filters.search = val;
-  clearTimeout(audSearchDebounce);
-  audSearchDebounce = setTimeout(()=>{
-    audApplyFilters();
-    audMountCardsScroll(true);
-    audUpdateResultCount();
-  }, 180);
-}
-function audUpdateResultCount(){
-  const el = document.querySelector('.aud-result-count');
-  if(el) el.textContent = audFmtInt(AUD.filtered.length)+' de '+audFmtInt(AUD.list.length)+' divergências'+(AUD.showAll?'':' (necessitam validação)');
-}
-function audToggleShowAll(val){ AUD.showAll = val; audApplyFilters(); renderView(); }
-
-function audApplyFilters(){
-  const f = AUD.filters;
+const AUD_ITEM_ROW_H = 32;
+function audAuditoriaOccurrences(){
+  const f = AUD.itemFilters;
   const search = f.search.trim().toLowerCase();
-  let base = AUD.list.filter(r=>{
-    if(!AUD.showAll && !r.necessitaValidacao) return false;
+  return audNetFilteredList().filter(r=>{
+    if(f.local && r.endereco!==f.local) return false;
     if(f.inventario && r.inventario!==f.inventario) return false;
-    if(f.usuario && r.usuario!==f.usuario) return false;
     if(f.diagnostico && r.diagnostico!==f.diagnostico) return false;
-    if(f.legenda && r.codLegenda!==f.legenda) return false;
     if(f.prioridade && r.prioridade!==f.prioridade) return false;
-    if(f.necessita==='sim' && !r.necessitaValidacao) return false;
-    if(f.necessita==='nao' && r.necessitaValidacao) return false;
-    if(f.valorMin!=='' && Math.abs(r.vlDivergencia) < parseFloat(f.valorMin)) return false;
-    if(f.valorMax!=='' && Math.abs(r.vlDivergencia) > parseFloat(f.valorMax)) return false;
-    if(f.qtdMin!=='' && Math.abs(r.diferenca) < parseFloat(f.qtdMin)) return false;
-    if(f.qtdMax!=='' && Math.abs(r.diferenca) > parseFloat(f.qtdMax)) return false;
-    if(f.dataIni && r.dataFim && r.dataFim < f.dataIni) return false;
-    if(f.dataFim && r.dataFim && r.dataFim > f.dataFim) return false;
     if(search){
-      const hay = (r.itemWms+' '+r.descricao+' '+r.ean+' '+r.endereco+' '+r.inventario+' '+r.usuario+' '+r.fornecedor+' '+r.codLegenda).toLowerCase();
+      const hay = (r.itemWms+' '+r.ean+' '+r.descricao).toLowerCase();
       if(!hay.includes(search)) return false;
     }
     return true;
   });
-  if(AUD.quickChip){
-    const c = AUD.quickChip;
-    if(c==='perdas') base = base.filter(r=>r.vlDivergencia<0);
-    else if(c==='ganhos') base = base.filter(r=>r.vlDivergencia>0);
-    else if(c==='alta') base = base.filter(r=>r.prioridade==='alta');
-    else if(c==='maiorValor') base = base.slice().sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia)).slice(0,50);
-    else if(c==='maiorQtd') base = base.slice().sort((a,b)=>Math.abs(b.diferenca)-Math.abs(a.diferenca)).slice(0,50);
-    else base = base.filter(r=>r.diagnostico===c);
+}
+function audAuditoriaItens(){
+  const rows = audAggregateBy(audAuditoriaOccurrences(), r=>r.itemWms);
+  const {key, dir} = AUD.itemSort;
+  rows.sort((a,b)=>{
+    let av=a[key], bv=b[key];
+    if(typeof av==='string') av=av.toLowerCase(); if(typeof bv==='string') bv=bv.toLowerCase();
+    if(av<bv) return dir==='asc'?-1:1;
+    if(av>bv) return dir==='asc'?1:-1;
+    return 0;
+  });
+  return rows;
+}
+function audRenderAuditoria(){
+  if(!AUD.list.length){
+    return emptyState('Nenhuma divergência carregada', 'Processe uma auditoria na aba Importação para ver a tabela consolidada aqui.', "switchTab('aud-import')", 'Ir para Importação');
   }
-  AUD.filtered = base;
-  AUD.filtered.sort((a,b)=> (AUD_DIAG[b.diagnostico]?.prioridade||0) - (AUD_DIAG[a.diagnostico]?.prioridade||0) || Math.abs(b.vlDivergencia) - Math.abs(a.vlDivergencia));
+  const uniq = (field)=>Array.from(new Set(audNetFilteredList().map(r=>r[field]).filter(Boolean))).sort();
+  const locais = uniq('endereco'), invs = uniq('inventario');
+  const f = AUD.itemFilters;
+  const diagOpts = Object.entries(AUD_DIAG).map(([k,v])=>`<option value="${k}" ${f.diagnostico===k?'selected':''}>${v.label}</option>`).join('');
+  const cols = [
+    ['chave','Item',90], ['ean','EAN',110], ['descricao','Descrição',240], ['localPrincipal','Local',110],
+    ['qtd','Qtd',80], ['valorAbs','Valor',110], ['ocorrencias','Nº Div.',70], ['numInventarios','Invent.',70],
+    ['diagnosticoPredominante','Diagnóstico',140], ['prioridadeMax','Prioridade',90]
+  ];
+  return `
+    <div class="aud-toolbar">
+      <div class="aud-search-wrap">
+        <input type="text" id="aud-item-search" placeholder="Buscar por item, EAN ou descrição..." value="${esc(f.search)}" oninput="audItemOnSearch(this.value)">
+      </div>
+      <div class="aud-toolbar-actions">
+        <select onchange="audItemSetFilter('local', this.value)">
+          <option value="">Todos os locais</option>${locais.map(l=>`<option value="${esc(l)}" ${f.local===l?'selected':''}>${esc(l)}</option>`).join('')}
+        </select>
+        <select onchange="audItemSetFilter('inventario', this.value)">
+          <option value="">Todos os inventários</option>${invs.map(i=>`<option value="${esc(i)}" ${f.inventario===i?'selected':''}>${esc(i)}</option>`).join('')}
+        </select>
+        <select onchange="audItemSetFilter('diagnostico', this.value)">
+          <option value="">Todos os diagnósticos</option>${diagOpts}
+        </select>
+        <select onchange="audItemSetFilter('prioridade', this.value)">
+          <option value="">Todas as prioridades</option>
+          <option value="alta" ${f.prioridade==='alta'?'selected':''}>Alta</option>
+          <option value="media" ${f.prioridade==='media'?'selected':''}>Média</option>
+          <option value="baixa" ${f.prioridade==='baixa'?'selected':''}>Baixa</option>
+        </select>
+        <button class="btn btn-secondary" onclick="audItemClearFilters()">Limpar</button>
+        <button class="btn btn-secondary" onclick="audExportItensCsv()">Exportar (Item/EAN/Descrição/Local/Qtd)</button>
+      </div>
+    </div>
+    <div class="aud-result-count" id="aud-item-count">${audFmtInt(audAuditoriaItens().length)} itens consolidados</div>
+    <div class="aud-optable-wrap">
+      <div class="aud-optable-scroll" id="aud-item-scroll" style="height:calc(100vh - 260px);">
+        <table class="aud-optable">
+          <thead><tr>${cols.map(([k,l,w])=>`<th style="width:${w}px;" onclick="audItemSort('${k}')">${l}${AUD.itemSort.key===k?`<span class="arrow">${AUD.itemSort.dir==='asc'?'▲':'▼'}</span>`:''}</th>`).join('')}</tr></thead>
+          <tbody id="aud-item-window"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+function audItemSort(key){
+  if(AUD.itemSort.key===key) AUD.itemSort.dir = AUD.itemSort.dir==='asc'?'desc':'asc';
+  else { AUD.itemSort.key = key; AUD.itemSort.dir = 'desc'; }
+  renderView();
+}
+function audItemSetFilter(key, val){ AUD.itemFilters[key] = val; renderView(); }
+function audItemClearFilters(){ AUD.itemFilters = {search:AUD.itemFilters.search, local:'', inventario:'', diagnostico:'', prioridade:''}; renderView(); }
+let audItemSearchDebounce = null;
+function audItemOnSearch(val){
+  AUD.itemFilters.search = val;
+  clearTimeout(audItemSearchDebounce);
+  audItemSearchDebounce = setTimeout(()=>{
+    audRenderAuditoriaWindow();
+    const el = document.getElementById('aud-item-count');
+    if(el) el.textContent = audFmtInt(audAuditoriaItens().length)+' itens consolidados';
+  }, 180);
 }
 
-/* ---- Virtual scroll (cartões) ---- */
-function audMountCardsScroll(keepScroll){
-  const el = document.getElementById('aud-cards-scroll');
+function audToggleExpandItem(item){
+  if(AUD.itemExpanded.has(item)) AUD.itemExpanded.delete(item);
+  else AUD.itemExpanded.add(item);
+  audRenderAuditoriaWindow();
+}
+function audItemRowHtml(r){
+  const diag = AUD_DIAG[r.diagnosticoPredominante] || {label:r.diagnosticoPredominante||'—', cor:'#7B80A0'};
+  const expanded = AUD.itemExpanded.has(r.chave);
+  let html = `<tr style="height:${AUD_ITEM_ROW_H}px;cursor:pointer;" onclick="audToggleExpandItem('${esc(r.chave)}')">
+    <td class="mono">${expanded?'▾ ':'▸ '}${esc(r.chave)}</td>
+    <td>${esc(r.ean||'—')}</td>
+    <td title="${esc(r.descricao||'')}">${esc(r.descricao||'—')}</td>
+    <td>${esc(r.localPrincipal||'—')}</td>
+    <td class="mono ${r.qtd>=0?'aud-pos':'aud-neg'}">${audFmtInt(r.qtd)}</td>
+    <td class="mono ${r.valor>=0?'aud-pos':'aud-neg'}">${audFmtMoney(r.valor)}</td>
+    <td class="mono">${r.ocorrencias}</td>
+    <td class="mono">${r.numInventarios}</td>
+    <td><span class="stamp-tag" style="background:${diag.cor}22;color:${diag.cor};border:1px solid ${diag.cor}55;">${diag.label}</span></td>
+    <td>${esc((r.prioridadeMax||'').toUpperCase())}</td>
+  </tr>`;
+  if(expanded){
+    const occ = audAuditoriaOccurrences().filter(o=>o.itemWms===r.chave);
+    html += `<tr><td colspan="10" style="padding:0;">
+      <table style="width:100%;font-size:11px;">
+        <thead><tr style="background:var(--surface2);"><th style="padding:4px 8px;">Endereço</th><th style="padding:4px 8px;">Inventário</th><th style="padding:4px 8px;">Qtd</th><th style="padding:4px 8px;">Valor</th><th style="padding:4px 8px;">Diagnóstico</th><th style="padding:4px 8px;">Prioridade</th><th style="padding:4px 8px;">Observação</th></tr></thead>
+        <tbody>${occ.map(o=>{
+          const d = AUD_DIAG[o.diagnostico]||{label:o.diagnostico};
+          return `<tr><td style="padding:4px 8px;">${esc(o.endereco)}</td><td style="padding:4px 8px;">${esc(o.inventario)}</td><td style="padding:4px 8px;" class="mono">${audFmtInt(o.diferenca)}</td><td style="padding:4px 8px;" class="mono">${audFmtMoney(o.vlDivergencia)}</td><td style="padding:4px 8px;">${d.label}</td><td style="padding:4px 8px;">${esc(o.prioridade)}</td><td style="padding:4px 8px;">${esc(o.justificativa||'')}</td></tr>`;
+        }).join('')}</tbody>
+      </table>
+    </td></tr>`;
+  }
+  return html;
+}
+function audMountAuditoriaScroll(){
+  const el = document.getElementById('aud-item-scroll');
   if(!el) return;
-  if(AUD.scrollHandler) el.removeEventListener('scroll', AUD.scrollHandler);
   let ticking = false;
-  AUD.scrollHandler = ()=>{
-    if(ticking) return;
-    ticking = true;
-    requestAnimationFrame(()=>{ audRenderCardsWindow(); ticking = false; });
-  };
-  el.addEventListener('scroll', AUD.scrollHandler);
-  if(!keepScroll) el.scrollTop = 0;
-  audRenderCardsWindow();
+  const handler = ()=>{ if(ticking) return; ticking=true; requestAnimationFrame(()=>{ audRenderAuditoriaWindow(); ticking=false; }); };
+  el.addEventListener('scroll', handler);
+  audRenderAuditoriaWindow();
 }
-function audRenderCardsWindow(){
-  const el = document.getElementById('aud-cards-scroll');
-  const totalEl = document.getElementById('aud-cards-total-height');
-  const winEl = document.getElementById('aud-cards-window');
-  if(!el || !totalEl || !winEl) return;
-  const total = AUD.filtered.length;
-  totalEl.style.height = (total*AUD_ROW_H)+'px';
-  if(!total){ winEl.innerHTML = `<div class="empty-state"><div class="eicon">&#128269;</div><h3>Nenhuma divergência encontrada</h3><p>Ajuste a busca, os filtros ou o filtro rápido selecionado.</p></div>`; return; }
-  const viewH = el.clientHeight || 600;
+function audRenderAuditoriaWindow(){
+  const el = document.getElementById('aud-item-scroll');
+  const winEl = document.getElementById('aud-item-window');
+  if(!el || !winEl) return;
+  const rows = audAuditoriaItens();
+  if(!rows.length){ winEl.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--ink-soft);padding:20px;">Nenhum item encontrado.</td></tr>`; return; }
+  const viewH = el.clientHeight || 400;
   const scrollTop = el.scrollTop;
-  const buffer = 3;
-  const start = Math.max(0, Math.floor(scrollTop/AUD_ROW_H) - buffer);
-  const visibleCount = Math.ceil(viewH/AUD_ROW_H) + buffer*2;
-  const end = Math.min(total, start+visibleCount);
-  winEl.style.transform = `translateY(${start*AUD_ROW_H}px)`;
-  winEl.innerHTML = AUD.filtered.slice(start, end).map(audCardHtml).join('');
+  const buffer = 8;
+  const start = Math.max(0, Math.floor(scrollTop/AUD_ITEM_ROW_H) - buffer);
+  const visibleCount = Math.ceil(viewH/AUD_ITEM_ROW_H) + buffer*2;
+  const end = Math.min(rows.length, start+visibleCount);
+  const topSpacer = start*AUD_ITEM_ROW_H;
+  const bottomSpacer = (rows.length-end)*AUD_ITEM_ROW_H;
+  winEl.innerHTML =
+    `<tr style="height:${topSpacer}px;"><td colspan="10" style="padding:0;border:none;"></td></tr>`
+    + rows.slice(start,end).map(audItemRowHtml).join('')
+    + `<tr style="height:${bottomSpacer}px;"><td colspan="10" style="padding:0;border:none;"></td></tr>`;
 }
-
-function audCardHtml(r){
-  const diag = AUD_DIAG[r.diagnostico] || {label:r.diagnostico, cor:'#7B80A0'};
-  const diffCls = r.diferenca>0 ? 'aud-pos' : (r.diferenca<0 ? 'aud-neg' : '');
-  const enderecos = (r.estoqueEnderecos||[]).slice(0,4).map(e=>`${esc(e.local)}: ${audFmtInt(e.quantidade)}`).join(' · ');
-  const liquidadoInfo = r.estoqueTotalLiquidado ? ` · Liquidado: <b class="mono">${audFmtInt(r.estoqueTotalLiquidado)}</b> em ${r.estoqueNumEnderecosLiquidados} endereço(s)` : '';
-  return `<div class="aud-card">
-    <div class="aud-card-top">
-      <div class="aud-card-item">
-        <span class="mono">${esc(r.itemWms)}</span>
-        <span class="aud-card-desc">${esc(r.descricao||'—')}</span>
-      </div>
-      <div style="display:flex;gap:6px;flex-shrink:0;">
-        ${r.situacaoLiquidada ? '<span class="stamp-tag tag-muted">Liquidado</span>' : ''}
-        <span class="stamp-tag" style="background:${diag.cor}22;color:${diag.cor};border:1px solid ${diag.cor}55;">${diag.label}</span>
-      </div>
-    </div>
-    <div class="aud-card-grid">
-      <div><span class="aud-k">Endereço</span><span class="aud-v">${esc(r.endereco||'—')}</span></div>
-      <div><span class="aud-k">Diferença</span><span class="aud-v mono ${diffCls}">${r.diferenca>0?'+':''}${audFmtInt(r.diferenca)}</span></div>
-      <div><span class="aud-k">Valor</span><span class="aud-v mono ${diffCls}">${audFmtMoney(r.vlDivergencia)}</span></div>
-      <div><span class="aud-k">Inventário</span><span class="aud-v">${esc(r.inventario)}</span></div>
-      <div><span class="aud-k">Usuário</span><span class="aud-v">${esc(r.usuario||'—')}</span></div>
-      <div><span class="aud-k">Legenda</span><span class="aud-v">${r.codLegenda?esc(r.codLegenda)+' — '+esc(r.descLegenda):'—'}</span></div>
-      <div><span class="aud-k">Necessita validação</span><span class="aud-v">${r.necessitaValidacao?'<span class="stamp-tag tag-alert">Sim</span>':'<span class="stamp-tag tag-muted">Não</span>'}</span></div>
-      <div><span class="aud-k">Prioridade</span><span class="aud-v">${esc((r.prioridade||'').toUpperCase())}</span></div>
-    </div>
-    <div class="aud-card-estoque">
-      <span class="aud-k">Estoque atual (QUERY 390)</span>
-      <span class="aud-v">Total: <b class="mono">${audFmtInt(r.estoqueTotal)}</b> · No endereço: <b class="mono">${audFmtInt(r.estoqueQtdNoEndereco)}</b> · ${r.estoqueNumEnderecos} endereço(s)${enderecos?' — '+enderecos:''}${liquidadoInfo}</span>
-    </div>
-    <div class="aud-card-just">${esc(r.justificativa||'')}</div>
-  </div>`;
-}
-
-function audExportCsv(rows, filename){
-  if(!rows || !rows.length){ showToast('Nada para exportar.', true); return; }
-  const cols = ['inventario','local','endereco','itemWms','itemSige','descricao','ean','codTerceiro','qtdeLogica','qtdeFisica','diferenca','vlLogico','vlFisico','vlDivergencia','dataInicio','dataFim','usuario','codLegenda','descLegenda','considerarNet','diagnostico','prioridade','necessitaValidacao','situacaoLiquidada','justificativa','estoqueTotal','estoqueQtdNoEndereco','estoqueNumEnderecos','estoqueTotalLiquidado','estoqueNumEnderecosLiquidados','ano'];
-  const header = cols.join(';');
-  const lines = rows.map(r=>cols.map(c=>{
-    let v = r[c];
-    if(typeof v === 'string') v = '"'+v.replace(/"/g,'""')+'"';
-    return v===undefined||v===null?'':v;
-  }).join(';'));
+function audExportItensCsv(){
+  const rows = audAuditoriaItens();
+  if(!rows.length){ showToast('Nada para exportar.', true); return; }
+  const header = 'Item;EAN;Descricao;Local;Quantidade Divergente';
+  const lines = rows.map(r=>[r.chave, r.ean||'', '"'+String(r.descricao||'').replace(/"/g,'""')+'"', r.localPrincipal||'', r.qtd].join(';'));
   const csv = '﻿'+header+'\n'+lines.join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = filename;
+  a.download = 'auditoria_'+AUD.currentAno+'.csv';
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -913,16 +641,15 @@ function audRenderInventarios(){
   return `<div class="panel" style="padding:0;overflow:hidden;">
     <div class="aud-optable-toolbar"><b style="font-size:11.5px;color:var(--ink);">Painel de Inventários</b><span class="field-hint">${invs.length} inventários com divergência</span></div>
     <div class="table-wrap" style="border:none;border-radius:0;">
-      <table><thead><tr><th>Inventário</th><th>Divergências</th><th>Valor</th><th>Usuários</th><th>Itens</th><th>% Compensado</th><th>NET (líquido)</th></tr></thead>
+      <table><thead><tr><th>Inventário</th><th>Divergências</th><th>Valor</th><th>Itens</th><th>% Compensado</th><th>NET (líquido)</th></tr></thead>
       <tbody>${invs.slice(0,200).map(i=>`<tr>
         <td>${esc(i.chave)}</td>
         <td class="mono">${audFmtInt(i.ocorrencias)}</td>
         <td class="mono ${i.valor>=0?'aud-pos':'aud-neg'}">${audFmtMoney(i.valor)}</td>
-        <td class="mono">${i.numUsuarios}</td>
         <td class="mono">${i.numItens}</td>
         <td><span class="aud-mini-bar"><span style="width:${i.pctCompensado.toFixed(0)}%;"></span></span>${i.pctCompensado.toFixed(0)}%</td>
         <td class="mono">${audFmtInt(i.qtd)}</td>
-      </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);">Sem registros</td></tr>'}</tbody></table>
+      </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);">Sem registros</td></tr>'}</tbody></table>
     </div>
   </div>`;
 }
@@ -1037,15 +764,32 @@ const AUD_PRINT_SCOPES = [
   ['todos','Todos'], ['perdas','Somente perdas'], ['ganhos','Somente ganhos'], ['pendentes','Somente pendentes'],
   ['altoValor','Somente alto valor'], ['altaPrioridade','Somente alta prioridade'], ['real','Somente divergências reais']
 ];
+function audExportCsv(rows, filename){
+  if(!rows || !rows.length){ showToast('Nada para exportar.', true); return; }
+  const cols = ['inventario','local','endereco','itemWms','itemSige','descricao','ean','codTerceiro','qtdeLogica','qtdeFisica','diferenca','vlLogico','vlFisico','vlDivergencia','dataInicio','dataFim','codLegenda','descLegenda','considerarNet','diagnostico','prioridade','necessitaValidacao','situacaoLiquidada','justificativa','estoqueTotal','estoqueQtdNoEndereco','estoqueNumEnderecos','estoqueTotalLiquidado','estoqueNumEnderecosLiquidados','ano'];
+  const header = cols.join(';');
+  const lines = rows.map(r=>cols.map(c=>{
+    let v = r[c];
+    if(typeof v === 'string') v = '"'+v.replace(/"/g,'""')+'"';
+    return v===undefined||v===null?'':v;
+  }).join(';'));
+  const csv = '﻿'+header+'\n'+lines.join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 function audRenderRelatorios(){
   return `
     <div class="panel">
       <h3>Exportar auditoria — Ano ${AUD.currentAno}</h3>
-      <p class="field-hint" style="margin-bottom:12px;">Exporta a base tratada e diagnosticada do ano selecionado.</p>
+      <p class="field-hint" style="margin-bottom:12px;">Exporta a base tratada e diagnosticada do ano selecionado (apenas divergências consideradas no NET).</p>
       <div class="action-bar">
         <div class="btn-group">
-          <button class="btn btn-primary" onclick="audExportCsv(AUD.list.filter(r=>r.necessitaValidacao), 'auditoria_pendentes_'+AUD.currentAno+'.csv')">Exportar pendentes (CSV)</button>
-          <button class="btn btn-secondary" onclick="audExportCsv(AUD.list, 'auditoria_completa_'+AUD.currentAno+'.csv')">Exportar base completa (CSV)</button>
+          <button class="btn btn-primary" onclick="audExportCsv(audNetFilteredList().filter(r=>r.necessitaValidacao), 'auditoria_pendentes_'+AUD.currentAno+'.csv')">Exportar pendentes (CSV)</button>
+          <button class="btn btn-secondary" onclick="audExportCsv(audNetFilteredList(), 'auditoria_completa_'+AUD.currentAno+'.csv')">Exportar base completa (CSV)</button>
           <button class="btn btn-secondary" onclick="audExportXlsx()">Exportar base completa (XLSX)</button>
         </div>
       </div>
@@ -1079,7 +823,7 @@ function audRenderRelatorios(){
   `;
 }
 function audPrintFolha(scope){
-  let rows = AUD.list.slice();
+  let rows = audNetFilteredList();
   if(scope==='perdas') rows = rows.filter(r=>r.vlDivergencia<0);
   else if(scope==='ganhos') rows = rows.filter(r=>r.vlDivergencia>0);
   else if(scope==='pendentes') rows = rows.filter(r=>r.necessitaValidacao);
@@ -1090,11 +834,10 @@ function audPrintFolha(scope){
   const sheet = document.getElementById('aud-print-sheet');
   if(!rows.length){ showToast('Nenhum registro no escopo selecionado.', true); return; }
   const inventarios = Array.from(new Set(rows.map(r=>r.inventario))).slice(0,3).join(', ');
-  const usuarios = Array.from(new Set(rows.map(r=>r.usuario))).slice(0,3).join(', ');
   sheet.innerHTML = `<div class="aud-print-page">
     <div class="aud-print-head">
       <div><h2>Folha Operacional de Auditoria de Inventário</h2>
-      <div>Inventário(s): ${esc(inventarios)}${rows.length>3?' (+)':''} · Usuário(s): ${esc(usuarios)}</div></div>
+      <div>Inventário(s): ${esc(inventarios)}${rows.length>3?' (+)':''}</div></div>
       <div style="text-align:right;">Data: ${new Date().toLocaleDateString('pt-BR')}<br>Itens: ${rows.length}<br>Página 1</div>
     </div>
     <table class="aud-print-table">
@@ -1108,12 +851,13 @@ function audPrintFolha(scope){
   setTimeout(()=>window.print(), 80);
 }
 function audExportXlsx(){
-  if(!AUD.list.length){ showToast('Nada para exportar.', true); return; }
-  const ws = XLSX.utils.json_to_sheet(AUD.list.map(r=>({
+  const rows = audNetFilteredList();
+  if(!rows.length){ showToast('Nada para exportar.', true); return; }
+  const ws = XLSX.utils.json_to_sheet(rows.map(r=>({
     Inventario:r.inventario, Local:r.local, Endereco:r.endereco, ItemWMS:r.itemWms, ItemSIGE:r.itemSige,
     Descricao:r.descricao, EAN:r.ean, CodTerceiro:r.codTerceiro, QtdeLogica:r.qtdeLogica, QtdeFisica:r.qtdeFisica,
     Diferenca:r.diferenca, VlLogico:r.vlLogico, VlFisico:r.vlFisico, VlDivergencia:r.vlDivergencia,
-    DataInicio:r.dataInicio, DataFim:r.dataFim, Usuario:r.usuario, CodLegenda:r.codLegenda, DescLegenda:r.descLegenda,
+    DataInicio:r.dataInicio, DataFim:r.dataFim, CodLegenda:r.codLegenda, DescLegenda:r.descLegenda,
     ConsiderarNET:r.considerarNet?'Sim':'Não', Diagnostico:(AUD_DIAG[r.diagnostico]||{}).label||r.diagnostico,
     Prioridade:r.prioridade, NecessitaValidacao:r.necessitaValidacao?'Sim':'Não', SituacaoLiquidada:r.situacaoLiquidada?'Sim':'Não',
     Justificativa:r.justificativa, EstoqueTotal:r.estoqueTotal, EstoqueNoEndereco:r.estoqueQtdNoEndereco,
@@ -1139,7 +883,7 @@ function audExportIndicadoresCsv(){
   const simples = {
     totalImportadas:ind.totalImportadas, duplicidadesRemovidas:ind.duplicidadesRemovidas,
     considerNetSim:ind.considerNetSim, considerNetNao:ind.considerNetNao, itensUnicos:ind.itensUnicos,
-    inventarios:ind.inventarios, enderecos:ind.enderecos, usuarios:ind.usuarios,
+    inventarios:ind.inventarios, enderecos:ind.enderecos,
     qtdDivergente:ind.qtdDivergente, valorDivergente:ind.valorDivergente, qtdPositiva:ind.qtdPositiva,
     qtdNegativa:ind.qtdNegativa, saldoLiquido:ind.saldoLiquido, qtdAbsoluta:ind.qtdAbsoluta,
     valorAbsoluto:ind.valorAbsoluto, necessitaValidacao:ind.necessitaValidacao

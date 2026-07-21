@@ -2,8 +2,8 @@
    Estilos do módulo de Auditoria de Divergências de Inventário
    Reutiliza as variáveis de tema definidas no shell principal.
    ============================================================ */
-.aud-pos{ color:#7FD0A0; }
-.aud-neg{ color:#FB6B45; }
+.aud-pos{ color:#1F8A52; }
+.aud-neg{ color:#C83812; }
 
 .aud-dz-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
 @media(max-width:900px){ .aud-dz-grid{ grid-template-columns:1fr; } }
@@ -79,9 +79,26 @@
   --aud-blue:#001A72; --aud-orange:#FE5000;
 }
 
-/* full-bleed: cancela o padding do shell principal para aproveitar a largura toda */
-.aud-shell{ margin:-20px -24px; padding:0 16px 16px; }
+/* ---- tema claro institucional, isolado ao módulo de auditoria ----
+   Sobrescreve as variáveis do shell escuro só dentro de .aud-shell;
+   componentes compartilhados (panel/btn/table/stat-card) herdam e
+   viram claros automaticamente, sem afetar os outros módulos do app. */
+.aud-shell{
+  --paper:#FFFFFF; --surface:#FFFFFF; --surface2:#F4F6FA;
+  --ink:#12172B; --ink-soft:#5B6472; --line:#E2E6EE;
+  --accent:var(--aud-orange); --accent-light:rgba(254,80,0,.10);
+  --blue:var(--aud-blue); --blue2:var(--aud-blue); --blue3:#33488E;
+  background:#FFFFFF; min-height:100%;
+  margin:-20px -24px; padding:0 16px 16px;
+}
 @media(max-width:760px){ .aud-shell{ margin:-14px; padding:0 10px 10px; } }
+.aud-shell .btn-primary{ background:var(--aud-blue); color:#fff; font-weight:600; }
+.aud-shell .btn-secondary{ background:#fff; border:1px solid var(--aud-blue); color:var(--aud-blue); }
+.aud-shell thead th{ background:var(--aud-blue); }
+.aud-shell table, .aud-shell .table-wrap{ border-color:var(--line); }
+.aud-shell tbody tr:hover td{ background:rgba(254,80,0,.05); }
+.aud-shell .field-hint{ color:var(--ink-soft); }
+.aud-shell form input, .aud-shell form select, .aud-shell form textarea{ background:#fff; }
 
 /* ---- header compacto ---- */
 .aud-headerbar{
@@ -93,8 +110,8 @@
 .aud-hb-group b{ color:var(--ink); font-weight:600; }
 .aud-hb-sep{ width:1px; height:16px; background:var(--line); flex-shrink:0; }
 .aud-hb-status{ display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:100px; font-size:10.5px; font-weight:600; }
-.aud-hb-status.ok{ background:rgba(127,208,160,.14); color:#7FD0A0; }
-.aud-hb-status.pend{ background:rgba(251,107,69,.14); color:#FB6B45; }
+.aud-hb-status.ok{ background:rgba(58,174,111,.12); color:#2C8F5C; }
+.aud-hb-status.pend{ background:rgba(254,80,0,.12); color:var(--aud-orange); }
 .aud-headerbar .btn{ margin-left:auto; padding:6px 16px; font-size:12px; }
 
 /* ---- KPI grid denso ---- */
