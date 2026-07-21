@@ -2409,7 +2409,19 @@ async function deleteDash(id){
   audModuleInit();
   if('serviceWorker' in navigator){
     window.addEventListener('load', ()=>{
-      navigator.serviceWorker.register('sw.js').catch(err=>console.warn('SW falhou ao registrar', err));
+      // updateViaCache:'none' garante que o próprio sw.js nunca seja servido
+      // do cache HTTP do navegador — sem isso, o navegador podia demorar
+      // muito para perceber que o service worker mudou.
+      navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).then(reg=>{
+        reg.update();
+        reg.addEventListener('updatefound', ()=>{
+          const novo = reg.installing;
+          if(!novo) return;
+          novo.addEventListener('statechange', ()=>{
+            if(novo.state==='activated') window.location.reload();
+          });
+        });
+      }).catch(err=>console.warn('SW falhou ao registrar', err));
     });
   }
 </script>
