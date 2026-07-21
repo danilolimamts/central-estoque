@@ -1,0 +1,72 @@
+/* ============================================================
+   Estilos do módulo de Auditoria de Divergências de Inventário
+   Reutiliza as variáveis de tema definidas no shell principal.
+   ============================================================ */
+.aud-pos{ color:#7FD0A0; }
+.aud-neg{ color:#FB6B45; }
+
+.aud-dz-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+@media(max-width:900px){ .aud-dz-grid{ grid-template-columns:1fr; } }
+.aud-dropzone{
+  border:1.5px dashed var(--line); border-radius:var(--radius-lg);
+  background:var(--paper); padding:20px 14px; text-align:center;
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  transition:border-color .15s, background .15s;
+}
+.aud-dropzone.has-file{ border-color:var(--accent); border-style:solid; background:rgba(250,70,22,.05); }
+.aud-dz-icon{ font-size:26px; margin-bottom:2px; }
+.aud-dz-title{ font-family:'Oswald',sans-serif; font-size:13.5px; font-weight:600; color:var(--ink); }
+.aud-dz-desc{ font-size:11px; color:var(--ink-soft); margin-bottom:6px; }
+.aud-dz-file{ font-size:11px; color:var(--ink); margin-bottom:4px; word-break:break-all; }
+
+.aud-progress-wrap{ margin-top:18px; }
+.aud-progress-stage{ font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; }
+.aud-progress-track{ background:var(--line); border-radius:100px; height:8px; overflow:hidden; }
+.aud-progress-fill{ height:100%; background:linear-gradient(90deg,var(--accent),#FB6B45); border-radius:100px; transition:width .2s; }
+.aud-progress-pct{ font-size:11px; color:var(--ink-soft); margin-top:4px; text-align:right; }
+
+.aud-ano-selector{ display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:12.5px; color:var(--ink-soft); }
+.aud-ano-selector select{ border:1px solid var(--line); border-radius:var(--radius); padding:5px 8px; background:var(--surface); color:var(--ink); font-size:12.5px; }
+
+.aud-toolbar{ display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px; }
+.aud-search-wrap{ flex:1; min-width:240px; }
+.aud-search-wrap input{ width:100%; border:1px solid var(--line); border-radius:var(--radius); padding:8px 12px; background:var(--surface); color:var(--ink); font-size:13px; }
+.aud-toolbar-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.aud-toggle{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+.aud-toggle input{ width:auto; }
+
+.aud-filters-panel{ margin-bottom:12px; }
+.aud-filters-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px 14px; }
+.aud-filters-grid label{ display:block; font-size:10px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
+.aud-filters-grid select, .aud-filters-grid input{ width:100%; border:1px solid var(--line); border-radius:var(--radius); padding:6px 8px; background:var(--paper); color:var(--ink); font-size:12.5px; }
+
+.aud-result-count{ font-size:11.5px; color:var(--ink-soft); margin-bottom:8px; }
+
+.aud-cards-scroll{ height:calc(100vh - 320px); min-height:360px; overflow-y:auto; border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--paper); padding:10px; position:relative; }
+
+.aud-card{
+  background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--blue2);
+  border-radius:var(--radius); padding:12px 14px; margin-bottom:10px; height:calc(272px - 10px);
+  overflow:hidden; display:flex; flex-direction:column; gap:8px;
+}
+.aud-card-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+.aud-card-item{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.aud-card-item .mono{ font-size:13px; color:var(--ink); font-weight:600; }
+.aud-card-desc{ font-size:12px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:420px; }
+.aud-card-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px 14px; }
+.aud-k{ display:block; font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); }
+.aud-v{ display:block; font-size:12.5px; color:var(--ink); }
+.aud-card-estoque{ font-size:11.5px; color:var(--ink-soft); border-top:1px dashed var(--line); padding-top:6px; }
+.aud-card-estoque .aud-v{ display:inline; font-size:11.5px; }
+.aud-card-just{
+  font-size:11.5px; color:var(--ink-soft); background:var(--paper); border-radius:6px; padding:6px 9px;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+@media(max-width:760px){ .aud-card-grid{ grid-template-columns:repeat(2,1fr); } .aud-card-desc{ max-width:220px; } }
+
+.aud-subtabs{ display:flex; gap:6px; margin-bottom:14px; border-bottom:1px solid var(--line); }
+.aud-subtab{
+  background:none; border:none; color:var(--ink-soft); padding:8px 14px; font-size:12.5px; font-weight:500;
+  border-bottom:2px solid transparent; cursor:pointer;
+}
+.aud-subtab.active{ color:var(--accent); border-bottom-color:var(--accent); }
