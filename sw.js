@@ -3,7 +3,7 @@
    Precache do shell do app + runtime cache (stale-while-revalidate)
    para os CDNs (fontes e SheetJS) usados pelo módulo de auditoria.
    ============================================================ */
-const CACHE_VERSION = 'central-estoque-v2';
+const CACHE_VERSION = 'central-estoque-v3';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -14,7 +14,9 @@ const PRECACHE_URLS = [
   './audit/audit-app.js',
   './audit/audit.css',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './brand/Logo_LDM_hor_2.png',
+  './brand/Logo_LDM_box.png'
 ];
 
 self.addEventListener('install', (event)=>{

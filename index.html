@@ -2412,13 +2412,17 @@ async function deleteDash(id){
       // updateViaCache:'none' garante que o próprio sw.js nunca seja servido
       // do cache HTTP do navegador — sem isso, o navegador podia demorar
       // muito para perceber que o service worker mudou.
+      // hadController: só recarrega quando é uma ATUALIZAÇÃO de um service
+      // worker que já controlava a página — na primeira instalação nunca
+      // houve controller, então updatefound dispara mas não deve recarregar.
+      const hadController = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).then(reg=>{
         reg.update();
         reg.addEventListener('updatefound', ()=>{
           const novo = reg.installing;
           if(!novo) return;
           novo.addEventListener('statechange', ()=>{
-            if(novo.state==='activated') window.location.reload();
+            if(novo.state==='activated' && hadController) window.location.reload();
           });
         });
       }).catch(err=>console.warn('SW falhou ao registrar', err));
