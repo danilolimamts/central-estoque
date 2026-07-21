@@ -3,7 +3,7 @@
    Precache do shell do app + runtime cache (stale-while-revalidate)
    para os CDNs (fontes e SheetJS) usados pelo módulo de auditoria.
    ============================================================ */
-const CACHE_VERSION = 'central-estoque-v1';
+const CACHE_VERSION = 'central-estoque-v2';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -38,17 +38,16 @@ self.addEventListener('fetch', (event)=>{
   const isSameOrigin = url.origin === self.location.origin;
 
   if(isSameOrigin){
+    // Network-first: sempre busca a versão mais nova do app; usa o cache
+    // só como fallback offline. (Antes era cache-first e escondia updates.)
     event.respondWith(
-      caches.match(req).then(cached=>{
-        const network = fetch(req).then(res=>{
-          if(res && res.ok){
-            const clone = res.clone();
-            caches.open(CACHE_VERSION).then(c=>c.put(req, clone));
-          }
-          return res;
-        }).catch(()=>cached);
-        return cached || network;
-      })
+      fetch(req).then(res=>{
+        if(res && res.ok){
+          const clone = res.clone();
+          caches.open(CACHE_VERSION).then(c=>c.put(req, clone));
+        }
+        return res;
+      }).catch(()=>caches.match(req))
     );
     return;
   }
