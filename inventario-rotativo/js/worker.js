@@ -176,14 +176,18 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
     const local = String(getVal(row, r843.local) ?? '').trim();
     const item = String(getVal(row, r843.item) ?? '').trim();
     const idConferencia = parseInt(parseNumber(getVal(row, r843.idConferencia)), 10) || 0;
+    const obsInventario = String(getVal(row, r843.obsInventario) ?? '').trim();
     if(!local || !item || !congeladoSet.has(local)) continue;
+    // Só eventos de Ajuste Inventário Rotativo (Obs começando em "AIR") entram no ciclo —
+    // outras tratativas na mesma planilha (ex.: "ADE - Ajuste Auditoria de Estoque") não são deste módulo.
+    if(!/^AIR/i.test(obsInventario)) continue;
     contagens.push({
       id: cicloId+'|'+local+'|'+item+'|'+idConferencia+'|'+idx843,
       cicloId, inventario: String(getVal(row, r843.inventario) ?? '').trim(), local,
       descricaoLocal: String(getVal(row, r843.descricaoLocal) ?? '').trim(),
       dataInicioContagem: isoDateTime(parseDateVal(getVal(row, r843.dataInicioContagem))),
       dataFimContagem: isoDateTime(parseDateVal(getVal(row, r843.dataFimContagem))),
-      obsInventario: String(getVal(row, r843.obsInventario) ?? '').trim(),
+      obsInventario,
       usuario: String(getVal(row, r843.usuario) ?? '').trim(),
       situacaoInventario: String(getVal(row, r843.situacaoInventario) ?? '').trim(),
       situacaoLocal: String(getVal(row, r843.situacaoLocal) ?? '').trim(),
@@ -191,6 +195,9 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
       qtFis: parseNumber(getVal(row, r843.qtFis))
     });
   }
+  // Locais reconhecidos como Ajuste Inventário Rotativo (AIR) nesta importação —
+  // usado para herdar o mesmo filtro na QRY0114, que não tem coluna de Observação.
+  const airLocalSet = new Set(contagens.map(c=>c.local));
 
   post('progress', {stage:'Calculando convergência por local...', pct:50});
   const porLocal = new Map();
@@ -229,7 +236,7 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
     idx114++;
     const local = String(getVal(row, r114.local) ?? '').trim();
     const itemWms = String(getVal(row, r114.itemWms) ?? '').trim();
-    if(!itemWms || !congeladoSet.has(local)) continue;
+    if(!itemWms || !congeladoSet.has(local) || !airLocalSet.has(local)) continue;
     const diferenca = parseNumber(getVal(row, r114.diferenca));
     const vlDivergencia = parseNumber(getVal(row, r114.vlDivergencia));
     divergencias.push({
@@ -366,6 +373,69 @@ function calcularIndicadores({locais, contagens, divergencias, statusPorLocal, d
     eficiencia = 0.6*idxQualidade + 0.4*idxVelocidade;
   }
 
+  // Quebra por Rua (X1 da Base Congelada) e por Log (Grupo Classe) — espelha os
+  // relatórios de referência do usuário. "Posições" aqui é medida sobre os locais
+  // já contados no grupo (não sobre o total congelado), igual ao relatório de origem.
+  const locaisContadosSet = new Set(Array.from(statusPorLocal.keys()));
+  function calcAcuraciasSubset(divs, baseLocais){
+    const totalQtdeLogica = divs.reduce((s,d)=>s+d.qtdeLogica,0);
+    const totalDiferencaAbs = divs.reduce((s,d)=>s+Math.abs(d.diferenca),0);
+    const acuraciaPecas = clamp01(totalQtdeLogica>0 ? 1-(totalDiferencaAbs/totalQtdeLogica) : 1);
+    const totalVlLogico = divs.reduce((s,d)=>s+d.vlLogico,0);
+    const totalVlDivergenciaAbs = divs.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
+    const acuraciaValor = clamp01(totalVlLogico>0 ? 1-(totalVlDivergenciaAbs/totalVlLogico) : 1);
+    const locaisComDivergencia = new Set(divs.filter(d=>d.diferenca!==0).map(d=>d.local));
+    const acuraciaPosicoes = clamp01(baseLocais>0 ? 1-(locaisComDivergencia.size/baseLocais) : 1);
+    return {
+      acuraciaPecas, acuraciaValor, acuraciaPosicoes,
+      valorDivergenteLiquido: divs.reduce((s,d)=>s+d.vlDivergencia,0),
+      valorDivergenteAbsoluto: totalVlDivergenciaAbs
+    };
+  }
+  function agruparPor(campo, rotuloVazio){
+    const chaves = Array.from(new Set(congelados.map(l=>l[campo] || rotuloVazio)));
+    return chaves.map(chave=>{
+      const locaisDoGrupo = congelados.filter(l=>(l[campo]||rotuloVazio)===chave);
+      const idsGrupo = new Set(locaisDoGrupo.map(l=>l.idLocal));
+      const locaisOrcados = locaisDoGrupo.length;
+      const locaisContados = locaisDoGrupo.filter(l=>locaisContadosSet.has(l.idLocal)).length;
+      const divsGrupo = divergencias.filter(d=>idsGrupo.has(d.local));
+      return {
+        chave, locaisOrcados, locaisContados,
+        pctContado: locaisOrcados>0 ? locaisContados/locaisOrcados : 0,
+        ...calcAcuraciasSubset(divsGrupo, locaisContados)
+      };
+    }).sort((a,b)=>b.locaisOrcados-a.locaisOrcados);
+  }
+  const porRua = agruparPor('x1', '(sem rua)');
+  const porLog = agruparPor('grupoClasse', '(sem log)');
+
+  // Volume contado por dia (exclui contagem 1 = abertura)
+  const porDiaMap = new Map();
+  for(const c of contagens){
+    if(c.idConferencia<=1 || !c.dataInicioContagem) continue;
+    const dia = c.dataInicioContagem.slice(0,10);
+    porDiaMap.set(dia, (porDiaMap.get(dia)||0)+1);
+  }
+  const contadosPorDia = Array.from(porDiaMap.entries())
+    .map(([dia,total])=>({dia,total}))
+    .sort((a,b)=>a.dia.localeCompare(b.dia));
+
+  // Saldo líquido por item (para ranking de maiores sobras/faltas)
+  const porItemSaldo = new Map();
+  for(const d of divergencias){
+    if(d.diferenca===0) continue;
+    let g = porItemSaldo.get(d.item);
+    if(!g) g = {item:d.item, descricao:d.descricao, saldoQtd:0, saldoValor:0, locais:new Set()};
+    g.saldoQtd += d.diferenca;
+    g.saldoValor += d.vlDivergencia;
+    g.locais.add(d.local);
+    porItemSaldo.set(d.item, g);
+  }
+  const itensSaldo = Array.from(porItemSaldo.values()).map(g=>({...g, locais:g.locais.size}));
+  const topItensPositivos = itensSaldo.filter(i=>i.saldoQtd>0).sort((a,b)=>b.saldoQtd-a.saldoQtd).slice(0,10);
+  const topItensNegativos = itensSaldo.filter(i=>i.saldoQtd<0).sort((a,b)=>a.saldoQtd-b.saldoQtd).slice(0,10);
+
   // Produtividade por colaborador (exclui contagem 1 = abertura)
   const porUsuario = new Map();
   for(const c of contagens){
@@ -389,6 +459,6 @@ function calcularIndicadores({locais, contagens, divergencias, statusPorLocal, d
     andamentoCiclo, acuraciaPecas, acuraciaLocal, acuraciaValor, meta: IR_META_ACURACIA,
     itensDivergentes, valorDivergenteLiquido, valorDivergenteAbsoluto,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade
+    rankingProdutividade, porRua, porLog, contadosPorDia, topItensPositivos, topItensNegativos
   };
 }

@@ -288,16 +288,123 @@ function irRenderDashboard(){
     <div class="kpi-grid">
       ${kpis.map(([label,val,cls])=>`<div class="kpi-card ${cls||''}"><div class="num mono">${val}</div><div class="label">${label}</div></div>`).join('')}
     </div>
-    <div class="two-col" style="grid-template-columns:1fr 1fr 1fr;display:grid;gap:14px;">
+    <div class="bi-grid-3">
       ${ringRow('Acurácia Peças', ind.acuraciaPecas, ind.meta)}
       ${ringRow('Acurácia Local', ind.acuraciaLocal, ind.meta)}
       ${ringRow('Acurácia Valor', ind.acuraciaValor, ind.meta)}
+    </div>
+    ${irRenderPorRuaPanel(ind)}
+    <div class="bi-grid-2">
+      ${irRenderPorLogPanel(ind)}
+      ${irRenderContadosPorDiaPanel(ind)}
+    </div>
+    <div class="bi-grid-2">
+      ${irRenderRuasMaisDivergentesPanel(ind)}
+      ${irRenderTopItensPanel(ind)}
     </div>
     <div class="panel">
       <h3>Locais em andamento agora</h3>
       ${irLocaisEmAndamentoTable()}
     </div>
   `;
+}
+function irHeatStyle(val, meta){
+  const t = Math.max(0, Math.min(1, meta>0 ? val/meta : val));
+  const r = Math.round(200 + (31-200)*t), g = Math.round(56 + (138-56)*t), b = Math.round(18 + (82-18)*t);
+  return `background:rgba(${r},${g},${b},.14); color:rgb(${r},${g},${b});`;
+}
+function irRenderPorRuaPanel(ind){
+  const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  if(!rows.length) return '';
+  const meta = ind.meta;
+  return `<div class="panel">
+    <h3>Divergência por Rua</h3>
+    <p class="panel-sub">Locais orçados x contados e acurácias por rua (coluna X1 da base congelada).</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Rua</th><th>Locais Orçados</th><th>Locais Contados</th><th>% Contado</th><th>Acurácia Peças</th><th>Posições</th><th>Valores</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td class="mono">${irEsc(r.chave)}</td>
+        <td class="mono">${irFmtInt(r.locaisOrcados)}</td>
+        <td class="mono">${irFmtInt(r.locaisContados)}</td>
+        <td class="mono">${irFmtPct(r.pctContado)}</td>
+        <td class="mono" style="${irHeatStyle(r.acuraciaPecas, meta)}">${irFmtPct(r.acuraciaPecas)}</td>
+        <td class="mono" style="${irHeatStyle(r.acuraciaPosicoes, meta)}">${irFmtPct(r.acuraciaPosicoes)}</td>
+        <td class="mono" style="${irHeatStyle(r.acuraciaValor, meta)}">${irFmtPct(r.acuraciaValor)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+function irRenderPorLogPanel(ind){
+  const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  if(!rows.length) return `<div class="panel"><h3>Acurácias e NET por Log</h3><p class="field-hint">Nenhum log com locais contados ainda.</p></div>`;
+  return `<div class="panel">
+    <h3>Acurácias e NET por Log</h3>
+    <p class="panel-sub">Grupo Classe da base congelada · barras: peças / posições / valores.</p>
+    <div class="bi-vbars">
+      ${rows.map(r=>`<div class="bi-vbar-col">
+        <div class="bi-vbar-val">${irFmtMoney(r.valorDivergenteLiquido)}</div>
+        <div class="bi-cluster" style="height:100px;">
+          <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}%;" title="Peças: ${irFmtPct(r.acuraciaPecas)}"></div>
+          <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}%;" title="Posições: ${irFmtPct(r.acuraciaPosicoes)}"></div>
+          <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}%;background:var(--blue-soft);" title="Valores: ${irFmtPct(r.acuraciaValor)}"></div>
+        </div>
+        <div class="bi-vbar-label">${irEsc(r.chave)}</div>
+      </div>`).join('')}
+    </div>
+    <p class="field-hint" style="margin-top:8px;">
+      <span class="mono" style="color:var(--blue);">■</span> Peças &nbsp;
+      <span class="mono" style="color:var(--orange);">■</span> Posições &nbsp;
+      <span class="mono" style="color:var(--blue-soft);">■</span> Valores
+    </p>
+  </div>`;
+}
+function irRenderContadosPorDiaPanel(ind){
+  const rows = ind.contadosPorDia||[];
+  if(!rows.length) return `<div class="panel"><h3>Contados por Dia</h3><p class="field-hint">Nenhuma contagem registrada ainda.</p></div>`;
+  const max = Math.max(1, ...rows.map(r=>r.total));
+  return `<div class="panel">
+    <h3>Contados por Dia</h3>
+    <p class="panel-sub">Volume de posições contadas por dia (exclui a contagem de abertura).</p>
+    <div class="bi-vbars">
+      ${rows.map(r=>`<div class="bi-vbar-col">
+        <div class="bi-vbar-val">${irFmtInt(r.total)}</div>
+        <div class="bi-vbar orange" style="height:${Math.round(r.total/max*100)}%;"></div>
+        <div class="bi-vbar-label">${new Date(r.dia+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+function irRenderRuasMaisDivergentesPanel(ind){
+  const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)' && r.valorDivergenteAbsoluto>0).slice().sort((a,b)=>b.valorDivergenteAbsoluto-a.valorDivergenteAbsoluto).slice(0,8);
+  if(!rows.length) return `<div class="panel"><h3>Ruas mais divergentes</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
+  const max = Math.max(...rows.map(r=>r.valorDivergenteAbsoluto));
+  return `<div class="panel">
+    <h3>Ruas mais divergentes</h3>
+    <p class="panel-sub">Ranking por valor financeiro divergente absoluto.</p>
+    ${rows.map(r=>`<div class="bi-hbar-row">
+      <div class="bi-hbar-label mono">${irEsc(r.chave)}</div>
+      <div class="bi-hbar-track"><div class="bi-hbar-fill" style="width:${Math.round(r.valorDivergenteAbsoluto/max*100)}%;"></div></div>
+      <div class="bi-hbar-val">${irFmtMoney(r.valorDivergenteAbsoluto)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+function irRenderTopItensPanel(ind){
+  const pos = ind.topItensPositivos||[], neg = ind.topItensNegativos||[];
+  if(!pos.length && !neg.length) return `<div class="panel"><h3>Maiores saldos por item</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
+  const maxAbs = Math.max(1, ...pos.map(i=>i.saldoQtd), ...neg.map(i=>Math.abs(i.saldoQtd)));
+  const list = (items, cls)=>items.length ? items.map(i=>`<div class="bi-hbar-row">
+      <div class="bi-hbar-label" title="${irEsc(i.descricao)}">${irEsc(i.descricao||i.item)}</div>
+      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(Math.abs(i.saldoQtd)/maxAbs*100)}%;"></div></div>
+      <div class="bi-hbar-val">${i.saldoQtd>0?'+':''}${irFmtInt(i.saldoQtd)}</div>
+    </div>`).join('') : '<p class="field-hint">Nenhum.</p>';
+  return `<div class="panel">
+    <h3>Maiores saldos por item (sobra x falta)</h3>
+    <p class="panel-sub">Soma líquida da diferença de quantidade por item, no ciclo.</p>
+    <div class="bi-grid-2">
+      <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--success);">MAIS SOBRA (saldo positivo)</p>${list(pos,'pos')}</div>
+      <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--danger);">MAIS FALTA (saldo negativo)</p>${list(neg,'neg')}</div>
+    </div>
+  </div>`;
 }
 function irLocaisEmAndamentoTable(){
   const porLocal = new Map();
