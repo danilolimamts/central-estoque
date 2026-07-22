@@ -14,6 +14,7 @@ const IR = {
   divergencias:[], locais:[], contagens:[],
   divFilters:{search:'', local:''},
   auditFilters:{minPrioridade:0},
+  prodFilters:{de:'', ate:''},
   compararA:null, compararB:null,
   novoCiclo:false
 };
@@ -495,23 +496,98 @@ async function irEncerrarCiclo(){
 /* ============================================================
    PRODUTIVIDADE
    ============================================================ */
+function irProdSetFilter(key, val){ IR.prodFilters[key] = val; irRenderView(); }
+function irProdContagensFiltradas(){
+  const {de, ate} = IR.prodFilters;
+  return IR.contagens.filter(c=>{
+    if(c.idConferencia<=1 || !c.usuario || !c.dataInicioContagem) return false;
+    const dia = c.dataInicioContagem.slice(0,10);
+    if(de && dia<de) return false;
+    if(ate && dia>ate) return false;
+    return true;
+  });
+}
+/* Calcula ranking, hora-a-hora e homem-hora a partir de um conjunto de contagens já filtrado.
+   "Hora-homem" = nº de blocos de hora distintos em que cada colaborador registrou ao menos
+   1 contagem, somado entre todos — aproximação simples (sem ponto eletrônico), sinalizada na tela. */
+function irCalcProdutividade(contagens){
+  const porUsuario = new Map();
+  const porHora = new Map();
+  const horasPorUsuario = new Map();
+  for(const c of contagens){
+    const hora = c.dataInicioContagem.slice(0,13); // YYYY-MM-DDTHH
+    if(!porUsuario.has(c.usuario)) porUsuario.set(c.usuario, {usuario:c.usuario, locais:new Set(), itens:0, contagens:0, minutos:0, nMin:0, horas:new Set()});
+    const gu = porUsuario.get(c.usuario);
+    gu.locais.add(c.local); gu.itens++; gu.contagens++; gu.horas.add(hora);
+    if(c.dataInicioContagem && c.dataFimContagem){
+      const ini=new Date(c.dataInicioContagem).getTime(), fim=new Date(c.dataFimContagem).getTime();
+      if(fim>ini){ gu.minutos += (fim-ini)/60000; gu.nMin++; }
+    }
+    if(!porHora.has(hora)) porHora.set(hora, {hora, locais:new Set(), pecas:0, itens:0});
+    const gh = porHora.get(hora);
+    gh.locais.add(c.local); gh.pecas += (c.qtFis||0); gh.itens++;
+    if(!horasPorUsuario.has(c.usuario)) horasPorUsuario.set(c.usuario, new Set());
+    horasPorUsuario.get(c.usuario).add(hora);
+  }
+  const ranking = Array.from(porUsuario.values()).map(g=>({
+    usuario:g.usuario, locais:g.locais.size, itens:g.itens, contagens:g.contagens,
+    tempoMedioMin: g.nMin>0 ? g.minutos/g.nMin : 0, horasAtivas: g.horas.size
+  })).sort((a,b)=>b.locais-a.locais);
+  const horaAHora = Array.from(porHora.values()).map(g=>({hora:g.hora, locais:g.locais.size, pecas:g.pecas, itens:g.itens})).sort((a,b)=>a.hora.localeCompare(b.hora));
+  let horasHomem = 0;
+  for(const set of horasPorUsuario.values()) horasHomem += set.size;
+  const totalItens = contagens.length;
+  const totalPecas = contagens.reduce((s,c)=>s+(c.qtFis||0),0);
+  const totalLocais = new Set(contagens.map(c=>c.local)).size;
+  return {
+    ranking, horaAHora, horasHomem,
+    itensPorHomemHora: horasHomem>0 ? totalItens/horasHomem : 0,
+    pecasPorHomemHora: horasHomem>0 ? totalPecas/horasHomem : 0,
+    totalItens, totalPecas, totalLocais
+  };
+}
 function irRenderProdutividade(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem dados', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  const rank = ind.rankingProdutividade || [];
-  const maxLocais = Math.max(1, ...rank.map(r=>r.locais));
+  const contagens = irProdContagensFiltradas();
+  const p = irCalcProdutividade(contagens);
+  const maxLocais = Math.max(1, ...p.ranking.map(r=>r.locais));
   return `
+    <div class="filter-bar">
+      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">De</label>
+      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.de)}" onchange="irProdSetFilter('de', this.value)">
+      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">Até</label>
+      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.ate)}" onchange="irProdSetFilter('ate', this.value)">
+      ${(IR.prodFilters.de||IR.prodFilters.ate) ? `<button class="btn-link" onclick="irProdSetFilter('de','');IR.prodFilters.ate='';irRenderView();">Limpar filtro</button>` : ''}
+    </div>
     <div class="kpi-grid">
-      <div class="kpi-card"><div class="num mono">${irFmtNum(ind.tempoMedioContagemMin,1)}</div><div class="label">Tempo médio por contagem (min)</div></div>
-      <div class="kpi-card"><div class="num mono">${rank.length}</div><div class="label">Colaboradores ativos</div></div>
-      <div class="kpi-card orange"><div class="num mono">${irFmtInt(rank.reduce((s,r)=>s+r.locais,0))}</div><div class="label">Locais contados (soma)</div></div>
+      <div class="kpi-card"><div class="num mono">${p.ranking.length}</div><div class="label">Colaboradores ativos</div></div>
+      <div class="kpi-card orange"><div class="num mono">${irFmtInt(p.totalLocais)}</div><div class="label">Locais contados (distintos)</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(p.totalItens)}</div><div class="label">Itens contados</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(p.totalPecas)}</div><div class="label">Peças contadas</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(p.itensPorHomemHora,1)}</div><div class="label">Itens / Homem-Hora</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(p.pecasPorHomemHora,1)}</div><div class="label">Peças / Homem-Hora</div></div>
+    </div>
+    <p class="field-hint" style="margin:-8px 0 14px;">Homem-hora = nº de blocos de hora distintos em que cada colaborador registrou ao menos 1 contagem (aproximação, sem ponto eletrônico). Total no período: ${irFmtInt(p.horasHomem)} horas-homem.</p>
+    <div class="panel">
+      <h3>Produtividade hora a hora</h3>
+      <p class="panel-sub">Locais, peças e itens contados por bloco de hora, no período filtrado.</p>
+      ${p.horaAHora.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Hora</th><th>Locais</th><th>Peças</th><th>Itens</th></tr></thead>
+        <tbody>${p.horaAHora.map(h=>`<tr>
+          <td class="mono">${new Date(h.hora+':00:00').toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit'})}h</td>
+          <td class="mono">${irFmtInt(h.locais)}</td>
+          <td class="mono">${irFmtInt(h.pecas)}</td>
+          <td class="mono">${irFmtInt(h.itens)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '<p class="field-hint">Nenhuma contagem no período selecionado.</p>'}
     </div>
     <div class="panel">
       <h3>Ranking de colaboradores (por locais contados)</h3>
-      <div class="rank-list">${rank.map((r,i)=>`<div class="rank-item">
+      <div class="rank-list">${p.ranking.map((r,i)=>`<div class="rank-item">
         <span class="rank-pos">${i+1}</span>
         <div class="rank-bar-wrap">
-          <div class="rank-key"><span>${irEsc(r.usuario)}</span><span class="mono">${r.locais} locais · ${r.itens} itens · ${irFmtNum(r.tempoMedioMin,1)} min/contagem</span></div>
+          <div class="rank-key"><span>${irEsc(r.usuario)}</span><span class="mono">${r.locais} locais · ${r.itens} itens · ${r.horasAtivas}h ativas · ${irFmtNum(r.tempoMedioMin,1)} min/contagem</span></div>
           <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${(r.locais/maxLocais*100).toFixed(0)}%;"></div></div>
         </div>
       </div>`).join('') || '<p class="field-hint">Sem contagens registradas.</p>'}</div>
