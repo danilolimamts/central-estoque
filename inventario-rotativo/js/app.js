@@ -497,10 +497,11 @@ async function irEncerrarCiclo(){
    PRODUTIVIDADE
    ============================================================ */
 function irProdSetFilter(key, val){ IR.prodFilters[key] = val; irRenderView(); }
+function irProdToggleAbertura(){ IR.prodFilters.incluirAbertura = !IR.prodFilters.incluirAbertura; irRenderView(); }
 function irProdContagensFiltradas(){
-  const {de, ate} = IR.prodFilters;
+  const {de, ate, incluirAbertura} = IR.prodFilters;
   return IR.contagens.filter(c=>{
-    if(c.idConferencia<=1 || !c.usuario || !c.dataInicioContagem) return false;
+    if((incluirAbertura ? c.idConferencia<1 : c.idConferencia<=1) || !c.usuario || !c.dataInicioContagem) return false;
     const dia = c.dataInicioContagem.slice(0,10);
     if(de && dia<de) return false;
     if(ate && dia>ate) return false;
@@ -559,7 +560,12 @@ function irRenderProdutividade(){
       <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">Até</label>
       <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.ate)}" onchange="irProdSetFilter('ate', this.value)">
       ${(IR.prodFilters.de||IR.prodFilters.ate) ? `<button class="btn-link" onclick="irProdSetFilter('de','');IR.prodFilters.ate='';irRenderView();">Limpar filtro</button>` : ''}
+      <label style="display:flex;align-items:center;gap:5px;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);cursor:pointer;">
+        <input type="checkbox" style="width:auto;" ${IR.prodFilters.incluirAbertura?'checked':''} onchange="irProdToggleAbertura()">
+        Incluir contagem de abertura (rodada 1) — exemplo de visualização
+      </label>
     </div>
+    ${IR.prodFilters.incluirAbertura ? `<p class="field-hint" style="color:var(--orange);margin:-8px 0 12px;">A rodada 1 (abertura do inventário) está incluída só para pré-visualizar o design — por padrão ela não conta como produtividade real de conferência.</p>` : ''}
     <div class="kpi-grid">
       <div class="kpi-card"><div class="num mono">${p.ranking.length}</div><div class="label">Colaboradores ativos</div></div>
       <div class="kpi-card orange"><div class="num mono">${irFmtInt(p.totalLocais)}</div><div class="label">Locais contados (distintos)</div></div>
