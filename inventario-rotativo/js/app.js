@@ -14,6 +14,7 @@ const IR = {
   divergencias:[], locais:[], contagens:[],
   divFilters:{search:'', local:''},
   auditFilters:{minPrioridade:0},
+  prodFilters:{de:'', ate:''},
   compararA:null, compararB:null,
   novoCiclo:false
 };
@@ -288,16 +289,123 @@ function irRenderDashboard(){
     <div class="kpi-grid">
       ${kpis.map(([label,val,cls])=>`<div class="kpi-card ${cls||''}"><div class="num mono">${val}</div><div class="label">${label}</div></div>`).join('')}
     </div>
-    <div class="two-col" style="grid-template-columns:1fr 1fr 1fr;display:grid;gap:14px;">
+    <div class="bi-grid-3">
       ${ringRow('Acurácia Peças', ind.acuraciaPecas, ind.meta)}
       ${ringRow('Acurácia Local', ind.acuraciaLocal, ind.meta)}
       ${ringRow('Acurácia Valor', ind.acuraciaValor, ind.meta)}
+    </div>
+    ${irRenderPorRuaPanel(ind)}
+    <div class="bi-grid-2">
+      ${irRenderPorLogPanel(ind)}
+      ${irRenderContadosPorDiaPanel(ind)}
+    </div>
+    <div class="bi-grid-2">
+      ${irRenderRuasMaisDivergentesPanel(ind)}
+      ${irRenderTopItensPanel(ind)}
     </div>
     <div class="panel">
       <h3>Locais em andamento agora</h3>
       ${irLocaisEmAndamentoTable()}
     </div>
   `;
+}
+function irHeatStyle(val, meta){
+  const t = Math.max(0, Math.min(1, meta>0 ? val/meta : val));
+  const r = Math.round(200 + (31-200)*t), g = Math.round(56 + (138-56)*t), b = Math.round(18 + (82-18)*t);
+  return `background:rgba(${r},${g},${b},.14); color:rgb(${r},${g},${b});`;
+}
+function irRenderPorRuaPanel(ind){
+  const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  if(!rows.length) return '';
+  const meta = ind.meta;
+  return `<div class="panel">
+    <h3>Divergência por Rua</h3>
+    <p class="panel-sub">Locais orçados x contados e acurácias por rua (coluna X1 da base congelada).</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Rua</th><th>Locais Orçados</th><th>Locais Contados</th><th>% Contado</th><th>Acurácia Peças</th><th>Posições</th><th>Valores</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td class="mono">${irEsc(r.chave)}</td>
+        <td class="mono">${irFmtInt(r.locaisOrcados)}</td>
+        <td class="mono">${irFmtInt(r.locaisContados)}</td>
+        <td class="mono">${irFmtPct(r.pctContado)}</td>
+        <td class="mono" style="${irHeatStyle(r.acuraciaPecas, meta)}">${irFmtPct(r.acuraciaPecas)}</td>
+        <td class="mono" style="${irHeatStyle(r.acuraciaPosicoes, meta)}">${irFmtPct(r.acuraciaPosicoes)}</td>
+        <td class="mono" style="${irHeatStyle(r.acuraciaValor, meta)}">${irFmtPct(r.acuraciaValor)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+function irRenderPorLogPanel(ind){
+  const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  if(!rows.length) return `<div class="panel"><h3>Acurácias e NET por Log</h3><p class="field-hint">Nenhum log com locais contados ainda.</p></div>`;
+  return `<div class="panel">
+    <h3>Acurácias e NET por Log</h3>
+    <p class="panel-sub">Grupo Classe da base congelada · barras: peças / posições / valores.</p>
+    <div class="bi-vbars">
+      ${rows.map(r=>`<div class="bi-vbar-col">
+        <div class="bi-vbar-val">${irFmtMoney(r.valorDivergenteLiquido)}</div>
+        <div class="bi-cluster" style="height:100px;">
+          <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}%;" title="Peças: ${irFmtPct(r.acuraciaPecas)}"></div>
+          <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}%;" title="Posições: ${irFmtPct(r.acuraciaPosicoes)}"></div>
+          <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}%;background:var(--blue-soft);" title="Valores: ${irFmtPct(r.acuraciaValor)}"></div>
+        </div>
+        <div class="bi-vbar-label">${irEsc(r.chave)}</div>
+      </div>`).join('')}
+    </div>
+    <p class="field-hint" style="margin-top:8px;">
+      <span class="mono" style="color:var(--blue);">■</span> Peças &nbsp;
+      <span class="mono" style="color:var(--orange);">■</span> Posições &nbsp;
+      <span class="mono" style="color:var(--blue-soft);">■</span> Valores
+    </p>
+  </div>`;
+}
+function irRenderContadosPorDiaPanel(ind){
+  const rows = ind.contadosPorDia||[];
+  if(!rows.length) return `<div class="panel"><h3>Contados por Dia</h3><p class="field-hint">Nenhuma contagem registrada ainda.</p></div>`;
+  const max = Math.max(1, ...rows.map(r=>r.total));
+  return `<div class="panel">
+    <h3>Contados por Dia</h3>
+    <p class="panel-sub">Volume de posições contadas por dia (exclui a contagem de abertura).</p>
+    <div class="bi-vbars">
+      ${rows.map(r=>`<div class="bi-vbar-col">
+        <div class="bi-vbar-val">${irFmtInt(r.total)}</div>
+        <div class="bi-vbar orange" style="height:${Math.round(r.total/max*100)}%;"></div>
+        <div class="bi-vbar-label">${new Date(r.dia+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+function irRenderRuasMaisDivergentesPanel(ind){
+  const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)' && r.valorDivergenteAbsoluto>0).slice().sort((a,b)=>b.valorDivergenteAbsoluto-a.valorDivergenteAbsoluto).slice(0,8);
+  if(!rows.length) return `<div class="panel"><h3>Ruas mais divergentes</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
+  const max = Math.max(...rows.map(r=>r.valorDivergenteAbsoluto));
+  return `<div class="panel">
+    <h3>Ruas mais divergentes</h3>
+    <p class="panel-sub">Ranking por valor financeiro divergente absoluto.</p>
+    ${rows.map(r=>`<div class="bi-hbar-row">
+      <div class="bi-hbar-label mono">${irEsc(r.chave)}</div>
+      <div class="bi-hbar-track"><div class="bi-hbar-fill" style="width:${Math.round(r.valorDivergenteAbsoluto/max*100)}%;"></div></div>
+      <div class="bi-hbar-val">${irFmtMoney(r.valorDivergenteAbsoluto)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+function irRenderTopItensPanel(ind){
+  const pos = ind.topItensPositivos||[], neg = ind.topItensNegativos||[];
+  if(!pos.length && !neg.length) return `<div class="panel"><h3>Maiores saldos por item</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
+  const maxAbs = Math.max(1, ...pos.map(i=>i.saldoQtd), ...neg.map(i=>Math.abs(i.saldoQtd)));
+  const list = (items, cls)=>items.length ? items.map(i=>`<div class="bi-hbar-row">
+      <div class="bi-hbar-label" title="${irEsc(i.descricao)}">${irEsc(i.descricao||i.item)}</div>
+      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(Math.abs(i.saldoQtd)/maxAbs*100)}%;"></div></div>
+      <div class="bi-hbar-val">${i.saldoQtd>0?'+':''}${irFmtInt(i.saldoQtd)}</div>
+    </div>`).join('') : '<p class="field-hint">Nenhum.</p>';
+  return `<div class="panel">
+    <h3>Maiores saldos por item (sobra x falta)</h3>
+    <p class="panel-sub">Soma líquida da diferença de quantidade por item, no ciclo.</p>
+    <div class="bi-grid-2">
+      <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--success);">MAIS SOBRA (saldo positivo)</p>${list(pos,'pos')}</div>
+      <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--danger);">MAIS FALTA (saldo negativo)</p>${list(neg,'neg')}</div>
+    </div>
+  </div>`;
 }
 function irLocaisEmAndamentoTable(){
   const porLocal = new Map();
@@ -388,23 +496,138 @@ async function irEncerrarCiclo(){
 /* ============================================================
    PRODUTIVIDADE
    ============================================================ */
+function irProdSetFilter(key, val){ IR.prodFilters[key] = val; irRenderView(); }
+function irProdToggleAbertura(){ IR.prodFilters.incluirAbertura = !IR.prodFilters.incluirAbertura; irRenderView(); }
+function irProdContagensFiltradas(){
+  const {de, ate, incluirAbertura} = IR.prodFilters;
+  return IR.contagens.filter(c=>{
+    if((incluirAbertura ? c.idConferencia<1 : c.idConferencia<=1) || !c.usuario || !c.dataInicioContagem) return false;
+    const dia = c.dataInicioContagem.slice(0,10);
+    if(de && dia<de) return false;
+    if(ate && dia>ate) return false;
+    return true;
+  });
+}
+const IR_HORA_INICIO = 6;  // 06:00 — início do expediente de inventário
+const IR_HORA_FIM = 21;    // último bloco de hora do expediente (21:00–22:00)
+/* Calcula ranking, matriz colaborador x hora e homem-hora a partir de um conjunto de
+   contagens já filtrado. "Hora-homem" = nº de blocos de hora distintos (data+hora) em
+   que cada colaborador registrou ao menos 1 contagem, somado entre todos — aproximação
+   simples (sem ponto eletrônico), sinalizada na tela. A matriz colaborador x hora usa
+   só a hora do dia (sem data), fixada na janela 06h–22h de expediente, somando os dias
+   do período filtrado na mesma coluna. */
+function irCalcProdutividade(contagens){
+  const porUsuario = new Map();
+  const horasPorUsuario = new Map();
+  const matrizLocais = new Map(); // usuario -> Map(horaDia -> Set(locais))
+  for(const c of contagens){
+    const horaCompleta = c.dataInicioContagem.slice(0,13); // YYYY-MM-DDTHH (p/ homem-hora)
+    const horaDia = parseInt(c.dataInicioContagem.slice(11,13), 10); // 0-23 (p/ matriz)
+    if(!porUsuario.has(c.usuario)) porUsuario.set(c.usuario, {usuario:c.usuario, locais:new Set(), itens:0, contagens:0, minutos:0, nMin:0, horas:new Set()});
+    const gu = porUsuario.get(c.usuario);
+    gu.locais.add(c.local); gu.itens++; gu.contagens++; gu.horas.add(horaCompleta);
+    if(c.dataInicioContagem && c.dataFimContagem){
+      const ini=new Date(c.dataInicioContagem).getTime(), fim=new Date(c.dataFimContagem).getTime();
+      if(fim>ini){ gu.minutos += (fim-ini)/60000; gu.nMin++; }
+    }
+    if(!horasPorUsuario.has(c.usuario)) horasPorUsuario.set(c.usuario, new Set());
+    horasPorUsuario.get(c.usuario).add(horaCompleta);
+    if(horaDia>=IR_HORA_INICIO && horaDia<=IR_HORA_FIM){
+      if(!matrizLocais.has(c.usuario)) matrizLocais.set(c.usuario, new Map());
+      const mu = matrizLocais.get(c.usuario);
+      if(!mu.has(horaDia)) mu.set(horaDia, new Set());
+      mu.get(horaDia).add(c.local);
+    }
+  }
+  const ranking = Array.from(porUsuario.values()).map(g=>({
+    usuario:g.usuario, locais:g.locais.size, itens:g.itens, contagens:g.contagens,
+    tempoMedioMin: g.nMin>0 ? g.minutos/g.nMin : 0, horasAtivas: g.horas.size
+  })).sort((a,b)=>b.locais-a.locais);
+  const horasOrdenadas = [];
+  for(let h=IR_HORA_INICIO; h<=IR_HORA_FIM; h++) horasOrdenadas.push(h);
+  const matrizColaboradorHora = ranking.map(r=>({
+    usuario: r.usuario,
+    porHora: horasOrdenadas.map(h=>{
+      const set = matrizLocais.has(r.usuario) ? matrizLocais.get(r.usuario).get(h) : null;
+      return set ? set.size : 0;
+    }),
+    total: r.locais
+  }));
+  let horasHomem = 0;
+  for(const set of horasPorUsuario.values()) horasHomem += set.size;
+  const totalItens = contagens.length;
+  const totalPecas = contagens.reduce((s,c)=>s+(c.qtFis||0),0);
+  const totalLocais = new Set(contagens.map(c=>c.local)).size;
+  return {
+    ranking, horasOrdenadas, matrizColaboradorHora, horasHomem,
+    itensPorHomemHora: horasHomem>0 ? totalItens/horasHomem : 0,
+    pecasPorHomemHora: horasHomem>0 ? totalPecas/horasHomem : 0,
+    totalItens, totalPecas, totalLocais
+  };
+}
+function irRenderProdMatriz(p){
+  if(!p.matrizColaboradorHora.length) return '<p class="field-hint">Nenhuma contagem no período selecionado.</p>';
+  const horaLabel = h => String(h).padStart(2,'0')+'h';
+  const totalPorHora = p.horasOrdenadas.map((h,i)=>p.matrizColaboradorHora.reduce((s,r)=>s+r.porHora[i],0));
+  return `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>Colaborador</th>
+      ${p.horasOrdenadas.map(h=>`<th class="mono">${horaLabel(h)}</th>`).join('')}
+      <th>Total</th>
+    </tr></thead>
+    <tbody>
+      ${p.matrizColaboradorHora.map(r=>`<tr>
+        <td>${irEsc(r.usuario)}</td>
+        ${r.porHora.map(v=>`<td class="mono">${v>0?irFmtInt(v):'—'}</td>`).join('')}
+        <td class="mono" style="font-weight:700;">${irFmtInt(r.total)}</td>
+      </tr>`).join('')}
+      <tr>
+        <td style="font-weight:700;">Total</td>
+        ${totalPorHora.map(v=>`<td class="mono" style="font-weight:700;">${irFmtInt(v)}</td>`).join('')}
+        <td class="mono" style="font-weight:700;">${irFmtInt(p.totalLocais)}</td>
+      </tr>
+    </tbody>
+  </table></div>`;
+}
 function irRenderProdutividade(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem dados', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  const rank = ind.rankingProdutividade || [];
-  const maxLocais = Math.max(1, ...rank.map(r=>r.locais));
+  const contagens = irProdContagensFiltradas();
+  const p = irCalcProdutividade(contagens);
+  const maxLocais = Math.max(1, ...p.ranking.map(r=>r.locais));
   return `
+    <div class="filter-bar">
+      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">De</label>
+      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.de)}" onchange="irProdSetFilter('de', this.value)">
+      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">Até</label>
+      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.ate)}" onchange="irProdSetFilter('ate', this.value)">
+      ${(IR.prodFilters.de||IR.prodFilters.ate) ? `<button class="btn-link" onclick="irProdSetFilter('de','');IR.prodFilters.ate='';irRenderView();">Limpar filtro</button>` : ''}
+      <label style="display:flex;align-items:center;gap:5px;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);cursor:pointer;">
+        <input type="checkbox" style="width:auto;" ${IR.prodFilters.incluirAbertura?'checked':''} onchange="irProdToggleAbertura()">
+        Incluir contagem de abertura (rodada 1) — exemplo de visualização
+      </label>
+    </div>
+    ${IR.prodFilters.incluirAbertura ? `<p class="field-hint" style="color:var(--orange);margin:-8px 0 12px;">A rodada 1 (abertura do inventário) está incluída só para pré-visualizar o design — por padrão ela não conta como produtividade real de conferência.</p>` : ''}
     <div class="kpi-grid">
-      <div class="kpi-card"><div class="num mono">${irFmtNum(ind.tempoMedioContagemMin,1)}</div><div class="label">Tempo médio por contagem (min)</div></div>
-      <div class="kpi-card"><div class="num mono">${rank.length}</div><div class="label">Colaboradores ativos</div></div>
-      <div class="kpi-card orange"><div class="num mono">${irFmtInt(rank.reduce((s,r)=>s+r.locais,0))}</div><div class="label">Locais contados (soma)</div></div>
+      <div class="kpi-card"><div class="num mono">${p.ranking.length}</div><div class="label">Colaboradores ativos</div></div>
+      <div class="kpi-card orange"><div class="num mono">${irFmtInt(p.totalLocais)}</div><div class="label">Locais contados (distintos)</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(p.totalItens)}</div><div class="label">Itens contados</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(p.totalPecas)}</div><div class="label">Peças contadas</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(p.itensPorHomemHora,1)}</div><div class="label">Itens / Homem-Hora</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(p.pecasPorHomemHora,1)}</div><div class="label">Peças / Homem-Hora</div></div>
+    </div>
+    <p class="field-hint" style="margin:-8px 0 14px;">Homem-hora = nº de blocos de hora distintos em que cada colaborador registrou ao menos 1 contagem (aproximação, sem ponto eletrônico). Total no período: ${irFmtInt(p.horasHomem)} horas-homem.</p>
+    <div class="panel">
+      <h3>Locais por colaborador, hora a hora</h3>
+      <p class="panel-sub">Cada célula é o número de locais distintos que o colaborador contou naquele horário. Janela de expediente: 06h–22h (soma os dias do período filtrado).</p>
+      ${irRenderProdMatriz(p)}
     </div>
     <div class="panel">
       <h3>Ranking de colaboradores (por locais contados)</h3>
-      <div class="rank-list">${rank.map((r,i)=>`<div class="rank-item">
+      <div class="rank-list">${p.ranking.map((r,i)=>`<div class="rank-item">
         <span class="rank-pos">${i+1}</span>
         <div class="rank-bar-wrap">
-          <div class="rank-key"><span>${irEsc(r.usuario)}</span><span class="mono">${r.locais} locais · ${r.itens} itens · ${irFmtNum(r.tempoMedioMin,1)} min/contagem</span></div>
+          <div class="rank-key"><span>${irEsc(r.usuario)}</span><span class="mono">${r.locais} locais · ${r.itens} itens · ${r.horasAtivas}h ativas · ${irFmtNum(r.tempoMedioMin,1)} min/contagem</span></div>
           <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${(r.locais/maxLocais*100).toFixed(0)}%;"></div></div>
         </div>
       </div>`).join('') || '<p class="field-hint">Sem contagens registradas.</p>'}</div>

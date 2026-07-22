@@ -99,29 +99,67 @@ button{ font-family:inherit; cursor:pointer; }
 .btn-link{ background:none; border:none; color:var(--blue); font-size:12px; }
 .btn-danger-text{ background:none; border:none; color:var(--danger); font-size:12px; }
 
-/* ---------- CARDS / PANEL ---------- */
-.panel{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:16px 18px; margin-bottom:16px; }
-.panel h3{ font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-bottom:12px; font-weight:700; }
+/* ---------- CARDS / PANEL (relevo suave, estilo relatório) ---------- */
+.panel{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:16px 18px; margin-bottom:16px;
+  box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 8px 18px -14px rgba(20,24,40,.2);
+}
+:root[data-theme="dark"] .panel{ box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 8px 18px -14px rgba(0,0,0,.5); }
+.panel h3{ font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-bottom:2px; font-weight:700; }
+.panel-sub{ font-size:10.5px; color:var(--ink-soft); margin-bottom:12px; }
 .two-col{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 @media(max-width:900px){ .two-col{ grid-template-columns:1fr; } }
 
-/* ---------- KPI CARDS ---------- */
-.kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:18px; }
+/* ---------- KPI CARDS (estilo Power BI, relevo 3D) ---------- */
+.kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:18px; }
 .kpi-card{
-  background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--blue);
-  border-radius:var(--radius-lg); padding:14px 16px; box-shadow:0 1px 2px rgba(0,26,114,.05);
-  transition:box-shadow .15s, transform .15s;
+  position:relative; background:linear-gradient(180deg,var(--surface) 0%,var(--surface2) 100%);
+  border:1px solid var(--line); border-radius:var(--radius-lg); padding:16px 18px 14px;
+  box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 10px 20px -12px rgba(20,24,40,.18), 0 2px 4px rgba(20,24,40,.06);
+  transition:box-shadow .15s, transform .15s; overflow:hidden;
 }
-.kpi-card:hover{ box-shadow:0 6px 16px rgba(0,26,114,.12); transform:translateY(-1px); }
-.kpi-card.orange{ border-left-color:var(--orange); }
-.kpi-card.good{ border-left-color:var(--success); }
-.kpi-card.bad{ border-left-color:var(--danger); }
-.kpi-card .num{ font-family:'SFMono-Regular',Consolas,monospace; font-size:24px; font-weight:700; color:var(--ink); line-height:1.1; }
-.kpi-card .label{ font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-top:5px; }
+.kpi-card::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background:linear-gradient(90deg,var(--blue),var(--blue-soft));
+}
+.kpi-card.orange::before{ background:linear-gradient(90deg,var(--orange),#FF7A4D); }
+.kpi-card.good::before{ background:linear-gradient(90deg,var(--success),#3DBB7D); }
+.kpi-card.bad::before{ background:linear-gradient(90deg,var(--danger),#E8632F); }
+.kpi-card:hover{ box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 16px 28px -14px rgba(20,24,40,.26), 0 2px 6px rgba(20,24,40,.08); transform:translateY(-2px); }
+:root[data-theme="dark"] .kpi-card{ box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 10px 20px -12px rgba(0,0,0,.5), 0 2px 4px rgba(0,0,0,.3); }
+.kpi-card .num{ font-family:'SFMono-Regular',Consolas,monospace; font-size:25px; font-weight:800; color:var(--ink); line-height:1.1; letter-spacing:-.01em; }
+.kpi-card .label{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); margin-top:6px; }
 .kpi-card .sub{ font-size:10.5px; color:var(--ink-soft); margin-top:6px; }
 .kpi-card .delta{ font-size:10.5px; font-weight:600; margin-top:6px; display:inline-block; padding:1px 6px; border-radius:4px; }
 .kpi-card .delta.up{ color:var(--danger); background:var(--danger-light); }
 .kpi-card .delta.down{ color:var(--success); background:var(--success-light); }
+
+/* ---------- LAYOUT / GRÁFICOS ESTILO RELATÓRIO (Power BI) ---------- */
+.bi-grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.bi-grid-3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+@media(max-width:1000px){ .bi-grid-2,.bi-grid-3{ grid-template-columns:1fr; } }
+
+/* Barras horizontais simples (rankings, top itens) */
+.bi-hbar-row{ display:grid; grid-template-columns:120px 1fr 64px; align-items:center; gap:8px; padding:4px 0; font-size:11.5px; }
+.bi-hbar-label{ color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bi-hbar-track{ background:var(--surface2); border-radius:4px; height:14px; position:relative; overflow:hidden; }
+.bi-hbar-fill{ height:100%; border-radius:4px; background:var(--blue); }
+.bi-hbar-fill.orange{ background:var(--orange); }
+.bi-hbar-fill.neg{ background:var(--danger); }
+.bi-hbar-fill.pos{ background:var(--success); }
+.bi-hbar-val{ text-align:right; font-family:'SFMono-Regular',Consolas,monospace; font-size:11px; color:var(--ink); font-weight:600; }
+
+/* Barras verticais (por dia / por log) */
+.bi-vbars{ display:flex; align-items:flex-end; gap:10px; height:150px; padding-top:10px; }
+.bi-vbar-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:0; }
+.bi-vbar{ width:60%; max-width:34px; border-radius:4px 4px 0 0; background:var(--blue); position:relative; }
+.bi-vbar.orange{ background:var(--orange); }
+.bi-vbar-val{ font-size:10px; font-weight:700; color:var(--ink); margin-bottom:3px; white-space:nowrap; }
+.bi-vbar-label{ font-size:9.5px; color:var(--ink-soft); margin-top:6px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+
+/* Grupo de 3 barras (acurácias por log) */
+.bi-cluster{ display:flex; gap:3px; align-items:flex-end; height:100%; }
+.bi-cluster .bi-vbar{ width:9px; max-width:none; }
 
 .progress-track{ background:var(--surface2); border-radius:100px; height:8px; overflow:hidden; margin-top:8px; }
 .progress-fill{ height:100%; border-radius:100px; background:var(--blue); }
