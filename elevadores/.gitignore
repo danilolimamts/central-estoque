@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+coverage/
+.vite/
+
+# Planilhas reais (dados do negocio) nao entram no repositorio.
+tests/fixtures/*.xlsx
