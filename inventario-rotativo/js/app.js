@@ -508,43 +508,47 @@ function irProdContagensFiltradas(){
     return true;
   });
 }
-/* Calcula ranking, hora-a-hora e homem-hora a partir de um conjunto de contagens já filtrado.
-   "Hora-homem" = nº de blocos de hora distintos em que cada colaborador registrou ao menos
-   1 contagem, somado entre todos — aproximação simples (sem ponto eletrônico), sinalizada na tela. */
+const IR_HORA_INICIO = 6;  // 06:00 — início do expediente de inventário
+const IR_HORA_FIM = 21;    // último bloco de hora do expediente (21:00–22:00)
+/* Calcula ranking, matriz colaborador x hora e homem-hora a partir de um conjunto de
+   contagens já filtrado. "Hora-homem" = nº de blocos de hora distintos (data+hora) em
+   que cada colaborador registrou ao menos 1 contagem, somado entre todos — aproximação
+   simples (sem ponto eletrônico), sinalizada na tela. A matriz colaborador x hora usa
+   só a hora do dia (sem data), fixada na janela 06h–22h de expediente, somando os dias
+   do período filtrado na mesma coluna. */
 function irCalcProdutividade(contagens){
   const porUsuario = new Map();
-  const porHora = new Map();
   const horasPorUsuario = new Map();
-  const matrizLocais = new Map(); // usuario -> Map(hora -> Set(locais))
+  const matrizLocais = new Map(); // usuario -> Map(horaDia -> Set(locais))
   for(const c of contagens){
-    const hora = c.dataInicioContagem.slice(0,13); // YYYY-MM-DDTHH
+    const horaCompleta = c.dataInicioContagem.slice(0,13); // YYYY-MM-DDTHH (p/ homem-hora)
+    const horaDia = parseInt(c.dataInicioContagem.slice(11,13), 10); // 0-23 (p/ matriz)
     if(!porUsuario.has(c.usuario)) porUsuario.set(c.usuario, {usuario:c.usuario, locais:new Set(), itens:0, contagens:0, minutos:0, nMin:0, horas:new Set()});
     const gu = porUsuario.get(c.usuario);
-    gu.locais.add(c.local); gu.itens++; gu.contagens++; gu.horas.add(hora);
+    gu.locais.add(c.local); gu.itens++; gu.contagens++; gu.horas.add(horaCompleta);
     if(c.dataInicioContagem && c.dataFimContagem){
       const ini=new Date(c.dataInicioContagem).getTime(), fim=new Date(c.dataFimContagem).getTime();
       if(fim>ini){ gu.minutos += (fim-ini)/60000; gu.nMin++; }
     }
-    if(!porHora.has(hora)) porHora.set(hora, {hora, locais:new Set(), pecas:0, itens:0});
-    const gh = porHora.get(hora);
-    gh.locais.add(c.local); gh.pecas += (c.qtFis||0); gh.itens++;
     if(!horasPorUsuario.has(c.usuario)) horasPorUsuario.set(c.usuario, new Set());
-    horasPorUsuario.get(c.usuario).add(hora);
-    if(!matrizLocais.has(c.usuario)) matrizLocais.set(c.usuario, new Map());
-    const mu = matrizLocais.get(c.usuario);
-    if(!mu.has(hora)) mu.set(hora, new Set());
-    mu.get(hora).add(c.local);
+    horasPorUsuario.get(c.usuario).add(horaCompleta);
+    if(horaDia>=IR_HORA_INICIO && horaDia<=IR_HORA_FIM){
+      if(!matrizLocais.has(c.usuario)) matrizLocais.set(c.usuario, new Map());
+      const mu = matrizLocais.get(c.usuario);
+      if(!mu.has(horaDia)) mu.set(horaDia, new Set());
+      mu.get(horaDia).add(c.local);
+    }
   }
   const ranking = Array.from(porUsuario.values()).map(g=>({
     usuario:g.usuario, locais:g.locais.size, itens:g.itens, contagens:g.contagens,
     tempoMedioMin: g.nMin>0 ? g.minutos/g.nMin : 0, horasAtivas: g.horas.size
   })).sort((a,b)=>b.locais-a.locais);
-  const horaAHora = Array.from(porHora.values()).map(g=>({hora:g.hora, locais:g.locais.size, pecas:g.pecas, itens:g.itens})).sort((a,b)=>a.hora.localeCompare(b.hora));
-  const horasOrdenadas = horaAHora.map(h=>h.hora);
+  const horasOrdenadas = [];
+  for(let h=IR_HORA_INICIO; h<=IR_HORA_FIM; h++) horasOrdenadas.push(h);
   const matrizColaboradorHora = ranking.map(r=>({
     usuario: r.usuario,
     porHora: horasOrdenadas.map(h=>{
-      const set = matrizLocais.get(r.usuario).get(h);
+      const set = matrizLocais.has(r.usuario) ? matrizLocais.get(r.usuario).get(h) : null;
       return set ? set.size : 0;
     }),
     total: r.locais
@@ -555,15 +559,15 @@ function irCalcProdutividade(contagens){
   const totalPecas = contagens.reduce((s,c)=>s+(c.qtFis||0),0);
   const totalLocais = new Set(contagens.map(c=>c.local)).size;
   return {
-    ranking, horaAHora, horasOrdenadas, matrizColaboradorHora, horasHomem,
+    ranking, horasOrdenadas, matrizColaboradorHora, horasHomem,
     itensPorHomemHora: horasHomem>0 ? totalItens/horasHomem : 0,
     pecasPorHomemHora: horasHomem>0 ? totalPecas/horasHomem : 0,
     totalItens, totalPecas, totalLocais
   };
 }
 function irRenderProdMatriz(p){
-  if(!p.horasOrdenadas.length) return '<p class="field-hint">Nenhuma contagem no período selecionado.</p>';
-  const horaLabel = h => new Date(h+':00:00').toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit'})+'h';
+  if(!p.matrizColaboradorHora.length) return '<p class="field-hint">Nenhuma contagem no período selecionado.</p>';
+  const horaLabel = h => String(h).padStart(2,'0')+'h';
   const totalPorHora = p.horasOrdenadas.map((h,i)=>p.matrizColaboradorHora.reduce((s,r)=>s+r.porHora[i],0));
   return `<div class="table-wrap"><table>
     <thead><tr>
@@ -615,7 +619,7 @@ function irRenderProdutividade(){
     <p class="field-hint" style="margin:-8px 0 14px;">Homem-hora = nº de blocos de hora distintos em que cada colaborador registrou ao menos 1 contagem (aproximação, sem ponto eletrônico). Total no período: ${irFmtInt(p.horasHomem)} horas-homem.</p>
     <div class="panel">
       <h3>Locais por colaborador, hora a hora</h3>
-      <p class="panel-sub">Cada célula é o número de locais distintos que o colaborador contou naquele bloco de hora.</p>
+      <p class="panel-sub">Cada célula é o número de locais distintos que o colaborador contou naquele horário. Janela de expediente: 06h–22h (soma os dias do período filtrado).</p>
       ${irRenderProdMatriz(p)}
     </div>
     <div class="panel">
