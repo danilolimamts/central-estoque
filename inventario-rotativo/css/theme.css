@@ -364,11 +364,3 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .rp-table tr:nth-child(even) td{ background:#F4F5F7; }
 .rp-cols2{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 .rp-footer{ margin-top:22px; padding:14px 16px; background:#EEF0F4; border-radius:10px; font-size:9.5px; color:#6B7280; text-align:center; }
-@media print{
-  body *{ visibility:hidden; }
-  #irPrintArea, #irPrintArea *{ visibility:visible; }
-  #irPrintArea{ display:block; position:absolute; top:0; left:0; width:100%; }
-  @page{ margin:0; }
-  .rp-body{ padding:26px 30px 0; }
-  * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-}

@@ -329,12 +329,12 @@ function irRenderDashboard(){
       ${irRenderPorLogPanel(ind)}
       ${irRenderContadosPorDiaPanel(ind)}
     </div>
-    ${irRenderCalendarioPanel(ind)}
     <div class="bi-grid-2">
       ${irRenderRuasMaisDivergentesPanel(ind)}
       ${irRenderTopItensPanel(ind)}
     </div>
     ${irRenderLogTablePanel(ind)}
+    ${irRenderCalendarioPanel(ind)}
   `;
 }
 const IR_META_DIARIA = 962;
@@ -604,11 +604,34 @@ function irGerarRelatorioEmail(){
       </div>
     </div>
 
-    <p class="rp-footer">📧 Relatório gerado automaticamente pelo módulo Inventário Rotativo. Para enviar por e-mail: use "Salvar como PDF" na janela de impressão e anexe o arquivo.</p>
+    <p class="rp-footer">📧 Boletim gerado automaticamente pelo módulo Inventário Rotativo. Anexe a imagem no seu e-mail.</p>
     </div>
   </div>`;
-  document.getElementById('irPrintArea').innerHTML = html;
-  setTimeout(()=>window.print(), 80);
+  irBaixarBoletimImagem(html, `Boletim_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
+}
+async function irBaixarBoletimImagem(html, nomeArquivo){
+  if(typeof html2canvas==='undefined'){ irShowToast('Não consegui carregar o gerador de imagem (sem internet?).', true); return; }
+  const area = document.getElementById('irPrintArea');
+  area.innerHTML = html;
+  area.style.cssText = 'display:block; position:fixed; left:-99999px; top:0; background:#F4F5F7;';
+  irShowToast('Gerando boletim...');
+  try{
+    await new Promise(r=>setTimeout(r, 60)); // deixa o layout assentar antes de capturar
+    const alvo = area.querySelector('.rp-page');
+    const canvas = await html2canvas(alvo, {backgroundColor:'#F4F5F7', scale:2, useCORS:true});
+    const blob = await new Promise(resolve=>canvas.toBlob(resolve, 'image/png'));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nomeArquivo;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    irShowToast('✓ Boletim baixado! Confira na pasta de downloads.');
+  }catch(err){
+    irShowToast('Erro ao gerar o boletim: '+err.message, true);
+  }finally{
+    area.style.cssText = '';
+    area.innerHTML = '';
+  }
 }
 /* ============================================================
    GESTÃO DO CICLO
