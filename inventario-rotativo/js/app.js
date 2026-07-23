@@ -560,6 +560,7 @@ function irGerarRelatorioEmail(){
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
   const html = `<div class="rp-page">
     <div class="rp-hero">
+      <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
       <div class="rp-hero-badge">Inventário Rotativo</div>
       <h1>📦 Andamento do Ciclo ${c.numero}</h1>
       <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
