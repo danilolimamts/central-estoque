@@ -178,7 +178,9 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
     const obsInventario = String(getVal(row, r843.obsInventario) ?? '').trim();
     const situacaoInventario = String(getVal(row, r843.situacaoInventario) ?? '').trim();
     const situacaoLocal = String(getVal(row, r843.situacaoLocal) ?? '').trim();
-    if(!local || !item) continue;
+    // "Id Item" vem vazio quando o local foi contado e confirmado SEM nenhum item (local
+    // vazio) — isso ainda é um local válido e contado, só não gera uma linha de item.
+    if(!local) continue;
     // Só eventos de Ajuste Inventário Rotativo (Obs começando em "AIR") entram no ciclo —
     // outras tratativas na mesma planilha (ex.: "ADE - Ajuste Auditoria de Estoque") não são deste módulo.
     if(!/^AIR/i.test(obsInventario)) continue;

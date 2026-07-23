@@ -324,11 +324,35 @@ function irRenderDashboard(){
       ${irRenderRuasMaisDivergentesPanel(ind)}
       ${irRenderTopItensPanel(ind)}
     </div>
-    <div class="panel">
-      <h3>Locais em andamento agora</h3>
-      ${irLocaisEmAndamentoTable()}
-    </div>
+    ${irRenderLogTablePanel(ind)}
   `;
+}
+function irRenderLogTablePanel(ind){
+  const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)').slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  if(!rows.length) return '';
+  const meta = ind.meta;
+  return `<div class="panel">
+    <h3>Acurácia por Log</h3>
+    <p class="panel-sub">Locais orçados x contados (Grupo Classe da base congelada), peças e acurácias por log.</p>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Log</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Divergentes</th>
+        <th>Peças Contadas</th><th>Peças Divergentes</th>
+        <th>Acurácia Peças</th><th>Locais</th><th>Valor</th>
+      </tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td class="mono">${irEsc(r.chave)}</td>
+        <td class="mono">${irFmtInt(r.locaisOrcados)}</td>
+        <td class="mono">${irFmtInt(r.locaisContados)}</td>
+        <td class="mono">${irFmtInt(r.locaisDivergentes)}</td>
+        <td class="mono">${irFmtInt(r.pecasContadas)}</td>
+        <td class="mono">${irFmtInt(r.pecasDivergentes)}</td>
+        <td class="mono" style="${irHeatStyle(r.acuraciaPecas, meta)}">${irFmtPct(r.acuraciaPecas)}</td>
+        <td class="mono" style="${irHeatStyle(r.acuraciaPosicoes, meta)}">${irFmtPct(r.acuraciaPosicoes)}</td>
+        <td class="mono" style="${irHeatStyle(r.acuraciaValor, meta)}">${irFmtPct(r.acuraciaValor)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
 }
 function irHeatStyle(val, meta){
   const t = Math.max(0, Math.min(1, meta>0 ? val/meta : val));
@@ -497,21 +521,6 @@ function irGerarRelatorioEmail(){
   document.getElementById('irPrintArea').innerHTML = html;
   setTimeout(()=>window.print(), 80);
 }
-function irLocaisEmAndamentoTable(){
-  const porLocal = new Map();
-  for(const c of IR.contagens){
-    if(!porLocal.has(c.local)) porLocal.set(c.local, {local:c.local, desc:c.descricaoLocal, rodadas:0, usuario:c.usuario, ultimaData:''});
-    const g = porLocal.get(c.local);
-    g.rodadas = Math.max(g.rodadas, c.idConferencia);
-    if(c.dataFimContagem > g.ultimaData){ g.ultimaData = c.dataFimContagem; g.usuario = c.usuario; }
-  }
-  const rows = Array.from(porLocal.values()).sort((a,b)=>b.ultimaData.localeCompare(a.ultimaData)).slice(0,30);
-  if(!rows.length) return '<p class="field-hint">Nenhuma contagem registrada ainda.</p>';
-  return `<div class="table-wrap"><table><thead><tr><th>Local</th><th>Descrição</th><th>Rodada atual</th><th>Colaborador</th><th>Última atualização</th></tr></thead>
-    <tbody>${rows.map(r=>`<tr><td class="mono">${irEsc(r.local)}</td><td>${irEsc(r.desc)}</td><td class="mono">${r.rodadas}</td><td>${irEsc(r.usuario)}</td><td>${r.ultimaData?new Date(r.ultimaData).toLocaleString('pt-BR'):'—'}</td></tr>`).join('')}</tbody>
-  </table></div>`;
-}
-
 /* ============================================================
    GESTÃO DO CICLO
    ============================================================ */
