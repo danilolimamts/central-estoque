@@ -171,6 +171,32 @@ button{ font-family:inherit; cursor:pointer; }
 .kpi-tile .label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-top:5px; }
 .kpi-tile .meta-hint{ font-size:9px; color:var(--ink-soft); margin-top:3px; }
 
+/* ---------- CALENDÁRIO DE METAS ---------- */
+.ir-cal-month{ margin-bottom:20px; }
+.ir-cal-month:last-child{ margin-bottom:0; }
+.ir-cal-month-title{ font-size:12.5px; font-weight:800; color:var(--ink); margin-bottom:10px; }
+.ir-cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.ir-cal-grid.ir-cal-head{ margin-bottom:6px; }
+.ir-cal-dow{ text-align:center; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); }
+.ir-cal-cell{
+  border-radius:10px; padding:8px 4px 7px; text-align:center; min-height:66px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+}
+.ir-cal-cell.filler{ background:transparent; }
+.ir-cal-cell.neutral{ background:var(--surface2); color:var(--ink-soft); }
+.ir-cal-cell.neutral .cal-day{ opacity:.6; }
+.ir-cal-cell.good{
+  background:linear-gradient(160deg,#3DBB7D 0%,#1F8A52 100%); color:#fff;
+  box-shadow:0 8px 16px -8px rgba(31,138,82,.5), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.ir-cal-cell.bad{
+  background:linear-gradient(160deg,#E8632F 0%,#C83812 100%); color:#fff;
+  box-shadow:0 8px 16px -8px rgba(200,56,18,.5), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.ir-cal-cell .cal-day{ font-size:10.5px; font-weight:700; }
+.ir-cal-cell .cal-icon{ font-size:13px; line-height:1; }
+.ir-cal-cell .cal-total{ font-size:11.5px; font-weight:800; }
+
 /* ---------- LAYOUT / GRÁFICOS ESTILO RELATÓRIO (Power BI) ---------- */
 .bi-grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .bi-grid-3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
@@ -193,6 +219,8 @@ button{ font-family:inherit; cursor:pointer; }
 .bi-vbar.orange{ background:var(--orange); }
 .bi-vbar-val{ font-size:10px; font-weight:700; color:var(--ink); margin-bottom:3px; white-space:nowrap; }
 .bi-vbar-label{ font-size:9.5px; color:var(--ink-soft); margin-top:6px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.bi-vbar-pcts{ display:flex; flex-direction:column; align-items:center; gap:1px; font-size:9.5px; font-weight:700; margin-bottom:4px; }
+.bi-vbar-sub{ font-size:9px; color:var(--ink-soft); margin-top:2px; }
 
 /* Grupo de 3 barras (acurácias por log) */
 .bi-cluster{ display:flex; gap:3px; align-items:flex-end; height:100%; }
