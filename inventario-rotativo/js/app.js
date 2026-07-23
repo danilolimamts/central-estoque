@@ -334,7 +334,50 @@ function irRenderDashboard(){
       ${irRenderTopItensPanel(ind)}
     </div>
     ${irRenderLogTablePanel(ind)}
+    ${irRenderCalendarioPanel(ind)}
   `;
+}
+const IR_META_DIARIA = 962;
+function irRenderCalendarioPanel(ind){
+  const rows = ind.contadosPorDia||[];
+  if(!rows.length) return '';
+  const porDia = new Map(rows.map(r=>[r.dia, r.total]));
+  const meses = Array.from(new Set(rows.map(r=>r.dia.slice(0,7)))).sort();
+  const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const mesesHtml = meses.map(mes=>{
+    const [ano, mesNum] = mes.split('-').map(Number);
+    const primeiroDia = new Date(ano, mesNum-1, 1);
+    const ultimoDia = new Date(ano, mesNum, 0).getDate();
+    const offset = primeiroDia.getDay();
+    const cells = [];
+    for(let i=0;i<offset;i++) cells.push('<div class="ir-cal-cell filler"></div>');
+    for(let d=1; d<=ultimoDia; d++){
+      const diaStr = mes+'-'+String(d).padStart(2,'0');
+      const total = porDia.get(diaStr);
+      if(total===undefined){
+        cells.push(`<div class="ir-cal-cell neutral"><div class="cal-day">${d}</div></div>`);
+      } else {
+        const bateu = total>=IR_META_DIARIA;
+        cells.push(`<div class="ir-cal-cell ${bateu?'good':'bad'}" title="${irFmtInt(total)} de ${irFmtInt(IR_META_DIARIA)}">
+          <div class="cal-day">${d}</div>
+          <div class="cal-icon">${bateu?'✅':'⚠️'}</div>
+          <div class="cal-total mono">${irFmtInt(total)}</div>
+        </div>`);
+      }
+    }
+    const nomeMesRaw = primeiroDia.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+    const nomeMes = nomeMesRaw.charAt(0).toUpperCase()+nomeMesRaw.slice(1);
+    return `<div class="ir-cal-month">
+      <div class="ir-cal-month-title">${irEsc(nomeMes)}</div>
+      <div class="ir-cal-grid ir-cal-head">${diasSemana.map(d=>`<div class="ir-cal-dow">${d}</div>`).join('')}</div>
+      <div class="ir-cal-grid">${cells.join('')}</div>
+    </div>`;
+  }).join('');
+  return `<div class="panel">
+    <h3>Calendário de Metas</h3>
+    <p class="panel-sub">Meta diária: ${irFmtInt(IR_META_DIARIA)} posições contadas · verde = bateu a meta, vermelho = abaixo da meta, cinza = sem contagem.</p>
+    ${mesesHtml}
+  </div>`;
 }
 function irRenderLogTablePanel(ind){
   const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)').slice().sort((a,b)=>a.chave.localeCompare(b.chave));
@@ -399,17 +442,22 @@ function irRenderPorLogPanel(ind){
   const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   if(!rows.length) return `<div class="panel"><h3>Acurácias e NET por Log</h3><p class="field-hint">Nenhum log com locais contados ainda.</p></div>`;
   return `<div class="panel">
-    <h3>Acurácias e NET por Log</h3>
-    <p class="panel-sub">Grupo Classe da base congelada · barras: peças / posições / valores.</p>
+    <h3>Acurácias por Log</h3>
+    <p class="panel-sub">Grupo Classe da base congelada · barras e percentuais: peças / posições / valores.</p>
     <div class="bi-vbars">
       ${rows.map(r=>`<div class="bi-vbar-col">
-        <div class="bi-vbar-val">${irFmtMoney(r.valorDivergenteLiquido)}</div>
+        <div class="bi-vbar-pcts">
+          <span class="mono" style="color:var(--blue);">${irFmtPct(r.acuraciaPecas)}</span>
+          <span class="mono" style="color:var(--orange);">${irFmtPct(r.acuraciaPosicoes)}</span>
+          <span class="mono" style="color:var(--blue-soft);">${irFmtPct(r.acuraciaValor)}</span>
+        </div>
         <div class="bi-cluster" style="height:100px;">
           <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}%;" title="Peças: ${irFmtPct(r.acuraciaPecas)}"></div>
           <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}%;" title="Posições: ${irFmtPct(r.acuraciaPosicoes)}"></div>
           <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}%;background:var(--blue-soft);" title="Valores: ${irFmtPct(r.acuraciaValor)}"></div>
         </div>
         <div class="bi-vbar-label">${irEsc(r.chave)}</div>
+        <div class="bi-vbar-sub mono">NET ${irFmtMoney(r.valorDivergenteLiquido)}</div>
       </div>`).join('')}
     </div>
     <p class="field-hint" style="margin-top:8px;">
@@ -512,6 +560,7 @@ function irGerarRelatorioEmail(){
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
   const html = `<div class="rp-page">
     <div class="rp-hero">
+      <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
       <div class="rp-hero-badge">Inventário Rotativo</div>
       <h1>📦 Andamento do Ciclo ${c.numero}</h1>
       <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
@@ -556,11 +605,34 @@ function irGerarRelatorioEmail(){
       </div>
     </div>
 
-    <p class="rp-footer">📧 Relatório gerado automaticamente pelo módulo Inventário Rotativo. Para enviar por e-mail: use "Salvar como PDF" na janela de impressão e anexe o arquivo.</p>
+    <p class="rp-footer">📧 Boletim gerado automaticamente pelo módulo Inventário Rotativo. Anexe a imagem no seu e-mail.</p>
     </div>
   </div>`;
-  document.getElementById('irPrintArea').innerHTML = html;
-  setTimeout(()=>window.print(), 80);
+  irBaixarBoletimImagem(html, `Boletim_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
+}
+async function irBaixarBoletimImagem(html, nomeArquivo){
+  if(typeof html2canvas==='undefined'){ irShowToast('Não consegui carregar o gerador de imagem (sem internet?).', true); return; }
+  const area = document.getElementById('irPrintArea');
+  area.innerHTML = html;
+  area.style.cssText = 'display:block; position:fixed; left:-99999px; top:0; background:#F4F5F7;';
+  irShowToast('Gerando boletim...');
+  try{
+    await new Promise(r=>setTimeout(r, 60)); // deixa o layout assentar antes de capturar
+    const alvo = area.querySelector('.rp-page');
+    const canvas = await html2canvas(alvo, {backgroundColor:'#F4F5F7', scale:2, useCORS:true});
+    const blob = await new Promise(resolve=>canvas.toBlob(resolve, 'image/png'));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nomeArquivo;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    irShowToast('✓ Boletim baixado! Confira na pasta de downloads.');
+  }catch(err){
+    irShowToast('Erro ao gerar o boletim: '+err.message, true);
+  }finally{
+    area.style.cssText = '';
+    area.innerHTML = '';
+  }
 }
 /* ============================================================
    GESTÃO DO CICLO

@@ -50,9 +50,12 @@ button{ font-family:inherit; cursor:pointer; }
   overflow:hidden;
 }
 .sidebar.collapsed{ width:56px; }
-.sidebar .brand{ display:flex; align-items:center; gap:10px; padding:16px 14px; border-bottom:1px solid rgba(255,255,255,.12); flex-shrink:0; }
-.sidebar .brand-name{ font-weight:700; font-size:13.5px; white-space:nowrap; overflow:hidden; }
+.sidebar .brand{ display:flex; align-items:center; gap:10px; padding:14px; border-bottom:1px solid rgba(255,255,255,.12); flex-shrink:0; }
+.brand-logo-chip{ background:#fff; border-radius:7px; padding:5px 7px; display:flex; align-items:center; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,.15); }
+.brand-logo-img{ height:22px; width:auto; display:block; }
+.sidebar .brand-name{ font-weight:700; font-size:13px; white-space:nowrap; overflow:hidden; color:rgba(255,255,255,.9); }
 .sidebar .brand-sub{ font-size:10px; color:rgba(255,255,255,.6); white-space:nowrap; }
+.sidebar.collapsed .brand-logo-chip{ display:none; }
 .sidebar-toggle{ background:none; border:none; color:#fff; opacity:.7; padding:4px; margin-left:auto; }
 .sidebar-toggle:hover{ opacity:1; }
 .sidebar-nav{ flex:1; overflow-y:auto; padding:8px 0; }
@@ -171,6 +174,32 @@ button{ font-family:inherit; cursor:pointer; }
 .kpi-tile .label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-top:5px; }
 .kpi-tile .meta-hint{ font-size:9px; color:var(--ink-soft); margin-top:3px; }
 
+/* ---------- CALENDÁRIO DE METAS ---------- */
+.ir-cal-month{ margin-bottom:20px; }
+.ir-cal-month:last-child{ margin-bottom:0; }
+.ir-cal-month-title{ font-size:12.5px; font-weight:800; color:var(--ink); margin-bottom:10px; }
+.ir-cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.ir-cal-grid.ir-cal-head{ margin-bottom:6px; }
+.ir-cal-dow{ text-align:center; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); }
+.ir-cal-cell{
+  border-radius:10px; padding:8px 4px 7px; text-align:center; min-height:66px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+}
+.ir-cal-cell.filler{ background:transparent; }
+.ir-cal-cell.neutral{ background:var(--surface2); color:var(--ink-soft); }
+.ir-cal-cell.neutral .cal-day{ opacity:.6; }
+.ir-cal-cell.good{
+  background:linear-gradient(160deg,#3DBB7D 0%,#1F8A52 100%); color:#fff;
+  box-shadow:0 8px 16px -8px rgba(31,138,82,.5), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.ir-cal-cell.bad{
+  background:linear-gradient(160deg,#E8632F 0%,#C83812 100%); color:#fff;
+  box-shadow:0 8px 16px -8px rgba(200,56,18,.5), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.ir-cal-cell .cal-day{ font-size:10.5px; font-weight:700; }
+.ir-cal-cell .cal-icon{ font-size:13px; line-height:1; }
+.ir-cal-cell .cal-total{ font-size:11.5px; font-weight:800; }
+
 /* ---------- LAYOUT / GRÁFICOS ESTILO RELATÓRIO (Power BI) ---------- */
 .bi-grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .bi-grid-3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
@@ -193,6 +222,8 @@ button{ font-family:inherit; cursor:pointer; }
 .bi-vbar.orange{ background:var(--orange); }
 .bi-vbar-val{ font-size:10px; font-weight:700; color:var(--ink); margin-bottom:3px; white-space:nowrap; }
 .bi-vbar-label{ font-size:9.5px; color:var(--ink-soft); margin-top:6px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.bi-vbar-pcts{ display:flex; flex-direction:column; align-items:center; gap:1px; font-size:9.5px; font-weight:700; margin-bottom:4px; }
+.bi-vbar-sub{ font-size:9px; color:var(--ink-soft); margin-top:2px; }
 
 /* Grupo de 3 barras (acurácias por log) */
 .bi-cluster{ display:flex; gap:3px; align-items:flex-end; height:100%; }
@@ -301,6 +332,7 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
   color:#fff; padding:28px 30px 34px; position:relative; overflow:hidden;
 }
 .rp-hero::after{ content:''; position:absolute; right:-40px; top:-40px; width:180px; height:180px; border-radius:50%; background:radial-gradient(circle,rgba(250,70,22,.35),transparent 70%); }
+.rp-hero-logo{ display:block; height:34px; width:auto; margin-bottom:12px; filter:brightness(0) invert(1); }
 .rp-hero-badge{ display:inline-block; background:var(--orange,#FA4616); color:#fff; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; padding:4px 12px; border-radius:100px; margin-bottom:10px; box-shadow:0 4px 10px rgba(250,70,22,.4); }
 .rp-hero h1{ font-size:26px; font-weight:800; line-height:1.15; }
 .rp-hero p{ font-size:12px; color:#C7CEEA; margin-top:6px; }
@@ -336,11 +368,3 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .rp-table tr:nth-child(even) td{ background:#F4F5F7; }
 .rp-cols2{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 .rp-footer{ margin-top:22px; padding:14px 16px; background:#EEF0F4; border-radius:10px; font-size:9.5px; color:#6B7280; text-align:center; }
-@media print{
-  body *{ visibility:hidden; }
-  #irPrintArea, #irPrintArea *{ visibility:visible; }
-  #irPrintArea{ display:block; position:absolute; top:0; left:0; width:100%; }
-  @page{ margin:0; }
-  .rp-body{ padding:26px 30px 0; }
-  * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-}
