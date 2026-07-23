@@ -364,7 +364,7 @@ function irRenderPorRuaPanel(ind){
   if(!rows.length) return '';
   const meta = ind.meta;
   return `<div class="panel">
-    <h3>Divergência por Rua</h3>
+    <h3>Resumo por Setor</h3>
     <p class="panel-sub">Locais orçados x contados (coluna X1 da base congelada), peças e acurácias por rua.</p>
     <div class="table-wrap"><table>
       <thead><tr>
