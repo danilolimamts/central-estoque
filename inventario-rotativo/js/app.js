@@ -16,7 +16,8 @@ const IR = {
   auditFilters:{minPrioridade:0},
   prodFilters:{de:'', ate:''},
   compararA:null, compararB:null,
-  novoCiclo:false
+  novoCiclo:false,
+  _porDiaRua:{}
 };
 
 function irEsc(v){ if(v===undefined||v===null) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -414,17 +415,49 @@ function irRenderContadosPorDiaPanel(ind){
   const rows = ind.contadosPorDia||[];
   if(!rows.length) return `<div class="panel"><h3>Contados por Dia</h3><p class="field-hint">Nenhuma contagem registrada ainda.</p></div>`;
   const max = Math.max(1, ...rows.map(r=>r.total));
+  IR._porDiaRua = ind.porDiaRua||{};
   return `<div class="panel">
     <h3>Contados por Dia</h3>
-    <p class="panel-sub">Volume de posições contadas por dia (exclui a contagem de abertura).</p>
+    <p class="panel-sub">Volume de posições contadas por dia (exclui a contagem de abertura). Passe o mouse na barra para ver o detalhe por Rua.</p>
     <div class="bi-vbars">
-      ${rows.map(r=>`<div class="bi-vbar-col">
+      ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowDiaTooltip(event,'${r.dia}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
         <div class="bi-vbar-val">${irFmtInt(r.total)}</div>
         <div class="bi-vbar orange" style="height:${Math.round(r.total/max*100)}%;"></div>
         <div class="bi-vbar-label">${new Date(r.dia+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>
       </div>`).join('')}
     </div>
   </div>`;
+}
+function irShowDiaTooltip(ev, dia){
+  const rows = (IR._porDiaRua||{})[dia]||[];
+  const tt = document.getElementById('irChartTooltip');
+  if(!tt) return;
+  const totalLocais = rows.reduce((s,r)=>s+r.locais,0);
+  const totalPecas = rows.reduce((s,r)=>s+r.pecasContadas,0);
+  const totalDiv = rows.reduce((s,r)=>s+r.pecasDivergentes,0);
+  const dataLabel = new Date(dia+'T00:00:00').toLocaleDateString('pt-BR');
+  tt.innerHTML = `<div class="ct-title">${dataLabel}</div>
+    <table><thead><tr><th>Rua</th><th>Locais</th><th>Peças</th><th>Peças Div.</th></tr></thead>
+    <tbody>${rows.length ? rows.map(r=>`<tr><td>${irEsc(r.rua)}</td><td class="mono">${irFmtInt(r.locais)}</td><td class="mono">${irFmtInt(r.pecasContadas)}</td><td class="mono">${irFmtInt(r.pecasDivergentes)}</td></tr>`).join('') : '<tr><td colspan="4">Sem detalhe</td></tr>'}</tbody>
+    <tfoot><tr><td>Total</td><td class="mono">${irFmtInt(totalLocais)}</td><td class="mono">${irFmtInt(totalPecas)}</td><td class="mono">${irFmtInt(totalDiv)}</td></tr></tfoot>
+    </table>`;
+  tt.classList.remove('hidden');
+  irMoveDiaTooltip(ev);
+}
+function irMoveDiaTooltip(ev){
+  const tt = document.getElementById('irChartTooltip');
+  if(!tt || tt.classList.contains('hidden')) return;
+  const pad = 14;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+  const rect = tt.getBoundingClientRect();
+  if(x + rect.width > window.innerWidth) x = ev.clientX - rect.width - pad;
+  if(y + rect.height > window.innerHeight) y = ev.clientY - rect.height - pad;
+  tt.style.left = x+'px';
+  tt.style.top = y+'px';
+}
+function irHideDiaTooltip(){
+  const tt = document.getElementById('irChartTooltip');
+  if(tt) tt.classList.add('hidden');
 }
 function irRenderRuasMaisDivergentesPanel(ind){
   const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)' && r.valorDivergenteAbsoluto>0).slice().sort((a,b)=>b.valorDivergenteAbsoluto-a.valorDivergenteAbsoluto).slice(0,8);

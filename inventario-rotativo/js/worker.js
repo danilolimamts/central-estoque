@@ -457,6 +457,38 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     .map(([dia,set])=>({dia, total:set.size}))
     .sort((a,b)=>a.dia.localeCompare(b.dia));
 
+  // Detalhe por dia x Rua (X1), para o tooltip do gráfico "Contados por Dia":
+  // locais distintos, peças contadas (soma do QT_FIS do dia) e peças divergentes
+  // (soma de |Diferença| das divergências daquele dia, casadas pelo Local).
+  const congeladosPorId = new Map(congelados.map(l=>[l.idLocal, l]));
+  const diaRuaMap = new Map(); // dia -> Map(rua -> {locais:Set, pecasContadas, pecasDivergentes})
+  function getOrInitDiaRua(dia, rua){
+    if(!diaRuaMap.has(dia)) diaRuaMap.set(dia, new Map());
+    const porRuaDoDia = diaRuaMap.get(dia);
+    if(!porRuaDoDia.has(rua)) porRuaDoDia.set(rua, {locais:new Set(), pecasContadas:0, pecasDivergentes:0});
+    return porRuaDoDia.get(rua);
+  }
+  for(const c of contagens){
+    if(c.idConferencia<=1 || !c.dataInicioContagem) continue;
+    const dia = c.dataInicioContagem.slice(0,10);
+    const rua = (congeladosPorId.get(c.local)||{}).x1 || '(sem rua)';
+    const g = getOrInitDiaRua(dia, rua);
+    g.locais.add(c.local);
+    g.pecasContadas += c.qtFis;
+  }
+  for(const d of divergencias){
+    if(!d.dataInicio) continue;
+    const rua = (congeladosPorId.get(d.local)||{}).x1 || '(sem rua)';
+    const g = getOrInitDiaRua(d.dataInicio, rua);
+    g.pecasDivergentes += Math.abs(d.diferenca);
+  }
+  const porDiaRua = {};
+  for(const [dia, porRuaDoDia] of diaRuaMap){
+    porDiaRua[dia] = Array.from(porRuaDoDia.entries())
+      .map(([rua,g])=>({rua, locais:g.locais.size, pecasContadas:g.pecasContadas, pecasDivergentes:g.pecasDivergentes}))
+      .sort((a,b)=>b.locais-a.locais);
+  }
+
   // Saldo líquido por item (para ranking de maiores sobras/faltas)
   const porItemSaldo = new Map();
   for(const d of divergencias){
@@ -496,6 +528,6 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensDivergentes, valorDivergenteLiquido, valorDivergenteAbsoluto,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade, porRua, porLog, contadosPorDia, topItensPositivos, topItensNegativos
+    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, topItensPositivos, topItensNegativos
   };
 }
