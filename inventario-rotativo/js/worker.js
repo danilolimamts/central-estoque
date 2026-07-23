@@ -8,6 +8,10 @@ importScripts('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
 importScripts('./rules.js');
 importScripts('./db.js');
 
+// Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
+// pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
+const IR_INDICADORES_VERSION = 2;
+
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
   if(typeof v === 'number') return v;
@@ -523,6 +527,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   })).sort((a,b)=>b.locais-a.locais);
 
   return {
+    _v: IR_INDICADORES_VERSION,
     locaisCongelados, locaisContadosTotal, locaisConcluidos, locaisPendentes, locaisEmContagem, locaisNaoIniciados,
     andamentoCiclo, acuraciaPecas, acuraciaLocal, acuraciaValor, meta: IR_META_ACURACIA,
     itensDivergentes, valorDivergenteLiquido, valorDivergenteAbsoluto,
