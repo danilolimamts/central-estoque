@@ -57,6 +57,11 @@
         <p id="tabSubtitle">Visão geral do ciclo ativo.</p>
       </div>
       <input class="global-search" id="globalSearch" type="text" placeholder="Pesquisa global (item, local, colaborador)...">
+      <div class="zoom-ctrl" title="Zoom da tela">
+        <button onclick="irZoomOut()" aria-label="Diminuir zoom">−</button>
+        <span id="zoomLabel">100%</span>
+        <button onclick="irZoomIn()" aria-label="Aumentar zoom">+</button>
+      </div>
       <div class="cycle-badge" id="cycleBadge">Nenhum ciclo ativo</div>
     </div>
     <div class="page-scroll">
@@ -66,6 +71,7 @@
 </div>
 
 <div id="toast" class="toast hidden"></div>
+<div id="irPrintArea"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="js/db.js"></script>
