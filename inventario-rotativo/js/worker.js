@@ -409,6 +409,8 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     const acuraciaPosicoes = clamp01(baseLocais>0 ? 1-(locaisComDivergencia.size/baseLocais) : 1);
     return {
       acuraciaPecas, acuraciaValor, acuraciaPosicoes,
+      pecasContadas: totalPecasGrupo, pecasDivergentes: totalDiferencaAbs,
+      locaisDivergentes: locaisComDivergencia.size,
       valorDivergenteLiquido: divs.reduce((s,d)=>s+d.vlDivergencia,0),
       valorDivergenteAbsoluto: totalVlDivergenciaAbs
     };
@@ -431,15 +433,17 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const porRua = agruparPor('x1', '(sem rua)');
   const porLog = agruparPor('grupoClasse', '(sem log)');
 
-  // Volume contado por dia (exclui contagem 1 = abertura)
+  // Locais distintos contados por dia (contagens já filtradas por AIR + Liquidado;
+  // exclui a rodada 1 = abertura). Conta o LOCAL uma vez por dia, não a linha/item.
   const porDiaMap = new Map();
   for(const c of contagens){
     if(c.idConferencia<=1 || !c.dataInicioContagem) continue;
     const dia = c.dataInicioContagem.slice(0,10);
-    porDiaMap.set(dia, (porDiaMap.get(dia)||0)+1);
+    if(!porDiaMap.has(dia)) porDiaMap.set(dia, new Set());
+    porDiaMap.get(dia).add(c.local);
   }
   const contadosPorDia = Array.from(porDiaMap.entries())
-    .map(([dia,total])=>({dia,total}))
+    .map(([dia,set])=>({dia, total:set.size}))
     .sort((a,b)=>a.dia.localeCompare(b.dia));
 
   // Saldo líquido por item (para ranking de maiores sobras/faltas)

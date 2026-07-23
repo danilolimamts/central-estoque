@@ -138,6 +138,37 @@ button{ font-family:inherit; cursor:pointer; }
 .kpi-card .delta.up{ color:var(--danger); background:var(--danger-light); }
 .kpi-card .delta.down{ color:var(--success); background:var(--success-light); }
 
+/* ---------- BLOCOS TEMÁTICOS DE KPI (Peças/Locais/Valor/Ciclo) ---------- */
+.kpi-blocks{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin-bottom:18px; }
+.kpi-block{
+  border-radius:var(--radius-lg); overflow:hidden; background:var(--surface); border:1px solid var(--line);
+  box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 10px 20px -12px rgba(20,24,40,.18);
+}
+:root[data-theme="dark"] .kpi-block{ box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 10px 20px -12px rgba(0,0,0,.5); }
+.kpi-block-header{
+  display:flex; align-items:center; gap:8px; padding:9px 14px; color:#fff; font-weight:800;
+  font-size:11.5px; text-transform:uppercase; letter-spacing:.05em;
+}
+.kpi-block-header .bh-icon{ font-size:17px; }
+.kpi-block.theme-orange .kpi-block-header{ background:linear-gradient(90deg,var(--orange),#FF7A4D); }
+.kpi-block.theme-blue .kpi-block-header{ background:linear-gradient(90deg,var(--blue),var(--blue-soft)); }
+.kpi-block.theme-black .kpi-block-header{ background:linear-gradient(90deg,#1D1F2A,#3A3D4D); }
+.kpi-block.theme-neutral .kpi-block-header{ background:linear-gradient(90deg,#6B7280,#8B93A3); }
+.kpi-block-body{ display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:2px; background:var(--line); }
+.kpi-tile{ background:var(--surface); padding:14px 12px; text-align:center; }
+.kpi-tile .kt-icon{
+  width:38px; height:38px; margin:0 auto 8px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:19px;
+  box-shadow:0 3px 6px rgba(0,0,0,.15), inset 0 1px 2px rgba(255,255,255,.5), inset 0 -2px 3px rgba(0,0,0,.12);
+}
+.kpi-block.theme-orange .kt-icon{ background:radial-gradient(circle at 32% 28%, #FFD9C7, var(--orange-light)); }
+.kpi-block.theme-blue .kt-icon{ background:radial-gradient(circle at 32% 28%, #DCE3F7, var(--blue-light)); }
+.kpi-block.theme-black .kt-icon{ background:radial-gradient(circle at 32% 28%, #CBCDD6, #E3E4E9); }
+.kpi-block.theme-neutral .kt-icon{ background:radial-gradient(circle at 32% 28%, #E8E9EC, var(--surface2)); }
+.kpi-tile .num{ font-family:'SFMono-Regular',Consolas,monospace; font-size:20px; font-weight:800; color:var(--ink); line-height:1.1; }
+.kpi-tile .num.bad{ color:var(--danger); } .kpi-tile .num.good{ color:var(--success); }
+.kpi-tile .label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-top:5px; }
+.kpi-tile .meta-hint{ font-size:9px; color:var(--ink-soft); margin-top:3px; }
+
 /* ---------- LAYOUT / GRÁFICOS ESTILO RELATÓRIO (Power BI) ---------- */
 .bi-grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .bi-grid-3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
