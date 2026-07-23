@@ -272,41 +272,48 @@ function irUpdateProgressUI(){
 /* ============================================================
    DASHBOARD EXECUTIVO
    ============================================================ */
+function irKpiTile(icon, val, label, cls, hint){
+  return `<div class="kpi-tile"><div class="kt-icon">${icon}</div><div class="num mono ${cls||''}">${val}</div><div class="label">${label}</div>${hint?`<div class="meta-hint">${hint}</div>`:''}</div>`;
+}
+function irKpiBlock(theme, icon, title, tilesHtml){
+  return `<div class="kpi-block theme-${theme}">
+    <div class="kpi-block-header"><span class="bh-icon">${icon}</span>${title}</div>
+    <div class="kpi-block-body">${tilesHtml}</div>
+  </div>`;
+}
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  const kpis = [
-    ['Acurácia Peças', irFmtPct(ind.acuraciaPecas), ind.acuraciaPecas>=ind.meta?'good':'bad', ind.acuraciaPecas],
-    ['Acurácia Local', irFmtPct(ind.acuraciaLocal), ind.acuraciaLocal>=ind.meta?'good':'bad', ind.acuraciaLocal],
-    ['Acurácia Valor', irFmtPct(ind.acuraciaValor), ind.acuraciaValor>=ind.meta?'good':'bad', ind.acuraciaValor],
-    ['Meta', irFmtPct(ind.meta), '', null],
-    ['Andamento do Ciclo', irFmtPct(ind.andamentoCiclo), '', ind.andamentoCiclo],
-    ['Locais Concluídos', irFmtInt(ind.locaisConcluidos), '', null],
-    ['Locais Pendentes', irFmtInt(ind.locaisPendentes), 'orange', null],
-    ['Itens Divergentes', irFmtInt(ind.itensDivergentes), 'orange', null],
-    ['Valor Financeiro Divergente', irFmtMoney(ind.valorDivergenteAbsoluto), 'bad', null],
-    ['Qtd. de Recontagens', irFmtInt(ind.qtdRecontagens), '', null],
-    ['Tempo Médio (min/contagem)', irFmtNum(ind.tempoMedioContagemMin,1), '', null],
-    ['Dias Restantes', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), '', null],
-    ['Eficiência', irFmtPct(ind.eficiencia), ind.eficiencia>=0.8?'good':(ind.eficiencia>=0.5?'orange':'bad'), null]
-  ];
-  const ringRow = (label, val, meta)=>`<div class="panel">
-    <h3>${label}</h3>
-    <div class="num mono" style="font-size:28px;">${irFmtPct(val)}</div>
-    <div class="progress-track"><div class="progress-fill ${val>=meta?'good':'orange'}" style="width:${Math.min(100,val*100)}%;"></div></div>
-    <div class="field-hint" style="margin-top:6px;">Meta: ${irFmtPct(meta)}</div>
-  </div>`;
+  // Cada bloco tem sempre 3 bullets, no mesmo formato: ícone + acurácia (com meta),
+  // + volume principal, + divergência/pendência. Os demais indicadores (itens
+  // divergentes, recontagens, tempo médio etc.) continuam na aba Indicadores.
+  const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
+  const blocoPecas = irKpiBlock('orange','📦','Peças',
+    irKpiTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint) +
+    irKpiTile('📦', irFmtInt(ind.pecasContadas), 'Peças Contadas', '', 'total físico') +
+    irKpiTile('⚠️', irFmtInt(ind.pecasDivergentes), 'Peças Divergentes', 'bad', irFmtInt(ind.itensDivergentes)+' itens')
+  );
+  const blocoLocais = irKpiBlock('blue','📍','Locais',
+    irKpiTile('🎯', irFmtPct(ind.acuraciaLocal), 'Acurácia Local', ind.acuraciaLocal>=ind.meta?'good':'bad', metaHint) +
+    irKpiTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
+    irKpiTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
+  );
+  const blocoValor = irKpiBlock('black','💰','Valor',
+    irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
+    irKpiTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
+    irKpiTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líquido)', '', 'ganho − perda')
+  );
+  const blocoCiclo = irKpiBlock('neutral','🔄','Ciclo',
+    irKpiTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
+    irKpiTile('📅', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), 'Dias Restantes', '', 'no ritmo atual') +
+    irKpiTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
+  );
   return `
     <div class="form-actions" style="margin:0 0 12px;">
       <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Gerar relatório para e-mail</button>
     </div>
-    <div class="kpi-grid">
-      ${kpis.map(([label,val,cls])=>`<div class="kpi-card ${cls||''}"><div class="num mono">${val}</div><div class="label">${label}</div></div>`).join('')}
-    </div>
-    <div class="bi-grid-3">
-      ${ringRow('Acurácia Peças', ind.acuraciaPecas, ind.meta)}
-      ${ringRow('Acurácia Local', ind.acuraciaLocal, ind.meta)}
-      ${ringRow('Acurácia Valor', ind.acuraciaValor, ind.meta)}
+    <div class="kpi-blocks">
+      ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
     ${irRenderPorRuaPanel(ind)}
     <div class="bi-grid-2">
@@ -334,14 +341,20 @@ function irRenderPorRuaPanel(ind){
   const meta = ind.meta;
   return `<div class="panel">
     <h3>Divergência por Rua</h3>
-    <p class="panel-sub">Locais orçados x contados e acurácias por rua (coluna X1 da base congelada).</p>
+    <p class="panel-sub">Locais orçados x contados (coluna X1 da base congelada), peças e acurácias por rua.</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Rua</th><th>Locais Orçados</th><th>Locais Contados</th><th>% Contado</th><th>Acurácia Peças</th><th>Posições</th><th>Valores</th></tr></thead>
+      <thead><tr>
+        <th>Rua</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Divergentes</th>
+        <th>Peças Contadas</th><th>Peças Divergentes</th>
+        <th>Acurácia Peças</th><th>Posições</th><th>Valores</th>
+      </tr></thead>
       <tbody>${rows.map(r=>`<tr>
         <td class="mono">${irEsc(r.chave)}</td>
         <td class="mono">${irFmtInt(r.locaisOrcados)}</td>
         <td class="mono">${irFmtInt(r.locaisContados)}</td>
-        <td class="mono">${irFmtPct(r.pctContado)}</td>
+        <td class="mono">${irFmtInt(r.locaisDivergentes)}</td>
+        <td class="mono">${irFmtInt(r.pecasContadas)}</td>
+        <td class="mono">${irFmtInt(r.pecasDivergentes)}</td>
         <td class="mono" style="${irHeatStyle(r.acuraciaPecas, meta)}">${irFmtPct(r.acuraciaPecas)}</td>
         <td class="mono" style="${irHeatStyle(r.acuraciaPosicoes, meta)}">${irFmtPct(r.acuraciaPosicoes)}</td>
         <td class="mono" style="${irHeatStyle(r.acuraciaValor, meta)}">${irFmtPct(r.acuraciaValor)}</td>
@@ -928,6 +941,9 @@ function irRenderIndicadores(){
     ['Acurácia Local', irFmtPct(ind.acuraciaLocal), IR_KPI_FORMULAS.acuraciaLocal],
     ['Acurácia Valor', irFmtPct(ind.acuraciaValor), IR_KPI_FORMULAS.acuraciaValor],
     ['Andamento do Ciclo', irFmtPct(ind.andamentoCiclo), IR_KPI_FORMULAS.andamentoCiclo],
+    ['Peças Contadas', irFmtInt(ind.pecasContadas), 'Soma do QT_FIS da última contagem de cada item, nos locais liquidados (QRY0843).'],
+    ['Peças Divergentes', irFmtInt(ind.pecasDivergentes), 'Soma de |Diferença| das divergências (QRY0114).'],
+    ['Itens Divergentes', irFmtInt(ind.itensDivergentes), 'Nº de linhas da QRY0114 com Diferença ≠ 0.'],
     ['Qtd. de Recontagens', irFmtInt(ind.qtdRecontagens), IR_KPI_FORMULAS.qtdRecontagens],
     ['Tempo Médio por Contagem', irFmtNum(ind.tempoMedioContagemMin,1)+' min', IR_KPI_FORMULAS.tempoMedioContagem],
     ['Dias Restantes', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), IR_KPI_FORMULAS.diasRestantes],
