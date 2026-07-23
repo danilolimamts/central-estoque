@@ -284,26 +284,29 @@ function irKpiBlock(theme, icon, title, tilesHtml){
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
+  // Cada bloco tem sempre 3 bullets, no mesmo formato: ícone + acurácia (com meta),
+  // + volume principal, + divergência/pendência. Os demais indicadores (itens
+  // divergentes, recontagens, tempo médio etc.) continuam na aba Indicadores.
   const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
   const blocoPecas = irKpiBlock('orange','📦','Peças',
     irKpiTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint) +
-    irKpiTile('⚠️', irFmtInt(ind.itensDivergentes), 'Itens Divergentes', 'bad')
+    irKpiTile('📦', irFmtInt(ind.pecasContadas), 'Peças Contadas', '', 'total físico') +
+    irKpiTile('⚠️', irFmtInt(ind.pecasDivergentes), 'Peças Divergentes', 'bad', irFmtInt(ind.itensDivergentes)+' itens')
   );
   const blocoLocais = irKpiBlock('blue','📍','Locais',
     irKpiTile('🎯', irFmtPct(ind.acuraciaLocal), 'Acurácia Local', ind.acuraciaLocal>=ind.meta?'good':'bad', metaHint) +
-    irKpiTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos') +
-    irKpiTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad') +
-    irKpiTile('🔁', irFmtInt(ind.qtdRecontagens), 'Recontagens')
+    irKpiTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
+    irKpiTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
   );
   const blocoValor = irKpiBlock('black','💰','Valor',
     irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
-    irKpiTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Valor Divergente', 'bad')
+    irKpiTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
+    irKpiTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líquido)', '', 'ganho − perda')
   );
   const blocoCiclo = irKpiBlock('neutral','🔄','Ciclo',
-    irKpiTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento') +
-    irKpiTile('⏱️', irFmtNum(ind.tempoMedioContagemMin,1), 'Min/Contagem') +
-    irKpiTile('📅', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), 'Dias Restantes') +
-    irKpiTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''))
+    irKpiTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
+    irKpiTile('📅', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), 'Dias Restantes', '', 'no ritmo atual') +
+    irKpiTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
   );
   return `
     <div class="form-actions" style="margin:0 0 12px;">
@@ -938,6 +941,9 @@ function irRenderIndicadores(){
     ['Acurácia Local', irFmtPct(ind.acuraciaLocal), IR_KPI_FORMULAS.acuraciaLocal],
     ['Acurácia Valor', irFmtPct(ind.acuraciaValor), IR_KPI_FORMULAS.acuraciaValor],
     ['Andamento do Ciclo', irFmtPct(ind.andamentoCiclo), IR_KPI_FORMULAS.andamentoCiclo],
+    ['Peças Contadas', irFmtInt(ind.pecasContadas), 'Soma do QT_FIS da última contagem de cada item, nos locais liquidados (QRY0843).'],
+    ['Peças Divergentes', irFmtInt(ind.pecasDivergentes), 'Soma de |Diferença| das divergências (QRY0114).'],
+    ['Itens Divergentes', irFmtInt(ind.itensDivergentes), 'Nº de linhas da QRY0114 com Diferença ≠ 0.'],
     ['Qtd. de Recontagens', irFmtInt(ind.qtdRecontagens), IR_KPI_FORMULAS.qtdRecontagens],
     ['Tempo Médio por Contagem', irFmtNum(ind.tempoMedioContagemMin,1)+' min', IR_KPI_FORMULAS.tempoMedioContagem],
     ['Dias Restantes', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), IR_KPI_FORMULAS.diasRestantes],

@@ -237,11 +237,20 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
   // de contagem do local (a "foto" mais recente do que tem fisicamente ali). Usado como
   // denominador da Acurácia Peças — a QRY0114 sozinha só traz os itens que passaram pela
   // liquidação/divergência, não o total físico do local.
+  // A rodada final varia por ITEM, não só por local: um item pode ter parado de ser
+  // recontado antes da última rodada do local (ex.: já bateu e não precisou repetir).
+  // Por isso pegamos, para cada item dentro do local, a rodada mais alta em que ELE
+  // foi contado — não a rodada máxima do local aplicada a todos os itens.
   const pecasFisicasPorLocal = new Map();
   for(const [local, lista] of porLocal){
-    const maxRodada = (statusPorLocal.get(local)||{rodadas:0}).rodadas;
-    const itensFinais = lista.filter(c=>c.idConferencia===maxRodada);
-    pecasFisicasPorLocal.set(local, itensFinais.reduce((s,c)=>s+c.qtFis,0));
+    const ultimaPorItem = new Map(); // item -> {rodada, qt}
+    for(const c of lista){
+      const atual = ultimaPorItem.get(c.item);
+      if(!atual || c.idConferencia>atual.rodada) ultimaPorItem.set(c.item, {rodada:c.idConferencia, qt:c.qtFis});
+    }
+    let total = 0;
+    for(const v of ultimaPorItem.values()) total += v.qt;
+    pecasFisicasPorLocal.set(local, total);
   }
 
   post('progress', {stage:'Processando divergências finais (QRY0114)...', pct:65});
@@ -483,6 +492,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     locaisCongelados, locaisContadosTotal, locaisConcluidos, locaisPendentes, locaisEmContagem, locaisNaoIniciados,
     andamentoCiclo, acuraciaPecas, acuraciaLocal, acuraciaValor, meta: IR_META_ACURACIA,
     itensDivergentes, valorDivergenteLiquido, valorDivergenteAbsoluto,
+    pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
     rankingProdutividade, porRua, porLog, contadosPorDia, topItensPositivos, topItensNegativos
   };
