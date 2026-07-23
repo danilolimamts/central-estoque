@@ -239,6 +239,16 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
     }
     statusPorLocal.set(local, {status, rodadas: maxRodada});
   }
+  // Peças físicas totais por local = soma do QT_FIS de todos os itens na ÚLTIMA rodada
+  // de contagem do local (a "foto" mais recente do que tem fisicamente ali). Usado como
+  // denominador da Acurácia Peças — a QRY0114 sozinha só traz os itens que passaram pela
+  // liquidação/divergência, não o total físico do local.
+  const pecasFisicasPorLocal = new Map();
+  for(const [local, lista] of porLocal){
+    const maxRodada = (statusPorLocal.get(local)||{rodadas:0}).rodadas;
+    const itensFinais = lista.filter(c=>c.idConferencia===maxRodada);
+    pecasFisicasPorLocal.set(local, itensFinais.reduce((s,c)=>s+c.qtFis,0));
+  }
 
   post('progress', {stage:'Processando divergências finais (QRY0114)...', pct:65});
   const divergencias = [];
@@ -304,7 +314,7 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
   }
 
   post('progress', {stage:'Calculando indicadores...', pct:90});
-  const indicadores = calcularIndicadores({congelados: locaisCongeladosCiclo, contagens, divergencias, statusPorLocal, dataAbertura, dataPrevistaTermino});
+  const indicadores = calcularIndicadores({congelados: locaisCongeladosCiclo, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino});
 
   post('progress', {stage:'Gravando dados no IndexedDB...', pct:95});
   await irClearCiclo(IR_STORES.locais, cicloId);
@@ -327,14 +337,17 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
 
 function isoDateTime(d){ return d ? d.toISOString() : ''; }
 
-function calcularIndicadores({congelados, contagens, divergencias, statusPorLocal, dataAbertura, dataPrevistaTermino}){
+function calcularIndicadores({congelados, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino}){
   const locaisCongelados = congelados.length;
 
   const clamp01 = (n)=>Math.max(0, Math.min(1, n));
 
-  const totalQtdeLogica = divergencias.reduce((s,d)=>s+d.qtdeLogica,0);
+  // Denominador da Acurácia Peças = peças físicas totais nos locais congelados (última
+  // rodada de contagem por local), não a "Qtde. Lógica" da QRY0114 — essa planilha só
+  // traz os itens que passaram pela liquidação/divergência, não o total físico do local.
+  const totalPecasFisicas = congelados.reduce((s,l)=>s+(pecasFisicasPorLocal.get(l.idLocal)||0), 0);
   const totalDiferencaAbs = divergencias.reduce((s,d)=>s+Math.abs(d.diferenca),0);
-  const acuraciaPecas = clamp01(totalQtdeLogica>0 ? 1-(totalDiferencaAbs/totalQtdeLogica) : 1);
+  const acuraciaPecas = clamp01(totalPecasFisicas>0 ? 1-(totalDiferencaAbs/totalPecasFisicas) : 1);
 
   const totalVlLogico = divergencias.reduce((s,d)=>s+d.vlLogico,0);
   const totalVlDivergenciaAbs = divergencias.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
@@ -388,10 +401,10 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   // relatórios de referência do usuário. "Posições" aqui é medida sobre os locais
   // já contados no grupo (não sobre o total congelado), igual ao relatório de origem.
   const locaisContadosSet = new Set(Array.from(statusPorLocal.keys()));
-  function calcAcuraciasSubset(divs, baseLocais){
-    const totalQtdeLogica = divs.reduce((s,d)=>s+d.qtdeLogica,0);
+  function calcAcuraciasSubset(divs, locaisDoGrupo, baseLocais){
+    const totalPecasGrupo = locaisDoGrupo.reduce((s,l)=>s+(pecasFisicasPorLocal.get(l.idLocal)||0), 0);
     const totalDiferencaAbs = divs.reduce((s,d)=>s+Math.abs(d.diferenca),0);
-    const acuraciaPecas = clamp01(totalQtdeLogica>0 ? 1-(totalDiferencaAbs/totalQtdeLogica) : 1);
+    const acuraciaPecas = clamp01(totalPecasGrupo>0 ? 1-(totalDiferencaAbs/totalPecasGrupo) : 1);
     const totalVlLogico = divs.reduce((s,d)=>s+d.vlLogico,0);
     const totalVlDivergenciaAbs = divs.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
     const acuraciaValor = clamp01(totalVlLogico>0 ? 1-(totalVlDivergenciaAbs/totalVlLogico) : 1);
@@ -414,7 +427,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
       return {
         chave, locaisOrcados, locaisContados,
         pctContado: locaisOrcados>0 ? locaisContados/locaisOrcados : 0,
-        ...calcAcuraciasSubset(divsGrupo, locaisContados)
+        ...calcAcuraciasSubset(divsGrupo, locaisDoGrupo, locaisContados)
       };
     }).sort((a,b)=>b.locaisOrcados-a.locaisOrcados);
   }
