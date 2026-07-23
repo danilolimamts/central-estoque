@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 2;
+const IR_INDICADORES_VERSION = 3;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -90,6 +90,7 @@ const ALIAS_114 = {
 };
 const ALIAS_843 = {
   inventario: ['Inventario','Inventário'], local: ['Local'], descricaoLocal: ['Descrição Local'],
+  dataSituacao: ['Data Situação','Data Situacao'],
   dataInicioContagem: ['Data Inicio Contagem','Data Início Contagem'], dataFimContagem: ['Data Fim Contagem'],
   obsInventario: ['Obs Inventario','Obs Inventário'], usuario: ['Usuário Conferencia','Usuario Conferencia'],
   situacaoInventario: ['Situação Inventario'], situacaoLocal: ['Situação Local'],
@@ -195,6 +196,7 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
       id: cicloId+'|'+local+'|'+item+'|'+idConferencia+'|'+idx843,
       cicloId, inventario: String(getVal(row, r843.inventario) ?? '').trim(), local,
       descricaoLocal: String(getVal(row, r843.descricaoLocal) ?? '').trim(),
+      dataSituacao: isoDateTime(parseDateVal(getVal(row, r843.dataSituacao))),
       dataInicioContagem: isoDateTime(parseDateVal(getVal(row, r843.dataInicioContagem))),
       dataFimContagem: isoDateTime(parseDateVal(getVal(row, r843.dataFimContagem))),
       obsInventario, situacaoInventario, situacaoLocal,
@@ -448,22 +450,31 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const porRua = agruparPor('x1', '(sem rua)');
   const porLog = agruparPor('grupoClasse', '(sem log)');
 
-  // Locais distintos contados por dia (contagens já filtradas por AIR + Liquidado;
-  // exclui a rodada 1 = abertura). Conta o LOCAL uma vez por dia, não a linha/item.
-  const porDiaMap = new Map();
+  // Locais distintos contados por dia. Cada local é contado UMA ÚNICA VEZ, no dia da
+  // sua "Data Situação" na rodada final (maior Id Conferência) — esse é o campo que a
+  // QRY0843 usa para marcar quando o status do local foi fechado, e é o mesmo critério
+  // da base de referência do usuário (1 local = 1 dia). Usar a Data Início Contagem de
+  // cada evento inflava/deslocava a contagem, pois um local pode ter linhas de contagem
+  // em vários dias (recontagens) antes de fechar.
+  const diaFinalPorLocal = new Map(); // local -> {dia, rodada}
   for(const c of contagens){
-    if(c.idConferencia<=1 || !c.dataInicioContagem) continue;
-    const dia = c.dataInicioContagem.slice(0,10);
-    if(!porDiaMap.has(dia)) porDiaMap.set(dia, new Set());
-    porDiaMap.get(dia).add(c.local);
+    if(c.idConferencia<=1 || !c.dataSituacao) continue;
+    const dia = c.dataSituacao.slice(0,10);
+    const atual = diaFinalPorLocal.get(c.local);
+    if(!atual || c.idConferencia>atual.rodada) diaFinalPorLocal.set(c.local, {dia, rodada:c.idConferencia});
+  }
+  const porDiaMap = new Map();
+  for(const {dia} of diaFinalPorLocal.values()){
+    porDiaMap.set(dia, (porDiaMap.get(dia)||0)+1);
   }
   const contadosPorDia = Array.from(porDiaMap.entries())
-    .map(([dia,set])=>({dia, total:set.size}))
+    .map(([dia,total])=>({dia, total}))
     .sort((a,b)=>a.dia.localeCompare(b.dia));
 
   // Detalhe por dia x Rua (X1), para o tooltip do gráfico "Contados por Dia":
-  // locais distintos, peças contadas (soma do QT_FIS do dia) e peças divergentes
-  // (soma de |Diferença| das divergências daquele dia, casadas pelo Local).
+  // locais distintos (mesmo critério de dia final acima), peças contadas (soma do
+  // QT_FIS do dia) e peças divergentes (soma de |Diferença| das divergências daquele dia,
+  // casadas pelo Local).
   const congeladosPorId = new Map(congelados.map(l=>[l.idLocal, l]));
   const diaRuaMap = new Map(); // dia -> Map(rua -> {locais:Set, pecasContadas, pecasDivergentes})
   function getOrInitDiaRua(dia, rua){
@@ -472,18 +483,17 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     if(!porRuaDoDia.has(rua)) porRuaDoDia.set(rua, {locais:new Set(), pecasContadas:0, pecasDivergentes:0});
     return porRuaDoDia.get(rua);
   }
-  for(const c of contagens){
-    if(c.idConferencia<=1 || !c.dataInicioContagem) continue;
-    const dia = c.dataInicioContagem.slice(0,10);
-    const rua = (congeladosPorId.get(c.local)||{}).x1 || '(sem rua)';
+  for(const [local, {dia}] of diaFinalPorLocal){
+    const rua = (congeladosPorId.get(local)||{}).x1 || '(sem rua)';
     const g = getOrInitDiaRua(dia, rua);
-    g.locais.add(c.local);
-    g.pecasContadas += c.qtFis;
+    g.locais.add(local);
+    g.pecasContadas += pecasFisicasPorLocal.get(local) || 0;
   }
   for(const d of divergencias){
-    if(!d.dataInicio) continue;
+    const final = diaFinalPorLocal.get(d.local);
+    if(!final) continue;
     const rua = (congeladosPorId.get(d.local)||{}).x1 || '(sem rua)';
-    const g = getOrInitDiaRua(d.dataInicio, rua);
+    const g = getOrInitDiaRua(final.dia, rua);
     g.pecasDivergentes += Math.abs(d.diferenca);
   }
   const porDiaRua = {};

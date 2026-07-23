@@ -178,6 +178,11 @@ button{ font-family:inherit; cursor:pointer; }
 .ir-cal-month{ margin-bottom:20px; }
 .ir-cal-month:last-child{ margin-bottom:0; }
 .ir-cal-month-title{ font-size:12.5px; font-weight:800; color:var(--ink); margin-bottom:10px; }
+.ir-cal-month-nav{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px; }
+.ir-cal-month-nav .ir-cal-month-title{ margin-bottom:0; min-width:150px; text-align:center; }
+.btn-cal-nav{ width:26px; height:26px; border-radius:6px; border:1px solid var(--line); background:var(--surface2); color:var(--ink); font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.btn-cal-nav:hover:not(:disabled){ background:var(--blue-light); color:var(--blue); }
+.btn-cal-nav:disabled{ opacity:.35; cursor:default; }
 .ir-cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
 .ir-cal-grid.ir-cal-head{ margin-bottom:6px; }
 .ir-cal-dow{ text-align:center; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); }
@@ -205,6 +210,10 @@ button{ font-family:inherit; cursor:pointer; }
 .bi-grid-3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
 @media(max-width:1000px){ .bi-grid-2,.bi-grid-3{ grid-template-columns:1fr; } }
 
+.bi-divrank-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:22px; }
+.bi-divrank-title{ font-size:11.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; margin:0 0 8px; }
+@media(max-width:1000px){ .bi-divrank-grid{ grid-template-columns:1fr; } }
+
 /* Barras horizontais simples (rankings, top itens) */
 .bi-hbar-row{ display:grid; grid-template-columns:120px 1fr 64px; align-items:center; gap:8px; padding:4px 0; font-size:11.5px; }
 .bi-hbar-label{ color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -217,6 +226,9 @@ button{ font-family:inherit; cursor:pointer; }
 
 /* Barras verticais (por dia / por log) */
 .bi-vbars{ display:flex; align-items:flex-end; gap:10px; height:150px; padding-top:10px; }
+.bi-vbars-meta{ position:relative; }
+.bi-vbar-meta-line{ position:absolute; left:0; right:0; height:0; border-top:2px dashed var(--blue); z-index:1; pointer-events:none; }
+.bi-vbar-meta-line span{ position:absolute; right:0; top:-16px; font-size:9px; font-weight:700; color:var(--blue); background:var(--surface); padding:0 4px; white-space:nowrap; }
 .bi-vbar-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:0; }
 .bi-vbar{ width:60%; max-width:34px; border-radius:4px 4px 0 0; background:var(--blue); position:relative; }
 .bi-vbar.orange{ background:var(--orange); }

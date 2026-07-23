@@ -282,7 +282,7 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 2; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 3; // mantido em sincronia com worker.js
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
@@ -329,10 +329,8 @@ function irRenderDashboard(){
       ${irRenderPorLogPanel(ind)}
       ${irRenderContadosPorDiaPanel(ind)}
     </div>
-    <div class="bi-grid-2">
-      ${irRenderRuasMaisDivergentesPanel(ind)}
-      ${irRenderTopItensPanel(ind)}
-    </div>
+    ${irRenderRuasMaisDivergentesPanel(ind)}
+    ${irRenderTopItensPanel(ind)}
     ${irRenderLogTablePanel(ind)}
     ${irRenderCalendarioPanel(ind)}
   `;
@@ -343,41 +341,50 @@ function irRenderCalendarioPanel(ind){
   if(!rows.length) return '';
   const porDia = new Map(rows.map(r=>[r.dia, r.total]));
   const meses = Array.from(new Set(rows.map(r=>r.dia.slice(0,7)))).sort();
+  if(IR.calMesIdx===undefined || IR.calMesIdx===null) IR.calMesIdx = meses.length-1;
+  IR.calMesIdx = Math.max(0, Math.min(meses.length-1, IR.calMesIdx));
+  const mes = meses[IR.calMesIdx];
   const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-  const mesesHtml = meses.map(mes=>{
-    const [ano, mesNum] = mes.split('-').map(Number);
-    const primeiroDia = new Date(ano, mesNum-1, 1);
-    const ultimoDia = new Date(ano, mesNum, 0).getDate();
-    const offset = primeiroDia.getDay();
-    const cells = [];
-    for(let i=0;i<offset;i++) cells.push('<div class="ir-cal-cell filler"></div>');
-    for(let d=1; d<=ultimoDia; d++){
-      const diaStr = mes+'-'+String(d).padStart(2,'0');
-      const total = porDia.get(diaStr);
-      if(total===undefined){
-        cells.push(`<div class="ir-cal-cell neutral"><div class="cal-day">${d}</div></div>`);
-      } else {
-        const bateu = total>=IR_META_DIARIA;
-        cells.push(`<div class="ir-cal-cell ${bateu?'good':'bad'}" title="${irFmtInt(total)} de ${irFmtInt(IR_META_DIARIA)}">
-          <div class="cal-day">${d}</div>
-          <div class="cal-icon">${bateu?'✅':'⚠️'}</div>
-          <div class="cal-total mono">${irFmtInt(total)}</div>
-        </div>`);
-      }
+  const [ano, mesNum] = mes.split('-').map(Number);
+  const primeiroDia = new Date(ano, mesNum-1, 1);
+  const ultimoDia = new Date(ano, mesNum, 0).getDate();
+  const offset = primeiroDia.getDay();
+  const cells = [];
+  for(let i=0;i<offset;i++) cells.push('<div class="ir-cal-cell filler"></div>');
+  for(let d=1; d<=ultimoDia; d++){
+    const diaStr = mes+'-'+String(d).padStart(2,'0');
+    const total = porDia.get(diaStr);
+    if(total===undefined){
+      cells.push(`<div class="ir-cal-cell neutral"><div class="cal-day">${d}</div></div>`);
+    } else {
+      const bateu = total>=IR_META_DIARIA;
+      cells.push(`<div class="ir-cal-cell ${bateu?'good':'bad'}" title="${irFmtInt(total)} de ${irFmtInt(IR_META_DIARIA)}">
+        <div class="cal-day">${d}</div>
+        <div class="cal-icon">${bateu?'✅':'⚠️'}</div>
+        <div class="cal-total mono">${irFmtInt(total)}</div>
+      </div>`);
     }
-    const nomeMesRaw = primeiroDia.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
-    const nomeMes = nomeMesRaw.charAt(0).toUpperCase()+nomeMesRaw.slice(1);
-    return `<div class="ir-cal-month">
+  }
+  const nomeMesRaw = primeiroDia.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+  const nomeMes = nomeMesRaw.charAt(0).toUpperCase()+nomeMesRaw.slice(1);
+  const mesHtml = `<div class="ir-cal-month">
+    <div class="ir-cal-month-nav">
+      <button class="btn-cal-nav" onclick="irCalNavMonth(-1)" ${IR.calMesIdx<=0?'disabled':''} aria-label="Mês anterior">‹</button>
       <div class="ir-cal-month-title">${irEsc(nomeMes)}</div>
-      <div class="ir-cal-grid ir-cal-head">${diasSemana.map(d=>`<div class="ir-cal-dow">${d}</div>`).join('')}</div>
-      <div class="ir-cal-grid">${cells.join('')}</div>
-    </div>`;
-  }).join('');
+      <button class="btn-cal-nav" onclick="irCalNavMonth(1)" ${IR.calMesIdx>=meses.length-1?'disabled':''} aria-label="Próximo mês">›</button>
+    </div>
+    <div class="ir-cal-grid ir-cal-head">${diasSemana.map(d=>`<div class="ir-cal-dow">${d}</div>`).join('')}</div>
+    <div class="ir-cal-grid">${cells.join('')}</div>
+  </div>`;
   return `<div class="panel">
     <h3>Calendário de Metas</h3>
     <p class="panel-sub">Meta diária: ${irFmtInt(IR_META_DIARIA)} posições contadas · verde = bateu a meta, vermelho = abaixo da meta, cinza = sem contagem.</p>
-    ${mesesHtml}
+    ${mesHtml}
   </div>`;
+}
+function irCalNavMonth(delta){
+  IR.calMesIdx = (IR.calMesIdx||0) + delta;
+  irRenderView();
 }
 function irRenderLogTablePanel(ind){
   const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)').slice().sort((a,b)=>a.chave.localeCompare(b.chave));
@@ -470,12 +477,14 @@ function irRenderPorLogPanel(ind){
 function irRenderContadosPorDiaPanel(ind){
   const rows = ind.contadosPorDia||[];
   if(!rows.length) return `<div class="panel"><h3>Contados por Dia</h3><p class="field-hint">Nenhuma contagem registrada ainda.</p></div>`;
-  const max = Math.max(1, ...rows.map(r=>r.total));
+  const max = Math.max(1, IR_META_DIARIA, ...rows.map(r=>r.total));
+  const metaPct = Math.min(100, Math.round(IR_META_DIARIA/max*100));
   IR._porDiaRua = ind.porDiaRua||{};
   return `<div class="panel">
     <h3>Contados por Dia</h3>
-    <p class="panel-sub">Volume de posições contadas por dia (exclui a contagem de abertura). Passe o mouse na barra para ver o detalhe por Rua.</p>
-    <div class="bi-vbars">
+    <p class="panel-sub">Volume de posições contadas por dia (exclui a contagem de abertura). Linha tracejada = meta diária (${irFmtInt(IR_META_DIARIA)}). Passe o mouse na barra para ver o detalhe por Rua.</p>
+    <div class="bi-vbars bi-vbars-meta">
+      <div class="bi-vbar-meta-line" style="bottom:${metaPct}%;"><span>Meta ${irFmtInt(IR_META_DIARIA)}</span></div>
       ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowDiaTooltip(event,'${r.dia}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
         <div class="bi-vbar-val">${irFmtInt(r.total)}</div>
         <div class="bi-vbar orange" style="height:${Math.round(r.total/max*100)}%;"></div>
@@ -516,17 +525,26 @@ function irHideDiaTooltip(){
   if(tt) tt.classList.add('hidden');
 }
 function irRenderRuasMaisDivergentesPanel(ind){
-  const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)' && r.valorDivergenteAbsoluto>0).slice().sort((a,b)=>b.valorDivergenteAbsoluto-a.valorDivergenteAbsoluto).slice(0,8);
-  if(!rows.length) return `<div class="panel"><h3>Ruas mais divergentes</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
-  const max = Math.max(...rows.map(r=>r.valorDivergenteAbsoluto));
+  const base = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)');
+  if(!base.length) return `<div class="panel"><h3>Ruas mais divergentes</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
+  const rankFmt = (campo, fmt, cls)=>{
+    const rows = base.filter(r=>r[campo]>0).slice().sort((a,b)=>b[campo]-a[campo]).slice(0,8);
+    if(!rows.length) return `<p class="field-hint">Nenhuma divergência registrada ainda.</p>`;
+    const max = Math.max(...rows.map(r=>r[campo]));
+    return rows.map(r=>`<div class="bi-hbar-row">
+      <div class="bi-hbar-label mono">${irEsc(r.chave)}</div>
+      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(r[campo]/max*100)}%;"></div></div>
+      <div class="bi-hbar-val">${fmt(r[campo])}</div>
+    </div>`).join('');
+  };
   return `<div class="panel">
     <h3>Ruas mais divergentes</h3>
-    <p class="panel-sub">Ranking por valor financeiro divergente absoluto.</p>
-    ${rows.map(r=>`<div class="bi-hbar-row">
-      <div class="bi-hbar-label mono">${irEsc(r.chave)}</div>
-      <div class="bi-hbar-track"><div class="bi-hbar-fill" style="width:${Math.round(r.valorDivergenteAbsoluto/max*100)}%;"></div></div>
-      <div class="bi-hbar-val">${irFmtMoney(r.valorDivergenteAbsoluto)}</div>
-    </div>`).join('')}
+    <p class="panel-sub">Ranking das ruas com mais divergência em peças, locais e valor financeiro.</p>
+    <div class="bi-divrank-grid">
+      <div><h4 class="bi-divrank-title">Peças divergentes</h4>${rankFmt('pecasDivergentes', irFmtInt, 'orange')}</div>
+      <div><h4 class="bi-divrank-title">Locais divergentes</h4>${rankFmt('locaisDivergentes', irFmtInt, '')}</div>
+      <div><h4 class="bi-divrank-title">Valor divergente</h4>${rankFmt('valorDivergenteAbsoluto', irFmtMoney, 'orange')}</div>
+    </div>
   </div>`;
 }
 function irRenderTopItensPanel(ind){
