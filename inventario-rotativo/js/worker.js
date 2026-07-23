@@ -164,9 +164,9 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
       predio: String(getVal(row, rCong.predio) ?? '').trim()
     };
   }).filter(l=>l.idLocal);
-  // Só locais efetivamente congelados neste ciclo entram nos cálculos —
-  // QRY0114/QRY0843 podem trazer eventos de fora do escopo congelado.
-  const congeladoSet = new Set(locais.filter(l=>l.isCongelado).map(l=>l.idLocal));
+  // A coluna "Inventário?" da Base Congelada é usada pelo usuário para outras finalidades
+  // e NÃO define o escopo deste ciclo — quem define é o próprio evento AIR na QRY0843.
+  const locaisPorId = new Map(locais.map(l=>[l.idLocal, l]));
 
   post('progress', {stage:'Processando contagens (QRY0843)...', pct:35});
   const contagens = [];
@@ -177,7 +177,7 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
     const item = String(getVal(row, r843.item) ?? '').trim();
     const idConferencia = parseInt(parseNumber(getVal(row, r843.idConferencia)), 10) || 0;
     const obsInventario = String(getVal(row, r843.obsInventario) ?? '').trim();
-    if(!local || !item || !congeladoSet.has(local)) continue;
+    if(!local || !item) continue;
     // Só eventos de Ajuste Inventário Rotativo (Obs começando em "AIR") entram no ciclo —
     // outras tratativas na mesma planilha (ex.: "ADE - Ajuste Auditoria de Estoque") não são deste módulo.
     if(!/^AIR/i.test(obsInventario)) continue;
@@ -195,9 +195,20 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
       qtFis: parseNumber(getVal(row, r843.qtFis))
     });
   }
-  // Locais reconhecidos como Ajuste Inventário Rotativo (AIR) nesta importação —
-  // usado para herdar o mesmo filtro na QRY0114, que não tem coluna de Observação.
-  const airLocalSet = new Set(contagens.map(c=>c.local));
+  // Inventários (nº de sessão de contagem) reconhecidos como Ajuste Inventário Rotativo
+  // (AIR) nesta importação — usado para herdar o mesmo filtro na QRY0114, que não tem
+  // coluna de Observação. O cruzamento é pelo Inventário (não pelo Local): o mesmo Local
+  // pode aparecer em ajustes de outros tipos ao longo do tempo, então só o nº do
+  // inventário garante que a divergência é da mesma sessão de contagem AIR.
+  const airInventarioSet = new Set(contagens.map(c=>c.inventario));
+  // Locais congelados DESTE ciclo = locais efetivamente tocados por um evento AIR na
+  // QRY0843 (não o flag "Inventário?" da Base Congelada, que é usado para outra coisa).
+  // Enriquecemos com os metadados da Base Congelada (Rua/X1, Log/Grupo Classe etc.)
+  // quando o local existe lá; senão entra só com o código, sem quebrar o fluxo.
+  const locaisCongeladosCiclo = Array.from(new Set(contagens.map(c=>c.local))).map(idLocal=>{
+    const base = locaisPorId.get(idLocal);
+    return base || {id: cicloId+'|'+idLocal, cicloId, idLocal, descricao:'', x1:'', x2:'', grupoClasse:'', classeLocal:'', regiao:'', habilitado:true, estado:'', isCongelado:true, qtdPecas:0, qtdItens:0, pesoTotal:0, filial:'', predio:''};
+  });
 
   post('progress', {stage:'Calculando convergência por local...', pct:50});
   const porLocal = new Map();
@@ -236,13 +247,14 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
     idx114++;
     const local = String(getVal(row, r114.local) ?? '').trim();
     const itemWms = String(getVal(row, r114.itemWms) ?? '').trim();
-    if(!itemWms || !congeladoSet.has(local) || !airLocalSet.has(local)) continue;
+    const inventario114 = String(getVal(row, r114.inventario) ?? '').trim();
+    if(!itemWms || !airInventarioSet.has(inventario114)) continue;
     const diferenca = parseNumber(getVal(row, r114.diferenca));
     const vlDivergencia = parseNumber(getVal(row, r114.vlDivergencia));
     divergencias.push({
       id: cicloId+'|'+local+'|'+itemWms+'|'+idx114,
       cicloId,
-      inventario: String(getVal(row, r114.inventario) ?? '').trim(), local,
+      inventario: inventario114, local,
       endereco: String(getVal(row, r114.endereco) ?? '').trim(),
       situacao: String(getVal(row, r114.situacao) ?? '').trim(),
       item: itemWms, itemSige: String(getVal(row, r114.itemSige) ?? '').trim(),
@@ -292,14 +304,14 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
   }
 
   post('progress', {stage:'Calculando indicadores...', pct:90});
-  const indicadores = calcularIndicadores({locais, contagens, divergencias, statusPorLocal, dataAbertura, dataPrevistaTermino});
+  const indicadores = calcularIndicadores({congelados: locaisCongeladosCiclo, contagens, divergencias, statusPorLocal, dataAbertura, dataPrevistaTermino});
 
   post('progress', {stage:'Gravando dados no IndexedDB...', pct:95});
   await irClearCiclo(IR_STORES.locais, cicloId);
   await irClearCiclo(IR_STORES.contagens, cicloId);
   await irClearCiclo(IR_STORES.divergencias, cicloId);
   const CHUNK = 1500;
-  await irBulkPut(IR_STORES.locais, locais);
+  await irBulkPut(IR_STORES.locais, locaisCongeladosCiclo);
   for(let i=0;i<contagens.length;i+=CHUNK) await irBulkPut(IR_STORES.contagens, contagens.slice(i,i+CHUNK));
   for(let i=0;i<divergencias.length;i+=CHUNK) await irBulkPut(IR_STORES.divergencias, divergencias.slice(i,i+CHUNK));
   await irSaveIndicadores(cicloId, indicadores);
@@ -310,13 +322,12 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
   });
 
   post('progress', {stage:'Concluído.', pct:100});
-  self.postMessage({type:'done', indicadores, totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length, totalLocais: locais.length});
+  self.postMessage({type:'done', indicadores, totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length, totalLocais: locaisCongeladosCiclo.length});
 }
 
 function isoDateTime(d){ return d ? d.toISOString() : ''; }
 
-function calcularIndicadores({locais, contagens, divergencias, statusPorLocal, dataAbertura, dataPrevistaTermino}){
-  const congelados = locais.filter(l=>l.isCongelado);
+function calcularIndicadores({congelados, contagens, divergencias, statusPorLocal, dataAbertura, dataPrevistaTermino}){
   const locaisCongelados = congelados.length;
 
   const clamp01 = (n)=>Math.max(0, Math.min(1, n));
