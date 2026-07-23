@@ -156,7 +156,7 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
       regiao: String(getVal(row, rCong.regiao) ?? '').trim(),
       habilitado: isSim(getVal(row, rCong.habilitado)),
       estado: String(getVal(row, rCong.estado) ?? '').trim(),
-      isCongelado: isSim(getVal(row, rCong.noInventario)),
+      isCongelado: true,
       qtdPecas: parseNumber(getVal(row, rCong.qtdPecas)),
       qtdItens: parseNumber(getVal(row, rCong.qtdItens)),
       pesoTotal: parseNumber(getVal(row, rCong.pesoTotal)),
@@ -164,9 +164,8 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
       predio: String(getVal(row, rCong.predio) ?? '').trim()
     };
   }).filter(l=>l.idLocal);
-  // A coluna "Inventário?" da Base Congelada é usada pelo usuário para outras finalidades
-  // e NÃO define o escopo deste ciclo — quem define é o próprio evento AIR na QRY0843.
-  const locaisPorId = new Map(locais.map(l=>[l.idLocal, l]));
+  // "Locais Orçados" = universo inteiro da Base Congelada (todo o CD), não um flag
+  // específico dela — a coluna "Inventário?" é usada pelo usuário para outra finalidade.
 
   post('progress', {stage:'Processando contagens (QRY0843)...', pct:35});
   const contagens = [];
@@ -177,38 +176,33 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
     const item = String(getVal(row, r843.item) ?? '').trim();
     const idConferencia = parseInt(parseNumber(getVal(row, r843.idConferencia)), 10) || 0;
     const obsInventario = String(getVal(row, r843.obsInventario) ?? '').trim();
+    const situacaoInventario = String(getVal(row, r843.situacaoInventario) ?? '').trim();
+    const situacaoLocal = String(getVal(row, r843.situacaoLocal) ?? '').trim();
     if(!local || !item) continue;
     // Só eventos de Ajuste Inventário Rotativo (Obs começando em "AIR") entram no ciclo —
     // outras tratativas na mesma planilha (ex.: "ADE - Ajuste Auditoria de Estoque") não são deste módulo.
     if(!/^AIR/i.test(obsInventario)) continue;
+    // "Contado" de verdade só quando o local E o inventário foram liquidados — sessões
+    // Canceladas (ex.: reabertas depois) não contam como contagem válida.
+    if(situacaoLocal!=='Liquidado' || situacaoInventario!=='Liquidado') continue;
     contagens.push({
       id: cicloId+'|'+local+'|'+item+'|'+idConferencia+'|'+idx843,
       cicloId, inventario: String(getVal(row, r843.inventario) ?? '').trim(), local,
       descricaoLocal: String(getVal(row, r843.descricaoLocal) ?? '').trim(),
       dataInicioContagem: isoDateTime(parseDateVal(getVal(row, r843.dataInicioContagem))),
       dataFimContagem: isoDateTime(parseDateVal(getVal(row, r843.dataFimContagem))),
-      obsInventario,
+      obsInventario, situacaoInventario, situacaoLocal,
       usuario: String(getVal(row, r843.usuario) ?? '').trim(),
-      situacaoInventario: String(getVal(row, r843.situacaoInventario) ?? '').trim(),
-      situacaoLocal: String(getVal(row, r843.situacaoLocal) ?? '').trim(),
       idConferencia, item, itemNome: String(getVal(row, r843.itemNome) ?? '').trim(),
       qtFis: parseNumber(getVal(row, r843.qtFis))
     });
   }
   // Inventários (nº de sessão de contagem) reconhecidos como Ajuste Inventário Rotativo
-  // (AIR) nesta importação — usado para herdar o mesmo filtro na QRY0114, que não tem
-  // coluna de Observação. O cruzamento é pelo Inventário (não pelo Local): o mesmo Local
-  // pode aparecer em ajustes de outros tipos ao longo do tempo, então só o nº do
-  // inventário garante que a divergência é da mesma sessão de contagem AIR.
+  // (AIR) e liquidados nesta importação — usado para herdar o mesmo filtro na QRY0114,
+  // que não tem coluna de Observação/Situação. O cruzamento é pelo Inventário (não pelo
+  // Local): o mesmo Local pode aparecer em ajustes de outros tipos ao longo do tempo,
+  // então só o nº do inventário garante que a divergência é da mesma sessão AIR liquidada.
   const airInventarioSet = new Set(contagens.map(c=>c.inventario));
-  // Locais congelados DESTE ciclo = locais efetivamente tocados por um evento AIR na
-  // QRY0843 (não o flag "Inventário?" da Base Congelada, que é usado para outra coisa).
-  // Enriquecemos com os metadados da Base Congelada (Rua/X1, Log/Grupo Classe etc.)
-  // quando o local existe lá; senão entra só com o código, sem quebrar o fluxo.
-  const locaisCongeladosCiclo = Array.from(new Set(contagens.map(c=>c.local))).map(idLocal=>{
-    const base = locaisPorId.get(idLocal);
-    return base || {id: cicloId+'|'+idLocal, cicloId, idLocal, descricao:'', x1:'', x2:'', grupoClasse:'', classeLocal:'', regiao:'', habilitado:true, estado:'', isCongelado:true, qtdPecas:0, qtdItens:0, pesoTotal:0, filial:'', predio:''};
-  });
 
   post('progress', {stage:'Calculando convergência por local...', pct:50});
   const porLocal = new Map();
@@ -314,14 +308,14 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
   }
 
   post('progress', {stage:'Calculando indicadores...', pct:90});
-  const indicadores = calcularIndicadores({congelados: locaisCongeladosCiclo, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino});
+  const indicadores = calcularIndicadores({congelados: locais, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino});
 
   post('progress', {stage:'Gravando dados no IndexedDB...', pct:95});
   await irClearCiclo(IR_STORES.locais, cicloId);
   await irClearCiclo(IR_STORES.contagens, cicloId);
   await irClearCiclo(IR_STORES.divergencias, cicloId);
   const CHUNK = 1500;
-  await irBulkPut(IR_STORES.locais, locaisCongeladosCiclo);
+  for(let i=0;i<locais.length;i+=CHUNK) await irBulkPut(IR_STORES.locais, locais.slice(i,i+CHUNK));
   for(let i=0;i<contagens.length;i+=CHUNK) await irBulkPut(IR_STORES.contagens, contagens.slice(i,i+CHUNK));
   for(let i=0;i<divergencias.length;i+=CHUNK) await irBulkPut(IR_STORES.divergencias, divergencias.slice(i,i+CHUNK));
   await irSaveIndicadores(cicloId, indicadores);
@@ -332,7 +326,7 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
   });
 
   post('progress', {stage:'Concluído.', pct:100});
-  self.postMessage({type:'done', indicadores, totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length, totalLocais: locaisCongeladosCiclo.length});
+  self.postMessage({type:'done', indicadores, totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length, totalLocais: locais.length});
 }
 
 function isoDateTime(d){ return d ? d.toISOString() : ''; }
@@ -353,8 +347,11 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const totalVlDivergenciaAbs = divergencias.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
   const acuraciaValor = clamp01(totalVlLogico>0 ? 1-(totalVlDivergenciaAbs/totalVlLogico) : 1);
 
+  // Acurácia Local (Posições) é medida sobre os locais CONTADOS (liquidados), não sobre
+  // o total orçado do CD — mesma regra da Acurácia Peças/Valor ("1 − divergência ÷ total contado").
+  const locaisContadosTotal = statusPorLocal.size;
   const locaisComDivergencia = new Set(divergencias.filter(d=>d.diferenca!==0).map(d=>d.local));
-  const acuraciaLocal = clamp01(locaisCongelados>0 ? 1-(locaisComDivergencia.size/locaisCongelados) : 1);
+  const acuraciaLocal = clamp01(locaisContadosTotal>0 ? 1-(locaisComDivergencia.size/locaisContadosTotal) : 1);
 
   let locaisConcluidos = 0, locaisPendentes = 0, locaisEmContagem = 0, locaisNaoIniciados = 0;
   for(const l of congelados){
@@ -479,7 +476,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   })).sort((a,b)=>b.locais-a.locais);
 
   return {
-    locaisCongelados, locaisConcluidos, locaisPendentes, locaisEmContagem, locaisNaoIniciados,
+    locaisCongelados, locaisContadosTotal, locaisConcluidos, locaisPendentes, locaisEmContagem, locaisNaoIniciados,
     andamentoCiclo, acuraciaPecas, acuraciaLocal, acuraciaValor, meta: IR_META_ACURACIA,
     itensDivergentes, valorDivergenteLiquido, valorDivergenteAbsoluto,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
