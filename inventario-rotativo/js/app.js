@@ -428,57 +428,58 @@ function irGerarRelatorioEmail(){
   const ind = IR.indicadores, c = IR.cicloAtivo;
   if(!ind || !c){ irShowToast('Sem dados de ciclo pra gerar relatório.', true); return; }
   const agora = new Date().toLocaleString('pt-BR');
-  const kpiCard = (label, val, cls)=>`<div class="rp-kpi ${cls||''}"><div class="n mono">${val}</div><div class="l">${label}</div></div>`;
+  const kpiCard = (icon, label, val, cls)=>`<div class="rp-kpi ${cls||''}"><div class="rp-kpi-icon">${icon}</div><div class="n mono">${val}</div><div class="l">${label}</div></div>`;
   const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.valorDivergenteAbsoluto-a.valorDivergenteAbsoluto).slice(0,8);
   const topPos = (ind.topItensPositivos||[]).slice(0,5);
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
   const html = `<div class="rp-page">
-    <div class="rp-header">
-      <div>
-        <h1>Inventário Rotativo — Andamento do Ciclo ${c.numero}</h1>
-        <p>Loja do Mecânico · CD Cajamar</p>
-      </div>
-      <div class="rp-date">Gerado em ${agora}<br>Abertura: ${irFmtDate(c.dataAbertura)} · Término previsto: ${irFmtDate(c.dataPrevistaTermino)}</div>
+    <div class="rp-hero">
+      <div class="rp-hero-badge">Inventário Rotativo</div>
+      <h1>📦 Andamento do Ciclo ${c.numero}</h1>
+      <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
+      <div class="rp-date">🕒 Gerado em ${agora} &nbsp;·&nbsp; Abertura: ${irFmtDate(c.dataAbertura)} &nbsp;·&nbsp; Término previsto: ${irFmtDate(c.dataPrevistaTermino)}</div>
     </div>
+    <div class="rp-body">
 
     <div class="rp-kpis">
-      ${kpiCard('Andamento do ciclo', irFmtPct(ind.andamentoCiclo))}
-      ${kpiCard('Locais concluídos', irFmtInt(ind.locaisConcluidos))}
-      ${kpiCard('Locais pendentes', irFmtInt(ind.locaisPendentes), 'bad')}
-      ${kpiCard('Dias restantes', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes))}
-      ${kpiCard('Acurácia Peças', irFmtPct(ind.acuraciaPecas), ind.acuraciaPecas>=ind.meta?'good':'bad')}
-      ${kpiCard('Acurácia Local', irFmtPct(ind.acuraciaLocal), ind.acuraciaLocal>=ind.meta?'good':'bad')}
-      ${kpiCard('Acurácia Valor', irFmtPct(ind.acuraciaValor), ind.acuraciaValor>=ind.meta?'good':'bad')}
-      ${kpiCard('Meta de acurácia', irFmtPct(ind.meta))}
-      ${kpiCard('Itens divergentes', irFmtInt(ind.itensDivergentes), 'bad')}
-      ${kpiCard('Valor divergente (abs.)', irFmtMoney(ind.valorDivergenteAbsoluto), 'bad')}
-      ${kpiCard('Valor divergente (líquido)', irFmtMoney(ind.valorDivergenteLiquido))}
-      ${kpiCard('Eficiência', irFmtPct(ind.eficiencia), ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''))}
+      ${kpiCard('🔄','Andamento do ciclo', irFmtPct(ind.andamentoCiclo), 'orange')}
+      ${kpiCard('✅','Locais concluídos', irFmtInt(ind.locaisConcluidos), 'good')}
+      ${kpiCard('⏳','Locais pendentes', irFmtInt(ind.locaisPendentes), 'bad')}
+      ${kpiCard('📅','Dias restantes', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes))}
+      ${kpiCard('📦','Acurácia Peças', irFmtPct(ind.acuraciaPecas), ind.acuraciaPecas>=ind.meta?'good':'bad')}
+      ${kpiCard('📍','Acurácia Local', irFmtPct(ind.acuraciaLocal), ind.acuraciaLocal>=ind.meta?'good':'bad')}
+      ${kpiCard('💰','Acurácia Valor', irFmtPct(ind.acuraciaValor), ind.acuraciaValor>=ind.meta?'good':'bad')}
+      ${kpiCard('🎯','Meta de acurácia', irFmtPct(ind.meta))}
+      ${kpiCard('⚠️','Itens divergentes', irFmtInt(ind.itensDivergentes), 'bad')}
+      ${kpiCard('💸','Valor divergente (abs.)', irFmtMoney(ind.valorDivergenteAbsoluto), 'bad')}
+      ${kpiCard('🧮','Valor divergente (líquido)', irFmtMoney(ind.valorDivergenteLiquido))}
+      ${kpiCard('⚡','Eficiência', irFmtPct(ind.eficiencia), ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''))}
     </div>
 
-    <div class="rp-section-title">Ruas mais divergentes (top 8, por valor financeiro)</div>
-    <table class="rp-table">
+    <div class="rp-section-title">🛣️ Ruas mais divergentes (top 8, por valor financeiro)</div>
+    <div class="rp-panel"><table class="rp-table">
       <thead><tr><th>Rua</th><th>Locais orçados</th><th>Locais contados</th><th>Acur. Peças</th><th>Acur. Posições</th><th>Acur. Valor</th><th>Valor divergente</th></tr></thead>
       <tbody>${rua.map(r=>`<tr>
         <td>${irEsc(r.chave)}</td><td>${irFmtInt(r.locaisOrcados)}</td><td>${irFmtInt(r.locaisContados)}</td>
         <td>${irFmtPct(r.acuraciaPecas)}</td><td>${irFmtPct(r.acuraciaPosicoes)}</td><td>${irFmtPct(r.acuraciaValor)}</td>
         <td>${irFmtMoney(r.valorDivergenteAbsoluto)}</td>
       </tr>`).join('') || '<tr><td colspan="7">Sem divergências registradas.</td></tr>'}</tbody>
-    </table>
+    </table></div>
 
-    <div class="rp-section-title">Maiores saldos por item (sobra x falta)</div>
+    <div class="rp-section-title">⚖️ Maiores saldos por item (sobra x falta)</div>
     <div class="rp-cols2">
-      <div>
-        <p style="font-size:10.5px;font-weight:700;color:#1F8A52;margin-bottom:4px;">MAIS SOBRA</p>
-        <table class="rp-table"><tbody>${topPos.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono">+${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td>Nenhum</td></tr>'}</tbody></table>
+      <div class="rp-panel">
+        <table class="rp-table"><thead><tr><th>🟢 Mais sobra</th><th>Saldo</th></tr></thead>
+        <tbody>${topPos.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono">+${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
       </div>
-      <div>
-        <p style="font-size:10.5px;font-weight:700;color:#C83812;margin-bottom:4px;">MAIS FALTA</p>
-        <table class="rp-table"><tbody>${topNeg.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono">${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td>Nenhum</td></tr>'}</tbody></table>
+      <div class="rp-panel">
+        <table class="rp-table"><thead><tr><th>🔴 Mais falta</th><th>Saldo</th></tr></thead>
+        <tbody>${topNeg.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono">${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
       </div>
     </div>
 
-    <p class="rp-footer">Relatório gerado automaticamente pelo módulo Inventário Rotativo. Para enviar por e-mail: use "Salvar como PDF" na janela de impressão e anexe o arquivo.</p>
+    <p class="rp-footer">📧 Relatório gerado automaticamente pelo módulo Inventário Rotativo. Para enviar por e-mail: use "Salvar como PDF" na janela de impressão e anexe o arquivo.</p>
+    </div>
   </div>`;
   document.getElementById('irPrintArea').innerHTML = html;
   setTimeout(()=>window.print(), 80);
