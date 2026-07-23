@@ -83,6 +83,8 @@ button{ font-family:inherit; cursor:pointer; }
   padding:5px 12px; border-radius:100px; font-size:11.5px; font-weight:600; margin-left:auto;
 }
 :root[data-theme="dark"] .cycle-badge{ color:#AEBBEA; }
+#cycleFilterSelect{ background:transparent; border:none; color:inherit; font-size:11.5px; font-weight:600; font-family:inherit; cursor:pointer; }
+#cycleFilterSelect:focus{ outline:none; }
 .global-search{ border:1px solid var(--line); border-radius:8px; padding:7px 12px; font-size:12.5px; background:var(--paper); color:var(--ink); min-width:220px; }
 .zoom-ctrl{ display:flex; align-items:center; gap:2px; background:var(--paper); border:1px solid var(--line); border-radius:100px; padding:3px; }
 .zoom-ctrl button{ width:24px; height:24px; border-radius:50%; border:none; background:var(--surface); color:var(--ink); font-size:15px; font-weight:700; line-height:1; display:flex; align-items:center; justify-content:center; }

@@ -106,8 +106,28 @@ function irSwitchTab(tab){
   const [title, sub] = IR_TAB_LABELS[tab] || [tab, ''];
   document.getElementById('tabTitle').textContent = title;
   document.getElementById('tabSubtitle').textContent = sub;
+  irRenderCycleBadge();
+  irRenderView();
+}
+function irRenderCycleBadge(){
   const badge = document.getElementById('cycleBadge');
-  badge.textContent = IR.cicloAtivo ? `Ciclo ${IR.cicloAtivo.numero} — ${IR.cicloAtivo.status==='aberto'?'Aberto':'Encerrado'}` : 'Nenhum ciclo ativo';
+  if(!badge) return;
+  if(!IR.ciclos.length){ badge.innerHTML = 'Nenhum ciclo ativo'; return; }
+  if(IR.ciclos.length===1){
+    const c = IR.ciclos[0];
+    badge.innerHTML = `Ciclo ${c.numero} — ${c.status==='aberto'?'Aberto':'Encerrado'}`;
+    return;
+  }
+  const ordenados = IR.ciclos.slice().sort((a,b)=>b.numero-a.numero);
+  badge.innerHTML = `<select id="cycleFilterSelect" onchange="irFiltrarCiclo(this.value)" title="Filtrar por ciclo">
+    ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id ? 'selected' : ''}>Ciclo ${c.numero} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
+  </select>`;
+}
+async function irFiltrarCiclo(cicloId){
+  IR.cicloAtivo = IR.ciclos.find(c=>c.id===cicloId);
+  IR.calMesIdx = null;
+  await irLoadCicloData(cicloId);
+  irRenderCycleBadge();
   irRenderView();
 }
 function irRenderView(){
@@ -1023,6 +1043,7 @@ function irRenderHistorico(){
 }
 async function irSelecionarCiclo(cicloId){
   IR.cicloAtivo = IR.ciclos.find(c=>c.id===cicloId);
+  IR.calMesIdx = null;
   await irLoadCicloData(cicloId);
   irSwitchTab('dashboard');
 }
