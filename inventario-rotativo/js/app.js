@@ -523,7 +523,7 @@ function irRenderPorLogPanel(ind){
    depende do tema) pra funcionar igual em qualquer contexto. */
 function irDonutSvg(pct, opts){
   opts = opts||{};
-  const size = opts.size||132, stroke = opts.stroke||14;
+  const size = opts.size||180, stroke = opts.stroke||18;
   const color = opts.color||'var(--orange)', track = opts.track||'var(--surface2)', textColor = opts.textColor||'var(--ink)';
   const r = (size-stroke)/2, c = size/2, circ = 2*Math.PI*r;
   const dash = Math.max(0,Math.min(1,pct))*circ;
