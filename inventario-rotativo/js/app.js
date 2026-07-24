@@ -339,11 +339,12 @@ function irRenderDashboard(){
   return `
     ${avisoDesatualizado}
     <div class="form-actions" style="margin:0 0 12px;">
-      <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Gerar relatório para e-mail</button>
+      <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>
     <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
+    ${irRenderStatusInventarioPanel(ind)}
     ${irRenderPorRuaPanel(ind)}
     <div class="bi-grid-2">
       ${irRenderPorLogPanel(ind)}
@@ -468,23 +469,23 @@ function irRenderPorRuaPanel(ind){
 function irRenderPorLogPanel(ind){
   const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   if(!rows.length) return `<div class="panel"><h3>Acurácias e NET por Log</h3><p class="field-hint">Nenhum log com locais contados ainda.</p></div>`;
+  IR._porLogMap = new Map(rows.map(r=>[r.chave, r]));
   return `<div class="panel">
     <h3>Acurácias por Log</h3>
-    <p class="panel-sub">Grupo Classe da base congelada · barras e percentuais: peças / posições / valores.</p>
+    <p class="panel-sub">Grupo Classe da base congelada · barras e percentuais: peças / posições / valores. Passe o mouse para ver os detalhes.</p>
     <div class="bi-vbars">
-      ${rows.map(r=>`<div class="bi-vbar-col">
+      ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
         <div class="bi-vbar-pcts">
           <span class="mono" style="color:var(--blue);">${irFmtPct(r.acuraciaPecas)}</span>
           <span class="mono" style="color:var(--orange);">${irFmtPct(r.acuraciaPosicoes)}</span>
           <span class="mono" style="color:var(--blue-soft);">${irFmtPct(r.acuraciaValor)}</span>
         </div>
         <div class="bi-cluster" style="height:100px;">
-          <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}%;" title="Peças: ${irFmtPct(r.acuraciaPecas)}"></div>
-          <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}%;" title="Posições: ${irFmtPct(r.acuraciaPosicoes)}"></div>
-          <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}%;background:var(--blue-soft);" title="Valores: ${irFmtPct(r.acuraciaValor)}"></div>
+          <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}%;"></div>
+          <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}%;"></div>
+          <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}%;background:var(--blue-soft);"></div>
         </div>
         <div class="bi-vbar-label">${irEsc(r.chave)}</div>
-        <div class="bi-vbar-sub mono">NET ${irFmtMoney(r.valorDivergenteLiquido)}</div>
       </div>`).join('')}
     </div>
     <p class="field-hint" style="margin-top:8px;">
@@ -493,6 +494,142 @@ function irRenderPorLogPanel(ind){
       <span class="mono" style="color:var(--blue-soft);">■</span> Valores
     </p>
   </div>`;
+}
+/* Gráfico de barras (Acurácias por Log) pro boletim — SVG estático com o
+   rótulo da % acima de cada barra, cores fixas (vira imagem). */
+function irBuildLogBarChartSvg(rows, opts){
+  opts = opts||{};
+  const colors = opts.colors || {pecas:'#0B2545', posicoes:'#C9A227', valor:'#7C8AA5', grid:'#E4E7EE', axis:'#6B7280'};
+  const W = Math.max(420, rows.length*110), H = 240;
+  const padL = 14, padR = 14, padT = 40, padB = 32;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const n = rows.length, groupW = plotW/n;
+  const barW = Math.min(30, groupW/3*0.8), gap = 3;
+  const series = [
+    {key:'acuraciaPecas', color:colors.pecas},
+    {key:'acuraciaPosicoes', color:colors.posicoes},
+    {key:'acuraciaValor', color:colors.valor}
+  ];
+  let bars = '', labels = '', xLabels = '';
+  rows.forEach((r,i)=>{
+    const groupX = padL + i*groupW + (groupW-(barW*3+gap*2))/2;
+    series.forEach((s,si)=>{
+      const val = Math.max(0,Math.min(1,r[s.key]));
+      const bh = val*plotH;
+      const bx = groupX + si*(barW+gap);
+      const by = padT+plotH-bh;
+      bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${s.color}" rx="2"/>`;
+      labels += `<text x="${(bx+barW/2).toFixed(1)}" y="${(by-4).toFixed(1)}" font-size="7.5" text-anchor="middle" fill="${s.color}" font-weight="700">${Math.round(val*100)}%</text>`;
+    });
+    xLabels += `<text x="${(padL+i*groupW+groupW/2).toFixed(1)}" y="${H-10}" font-size="9.5" text-anchor="middle" fill="${colors.axis}">${irEsc(r.chave)}</text>`;
+  });
+  const gridLines = [0,0.25,0.5,0.75,1].map(t=>{
+    const y = padT+plotH-t*plotH;
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="${colors.grid}" stroke-width="1"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="xMinYMid meet">${gridLines}${bars}${labels}${xLabels}</svg>`;
+}
+/* Gráfico de barras (Contados por Dia) pro boletim, com a mesma linha de
+   meta tracejada do painel do Dashboard — SVG estático, cores fixas. */
+function irBuildContadosPorDiaSvg(rows, meta, opts){
+  opts = opts||{};
+  const colors = opts.colors || {bar:'#FA4616', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A', meta:'#001A72'};
+  const W = Math.max(420, rows.length*54), H = 220;
+  const padL = 14, padR = 14, padT = 32, padB = 30;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const n = rows.length;
+  const max = Math.max(1, meta, ...rows.map(r=>r.total));
+  const barW = Math.min(40, plotW/n*0.7);
+  let bars = '', labels = '', xLabels = '';
+  rows.forEach((r,i)=>{
+    const cx = padL + (i+0.5)*(plotW/n);
+    const bh = (r.total/max)*plotH;
+    const bx = cx-barW/2, by = padT+plotH-bh;
+    bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${colors.bar}" rx="2"/>`;
+    labels += `<text x="${cx.toFixed(1)}" y="${(by-4).toFixed(1)}" font-size="8" text-anchor="middle" fill="${colors.label}" font-weight="700">${irFmtInt(r.total)}</text>`;
+    const dia = new Date(r.dia+'T00:00:00');
+    xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="9" text-anchor="middle" fill="${colors.axis}">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</text>`;
+  });
+  const metaY = padT+plotH-(meta/max)*plotH;
+  const metaLine = `<line x1="${padL}" y1="${metaY.toFixed(1)}" x2="${W-padR}" y2="${metaY.toFixed(1)}" stroke="${colors.meta}" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="${W-padR}" y="${(metaY-5).toFixed(1)}" font-size="9" text-anchor="end" fill="${colors.meta}" font-weight="700">Meta ${irFmtInt(meta)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="xMinYMid meet">${bars}${labels}${xLabels}${metaLine}</svg>`;
+}
+/* Gráfico de rosca (donut) genérico — usado no "Status do Inventário" do
+   Dashboard e no boletim. Cores em hex/var explícitos por parâmetro (não
+   depende do tema) pra funcionar igual em qualquer contexto. */
+function irDonutSvg(pct, opts){
+  opts = opts||{};
+  const size = opts.size||190, stroke = opts.stroke||28;
+  const color = opts.color||'var(--orange)', track = opts.track||'var(--surface2)', textColor = opts.textColor||'var(--ink)';
+  const r = (size-stroke)/2, c = size/2, circ = 2*Math.PI*r;
+  const dash = Math.max(0,Math.min(1,pct))*circ;
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}"/>
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
+      stroke-dasharray="${dash.toFixed(2)} ${circ.toFixed(2)}" transform="rotate(-90 ${c} ${c})"/>
+    <text x="${c}" y="${c+size*0.065}" text-anchor="middle" font-size="${Math.round(size*0.19)}" font-weight="800" fill="${textColor}">${irFmtPct(pct)}</text>
+  </svg>`;
+}
+/* Agrupa contadosPorDia por mês (YYYY-MM) — usado pra preencher o espaço
+   vazio do painel "Status do Inventário" com o total contado por mês. */
+function irAgruparContadosPorMes(rows, dataAbertura){
+  // Só considera meses a partir da abertura do ciclo — evita citar meses
+  // fora do ciclo por causa de algum registro perdido/fora do período.
+  const mesMin = dataAbertura ? String(dataAbertura).slice(0,7) : null;
+  const map = new Map();
+  for(const r of rows||[]){
+    const mes = r.dia.slice(0,7);
+    if(mesMin && mes<mesMin) continue;
+    map.set(mes, (map.get(mes)||0)+r.total);
+  }
+  return Array.from(map.entries()).sort((a,b)=>a[0].localeCompare(b[0])).map(([mes,total])=>{
+    const nomeRaw = new Date(mes+'-01T00:00:00').toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+    return {mes, label: nomeRaw.charAt(0).toUpperCase()+nomeRaw.slice(1), total};
+  });
+}
+function irRenderStatusInventarioPanel(ind){
+  const total = ind.locaisCongelados||0, contados = ind.locaisContadosTotal||0;
+  const pct = total>0 ? contados/total : 0;
+  const porMes = irAgruparContadosPorMes(ind.contadosPorDia, IR.cicloAtivo && IR.cicloAtivo.dataAbertura);
+  const maxMes = Math.max(1, ...porMes.map(m=>m.total));
+  return `<div class="panel">
+    <h3>Status do Inventário</h3>
+    <p class="panel-sub">Percentual de locais já contados em relação ao total orçado do ciclo.</p>
+    <div class="status-donut-row">
+      ${irDonutSvg(pct)}
+      <div class="status-donut-stats">
+        <div class="status-donut-stat"><div class="n mono">${irFmtInt(total)}</div><div class="l">Locais totais (orçados)</div></div>
+        <div class="status-donut-stat"><div class="n mono good">${irFmtInt(contados)}</div><div class="l">Locais contados</div></div>
+        <div class="status-donut-stat"><div class="n mono bad">${irFmtInt(total-contados)}</div><div class="l">Ainda não contados</div></div>
+      </div>
+      ${porMes.length ? `<div class="status-month-list">
+        <div class="status-month-title">Locais contados por mês</div>
+        ${porMes.map(m=>`<div class="status-month-row">
+          <div class="status-month-label">${irEsc(m.label)}</div>
+          <div class="status-month-track"><div class="status-month-fill" style="width:${Math.round(m.total/maxMes*100)}%;"></div></div>
+          <div class="status-month-val mono">${irFmtInt(m.total)}</div>
+        </div>`).join('')}
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+function irShowLogTooltip(ev, chave){
+  const r = (IR._porLogMap||new Map()).get(chave);
+  const tt = document.getElementById('irChartTooltip');
+  if(!tt || !r) return;
+  tt.innerHTML = `<div class="ct-title">${irEsc(chave)}</div>
+    <table>
+      <tbody>
+        <tr><td>Peças</td><td class="mono">${irFmtPct(r.acuraciaPecas)}</td></tr>
+        <tr><td>Posições</td><td class="mono">${irFmtPct(r.acuraciaPosicoes)}</td></tr>
+        <tr><td>Valores</td><td class="mono">${irFmtPct(r.acuraciaValor)}</td></tr>
+        <tr><td>Locais contados</td><td class="mono">${irFmtInt(r.locaisContados)} de ${irFmtInt(r.locaisOrcados)}</td></tr>
+        <tr><td>NET</td><td class="mono">${irFmtMoney(r.valorDivergenteLiquido)}</td></tr>
+      </tbody>
+    </table>`;
+  tt.classList.remove('hidden');
+  irMoveDiaTooltip(ev);
 }
 function irRenderContadosPorDiaPanel(ind){
   const rows = ind.contadosPorDia||[];
@@ -545,26 +682,20 @@ function irHideDiaTooltip(){
   if(tt) tt.classList.add('hidden');
 }
 function irRenderRuasMaisDivergentesPanel(ind){
-  const base = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)');
-  if(!base.length) return `<div class="panel"><h3>Ruas mais divergentes</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
-  const rankFmt = (campo, fmt, cls)=>{
-    const rows = base.filter(r=>r[campo]>0).slice().sort((a,b)=>b[campo]-a[campo]).slice(0,8);
-    if(!rows.length) return `<p class="field-hint">Nenhuma divergência registrada ainda.</p>`;
-    const max = Math.max(...rows.map(r=>r[campo]));
-    return rows.map(r=>`<div class="bi-hbar-row">
-      <div class="bi-hbar-label mono">${irEsc(r.chave)}</div>
-      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(r[campo]/max*100)}%;"></div></div>
-      <div class="bi-hbar-val">${fmt(r[campo])}</div>
-    </div>`).join('');
-  };
+  const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes);
+  if(!rows.length) return `<div class="panel"><h3>Ruas mais divergentes</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
   return `<div class="panel">
     <h3>Ruas mais divergentes</h3>
-    <p class="panel-sub">Ranking das ruas com mais divergência em peças, locais e valor financeiro.</p>
-    <div class="bi-divrank-grid">
-      <div><h4 class="bi-divrank-title">Peças divergentes</h4>${rankFmt('pecasDivergentes', irFmtInt, 'orange')}</div>
-      <div><h4 class="bi-divrank-title">Locais divergentes</h4>${rankFmt('locaisDivergentes', irFmtInt, '')}</div>
-      <div><h4 class="bi-divrank-title">Valor divergente</h4>${rankFmt('valorDivergenteAbsoluto', irFmtMoney, 'orange')}</div>
-    </div>
+    <p class="panel-sub">Todas as ruas, ordenadas por peças divergentes absolutas (da maior para a menor).</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Rua</th><th>Peças Divergentes</th><th>Locais Divergentes</th><th>Valor Divergente</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td class="mono">${irEsc(r.chave)}</td>
+        <td class="mono">${irFmtInt(r.pecasDivergentes)}</td>
+        <td class="mono">${irFmtInt(r.locaisDivergentes)}</td>
+        <td class="mono">${irFmtMoney(r.valorDivergenteAbsoluto)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
   </div>`;
 }
 function irRenderTopItensPanel(ind){
@@ -592,58 +723,137 @@ function irGerarRelatorioEmail(){
   const ind = IR.indicadores, c = IR.cicloAtivo;
   if(!ind || !c){ irShowToast('Sem dados de ciclo pra gerar relatório.', true); return; }
   const agora = new Date().toLocaleString('pt-BR');
-  const kpiCard = (icon, label, val, cls)=>`<div class="rp-kpi ${cls||''}"><div class="rp-kpi-icon">${icon}</div><div class="n mono">${val}</div><div class="l">${label}</div></div>`;
-  const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.valorDivergenteAbsoluto-a.valorDivergenteAbsoluto).slice(0,8);
+  const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
+  const rpTile = (icon, val, label, cls, hint)=>`<div class="rp-tile">
+    <div class="rp-tile-num ${cls||''}">${val}</div>
+    <div class="rp-tile-label">${label}</div>
+    ${hint?`<div class="rp-tile-hint">${hint}</div>`:''}
+  </div>`;
+  const rpBlock = (theme, icon, title, tilesHtml)=>`<div class="rp-block theme-${theme}">
+    <div class="rp-block-header"><span class="rp-bh-icon">${icon}</span><span class="rp-bh-title">${title}</span></div>
+    <div class="rp-block-body">${tilesHtml}</div>
+  </div>`;
+  const sectionTitle = (icon, texto, nota)=>`<div class="rp-section-title"><span class="rp-st-icon">${icon}</span><span class="rp-st-text">${texto}</span>${nota?`<span class="rp-st-note">${nota}</span>`:''}</div>`;
+
+  const blocoPecas = rpBlock('orange','📦','Peças',
+    rpTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint) +
+    rpTile('📦', irFmtInt(ind.pecasContadas), 'Peças Contadas', '', 'total físico') +
+    rpTile('⚠️', irFmtInt(ind.pecasDivergentes), 'Peças Divergentes', 'bad', irFmtInt(ind.itensDivergentes)+' itens')
+  );
+  const blocoLocais = rpBlock('blue','📍','Locais',
+    rpTile('🎯', irFmtPct(ind.acuraciaLocal), 'Acurácia Local', ind.acuraciaLocal>=ind.meta?'good':'bad', metaHint) +
+    rpTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
+    rpTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
+  );
+  const blocoValor = rpBlock('black','💰','Valor',
+    rpTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
+    rpTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
+    rpTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líq.)', '', 'ganho − perda')
+  );
+  const blocoCiclo = rpBlock('neutral','🔄','Ciclo',
+    rpTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
+    rpTile('📅', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), 'Dias Restantes', '', 'no ritmo atual') +
+    rpTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
+  );
+
+  const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes);
   const topPos = (ind.topItensPositivos||[]).slice(0,5);
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
+  const rowsLog = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
+  const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
+  const rpLogColors = {pecas:'#001A72', posicoes:'#FA4616', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
+  const porMes = irAgruparContadosPorMes(ind.contadosPorDia, c.dataAbertura);
+  const maxMes = Math.max(1, ...porMes.map(m=>m.total));
   const html = `<div class="rp-page">
     <div class="rp-hero">
-      <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
-      <div class="rp-hero-badge">Inventário Rotativo</div>
-      <h1>📦 Andamento do Ciclo ${c.numero}</h1>
+      <div class="rp-hero-top">
+        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <div class="rp-hero-status">${c.status==='aberto'?'Ciclo em andamento':'Ciclo encerrado'}</div>
+      </div>
+      <div class="rp-hero-badge">Boletim de Inventário Rotativo</div>
+      <h1>Andamento do Ciclo ${c.numero}</h1>
       <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
-      <div class="rp-date">🕒 Gerado em ${agora} &nbsp;·&nbsp; Abertura: ${irFmtDate(c.dataAbertura)} &nbsp;·&nbsp; Término previsto: ${irFmtDate(c.dataPrevistaTermino)}</div>
+      <div class="rp-hero-meta">
+        <span>Gerado em ${agora}</span>
+        <span>Abertura ${irFmtDate(c.dataAbertura)}</span>
+        <span>Término previsto ${irFmtDate(c.dataPrevistaTermino)}</span>
+      </div>
     </div>
     <div class="rp-body">
 
-    <div class="rp-kpis">
-      ${kpiCard('🔄','Andamento do ciclo', irFmtPct(ind.andamentoCiclo), 'orange')}
-      ${kpiCard('✅','Locais concluídos', irFmtInt(ind.locaisConcluidos), 'good')}
-      ${kpiCard('⏳','Locais pendentes', irFmtInt(ind.locaisPendentes), 'bad')}
-      ${kpiCard('📅','Dias restantes', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes))}
-      ${kpiCard('📦','Acurácia Peças', irFmtPct(ind.acuraciaPecas), ind.acuraciaPecas>=ind.meta?'good':'bad')}
-      ${kpiCard('📍','Acurácia Local', irFmtPct(ind.acuraciaLocal), ind.acuraciaLocal>=ind.meta?'good':'bad')}
-      ${kpiCard('💰','Acurácia Valor', irFmtPct(ind.acuraciaValor), ind.acuraciaValor>=ind.meta?'good':'bad')}
-      ${kpiCard('🎯','Meta de acurácia', irFmtPct(ind.meta))}
-      ${kpiCard('⚠️','Itens divergentes', irFmtInt(ind.itensDivergentes), 'bad')}
-      ${kpiCard('💸','Valor divergente (abs.)', irFmtMoney(ind.valorDivergenteAbsoluto), 'bad')}
-      ${kpiCard('🧮','Valor divergente (líquido)', irFmtMoney(ind.valorDivergenteLiquido))}
-      ${kpiCard('⚡','Eficiência', irFmtPct(ind.eficiencia), ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''))}
+    <div class="rp-blocks">
+      ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
 
-    <div class="rp-section-title">🛣️ Ruas mais divergentes (top 8, por valor financeiro)</div>
+    ${sectionTitle('🟡','Status do Inventário','percentual de locais contados')}
+    <div class="rp-panel rp-panel-pad">
+      <div class="rp-donut-row">
+        ${irDonutSvg(pctContagem, rpDonutColors)}
+        <div class="rp-donut-stats">
+          <div class="rp-donut-stat"><div class="n">${irFmtInt(ind.locaisCongelados)}</div><div class="l">Locais totais (orçados)</div></div>
+          <div class="rp-donut-stat"><div class="n good">${irFmtInt(ind.locaisContadosTotal)}</div><div class="l">Locais contados</div></div>
+          <div class="rp-donut-stat"><div class="n bad">${irFmtInt(ind.locaisCongelados-ind.locaisContadosTotal)}</div><div class="l">Ainda não contados</div></div>
+        </div>
+        ${porMes.length ? `<div class="rp-month-list">
+          <div class="rp-month-title">Locais contados por mês</div>
+          ${porMes.map(m=>`<div class="rp-month-row">
+            <div class="rp-month-label">${irEsc(m.label)}</div>
+            <div class="rp-month-track"><div class="rp-month-fill" style="width:${Math.round(m.total/maxMes*100)}%;"></div></div>
+            <div class="rp-month-val">${irFmtInt(m.total)}</div>
+          </div>`).join('')}
+        </div>` : ''}
+      </div>
+    </div>
+
+    ${rowsLog.length ? `${sectionTitle('📊','Acurácias por Log','peças, posições e valores — rótulo mostra a % de cada barra')}
+    <div class="rp-panel rp-panel-pad">
+      ${irBuildLogBarChartSvg(rowsLog, {colors:rpLogColors})}
+      <p class="rp-chart-legend">
+        <span style="color:${rpLogColors.pecas};">■</span> Peças &nbsp;
+        <span style="color:${rpLogColors.posicoes};">■</span> Posições &nbsp;
+        <span style="color:${rpLogColors.valor};">■</span> Valores
+      </p>
+    </div>
+
+    ${sectionTitle('📶','Contagem por Log','% de locais contados sobre o orçado, por log')}
+    <div class="rp-panel rp-panel-pad">
+      ${rowsLog.map(r=>`<div class="rp-hbar-row">
+        <div class="rp-hbar-label">${irEsc(r.chave)}</div>
+        <div class="rp-hbar-track"><div class="rp-hbar-fill" style="width:${Math.round(Math.min(1,r.pctContado)*100)}%;"></div></div>
+        <div class="rp-hbar-val">${irFmtPct(r.pctContado)}</div>
+      </div>`).join('')}
+    </div>` : ''}
+
+    ${ind.contadosPorDia && ind.contadosPorDia.length ? `${sectionTitle('📅','Contados por Dia','locais contados por dia · linha tracejada = meta diária')}
+    <div class="rp-panel rp-panel-pad">
+      ${irBuildContadosPorDiaSvg(ind.contadosPorDia, IR_META_DIARIA)}
+    </div>` : ''}
+
+    ${sectionTitle('🛣️','Ruas mais divergentes','todas as ruas, por peças divergentes')}
     <div class="rp-panel"><table class="rp-table">
-      <thead><tr><th>Rua</th><th>Locais orçados</th><th>Locais contados</th><th>Acur. Peças</th><th>Acur. Posições</th><th>Acur. Valor</th><th>Valor divergente</th></tr></thead>
+      <thead><tr><th>Rua</th><th>Peças divergentes</th><th>Locais divergentes</th><th>Valor divergente</th></tr></thead>
       <tbody>${rua.map(r=>`<tr>
-        <td>${irEsc(r.chave)}</td><td>${irFmtInt(r.locaisOrcados)}</td><td>${irFmtInt(r.locaisContados)}</td>
-        <td>${irFmtPct(r.acuraciaPecas)}</td><td>${irFmtPct(r.acuraciaPosicoes)}</td><td>${irFmtPct(r.acuraciaValor)}</td>
+        <td>${irEsc(r.chave)}</td>
+        <td>${irFmtInt(r.pecasDivergentes)}</td>
+        <td>${irFmtInt(r.locaisDivergentes)}</td>
         <td>${irFmtMoney(r.valorDivergenteAbsoluto)}</td>
-      </tr>`).join('') || '<tr><td colspan="7">Sem divergências registradas.</td></tr>'}</tbody>
+      </tr>`).join('') || '<tr><td colspan="4">Sem divergências registradas.</td></tr>'}</tbody>
     </table></div>
 
-    <div class="rp-section-title">⚖️ Maiores saldos por item (sobra x falta)</div>
+    ${sectionTitle('⚖️','Maiores saldos por item','sobra x falta')}
     <div class="rp-cols2">
       <div class="rp-panel">
-        <table class="rp-table"><thead><tr><th>🟢 Mais sobra</th><th>Saldo</th></tr></thead>
-        <tbody>${topPos.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono">+${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
+        <table class="rp-table"><thead><tr><th>Mais sobra</th><th>Saldo</th></tr></thead>
+        <tbody>${topPos.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono good">+${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
       </div>
       <div class="rp-panel">
-        <table class="rp-table"><thead><tr><th>🔴 Mais falta</th><th>Saldo</th></tr></thead>
-        <tbody>${topNeg.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono">${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
+        <table class="rp-table"><thead><tr><th>Mais falta</th><th>Saldo</th></tr></thead>
+        <tbody>${topNeg.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono bad">${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
       </div>
     </div>
 
-    <p class="rp-footer">📧 Boletim gerado automaticamente pelo módulo Inventário Rotativo. Anexe a imagem no seu e-mail.</p>
+    <p class="rp-footer">Boletim gerado automaticamente pelo módulo Inventário Rotativo. Anexe a imagem no seu e-mail.</p>
     </div>
   </div>`;
   irBaixarBoletimImagem(html, `Boletim_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
@@ -652,19 +862,49 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
   if(typeof html2canvas==='undefined'){ irShowToast('Não consegui carregar o gerador de imagem (sem internet?).', true); return; }
   const area = document.getElementById('irPrintArea');
   area.innerHTML = html;
-  area.style.cssText = 'display:block; position:fixed; left:-99999px; top:0; background:#F4F5F7;';
+  // Cobre a tela inteira (em vez de posicionar fora da viewport, que causava o
+  // html2canvas "vazar" pedaços do menu/sidebar na imagem capturada) — assim a
+  // captura fica isolada, só com o conteúdo do boletim.
+  area.style.cssText = 'display:flex; justify-content:center; position:fixed; inset:0; z-index:9999; overflow:auto; background:#F6F7FA;';
   irShowToast('Gerando boletim...');
   try{
     await new Promise(r=>setTimeout(r, 60)); // deixa o layout assentar antes de capturar
     const alvo = area.querySelector('.rp-page');
-    const canvas = await html2canvas(alvo, {backgroundColor:'#F4F5F7', scale:2, useCORS:true});
+    const canvas = await html2canvas(alvo, {backgroundColor:'#F6F7FA', scale:3, useCORS:true});
     const blob = await new Promise(resolve=>canvas.toBlob(resolve, 'image/png'));
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = nomeArquivo;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
-    irShowToast('✓ Boletim baixado! Confira na pasta de downloads.');
+
+    const numero = IR.cicloAtivo ? IR.cicloAtivo.numero : '';
+    const assunto = `Boletim Inventário Rotativo — Ciclo ${numero}`;
+    let compartilhou = false;
+    // Se o navegador suportar compartilhar arquivo (Web Share API), abre direto
+    // a folha de compartilhamento nativa — o usuário escolhe o e-mail e já
+    // manda com a imagem anexada, só falta escolher os destinatários.
+    if(navigator.canShare){
+      try{
+        const file = new File([blob], nomeArquivo, {type:'image/png'});
+        if(navigator.canShare({files:[file]})){
+          await navigator.share({files:[file], title:assunto, text:assunto});
+          compartilhou = true;
+        }
+      }catch(shareErr){
+        if(shareErr && shareErr.name==='AbortError') compartilhou = true; // usuário cancelou, não é erro
+      }
+    }
+    if(!compartilhou){
+      // Sem suporte a compartilhar arquivo: abre um rascunho de e-mail vazio
+      // (sem destinatário) pra o usuário só preencher quem recebe e anexar a
+      // imagem que já foi baixada — o mailto não permite anexar automaticamente.
+      const corpo = `Segue o boletim do Ciclo ${numero}.\n\nAnexe o arquivo "${nomeArquivo}" (baixado agora na pasta de downloads) antes de enviar.`;
+      window.open(`mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`, '_blank');
+      irShowToast('✓ Boletim baixado e rascunho de e-mail aberto — anexe a imagem e adicione os destinatários.');
+    } else {
+      irShowToast('✓ Boletim pronto — escolha os destinatários na tela de compartilhamento.');
+    }
   }catch(err){
     irShowToast('Erro ao gerar o boletim: '+err.message, true);
   }finally{
