@@ -1,10 +1,10 @@
-import { FotoAoPassar } from '../components/ui/FotoAoPassar';
 /* ============================================================
    Pagina 1: Dashboard Geral (secao 11 do brief).
    KPIs de direcionamento, mapa de calor Fornecedor x Tonelada,
    graficos, plano de acao e auditoria de valoracao.
    ============================================================ */
 import { useMemo, useState } from 'react';
+import { FotoAoPassar } from '../components/ui/FotoAoPassar';
 import type { ChartConfiguration } from 'chart.js';
 import type { Componente, Conjunto, Valoracao } from '../domain/tipos';
 import { agruparConjuntos, resumirEqualizacao } from '../domain/equalizacao';
@@ -12,8 +12,8 @@ import { auditarValoracao, resumirValoracao } from '../domain/valoracao';
 import { cores, coresStatus } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
 import {
-  Barra, Botao, Busca, Cartao, Kpi, Selecao, SeloStatus, SeloValoracao,
-  Tabela, Td, Th, Vazio,
+  Barra, BarraFiltros, Botao, Busca, Cartao, Kpi, Selecao, SeloStatus,
+  SeloValoracao, Tabela, Td, Th, Vazio,
 } from '../components/ui';
 import { baixarPlanoEqualizacao, baixarBaseCompleta, baixarCorrecoesValoracao } from '../export/exportExcel';
 
@@ -77,38 +77,31 @@ function MapaDeCalor({ conjuntos }: { conjuntos: Conjunto[] }) {
       descricao="saldo base / coluna por célula"
       acoes={alternador}
     >
-      <div className="rolagem-x">
-        <table style={{ borderCollapse: 'separate', borderSpacing: 6 }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="eq-heat">
           <thead>
             <tr>
               <th />
               {tons.map((t) => (
-                <th key={t} className="px-1.5 py-1 text-[11.5px] font-semibold" style={{ color: 'var(--ink-soft)' }}>
-                  {t}
-                </th>
+                <th key={t}>{t}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {linhas.map((l) => (
               <tr key={l}>
-                <th
-                  className="whitespace-nowrap px-1.5 py-1 text-right text-[12px]"
-                  style={{ fontFamily: 'Poppins, sans-serif' }}
-                >
-                  {l}
-                </th>
+                <th className="eq-heat-row">{l}</th>
                 {tons.map((t) => {
                   const c = celulas.get(`${l}||${t}`);
                   if (!c) return <td key={t} />;
                   return (
                     <td key={t}>
                       <div
-                        className="min-w-[76px] rounded-lg px-1.5 py-2 text-center text-[11px] leading-tight text-white"
+                        className="eq-cell"
                         style={{ background: coresStatus[c.status] }}
                         title={`${l} · ${t} — ${c.status}`}
                       >
-                        <b className="num block text-[13px]">
+                        <b>
                           {c.base} / {c.col}
                         </b>
                         <span>B / C</span>
@@ -121,10 +114,10 @@ function MapaDeCalor({ conjuntos }: { conjuntos: Conjunto[] }) {
           </tbody>
         </table>
       </div>
-      <div className="mt-3 flex flex-wrap gap-3.5 text-[11.5px]" style={{ color: 'var(--ink-soft)' }}>
+      <div className="legenda-status">
         {(Object.keys(coresStatus) as (keyof typeof coresStatus)[]).map((k) => (
-          <span key={k} className="inline-flex items-center gap-1.5">
-            <i className="inline-block h-3 w-3 rounded" style={{ background: coresStatus[k] }} />
+          <span key={k}>
+            <i style={{ background: coresStatus[k] }} />
             {k}
           </span>
         ))}
@@ -133,17 +126,23 @@ function MapaDeCalor({ conjuntos }: { conjuntos: Conjunto[] }) {
   );
 }
 
-function PlanoDeAcao({ conjuntos }: { conjuntos: Conjunto[] }) {
+function PlanoDeAcao({
+  conjuntos,
+  buscaGlobal,
+}: {
+  conjuntos: Conjunto[];
+  buscaGlobal: string;
+}) {
   const [busca, setBusca] = useState('');
   const [status, setStatus] = useState('');
 
   const filtrados = useMemo(() => {
-    const b = busca.trim().toLowerCase();
+    const b = `${buscaGlobal} ${busca}`.trim().toLowerCase();
     return conjuntos
       .filter((c) => !b || c.chave.toLowerCase().includes(b))
       .filter((c) => !status || c.status === status)
       .sort((a, b2) => b2.comprarColuna + b2.comprarBase - (a.comprarColuna + a.comprarBase));
-  }, [conjuntos, busca, status]);
+  }, [conjuntos, busca, buscaGlobal, status]);
 
   return (
     <Cartao
@@ -151,10 +150,10 @@ function PlanoDeAcao({ conjuntos }: { conjuntos: Conjunto[] }) {
       descricao={`${filtrados.length} de ${conjuntos.length} conjuntos`}
       acoes={<Botao variante="secundario" aoClicar={() => baixarPlanoEqualizacao(filtrados)}>Exportar Excel</Botao>}
     >
-      <div className="mb-3 flex flex-wrap gap-2">
+      <BarraFiltros>
         <Busca valor={busca} aoMudar={setBusca} placeholder="Buscar conjunto…" />
         <Selecao valor={status} aoMudar={setStatus} opcoes={Object.keys(coresStatus)} rotuloTodos="Todos os status" />
-      </div>
+      </BarraFiltros>
       {filtrados.length === 0 ? (
         <Vazio>Nenhum conjunto para os filtros escolhidos.</Vazio>
       ) : (
@@ -287,9 +286,12 @@ function AuditoriaValoracao({
 export function DashboardGeral({
   componentes,
   fotos,
+  busca: buscaGlobal = '',
 }: {
   componentes: Componente[];
   fotos: Map<string, string>;
+  /* Texto da busca da barra de topo, que vale para todas as telas. */
+  busca?: string;
 }) {
   const conjuntos = useMemo(() => agruparConjuntos(componentes), [componentes]);
   const resumo = useMemo(() => resumirEqualizacao(conjuntos), [conjuntos]);
@@ -390,7 +392,7 @@ export function DashboardGeral({
         <Grafico config={configCompras} altura={280} rotulo="Colunas e bases a comprar por conjunto" />
       </Cartao>
 
-      <PlanoDeAcao conjuntos={conjuntos} />
+      <PlanoDeAcao conjuntos={conjuntos} buscaGlobal={buscaGlobal} />
       <AuditoriaValoracao valoracoes={valoracoes} fotos={fotos} />
 
       <Cartao titulo="Base mestre" descricao={`${componentes.length} linhas importadas`}

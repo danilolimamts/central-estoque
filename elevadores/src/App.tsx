@@ -1,119 +1,112 @@
 /* ============================================================
-   Shell da aplicacao: barra de topo com filete laranja, menu
-   lateral dos elevadores e roteamento entre as paginas.
+   Shell da aplicacao, no mesmo formato do Inventario Rotativo:
+   menu lateral azul recolhivel, barra de topo com titulo, busca
+   global e selo de contexto, e area de rolagem para a pagina.
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import { useDados, useAcoes } from './store/useDados';
 import { Importar } from './pages/Importar';
 import { DashboardGeral } from './pages/DashboardGeral';
 import { StatusProjeto } from './pages/StatusProjeto';
-import { agruparConjuntos } from './domain/equalizacao';
-import { auditarValoracao } from './domain/valoracao';
-import { coresStatus } from './config/tokens';
+import { Elevadores } from './pages/Elevadores';
 import { FOTOS_PAIS } from './dados/fotosPais';
-import { Botao, Busca, Vazio } from './components/ui';
-import type { Componente, StatusConjunto } from './domain/tipos';
+import { Vazio } from './components/ui';
 
-type Pagina = 'geral' | 'projeto';
+type Pagina = 'geral' | 'projeto' | 'elevadores' | 'importacao';
 
-/* Menu lateral com os elevadores (item pai) e a foto do produto. */
-function MenuElevadores({
-  componentes,
-  fotos,
-}: {
-  componentes: Componente[];
-  fotos: Map<string, string>;
-}) {
-  const [busca, setBusca] = useState('');
+const PAGINAS: Record<Pagina, { titulo: string; subtitulo: string }> = {
+  geral: {
+    titulo: 'Dashboard Geral',
+    subtitulo: 'O que comprar de base e de coluna, por conjunto.',
+  },
+  projeto: {
+    titulo: 'Status do Projeto',
+    subtitulo: 'Acompanhamento das ações do plano, no formato PMO.',
+  },
+  elevadores: {
+    titulo: 'Elevadores',
+    subtitulo: 'Os itens pai do projeto, com foto e situação do conjunto.',
+  },
+  importacao: {
+    titulo: 'Importação',
+    subtitulo: 'Carregue a planilha de equalização do CD.',
+  },
+};
 
-  const elevadores = useMemo(() => {
-    const conjuntos = new Map(agruparConjuntos(componentes).map((c) => [c.chave, c]));
-    const valoracoes = new Map(auditarValoracao(componentes).map((v) => [v.itemVolMultiplo, v]));
-    const vistos = new Map<string, { item: string; nome: string; marca: string; ton: string; status: StatusConjunto }>();
-    for (const c of componentes) {
-      if (!c.itemVolMultiplo || vistos.has(c.itemVolMultiplo)) continue;
-      vistos.set(c.itemVolMultiplo, {
-        item: c.itemVolMultiplo,
-        nome: c.nomeItemVolMultiplo,
-        marca: c.marca,
-        ton: c.toneladaFixa,
-        status: conjuntos.get(c.chave)?.status ?? 'SEM ESTOQUE',
-      });
-    }
-    return [...vistos.values()].map((e) => ({ ...e, diagnostico: valoracoes.get(e.item)?.diagnostico }));
-  }, [componentes]);
-
-  const filtrados = useMemo(() => {
-    const b = busca.trim().toLowerCase();
-    if (!b) return elevadores;
-    return elevadores.filter((e) => `${e.item} ${e.nome} ${e.marca}`.toLowerCase().includes(b));
-  }, [elevadores, busca]);
-
+function Icone({ nome }: { nome: Pagina | 'tema' | 'menu' }) {
+  const comum = {
+    width: 15,
+    height: 15,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+  } as const;
+  if (nome === 'geral')
+    return (
+      <svg {...comum}>
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+      </svg>
+    );
+  if (nome === 'projeto')
+    return (
+      <svg {...comum}>
+        <path d="M3 3v18h18" />
+        <path d="M7 15l4-6 4 3 5-8" />
+      </svg>
+    );
+  if (nome === 'elevadores')
+    return (
+      <svg {...comum}>
+        <rect x="4" y="2" width="16" height="20" rx="2" />
+        <path d="M12 2v20" />
+        <path d="M8 7l0 0" />
+      </svg>
+    );
+  if (nome === 'importacao')
+    return (
+      <svg {...comum}>
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="17 8 12 3 7 8" />
+        <line x1="12" y1="3" x2="12" y2="15" />
+      </svg>
+    );
+  if (nome === 'menu')
+    return (
+      <svg {...comum} width={16} height={16}>
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="18" x2="21" y2="18" />
+      </svg>
+    );
   return (
-    <aside className="cartao self-start overflow-hidden">
-      <div className="px-4 pb-2.5 pt-3.5" style={{ borderBottom: '1px solid var(--line)' }}>
-        <h3 className="text-[13px] uppercase tracking-wide" style={{ color: 'var(--ink-soft)' }}>
-          Elevadores
-        </h3>
-        <div className="num mt-0.5 text-[22px]">{elevadores.length}</div>
-        <div className="mt-2.5">
-          <Busca valor={busca} aoMudar={setBusca} placeholder="Buscar item ou marca…" />
-        </div>
-      </div>
-      <div className="max-h-[560px] overflow-y-auto">
-        {filtrados.length === 0 ? (
-          <Vazio>Nenhum elevador encontrado.</Vazio>
-        ) : (
-          filtrados.map((e) => {
-            const foto = fotos.get(String(e.item));
-            return (
-              <div
-                key={e.item}
-                className="flex cursor-default items-center gap-2.5 px-3.5 py-2.5"
-                style={{ borderBottom: '1px solid var(--line)' }}
-                title={e.nome}
-              >
-                <div
-                  className="h-10 w-10 flex-none overflow-hidden rounded-md"
-                  style={{ border: '1px solid var(--line)', background: 'var(--surface-2)' }}
-                >
-                  {foto ? (
-                    <img src={foto} alt="" className="h-full w-full object-cover" loading="lazy" />
-                  ) : (
-                    <span className="grid h-full w-full place-items-center text-[10px]" style={{ color: 'var(--ink-soft)' }}>
-                      sem foto
-                    </span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-semibold" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                    {e.item}
-                  </div>
-                  <div className="truncate text-[11px]" style={{ color: 'var(--ink-soft)' }}>
-                    {[e.marca, e.ton].filter(Boolean).join(' · ') || e.nome}
-                  </div>
-                </div>
-                <span
-                  className="h-2.5 w-2.5 flex-none rounded-full"
-                  style={{ background: coresStatus[e.status] }}
-                  title={e.status}
-                />
-              </div>
-            );
-          })
-        )}
-      </div>
-    </aside>
+    <svg {...comum} width={14} height={14}>
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
   );
 }
 
 export default function App() {
   const { dados, carregando, erro, importar, carregarDemo, limpar } = useDados();
   const [pagina, setPagina] = useState<Pagina>('geral');
+  const [recolhido, setRecolhido] = useState(false);
   const [tema, setTema] = useState<'claro' | 'escuro' | null>(null);
+  const [busca, setBusca] = useState('');
 
   const hoje = useMemo(() => new Date(), []);
   const acoes = useAcoes(dados?.acoes, hoje);
+
   /* As fotos ja vem embutidas por codigo do item pai; o que for importado
      do DE_PARA_LINK_FOTO entra por cima, para atualizar ou cobrir itens
      novos sem precisar mexer no codigo. */
@@ -127,9 +120,9 @@ export default function App() {
     if (tema) document.documentElement.setAttribute('data-theme', tema === 'escuro' ? 'dark' : 'light');
   }, [tema]);
 
-  /* O app sempre abre na tela de importacao, que e o caminho real de uso.
-     Os dados de exemplo so entram quando pedidos de proposito, pela URL
-     (?exemplo=1) ou pelo botao da propria tela. */
+  /* O app abre na importacao quando ainda nao ha dados. Os dados de
+     exemplo so entram quando pedidos, pela URL (?exemplo=1) ou pelo
+     botao da propria tela. */
   useEffect(() => {
     if (carregando || dados) return;
     if (new URLSearchParams(window.location.search).has('exemplo')) void carregarDemo();
@@ -141,95 +134,126 @@ export default function App() {
     setTema(escuroAgora ? 'claro' : 'escuro');
   }
 
+  const semDados = !dados;
+  const paginaAtual: Pagina = semDados ? 'importacao' : pagina;
+  const cabecalho = PAGINAS[paginaAtual];
+
+  function irPara(p: Pagina) {
+    if (p === 'importacao') {
+      void limpar();
+      setPagina('geral');
+      return;
+    }
+    setPagina(p);
+  }
+
+  const itens: { id: Pagina; rotulo: string; secao?: string }[] = [
+    { id: 'geral', rotulo: 'Dashboard Geral', secao: 'Visão geral' },
+    { id: 'projeto', rotulo: 'Status do Projeto' },
+    { id: 'elevadores', rotulo: 'Elevadores', secao: 'Operação' },
+    { id: 'importacao', rotulo: 'Importação', secao: 'Sistema' },
+  ];
+
   return (
-    <>
-      <header className="sticky top-0 z-20" style={{ background: 'var(--navy)', borderBottom: '4px solid var(--laranja)' }}>
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-4 px-5 py-3">
-          <div
-            className="grid h-10 w-10 flex-none place-items-center rounded-lg text-[15px] font-bold text-white"
-            style={{ background: 'var(--laranja)', fontFamily: 'Poppins, sans-serif' }}
-          >
-            LDM
+    <div className="shell">
+      <aside className={`sidebar ${recolhido ? 'collapsed' : ''}`}>
+        <div className="brand">
+          <div className="brand-logo-chip">
+            <span
+              style={{
+                display: 'block',
+                background: '#FA4616',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: 11,
+                letterSpacing: '.02em',
+                padding: '3px 6px',
+                borderRadius: 4,
+              }}
+            >
+              LDM
+            </span>
           </div>
+          <div style={{ minWidth: 0 }}>
+            <div className="brand-name">Equalização</div>
+            <div className="brand-sub">Elevadores · CD Cajamar</div>
+          </div>
+          <button
+            className="sidebar-toggle"
+            onClick={() => setRecolhido((v) => !v)}
+            title={recolhido ? 'Expandir menu' : 'Recolher menu'}
+          >
+            <Icone nome="menu" />
+          </button>
+        </div>
+
+        <nav className="sidebar-nav">
+          {itens.map((it) => (
+            <div key={it.id}>
+              {it.secao && <div className="nav-section-label">{it.secao}</div>}
+              <button
+                className={`nav-item ${paginaAtual === it.id ? 'active' : ''}`}
+                onClick={() => irPara(it.id)}
+                disabled={semDados && it.id !== 'importacao'}
+                style={semDados && it.id !== 'importacao' ? { opacity: 0.35 } : undefined}
+                title={it.rotulo}
+              >
+                <Icone nome={it.id} />
+                <span>{it.rotulo}</span>
+              </button>
+            </div>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <button className="theme-toggle" onClick={alternarTema}>
+            <Icone nome="tema" />
+            <span>Alternar tema</span>
+          </button>
+        </div>
+      </aside>
+
+      <main className="content">
+        <div className="topbar">
           <div>
-            <h1 className="text-[16.5px] text-white">Central de Equalização de Elevadores</h1>
-            <p className="mt-px text-[11.5px]" style={{ color: '#B9C0E6' }}>
-              CD Cajamar · Controle de Estoque · Loja do Mecânico
-            </p>
+            <h1>{cabecalho.titulo}</h1>
+            <p>{cabecalho.subtitulo}</p>
           </div>
 
-          {dados && (
-            <nav className="flex gap-1" role="tablist" aria-label="Páginas">
-              {([['geral', 'Dashboard Geral'], ['projeto', 'Status Projeto']] as const).map(([id, rotulo]) => (
-                <button
-                  key={id}
-                  role="tab"
-                  aria-selected={pagina === id}
-                  onClick={() => setPagina(id)}
-                  className="rounded-lg px-3.5 py-2 text-[13px] font-medium"
-                  style={{
-                    fontFamily: 'Poppins, sans-serif',
-                    background: pagina === id ? 'rgba(255,255,255,.12)' : 'transparent',
-                    color: pagina === id ? '#fff' : '#C3C9EA',
-                  }}
-                >
-                  {rotulo}
-                </button>
-              ))}
-            </nav>
+          {dados && paginaAtual !== 'importacao' && (
+            <input
+              className="global-search"
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Pesquisa global (item, marca, fabricante)..."
+              aria-label="Pesquisa global"
+            />
           )}
 
-          <div className="ml-auto flex items-center gap-2.5">
-            {dados?.demonstracao && (
-              <span
-                className="rounded-full px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wide"
-                style={{ background: 'rgba(250,70,22,.18)', color: '#FFD9CC', border: '1px solid rgba(250,70,22,.5)' }}
-                title="Números ilustrativos. A planilha do CD entra pela tela de importação."
-              >
-                Dados de exemplo
-              </span>
-            )}
-            {dados && !dados.demonstracao && (
-              <span className="hidden text-[11.5px] sm:block" style={{ color: '#B9C0E6' }}>
-                {dados.arquivo} · {new Date(dados.importadoEm).toLocaleDateString('pt-BR')}
-                {dados.semPersistencia && ' · só nesta sessão'}
-              </span>
-            )}
-            {dados && (
-              <Botao variante="secundario" aoClicar={limpar}>
-                {dados.demonstracao ? 'Importar planilha' : 'Nova importação'}
-              </Botao>
-            )}
-            <button
-              onClick={alternarTema}
-              aria-label="Alternar tema"
-              className="h-8.5 w-8.5 rounded-lg text-[15px] text-white"
-              style={{ width: 34, height: 34, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.18)' }}
-            >
-              ◐
-            </button>
-          </div>
+          {dados && (
+            <div className="cycle-badge">
+              {dados.demonstracao
+                ? 'Dados de exemplo'
+                : `${dados.arquivo}${dados.semPersistencia ? ' · só nesta sessão' : ''}`}
+            </div>
+          )}
         </div>
-      </header>
 
-      <div className="mx-auto max-w-[1400px] px-5 pb-10 pt-4">
-        {carregando ? (
-          <Vazio>Carregando dados salvos…</Vazio>
-        ) : !dados ? (
-          <Importar aoImportar={importar} aoVerExemplo={carregarDemo} erro={erro} />
-        ) : (
-          <div className="grid gap-4.5 lg:grid-cols-[268px_1fr]" style={{ gap: 18 }}>
-            <MenuElevadores componentes={dados.componentes} fotos={fotos} />
-            <main className="min-w-0">
-              {pagina === 'geral' ? (
-                <DashboardGeral componentes={dados.componentes} fotos={fotos} />
-              ) : (
-                <StatusProjeto acoes={acoes} hoje={hoje} />
-              )}
-            </main>
-          </div>
-        )}
-      </div>
-    </>
+        <div className="page-scroll">
+          {carregando ? (
+            <Vazio icone="⏳">Carregando dados salvos…</Vazio>
+          ) : !dados ? (
+            <Importar aoImportar={importar} aoVerExemplo={carregarDemo} erro={erro} />
+          ) : paginaAtual === 'geral' ? (
+            <DashboardGeral componentes={dados.componentes} fotos={fotos} busca={busca} />
+          ) : paginaAtual === 'projeto' ? (
+            <StatusProjeto acoes={acoes} hoje={hoje} busca={busca} />
+          ) : (
+            <Elevadores componentes={dados.componentes} fotos={fotos} busca={busca} />
+          )}
+        </div>
+      </main>
+    </div>
   );
 }

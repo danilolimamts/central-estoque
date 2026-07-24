@@ -61,7 +61,7 @@ await quadro.getByRole('button', { name: /Processar planilha/i }).click();
 
 let ok = false;
 try {
-  await quadro.getByRole('tab', { name: /Dashboard Geral/i }).waitFor({ timeout: 20000 });
+  await quadro.getByRole('heading', { name: /Dashboard Geral/i }).waitFor({ timeout: 20000 });
   ok = true;
 } catch {
   ok = false;
@@ -70,9 +70,16 @@ console.log('importacao funcionou no sandbox:', ok ? 'sim' : 'NAO');
 
 if (ok) {
   await pagina.waitForTimeout(1500);
-  await pagina.screenshot({ path: join(SAIDA, 'sb-02-dashboard.png'), fullPage: true });
+  await pagina.screenshot({ path: join(SAIDA, 'sb-02-dashboard.png') });
   const kpi = await quadro.locator('.num').first().textContent();
   console.log('primeiro numero na tela:', kpi?.trim());
+
+  // Percorre as demais telas do menu lateral.
+  for (const [rotulo, arquivo] of [['Status do Projeto', 'sb-03-projeto.png'], ['Elevadores', 'sb-04-elevadores.png']]) {
+    await quadro.locator('.nav-item', { hasText: rotulo }).first().click();
+    await pagina.waitForTimeout(1200);
+    await pagina.screenshot({ path: join(SAIDA, arquivo) });
+  }
 } else {
   await pagina.screenshot({ path: join(SAIDA, 'sb-02-falhou.png'), fullPage: true });
   const alerta = await quadro.locator('[role=alert]').count();

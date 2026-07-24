@@ -260,7 +260,16 @@ function Gantt({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
   );
 }
 
-export function StatusProjeto({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
+export function StatusProjeto({
+  acoes,
+  hoje,
+  busca: buscaGlobal = '',
+}: {
+  acoes: Acao[];
+  hoje: Date;
+  /* Texto da busca da barra de topo, que vale para todas as telas. */
+  busca?: string;
+}) {
   const [responsavel, setResponsavel] = useState('');
   const [proposta, setProposta] = useState('');
   const [situacao, setSituacao] = useState('');
@@ -278,7 +287,7 @@ export function StatusProjeto({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
   // Todos os indicadores abaixo usam esta lista: o filtro vale inclusive
   // para o score (secao 11 do brief).
   const filtradas = useMemo(() => {
-    const b = busca.trim().toLowerCase();
+    const b = `${buscaGlobal} ${busca}`.trim().toLowerCase();
     return acoes
       .filter((a) => !responsavel || a.responsavel === responsavel)
       .filter((a) => !proposta || a.proposta === proposta)
