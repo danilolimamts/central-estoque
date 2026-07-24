@@ -466,57 +466,94 @@ function irRenderPorRuaPanel(ind){
     </table></div>
   </div>`;
 }
-/* Constrói o miolo (grid + linhas + pontos + labels) do gráfico "Acurácias por
-   Log", compartilhado entre o Dashboard (interativo, com tooltip) e o boletim
-   de e-mail (estático, cores fixas — vira imagem). */
-function irBuildLogChartSvg(rows, opts){
-  opts = opts||{};
-  const colors = opts.colors || {pecas:'var(--blue)', posicoes:'var(--orange)', valor:'var(--blue-soft)', grid:'var(--line)', axis:'var(--ink-soft)', dotStroke:'var(--surface)'};
-  const interactive = opts.interactive!==false;
-  const W = Math.max(420, rows.length*90), H = 220;
-  const padL = 34, padR = 14, padT = 16, padB = 30;
-  const plotW = W-padL-padR, plotH = H-padT-padB;
-  const n = rows.length;
-  const xAt = i => n<=1 ? padL+plotW/2 : padL + (i/(n-1))*plotW;
-  const yAt = v => padT + plotH - Math.max(0,Math.min(1,v))*plotH;
-
-  const series = [
-    {key:'acuraciaPecas', color:colors.pecas},
-    {key:'acuraciaPosicoes', color:colors.posicoes},
-    {key:'acuraciaValor', color:colors.valor}
-  ];
-  const gridLines = [0,0.25,0.5,0.75,1].map(t=>{
-    const y = yAt(t);
-    return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="${colors.grid}" stroke-width="1"/>
-      <text x="${padL-6}" y="${y+3}" font-size="8" fill="${colors.axis}" text-anchor="end">${Math.round(t*100)}%</text>`;
-  }).join('');
-  const seriesHtml = series.map(s=>{
-    const pts = rows.map((r,i)=>`${xAt(i)},${yAt(r[s.key])}`).join(' ');
-    const dots = rows.map((r,i)=>`<circle cx="${xAt(i)}" cy="${yAt(r[s.key])}" r="3.5" fill="${s.color}" stroke="${colors.dotStroke}" stroke-width="1.5"/>`).join('');
-    return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2"/>${dots}`;
-  }).join('');
-  const xLabels = rows.map((r,i)=>`<text x="${xAt(i)}" y="${H-8}" font-size="9" fill="${colors.axis}" text-anchor="middle">${irEsc(r.chave)}</text>`).join('');
-  const hitCols = !interactive ? '' : rows.map((r,i)=>`<rect x="${xAt(i)-plotW/(n*2)}" y="${padT}" width="${plotW/n}" height="${plotH}" fill="transparent"
-      onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()"/>`).join('');
-
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="xMinYMid meet">
-    ${gridLines}${seriesHtml}${xLabels}${hitCols}
-  </svg>`;
-}
 function irRenderPorLogPanel(ind){
   const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   if(!rows.length) return `<div class="panel"><h3>Acurácias e NET por Log</h3><p class="field-hint">Nenhum log com locais contados ainda.</p></div>`;
   IR._porLogMap = new Map(rows.map(r=>[r.chave, r]));
   return `<div class="panel">
     <h3>Acurácias por Log</h3>
-    <p class="panel-sub">Grupo Classe da base congelada · evolução de peças / posições / valores por log. Passe o mouse sobre um ponto para ver os detalhes.</p>
-    <div class="bi-linechart-wrap">${irBuildLogChartSvg(rows)}</div>
+    <p class="panel-sub">Grupo Classe da base congelada · barras e percentuais: peças / posições / valores. Passe o mouse para ver os detalhes.</p>
+    <div class="bi-vbars">
+      ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
+        <div class="bi-vbar-pcts">
+          <span class="mono" style="color:var(--blue);">${irFmtPct(r.acuraciaPecas)}</span>
+          <span class="mono" style="color:var(--orange);">${irFmtPct(r.acuraciaPosicoes)}</span>
+          <span class="mono" style="color:var(--blue-soft);">${irFmtPct(r.acuraciaValor)}</span>
+        </div>
+        <div class="bi-cluster" style="height:100px;">
+          <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}%;"></div>
+          <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}%;"></div>
+          <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}%;background:var(--blue-soft);"></div>
+        </div>
+        <div class="bi-vbar-label">${irEsc(r.chave)}</div>
+      </div>`).join('')}
+    </div>
     <p class="field-hint" style="margin-top:8px;">
-      <span class="mono" style="color:var(--blue);">●</span> Peças &nbsp;
-      <span class="mono" style="color:var(--orange);">●</span> Posições &nbsp;
-      <span class="mono" style="color:var(--blue-soft);">●</span> Valores
+      <span class="mono" style="color:var(--blue);">■</span> Peças &nbsp;
+      <span class="mono" style="color:var(--orange);">■</span> Posições &nbsp;
+      <span class="mono" style="color:var(--blue-soft);">■</span> Valores
     </p>
   </div>`;
+}
+/* Gráfico de barras (Acurácias por Log) pro boletim — SVG estático com o
+   rótulo da % acima de cada barra, cores fixas (vira imagem). */
+function irBuildLogBarChartSvg(rows, opts){
+  opts = opts||{};
+  const colors = opts.colors || {pecas:'#0B2545', posicoes:'#C9A227', valor:'#7C8AA5', grid:'#E4E7EE', axis:'#6B7280'};
+  const W = Math.max(420, rows.length*110), H = 240;
+  const padL = 14, padR = 14, padT = 40, padB = 32;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const n = rows.length, groupW = plotW/n;
+  const barW = Math.min(20, groupW/3*0.62), gap = 3;
+  const series = [
+    {key:'acuraciaPecas', color:colors.pecas},
+    {key:'acuraciaPosicoes', color:colors.posicoes},
+    {key:'acuraciaValor', color:colors.valor}
+  ];
+  let bars = '', labels = '', xLabels = '';
+  rows.forEach((r,i)=>{
+    const groupX = padL + i*groupW + (groupW-(barW*3+gap*2))/2;
+    series.forEach((s,si)=>{
+      const val = Math.max(0,Math.min(1,r[s.key]));
+      const bh = val*plotH;
+      const bx = groupX + si*(barW+gap);
+      const by = padT+plotH-bh;
+      bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${s.color}" rx="2"/>`;
+      labels += `<text x="${(bx+barW/2).toFixed(1)}" y="${(by-4).toFixed(1)}" font-size="7.5" text-anchor="middle" fill="${s.color}" font-weight="700">${Math.round(val*100)}%</text>`;
+    });
+    xLabels += `<text x="${(padL+i*groupW+groupW/2).toFixed(1)}" y="${H-10}" font-size="9.5" text-anchor="middle" fill="${colors.axis}">${irEsc(r.chave)}</text>`;
+  });
+  const gridLines = [0,0.25,0.5,0.75,1].map(t=>{
+    const y = padT+plotH-t*plotH;
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="${colors.grid}" stroke-width="1"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="xMinYMid meet">${gridLines}${bars}${labels}${xLabels}</svg>`;
+}
+/* Gráfico de barras (Contados por Dia) pro boletim, com a mesma linha de
+   meta tracejada do painel do Dashboard — SVG estático, cores fixas. */
+function irBuildContadosPorDiaSvg(rows, meta, opts){
+  opts = opts||{};
+  const colors = opts.colors || {bar:'#C9A227', grid:'#E4E7EE', axis:'#6B7280', label:'#1F2430', meta:'#0B2545'};
+  const W = Math.max(420, rows.length*54), H = 220;
+  const padL = 14, padR = 14, padT = 32, padB = 30;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const n = rows.length;
+  const max = Math.max(1, meta, ...rows.map(r=>r.total));
+  const barW = Math.min(30, plotW/n*0.55);
+  let bars = '', labels = '', xLabels = '';
+  rows.forEach((r,i)=>{
+    const cx = padL + (i+0.5)*(plotW/n);
+    const bh = (r.total/max)*plotH;
+    const bx = cx-barW/2, by = padT+plotH-bh;
+    bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${colors.bar}" rx="2"/>`;
+    labels += `<text x="${cx.toFixed(1)}" y="${(by-4).toFixed(1)}" font-size="8" text-anchor="middle" fill="${colors.label}" font-weight="700">${irFmtInt(r.total)}</text>`;
+    const dia = new Date(r.dia+'T00:00:00');
+    xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="9" text-anchor="middle" fill="${colors.axis}">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</text>`;
+  });
+  const metaY = padT+plotH-(meta/max)*plotH;
+  const metaLine = `<line x1="${padL}" y1="${metaY.toFixed(1)}" x2="${W-padR}" y2="${metaY.toFixed(1)}" stroke="${colors.meta}" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="${W-padR}" y="${(metaY-5).toFixed(1)}" font-size="9" text-anchor="end" fill="${colors.meta}" font-weight="700">Meta ${irFmtInt(meta)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="xMinYMid meet">${bars}${labels}${xLabels}${metaLine}</svg>`;
 }
 /* Gráfico de rosca (donut) genérico — usado no "Status do Inventário" do
    Dashboard e no boletim. Cores em hex/var explícitos por parâmetro (não
@@ -738,14 +775,28 @@ function irGerarRelatorioEmail(){
       </div>
     </div>
 
-    ${rowsLog.length ? `${sectionTitle('📈','Acurácias por Log','peças, posições e valores')}
+    ${rowsLog.length ? `${sectionTitle('📊','Acurácias por Log','peças, posições e valores — rótulo mostra a % de cada barra')}
     <div class="rp-panel rp-panel-pad">
-      ${irBuildLogChartSvg(rowsLog, {interactive:false, colors:rpLogColors})}
+      ${irBuildLogBarChartSvg(rowsLog, {colors:rpLogColors})}
       <p class="rp-chart-legend">
-        <span style="color:${rpLogColors.pecas};">●</span> Peças &nbsp;
-        <span style="color:${rpLogColors.posicoes};">●</span> Posições &nbsp;
-        <span style="color:${rpLogColors.valor};">●</span> Valores
+        <span style="color:${rpLogColors.pecas};">■</span> Peças &nbsp;
+        <span style="color:${rpLogColors.posicoes};">■</span> Posições &nbsp;
+        <span style="color:${rpLogColors.valor};">■</span> Valores
       </p>
+    </div>
+
+    ${sectionTitle('📶','Contagem por Log','% de locais contados sobre o orçado, por log')}
+    <div class="rp-panel rp-panel-pad">
+      ${rowsLog.map(r=>`<div class="rp-hbar-row">
+        <div class="rp-hbar-label">${irEsc(r.chave)}</div>
+        <div class="rp-hbar-track"><div class="rp-hbar-fill" style="width:${Math.round(Math.min(1,r.pctContado)*100)}%;"></div></div>
+        <div class="rp-hbar-val">${irFmtPct(r.pctContado)}</div>
+      </div>`).join('')}
+    </div>` : ''}
+
+    ${ind.contadosPorDia && ind.contadosPorDia.length ? `${sectionTitle('📅','Contados por Dia','locais contados por dia · linha tracejada = meta diária')}
+    <div class="rp-panel rp-panel-pad">
+      ${irBuildContadosPorDiaSvg(ind.contadosPorDia, IR_META_DIARIA)}
     </div>` : ''}
 
     ${sectionTitle('🛣️','Ruas mais divergentes','top 8 por valor financeiro')}
