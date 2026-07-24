@@ -119,13 +119,12 @@ export default function App() {
     if (tema) document.documentElement.setAttribute('data-theme', tema === 'escuro' ? 'dark' : 'light');
   }, [tema]);
 
-  /* Abertura ja com os dados de exemplo, para links de visualizacao
-     (?exemplo=1) e para a versao publicada de demonstracao. */
+  /* O app sempre abre na tela de importacao, que e o caminho real de uso.
+     Os dados de exemplo so entram quando pedidos de proposito, pela URL
+     (?exemplo=1) ou pelo botao da propria tela. */
   useEffect(() => {
     if (carregando || dados) return;
-    const pedidoNaUrl = new URLSearchParams(window.location.search).has('exemplo');
-    const demoEmbutida = (window as { __EQUALIZACAO_DEMO__?: boolean }).__EQUALIZACAO_DEMO__;
-    if (pedidoNaUrl || demoEmbutida) void carregarDemo();
+    if (new URLSearchParams(window.location.search).has('exemplo')) void carregarDemo();
   }, [carregando, dados, carregarDemo]);
 
   function alternarTema() {
@@ -185,6 +184,7 @@ export default function App() {
             {dados && !dados.demonstracao && (
               <span className="hidden text-[11.5px] sm:block" style={{ color: '#B9C0E6' }}>
                 {dados.arquivo} · {new Date(dados.importadoEm).toLocaleDateString('pt-BR')}
+                {dados.semPersistencia && ' · só nesta sessão'}
               </span>
             )}
             {dados && (

@@ -26,6 +26,9 @@ export interface Importacao {
   importadoEm: string; // ISO
   /* Marca os dados de exemplo, para a tela avisar que nao sao do CD. */
   demonstracao?: boolean;
+  /* Verdadeiro quando o navegador nao deixou gravar (janela anonima ou
+     armazenamento bloqueado): os dados valem so para esta sessao. */
+  semPersistencia?: boolean;
 }
 
 /* Datas viram string ao passar pelo IndexedDB; reidrata na volta. */
@@ -85,7 +88,16 @@ export function useDados() {
         arquivo: arquivo.name,
         importadoEm: new Date().toISOString(),
       };
-      await store.setItem(CHAVE_DADOS, novo);
+
+      // Mostrar a planilha importada nao pode depender de conseguir gravar.
+      // Em janela anonima ou com armazenamento bloqueado, o app segue
+      // funcionando: so avisa que os dados nao ficam salvos.
+      try {
+        await store.setItem(CHAVE_DADOS, novo);
+      } catch {
+        novo.semPersistencia = true;
+      }
+
       setDados(novo);
       return novo;
     } catch (e) {
@@ -112,7 +124,11 @@ export function useDados() {
   }, []);
 
   const limpar = useCallback(async () => {
-    await store.removeItem(CHAVE_DADOS);
+    try {
+      await store.removeItem(CHAVE_DADOS);
+    } catch {
+      // Sem armazenamento nao ha o que apagar; volta para a tela inicial.
+    }
     setDados(null);
   }, []);
 

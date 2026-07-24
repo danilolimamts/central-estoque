@@ -101,8 +101,17 @@ export function Importar({
             onChange={(e) => setFotos(e.target.files?.[0] ?? null)}
           />
           <Botao variante="secundario" aoClicar={() => refFotos.current?.click()}>
-            {fotos ? fotos.name : 'DE_PARA_LINK_FOTO.xlsx'}
+            {fotos ? fotos.name : 'Escolher DE_PARA_LINK_FOTO.xlsx'}
           </Botao>
+          {fotos && (
+            <button
+              onClick={() => setFotos(null)}
+              className="text-[11.5px] underline"
+              style={{ color: 'var(--ink-soft)' }}
+            >
+              remover
+            </button>
+          )}
         </div>
 
         {erro && (
