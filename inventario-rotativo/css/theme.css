@@ -238,6 +238,13 @@ button{ font-family:inherit; cursor:pointer; }
 .bi-vbar-label{ font-size:9.5px; color:var(--ink-soft); margin-top:6px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .bi-vbar-pcts{ display:flex; flex-direction:column; align-items:center; gap:1px; font-size:9.5px; font-weight:700; margin-bottom:4px; }
 
+/* Status do Inventário (rosca + estatísticas) */
+.status-donut-row{ display:flex; align-items:center; gap:28px; flex-wrap:wrap; }
+.status-donut-stats{ display:flex; flex-direction:column; gap:14px; flex:1; min-width:160px; }
+.status-donut-stat .n{ font-family:'SFMono-Regular',Consolas,monospace; font-size:22px; font-weight:800; color:var(--ink); line-height:1.2; }
+.status-donut-stat .n.good{ color:var(--success); } .status-donut-stat .n.bad{ color:var(--danger); }
+.status-donut-stat .l{ font-size:11px; color:var(--ink-soft); font-weight:600; margin-top:2px; }
+
 /* Gráfico de linha (Acurácias por Log) */
 .bi-linechart-wrap{ width:100%; overflow-x:auto; }
 .bi-linechart{ width:100%; min-width:420px; height:220px; display:block; }
@@ -390,6 +397,13 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .rp-st-icon{ margin-right:8px; opacity:.8; }
 .rp-st-note{ font-weight:500; color:#6B7280; font-size:11px; margin-left:8px; }
 .rp-panel{ background:#fff; border:1px solid #E4E7EE; border-radius:8px; overflow:hidden; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+.rp-panel-pad{ padding:20px; }
+.rp-donut-row{ display:flex; align-items:center; gap:26px; }
+.rp-donut-stats{ display:flex; flex-direction:column; gap:12px; }
+.rp-donut-stat .n{ font-family:'SFMono-Regular',Consolas,monospace; font-size:19px; font-weight:800; color:#1F2430; }
+.rp-donut-stat .n.good{ color:#1F8A52; } .rp-donut-stat .n.bad{ color:#C0392B; }
+.rp-donut-stat .l{ font-size:10.5px; color:#6B7280; font-weight:600; margin-top:2px; }
+.rp-chart-legend{ margin:8px 0 0; font-size:10.5px; color:#6B7280; }
 .rp-table{ width:100%; border-collapse:collapse; font-size:11px; }
 .rp-table th{ text-align:left; background:#F6F7FA; color:#4B5165; padding:9px 12px; font-size:9.5px; font-weight:700; border-bottom:1px solid #E4E7EE; }
 .rp-table td{ padding:8px 12px; border-bottom:1px solid #EEF0F4; }

@@ -344,6 +344,7 @@ function irRenderDashboard(){
     <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
+    ${irRenderStatusInventarioPanel(ind)}
     ${irRenderPorRuaPanel(ind)}
     <div class="bi-grid-2">
       ${irRenderPorLogPanel(ind)}
@@ -465,11 +466,13 @@ function irRenderPorRuaPanel(ind){
     </table></div>
   </div>`;
 }
-function irRenderPorLogPanel(ind){
-  const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
-  if(!rows.length) return `<div class="panel"><h3>Acurácias e NET por Log</h3><p class="field-hint">Nenhum log com locais contados ainda.</p></div>`;
-  IR._porLogMap = new Map(rows.map(r=>[r.chave, r]));
-
+/* Constrói o miolo (grid + linhas + pontos + labels) do gráfico "Acurácias por
+   Log", compartilhado entre o Dashboard (interativo, com tooltip) e o boletim
+   de e-mail (estático, cores fixas — vira imagem). */
+function irBuildLogChartSvg(rows, opts){
+  opts = opts||{};
+  const colors = opts.colors || {pecas:'var(--blue)', posicoes:'var(--orange)', valor:'var(--blue-soft)', grid:'var(--line)', axis:'var(--ink-soft)', dotStroke:'var(--surface)'};
+  const interactive = opts.interactive!==false;
   const W = Math.max(420, rows.length*90), H = 220;
   const padL = 34, padR = 14, padT = 16, padB = 30;
   const plotW = W-padL-padR, plotH = H-padT-padB;
@@ -478,40 +481,73 @@ function irRenderPorLogPanel(ind){
   const yAt = v => padT + plotH - Math.max(0,Math.min(1,v))*plotH;
 
   const series = [
-    {key:'acuraciaPecas', color:'var(--blue)', label:'Peças'},
-    {key:'acuraciaPosicoes', color:'var(--orange)', label:'Posições'},
-    {key:'acuraciaValor', color:'var(--blue-soft)', label:'Valores'}
+    {key:'acuraciaPecas', color:colors.pecas},
+    {key:'acuraciaPosicoes', color:colors.posicoes},
+    {key:'acuraciaValor', color:colors.valor}
   ];
   const gridLines = [0,0.25,0.5,0.75,1].map(t=>{
     const y = yAt(t);
-    return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" class="bi-line-grid"/>
-      <text x="${padL-6}" y="${y+3}" class="bi-line-axis-y">${Math.round(t*100)}%</text>`;
+    return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="${colors.grid}" stroke-width="1"/>
+      <text x="${padL-6}" y="${y+3}" font-size="8" fill="${colors.axis}" text-anchor="end">${Math.round(t*100)}%</text>`;
   }).join('');
   const seriesHtml = series.map(s=>{
     const pts = rows.map((r,i)=>`${xAt(i)},${yAt(r[s.key])}`).join(' ');
-    const dots = rows.map((r,i)=>`<circle cx="${xAt(i)}" cy="${yAt(r[s.key])}" r="3.5" fill="${s.color}" stroke="var(--surface)" stroke-width="1.5"/>`).join('');
+    const dots = rows.map((r,i)=>`<circle cx="${xAt(i)}" cy="${yAt(r[s.key])}" r="3.5" fill="${s.color}" stroke="${colors.dotStroke}" stroke-width="1.5"/>`).join('');
     return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2"/>${dots}`;
   }).join('');
-  const hitCols = rows.map((r,i)=>`<rect x="${xAt(i)-plotW/(n*2)}" y="${padT}" width="${plotW/n}" height="${plotH}" fill="transparent"
+  const xLabels = rows.map((r,i)=>`<text x="${xAt(i)}" y="${H-8}" font-size="9" fill="${colors.axis}" text-anchor="middle">${irEsc(r.chave)}</text>`).join('');
+  const hitCols = !interactive ? '' : rows.map((r,i)=>`<rect x="${xAt(i)-plotW/(n*2)}" y="${padT}" width="${plotW/n}" height="${plotH}" fill="transparent"
       onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()"/>`).join('');
-  const xLabels = rows.map((r,i)=>`<text x="${xAt(i)}" y="${H-8}" class="bi-line-axis-x">${irEsc(r.chave)}</text>`).join('');
 
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="xMinYMid meet">
+    ${gridLines}${seriesHtml}${xLabels}${hitCols}
+  </svg>`;
+}
+function irRenderPorLogPanel(ind){
+  const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  if(!rows.length) return `<div class="panel"><h3>Acurácias e NET por Log</h3><p class="field-hint">Nenhum log com locais contados ainda.</p></div>`;
+  IR._porLogMap = new Map(rows.map(r=>[r.chave, r]));
   return `<div class="panel">
     <h3>Acurácias por Log</h3>
     <p class="panel-sub">Grupo Classe da base congelada · evolução de peças / posições / valores por log. Passe o mouse sobre um ponto para ver os detalhes.</p>
-    <div class="bi-linechart-wrap">
-      <svg viewBox="0 0 ${W} ${H}" class="bi-linechart" preserveAspectRatio="xMinYMid meet">
-        ${gridLines}
-        ${seriesHtml}
-        ${xLabels}
-        ${hitCols}
-      </svg>
-    </div>
+    <div class="bi-linechart-wrap">${irBuildLogChartSvg(rows)}</div>
     <p class="field-hint" style="margin-top:8px;">
       <span class="mono" style="color:var(--blue);">●</span> Peças &nbsp;
       <span class="mono" style="color:var(--orange);">●</span> Posições &nbsp;
       <span class="mono" style="color:var(--blue-soft);">●</span> Valores
     </p>
+  </div>`;
+}
+/* Gráfico de rosca (donut) genérico — usado no "Status do Inventário" do
+   Dashboard e no boletim. Cores em hex/var explícitos por parâmetro (não
+   depende do tema) pra funcionar igual em qualquer contexto. */
+function irDonutSvg(pct, opts){
+  opts = opts||{};
+  const size = opts.size||132, stroke = opts.stroke||14;
+  const color = opts.color||'var(--orange)', track = opts.track||'var(--surface2)', textColor = opts.textColor||'var(--ink)';
+  const r = (size-stroke)/2, c = size/2, circ = 2*Math.PI*r;
+  const dash = Math.max(0,Math.min(1,pct))*circ;
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}"/>
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
+      stroke-dasharray="${dash.toFixed(2)} ${circ.toFixed(2)}" transform="rotate(-90 ${c} ${c})"/>
+    <text x="${c}" y="${c+size*0.065}" text-anchor="middle" font-size="${Math.round(size*0.19)}" font-weight="800" fill="${textColor}">${irFmtPct(pct)}</text>
+  </svg>`;
+}
+function irRenderStatusInventarioPanel(ind){
+  const total = ind.locaisCongelados||0, contados = ind.locaisContadosTotal||0;
+  const pct = total>0 ? contados/total : 0;
+  return `<div class="panel">
+    <h3>Status do Inventário</h3>
+    <p class="panel-sub">Percentual de locais já contados em relação ao total orçado do ciclo.</p>
+    <div class="status-donut-row">
+      ${irDonutSvg(pct)}
+      <div class="status-donut-stats">
+        <div class="status-donut-stat"><div class="n mono">${irFmtInt(total)}</div><div class="l">Locais totais (orçados)</div></div>
+        <div class="status-donut-stat"><div class="n mono good">${irFmtInt(contados)}</div><div class="l">Locais contados</div></div>
+        <div class="status-donut-stat"><div class="n mono bad">${irFmtInt(total-contados)}</div><div class="l">Ainda não contados</div></div>
+      </div>
+    </div>
   </div>`;
 }
 function irShowLogTooltip(ev, chave){
@@ -665,6 +701,10 @@ function irGerarRelatorioEmail(){
   const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.valorDivergenteAbsoluto-a.valorDivergenteAbsoluto).slice(0,8);
   const topPos = (ind.topItensPositivos||[]).slice(0,5);
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
+  const rowsLog = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
+  const rpDonutColors = {color:'#C9A227', track:'#EEF0F4', textColor:'#1F2430'};
+  const rpLogColors = {pecas:'#0B2545', posicoes:'#C9A227', valor:'#7C8AA5', grid:'#E4E7EE', axis:'#6B7280', dotStroke:'#fff'};
   const html = `<div class="rp-page">
     <div class="rp-hero">
       <div class="rp-hero-top">
@@ -685,6 +725,28 @@ function irGerarRelatorioEmail(){
     <div class="rp-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
+
+    ${sectionTitle('🟡','Status do Inventário','percentual de locais contados')}
+    <div class="rp-panel rp-panel-pad">
+      <div class="rp-donut-row">
+        ${irDonutSvg(pctContagem, rpDonutColors)}
+        <div class="rp-donut-stats">
+          <div class="rp-donut-stat"><div class="n">${irFmtInt(ind.locaisCongelados)}</div><div class="l">Locais totais (orçados)</div></div>
+          <div class="rp-donut-stat"><div class="n good">${irFmtInt(ind.locaisContadosTotal)}</div><div class="l">Locais contados</div></div>
+          <div class="rp-donut-stat"><div class="n bad">${irFmtInt(ind.locaisCongelados-ind.locaisContadosTotal)}</div><div class="l">Ainda não contados</div></div>
+        </div>
+      </div>
+    </div>
+
+    ${rowsLog.length ? `${sectionTitle('📈','Acurácias por Log','peças, posições e valores')}
+    <div class="rp-panel rp-panel-pad">
+      ${irBuildLogChartSvg(rowsLog, {interactive:false, colors:rpLogColors})}
+      <p class="rp-chart-legend">
+        <span style="color:${rpLogColors.pecas};">●</span> Peças &nbsp;
+        <span style="color:${rpLogColors.posicoes};">●</span> Posições &nbsp;
+        <span style="color:${rpLogColors.valor};">●</span> Valores
+      </p>
+    </div>` : ''}
 
     ${sectionTitle('🛣️','Ruas mais divergentes','top 8 por valor financeiro')}
     <div class="rp-panel"><table class="rp-table">
