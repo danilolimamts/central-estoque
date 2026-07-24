@@ -468,31 +468,68 @@ function irRenderPorRuaPanel(ind){
 function irRenderPorLogPanel(ind){
   const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   if(!rows.length) return `<div class="panel"><h3>Acurácias e NET por Log</h3><p class="field-hint">Nenhum log com locais contados ainda.</p></div>`;
+  IR._porLogMap = new Map(rows.map(r=>[r.chave, r]));
+
+  const W = Math.max(420, rows.length*90), H = 220;
+  const padL = 34, padR = 14, padT = 16, padB = 30;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const n = rows.length;
+  const xAt = i => n<=1 ? padL+plotW/2 : padL + (i/(n-1))*plotW;
+  const yAt = v => padT + plotH - Math.max(0,Math.min(1,v))*plotH;
+
+  const series = [
+    {key:'acuraciaPecas', color:'var(--blue)', label:'Peças'},
+    {key:'acuraciaPosicoes', color:'var(--orange)', label:'Posições'},
+    {key:'acuraciaValor', color:'var(--blue-soft)', label:'Valores'}
+  ];
+  const gridLines = [0,0.25,0.5,0.75,1].map(t=>{
+    const y = yAt(t);
+    return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" class="bi-line-grid"/>
+      <text x="${padL-6}" y="${y+3}" class="bi-line-axis-y">${Math.round(t*100)}%</text>`;
+  }).join('');
+  const seriesHtml = series.map(s=>{
+    const pts = rows.map((r,i)=>`${xAt(i)},${yAt(r[s.key])}`).join(' ');
+    const dots = rows.map((r,i)=>`<circle cx="${xAt(i)}" cy="${yAt(r[s.key])}" r="3.5" fill="${s.color}" stroke="var(--surface)" stroke-width="1.5"/>`).join('');
+    return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2"/>${dots}`;
+  }).join('');
+  const hitCols = rows.map((r,i)=>`<rect x="${xAt(i)-plotW/(n*2)}" y="${padT}" width="${plotW/n}" height="${plotH}" fill="transparent"
+      onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()"/>`).join('');
+  const xLabels = rows.map((r,i)=>`<text x="${xAt(i)}" y="${H-8}" class="bi-line-axis-x">${irEsc(r.chave)}</text>`).join('');
+
   return `<div class="panel">
     <h3>Acurácias por Log</h3>
-    <p class="panel-sub">Grupo Classe da base congelada · barras e percentuais: peças / posições / valores.</p>
-    <div class="bi-vbars">
-      ${rows.map(r=>`<div class="bi-vbar-col">
-        <div class="bi-vbar-pcts">
-          <span class="mono" style="color:var(--blue);">${irFmtPct(r.acuraciaPecas)}</span>
-          <span class="mono" style="color:var(--orange);">${irFmtPct(r.acuraciaPosicoes)}</span>
-          <span class="mono" style="color:var(--blue-soft);">${irFmtPct(r.acuraciaValor)}</span>
-        </div>
-        <div class="bi-cluster" style="height:100px;">
-          <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}%;" title="Peças: ${irFmtPct(r.acuraciaPecas)}"></div>
-          <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}%;" title="Posições: ${irFmtPct(r.acuraciaPosicoes)}"></div>
-          <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}%;background:var(--blue-soft);" title="Valores: ${irFmtPct(r.acuraciaValor)}"></div>
-        </div>
-        <div class="bi-vbar-label">${irEsc(r.chave)}</div>
-        <div class="bi-vbar-sub mono">NET ${irFmtMoney(r.valorDivergenteLiquido)}</div>
-      </div>`).join('')}
+    <p class="panel-sub">Grupo Classe da base congelada · evolução de peças / posições / valores por log. Passe o mouse sobre um ponto para ver os detalhes.</p>
+    <div class="bi-linechart-wrap">
+      <svg viewBox="0 0 ${W} ${H}" class="bi-linechart" preserveAspectRatio="xMinYMid meet">
+        ${gridLines}
+        ${seriesHtml}
+        ${xLabels}
+        ${hitCols}
+      </svg>
     </div>
     <p class="field-hint" style="margin-top:8px;">
-      <span class="mono" style="color:var(--blue);">■</span> Peças &nbsp;
-      <span class="mono" style="color:var(--orange);">■</span> Posições &nbsp;
-      <span class="mono" style="color:var(--blue-soft);">■</span> Valores
+      <span class="mono" style="color:var(--blue);">●</span> Peças &nbsp;
+      <span class="mono" style="color:var(--orange);">●</span> Posições &nbsp;
+      <span class="mono" style="color:var(--blue-soft);">●</span> Valores
     </p>
   </div>`;
+}
+function irShowLogTooltip(ev, chave){
+  const r = (IR._porLogMap||new Map()).get(chave);
+  const tt = document.getElementById('irChartTooltip');
+  if(!tt || !r) return;
+  tt.innerHTML = `<div class="ct-title">${irEsc(chave)}</div>
+    <table>
+      <tbody>
+        <tr><td>Peças</td><td class="mono">${irFmtPct(r.acuraciaPecas)}</td></tr>
+        <tr><td>Posições</td><td class="mono">${irFmtPct(r.acuraciaPosicoes)}</td></tr>
+        <tr><td>Valores</td><td class="mono">${irFmtPct(r.acuraciaValor)}</td></tr>
+        <tr><td>Locais contados</td><td class="mono">${irFmtInt(r.locaisContados)} de ${irFmtInt(r.locaisOrcados)}</td></tr>
+        <tr><td>NET</td><td class="mono">${irFmtMoney(r.valorDivergenteLiquido)}</td></tr>
+      </tbody>
+    </table>`;
+  tt.classList.remove('hidden');
+  irMoveDiaTooltip(ev);
 }
 function irRenderContadosPorDiaPanel(ind){
   const rows = ind.contadosPorDia||[];
@@ -594,13 +631,12 @@ function irGerarRelatorioEmail(){
   const agora = new Date().toLocaleString('pt-BR');
   const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
   const rpTile = (icon, val, label, cls, hint)=>`<div class="rp-tile">
-    <div class="rp-tile-icon">${icon}</div>
     <div class="rp-tile-num ${cls||''}">${val}</div>
     <div class="rp-tile-label">${label}</div>
     ${hint?`<div class="rp-tile-hint">${hint}</div>`:''}
   </div>`;
   const rpBlock = (theme, icon, title, tilesHtml)=>`<div class="rp-block theme-${theme}">
-    <div class="rp-block-header"><span class="rp-bh-icon">${icon}</span><span>${title}</span></div>
+    <div class="rp-block-header"><span class="rp-bh-icon">${icon}</span><span class="rp-bh-title">${title}</span></div>
     <div class="rp-block-body">${tilesHtml}</div>
   </div>`;
   const sectionTitle = (icon, texto, nota)=>`<div class="rp-section-title"><span class="rp-st-icon">${icon}</span><span class="rp-st-text">${texto}</span>${nota?`<span class="rp-st-note">${nota}</span>`:''}</div>`;
@@ -631,11 +667,18 @@ function irGerarRelatorioEmail(){
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
   const html = `<div class="rp-page">
     <div class="rp-hero">
-      <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
-      <div class="rp-hero-badge">Inventário Rotativo</div>
+      <div class="rp-hero-top">
+        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <div class="rp-hero-status">${c.status==='aberto'?'Ciclo em andamento':'Ciclo encerrado'}</div>
+      </div>
+      <div class="rp-hero-badge">Boletim de Inventário Rotativo</div>
       <h1>Andamento do Ciclo ${c.numero}</h1>
       <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
-      <div class="rp-date">Gerado em ${agora} &nbsp;·&nbsp; Abertura: ${irFmtDate(c.dataAbertura)} &nbsp;·&nbsp; Término previsto: ${irFmtDate(c.dataPrevistaTermino)}</div>
+      <div class="rp-hero-meta">
+        <span>Gerado em ${agora}</span>
+        <span>Abertura ${irFmtDate(c.dataAbertura)}</span>
+        <span>Término previsto ${irFmtDate(c.dataPrevistaTermino)}</span>
+      </div>
     </div>
     <div class="rp-body">
 
