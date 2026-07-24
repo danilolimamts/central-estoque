@@ -240,6 +240,13 @@ button{ font-family:inherit; cursor:pointer; }
 .status-donut-stat .n{ font-family:'SFMono-Regular',Consolas,monospace; font-size:29px; font-weight:800; color:var(--ink); line-height:1.2; }
 .status-donut-stat .n.good{ color:var(--success); } .status-donut-stat .n.bad{ color:var(--danger); }
 .status-donut-stat .l{ font-size:13.5px; color:var(--ink-soft); font-weight:600; margin-top:3px; }
+.status-month-list{ flex:1.4; min-width:220px; display:flex; flex-direction:column; gap:9px; align-self:stretch; justify-content:center; }
+.status-month-title{ font-size:11.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; margin-bottom:2px; }
+.status-month-row{ display:grid; grid-template-columns:110px 1fr 56px; align-items:center; gap:10px; }
+.status-month-label{ font-size:12.5px; color:var(--ink); font-weight:600; }
+.status-month-track{ background:var(--surface2); border-radius:5px; height:13px; overflow:hidden; }
+.status-month-fill{ height:100%; background:var(--orange); border-radius:5px; }
+.status-month-val{ text-align:right; font-size:12.5px; font-weight:700; color:var(--ink); }
 
 .bi-vbar-sub{ font-size:9px; color:var(--ink-soft); margin-top:2px; }
 
@@ -391,6 +398,13 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .rp-donut-stat .n{ font-family:'SFMono-Regular',Consolas,monospace; font-size:25px; font-weight:800; color:#1D1F2A; }
 .rp-donut-stat .n.good{ color:#1F8A52; } .rp-donut-stat .n.bad{ color:#C0392B; }
 .rp-donut-stat .l{ font-size:12.5px; color:#6B7280; font-weight:600; margin-top:3px; }
+.rp-month-list{ flex:1.4; min-width:220px; display:flex; flex-direction:column; gap:9px; align-self:stretch; justify-content:center; }
+.rp-month-title{ font-size:11px; font-weight:700; color:#6B7280; text-transform:uppercase; letter-spacing:.03em; margin-bottom:2px; }
+.rp-month-row{ display:grid; grid-template-columns:110px 1fr 56px; align-items:center; gap:10px; }
+.rp-month-label{ font-size:11.5px; color:#1D1F2A; font-weight:600; }
+.rp-month-track{ background:#EEF0F4; border-radius:5px; height:12px; overflow:hidden; }
+.rp-month-fill{ height:100%; background:#FA4616; border-radius:5px; }
+.rp-month-val{ text-align:right; font-family:'SFMono-Regular',Consolas,monospace; font-size:11.5px; font-weight:700; color:#1D1F2A; }
 .rp-chart-legend{ margin:8px 0 0; font-size:10.5px; color:#6B7280; }
 .rp-hbar-row{ display:grid; grid-template-columns:70px 1fr 52px; align-items:center; gap:10px; padding:5px 0; font-size:11px; }
 .rp-hbar-row + .rp-hbar-row{ border-top:1px solid #EEF0F4; }

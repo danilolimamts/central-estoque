@@ -571,9 +571,24 @@ function irDonutSvg(pct, opts){
     <text x="${c}" y="${c+size*0.065}" text-anchor="middle" font-size="${Math.round(size*0.19)}" font-weight="800" fill="${textColor}">${irFmtPct(pct)}</text>
   </svg>`;
 }
+/* Agrupa contadosPorDia por mês (YYYY-MM) — usado pra preencher o espaço
+   vazio do painel "Status do Inventário" com o total contado por mês. */
+function irAgruparContadosPorMes(rows){
+  const map = new Map();
+  for(const r of rows||[]){
+    const mes = r.dia.slice(0,7);
+    map.set(mes, (map.get(mes)||0)+r.total);
+  }
+  return Array.from(map.entries()).sort((a,b)=>a[0].localeCompare(b[0])).map(([mes,total])=>{
+    const nomeRaw = new Date(mes+'-01T00:00:00').toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+    return {mes, label: nomeRaw.charAt(0).toUpperCase()+nomeRaw.slice(1), total};
+  });
+}
 function irRenderStatusInventarioPanel(ind){
   const total = ind.locaisCongelados||0, contados = ind.locaisContadosTotal||0;
   const pct = total>0 ? contados/total : 0;
+  const porMes = irAgruparContadosPorMes(ind.contadosPorDia);
+  const maxMes = Math.max(1, ...porMes.map(m=>m.total));
   return `<div class="panel">
     <h3>Status do Inventário</h3>
     <p class="panel-sub">Percentual de locais já contados em relação ao total orçado do ciclo.</p>
@@ -584,6 +599,14 @@ function irRenderStatusInventarioPanel(ind){
         <div class="status-donut-stat"><div class="n mono good">${irFmtInt(contados)}</div><div class="l">Locais contados</div></div>
         <div class="status-donut-stat"><div class="n mono bad">${irFmtInt(total-contados)}</div><div class="l">Ainda não contados</div></div>
       </div>
+      ${porMes.length ? `<div class="status-month-list">
+        <div class="status-month-title">Locais contados por mês</div>
+        ${porMes.map(m=>`<div class="status-month-row">
+          <div class="status-month-label">${irEsc(m.label)}</div>
+          <div class="status-month-track"><div class="status-month-fill" style="width:${Math.round(m.total/maxMes*100)}%;"></div></div>
+          <div class="status-month-val mono">${irFmtInt(m.total)}</div>
+        </div>`).join('')}
+      </div>` : ''}
     </div>
   </div>`;
 }
@@ -736,6 +759,8 @@ function irGerarRelatorioEmail(){
   const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
   const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
   const rpLogColors = {pecas:'#001A72', posicoes:'#FA4616', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
+  const porMes = irAgruparContadosPorMes(ind.contadosPorDia);
+  const maxMes = Math.max(1, ...porMes.map(m=>m.total));
   const html = `<div class="rp-page">
     <div class="rp-hero">
       <div class="rp-hero-top">
@@ -766,6 +791,14 @@ function irGerarRelatorioEmail(){
           <div class="rp-donut-stat"><div class="n good">${irFmtInt(ind.locaisContadosTotal)}</div><div class="l">Locais contados</div></div>
           <div class="rp-donut-stat"><div class="n bad">${irFmtInt(ind.locaisCongelados-ind.locaisContadosTotal)}</div><div class="l">Ainda não contados</div></div>
         </div>
+        ${porMes.length ? `<div class="rp-month-list">
+          <div class="rp-month-title">Locais contados por mês</div>
+          ${porMes.map(m=>`<div class="rp-month-row">
+            <div class="rp-month-label">${irEsc(m.label)}</div>
+            <div class="rp-month-track"><div class="rp-month-fill" style="width:${Math.round(m.total/maxMes*100)}%;"></div></div>
+            <div class="rp-month-val">${irFmtInt(m.total)}</div>
+          </div>`).join('')}
+        </div>` : ''}
       </div>
     </div>
 
