@@ -12,3 +12,4 @@ tests/fixtures/*.xlsx
 # Artefatos gerados pela verificacao no navegador.
 demo.xlsx
 *.png
+dist-pagina-unica/

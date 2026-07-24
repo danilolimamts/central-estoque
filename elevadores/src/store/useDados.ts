@@ -24,6 +24,8 @@ export interface Importacao {
   fotos: [string, string][]; // Map serializado
   arquivo: string;
   importadoEm: string; // ISO
+  /* Marca os dados de exemplo, para a tela avisar que nao sao do CD. */
+  demonstracao?: boolean;
 }
 
 /* Datas viram string ao passar pelo IndexedDB; reidrata na volta. */
@@ -93,12 +95,28 @@ export function useDados() {
     }
   }, []);
 
+  /* Carrega dados de demonstracao para conhecer as telas sem a planilha.
+     Fica so na memoria: nao grava no IndexedDB, para nunca ser confundido
+     com uma importacao de verdade. */
+  const carregarDemo = useCallback(async () => {
+    const { componentesDemo, acoesDemo } = await import('../demo/dadosDemo');
+    setErro(null);
+    setDados({
+      componentes: componentesDemo(),
+      acoes: acoesDemo(),
+      fotos: [],
+      arquivo: 'dados de exemplo',
+      importadoEm: new Date().toISOString(),
+      demonstracao: true,
+    });
+  }, []);
+
   const limpar = useCallback(async () => {
     await store.removeItem(CHAVE_DADOS);
     setDados(null);
   }, []);
 
-  return { dados, carregando, erro, importar, limpar };
+  return { dados, carregando, erro, importar, carregarDemo, limpar };
 }
 
 /* Derivados de equalizacao e valoracao a partir dos componentes. */

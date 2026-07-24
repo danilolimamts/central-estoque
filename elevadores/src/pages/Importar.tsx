@@ -8,9 +8,11 @@ import { Botao, Cartao } from '../components/ui';
 
 export function Importar({
   aoImportar,
+  aoVerExemplo,
   erro,
 }: {
   aoImportar: (arquivo: File, fotos: File | null) => Promise<unknown>;
+  aoVerExemplo: () => void;
   erro: string | null;
 }) {
   const refPlanilha = useRef<HTMLInputElement>(null);
@@ -113,11 +115,20 @@ export function Importar({
           </p>
         )}
 
-        <div className="mt-5">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <Botao aoClicar={processar} desabilitado={!planilha || ocupado}>
             {ocupado ? 'Processando…' : 'Processar planilha'}
           </Botao>
+          <span className="text-[12px]" style={{ color: 'var(--ink-soft)' }}>
+            ou
+          </span>
+          <Botao variante="secundario" aoClicar={aoVerExemplo}>
+            Ver com dados de exemplo
+          </Botao>
         </div>
+        <p className="mt-2 text-[11.5px]" style={{ color: 'var(--ink-soft)' }}>
+          Os dados de exemplo servem só para conhecer as telas. Não são os números do CD.
+        </p>
       </Cartao>
     </div>
   );

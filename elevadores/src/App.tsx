@@ -107,7 +107,7 @@ function MenuElevadores({
 }
 
 export default function App() {
-  const { dados, carregando, erro, importar, limpar } = useDados();
+  const { dados, carregando, erro, importar, carregarDemo, limpar } = useDados();
   const [pagina, setPagina] = useState<Pagina>('geral');
   const [tema, setTema] = useState<'claro' | 'escuro' | null>(null);
 
@@ -118,6 +118,15 @@ export default function App() {
   useEffect(() => {
     if (tema) document.documentElement.setAttribute('data-theme', tema === 'escuro' ? 'dark' : 'light');
   }, [tema]);
+
+  /* Abertura ja com os dados de exemplo, para links de visualizacao
+     (?exemplo=1) e para a versao publicada de demonstracao. */
+  useEffect(() => {
+    if (carregando || dados) return;
+    const pedidoNaUrl = new URLSearchParams(window.location.search).has('exemplo');
+    const demoEmbutida = (window as { __EQUALIZACAO_DEMO__?: boolean }).__EQUALIZACAO_DEMO__;
+    if (pedidoNaUrl || demoEmbutida) void carregarDemo();
+  }, [carregando, dados, carregarDemo]);
 
   function alternarTema() {
     const escuroAgora =
@@ -164,14 +173,23 @@ export default function App() {
           )}
 
           <div className="ml-auto flex items-center gap-2.5">
-            {dados && (
+            {dados?.demonstracao && (
+              <span
+                className="rounded-full px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wide"
+                style={{ background: 'rgba(250,70,22,.18)', color: '#FFD9CC', border: '1px solid rgba(250,70,22,.5)' }}
+                title="Números ilustrativos. A planilha do CD entra pela tela de importação."
+              >
+                Dados de exemplo
+              </span>
+            )}
+            {dados && !dados.demonstracao && (
               <span className="hidden text-[11.5px] sm:block" style={{ color: '#B9C0E6' }}>
                 {dados.arquivo} · {new Date(dados.importadoEm).toLocaleDateString('pt-BR')}
               </span>
             )}
             {dados && (
               <Botao variante="secundario" aoClicar={limpar}>
-                Nova importação
+                {dados.demonstracao ? 'Importar planilha' : 'Nova importação'}
               </Botao>
             )}
             <button
@@ -190,7 +208,7 @@ export default function App() {
         {carregando ? (
           <Vazio>Carregando dados salvos…</Vazio>
         ) : !dados ? (
-          <Importar aoImportar={importar} erro={erro} />
+          <Importar aoImportar={importar} aoVerExemplo={carregarDemo} erro={erro} />
         ) : (
           <div className="grid gap-4.5 lg:grid-cols-[268px_1fr]" style={{ gap: 18 }}>
             <MenuElevadores componentes={dados.componentes} fotos={fotos} />
