@@ -2,6 +2,7 @@
    pagina de visualizacao. Tudo embutido: nenhuma requisicao externa. */
 import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { tagIcone } from './icone.mjs';
 
 const DIST = resolve(process.env.DIST_DIR || 'dist-pagina-unica');
 const saida = process.argv[2] || 'pagina-unica.html';
@@ -18,6 +19,7 @@ const css = await readFile(join(DIST, 'assets', arqCss), 'utf8');
 /* O container da pagina publicada injeta doctype, head e body, entao aqui
    vao apenas o conteudo: titulo, estilos, o ponto de montagem e o script. */
 const html = `<title>Central de Equalização de Elevadores — CD Cajamar</title>
+${tagIcone()}
 <style>
 ${css}
 </style>

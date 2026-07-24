@@ -1,3 +1,4 @@
+import { FotoAoPassar } from '../components/ui/FotoAoPassar';
 /* ============================================================
    Pagina 1: Dashboard Geral (secao 11 do brief).
    KPIs de direcionamento, mapa de calor Fornecedor x Tonelada,
@@ -208,7 +209,13 @@ function PlanoDeAcao({ conjuntos }: { conjuntos: Conjunto[] }) {
   );
 }
 
-function AuditoriaValoracao({ valoracoes }: { valoracoes: Valoracao[] }) {
+function AuditoriaValoracao({
+  valoracoes,
+  fotos,
+}: {
+  valoracoes: Valoracao[];
+  fotos: Map<string, string>;
+}) {
   const resumo = useMemo(() => resumirValoracao(valoracoes), [valoracoes]);
   const aCorrigir = useMemo(
     () => valoracoes.filter((v) => v.diagnostico === 'CORRIGIR' || v.diagnostico === 'DUPLICADO'),
@@ -261,7 +268,8 @@ function AuditoriaValoracao({ valoracoes }: { valoracoes: Valoracao[] }) {
                   style={{ background: 'var(--surface-2)', border: '1px solid var(--line)' }}
                 >
                   <div className="mb-1 font-sans text-[11px]" style={{ color: 'var(--ink-soft)' }}>
-                    {v.itemVolMultiplo} · {v.marca} <SeloValoracao diagnostico={v.diagnostico} />
+                    <FotoAoPassar item={v.itemVolMultiplo} url={fotos.get(String(v.itemVolMultiplo))} />{' '}
+                    · {v.marca} <SeloValoracao diagnostico={v.diagnostico} />
                   </div>
                   {v.correcoes.map((c) => (
                     <div key={c}>{c}</div>
@@ -276,7 +284,13 @@ function AuditoriaValoracao({ valoracoes }: { valoracoes: Valoracao[] }) {
   );
 }
 
-export function DashboardGeral({ componentes }: { componentes: Componente[] }) {
+export function DashboardGeral({
+  componentes,
+  fotos,
+}: {
+  componentes: Componente[];
+  fotos: Map<string, string>;
+}) {
   const conjuntos = useMemo(() => agruparConjuntos(componentes), [componentes]);
   const resumo = useMemo(() => resumirEqualizacao(conjuntos), [conjuntos]);
   const valoracoes = useMemo(() => auditarValoracao(componentes), [componentes]);
@@ -377,7 +391,7 @@ export function DashboardGeral({ componentes }: { componentes: Componente[] }) {
       </Cartao>
 
       <PlanoDeAcao conjuntos={conjuntos} />
-      <AuditoriaValoracao valoracoes={valoracoes} />
+      <AuditoriaValoracao valoracoes={valoracoes} fotos={fotos} />
 
       <Cartao titulo="Base mestre" descricao={`${componentes.length} linhas importadas`}
         acoes={<Botao variante="secundario" aoClicar={() => baixarBaseCompleta(componentes, conjuntos, valoracoes)}>Exportar base completa</Botao>}>

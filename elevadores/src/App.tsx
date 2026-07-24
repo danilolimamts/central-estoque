@@ -214,7 +214,7 @@ export default function App() {
             <MenuElevadores componentes={dados.componentes} fotos={fotos} />
             <main className="min-w-0">
               {pagina === 'geral' ? (
-                <DashboardGeral componentes={dados.componentes} />
+                <DashboardGeral componentes={dados.componentes} fotos={fotos} />
               ) : (
                 <StatusProjeto acoes={acoes} hoje={hoje} />
               )}
