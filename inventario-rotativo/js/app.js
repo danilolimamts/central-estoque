@@ -592,7 +592,40 @@ function irGerarRelatorioEmail(){
   const ind = IR.indicadores, c = IR.cicloAtivo;
   if(!ind || !c){ irShowToast('Sem dados de ciclo pra gerar relatório.', true); return; }
   const agora = new Date().toLocaleString('pt-BR');
-  const kpiCard = (icon, label, val, cls)=>`<div class="rp-kpi ${cls||''}"><div class="rp-kpi-icon">${icon}</div><div class="n mono">${val}</div><div class="l">${label}</div></div>`;
+  const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
+  const rpTile = (icon, val, label, cls, hint)=>`<div class="rp-tile">
+    <div class="rp-tile-icon">${icon}</div>
+    <div class="rp-tile-num ${cls||''}">${val}</div>
+    <div class="rp-tile-label">${label}</div>
+    ${hint?`<div class="rp-tile-hint">${hint}</div>`:''}
+  </div>`;
+  const rpBlock = (theme, icon, title, tilesHtml)=>`<div class="rp-block theme-${theme}">
+    <div class="rp-block-header"><span class="rp-bh-icon">${icon}</span><span>${title}</span></div>
+    <div class="rp-block-body">${tilesHtml}</div>
+  </div>`;
+  const sectionTitle = (icon, texto, nota)=>`<div class="rp-section-title"><span class="rp-st-icon">${icon}</span><span class="rp-st-text">${texto}</span>${nota?`<span class="rp-st-note">${nota}</span>`:''}</div>`;
+
+  const blocoPecas = rpBlock('orange','📦','Peças',
+    rpTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint) +
+    rpTile('📦', irFmtInt(ind.pecasContadas), 'Peças Contadas', '', 'total físico') +
+    rpTile('⚠️', irFmtInt(ind.pecasDivergentes), 'Peças Divergentes', 'bad', irFmtInt(ind.itensDivergentes)+' itens')
+  );
+  const blocoLocais = rpBlock('blue','📍','Locais',
+    rpTile('🎯', irFmtPct(ind.acuraciaLocal), 'Acurácia Local', ind.acuraciaLocal>=ind.meta?'good':'bad', metaHint) +
+    rpTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
+    rpTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
+  );
+  const blocoValor = rpBlock('black','💰','Valor',
+    rpTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
+    rpTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
+    rpTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líq.)', '', 'ganho − perda')
+  );
+  const blocoCiclo = rpBlock('neutral','🔄','Ciclo',
+    rpTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
+    rpTile('📅', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), 'Dias Restantes', '', 'no ritmo atual') +
+    rpTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
+  );
+
   const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.valorDivergenteAbsoluto-a.valorDivergenteAbsoluto).slice(0,8);
   const topPos = (ind.topItensPositivos||[]).slice(0,5);
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
@@ -600,28 +633,17 @@ function irGerarRelatorioEmail(){
     <div class="rp-hero">
       <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
       <div class="rp-hero-badge">Inventário Rotativo</div>
-      <h1>📦 Andamento do Ciclo ${c.numero}</h1>
+      <h1>Andamento do Ciclo ${c.numero}</h1>
       <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
-      <div class="rp-date">🕒 Gerado em ${agora} &nbsp;·&nbsp; Abertura: ${irFmtDate(c.dataAbertura)} &nbsp;·&nbsp; Término previsto: ${irFmtDate(c.dataPrevistaTermino)}</div>
+      <div class="rp-date">Gerado em ${agora} &nbsp;·&nbsp; Abertura: ${irFmtDate(c.dataAbertura)} &nbsp;·&nbsp; Término previsto: ${irFmtDate(c.dataPrevistaTermino)}</div>
     </div>
     <div class="rp-body">
 
-    <div class="rp-kpis">
-      ${kpiCard('🔄','Andamento do ciclo', irFmtPct(ind.andamentoCiclo), 'orange')}
-      ${kpiCard('✅','Locais concluídos', irFmtInt(ind.locaisConcluidos), 'good')}
-      ${kpiCard('⏳','Locais pendentes', irFmtInt(ind.locaisPendentes), 'bad')}
-      ${kpiCard('📅','Dias restantes', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes))}
-      ${kpiCard('📦','Acurácia Peças', irFmtPct(ind.acuraciaPecas), ind.acuraciaPecas>=ind.meta?'good':'bad')}
-      ${kpiCard('📍','Acurácia Local', irFmtPct(ind.acuraciaLocal), ind.acuraciaLocal>=ind.meta?'good':'bad')}
-      ${kpiCard('💰','Acurácia Valor', irFmtPct(ind.acuraciaValor), ind.acuraciaValor>=ind.meta?'good':'bad')}
-      ${kpiCard('🎯','Meta de acurácia', irFmtPct(ind.meta))}
-      ${kpiCard('⚠️','Itens divergentes', irFmtInt(ind.itensDivergentes), 'bad')}
-      ${kpiCard('💸','Valor divergente (abs.)', irFmtMoney(ind.valorDivergenteAbsoluto), 'bad')}
-      ${kpiCard('🧮','Valor divergente (líquido)', irFmtMoney(ind.valorDivergenteLiquido))}
-      ${kpiCard('⚡','Eficiência', irFmtPct(ind.eficiencia), ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''))}
+    <div class="rp-blocks">
+      ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
 
-    <div class="rp-section-title">🛣️ Ruas mais divergentes (top 8, por valor financeiro)</div>
+    ${sectionTitle('🛣️','Ruas mais divergentes','top 8 por valor financeiro')}
     <div class="rp-panel"><table class="rp-table">
       <thead><tr><th>Rua</th><th>Locais orçados</th><th>Locais contados</th><th>Acur. Peças</th><th>Acur. Posições</th><th>Acur. Valor</th><th>Valor divergente</th></tr></thead>
       <tbody>${rua.map(r=>`<tr>
@@ -631,19 +653,19 @@ function irGerarRelatorioEmail(){
       </tr>`).join('') || '<tr><td colspan="7">Sem divergências registradas.</td></tr>'}</tbody>
     </table></div>
 
-    <div class="rp-section-title">⚖️ Maiores saldos por item (sobra x falta)</div>
+    ${sectionTitle('⚖️','Maiores saldos por item','sobra x falta')}
     <div class="rp-cols2">
       <div class="rp-panel">
-        <table class="rp-table"><thead><tr><th>🟢 Mais sobra</th><th>Saldo</th></tr></thead>
-        <tbody>${topPos.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono">+${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
+        <table class="rp-table"><thead><tr><th>Mais sobra</th><th>Saldo</th></tr></thead>
+        <tbody>${topPos.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono good">+${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
       </div>
       <div class="rp-panel">
-        <table class="rp-table"><thead><tr><th>🔴 Mais falta</th><th>Saldo</th></tr></thead>
-        <tbody>${topNeg.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono">${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
+        <table class="rp-table"><thead><tr><th>Mais falta</th><th>Saldo</th></tr></thead>
+        <tbody>${topNeg.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono bad">${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
       </div>
     </div>
 
-    <p class="rp-footer">📧 Boletim gerado automaticamente pelo módulo Inventário Rotativo. Anexe a imagem no seu e-mail.</p>
+    <p class="rp-footer">Boletim gerado automaticamente pelo módulo Inventário Rotativo. Anexe a imagem no seu e-mail.</p>
     </div>
   </div>`;
   irBaixarBoletimImagem(html, `Boletim_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
