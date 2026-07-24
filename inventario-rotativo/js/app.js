@@ -504,7 +504,7 @@ function irBuildLogBarChartSvg(rows, opts){
   const padL = 14, padR = 14, padT = 40, padB = 32;
   const plotW = W-padL-padR, plotH = H-padT-padB;
   const n = rows.length, groupW = plotW/n;
-  const barW = Math.min(20, groupW/3*0.62), gap = 3;
+  const barW = Math.min(30, groupW/3*0.8), gap = 3;
   const series = [
     {key:'acuraciaPecas', color:colors.pecas},
     {key:'acuraciaPosicoes', color:colors.posicoes},
@@ -533,13 +533,13 @@ function irBuildLogBarChartSvg(rows, opts){
    meta tracejada do painel do Dashboard — SVG estático, cores fixas. */
 function irBuildContadosPorDiaSvg(rows, meta, opts){
   opts = opts||{};
-  const colors = opts.colors || {bar:'#C9A227', grid:'#E4E7EE', axis:'#6B7280', label:'#1F2430', meta:'#0B2545'};
+  const colors = opts.colors || {bar:'#FA4616', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A', meta:'#001A72'};
   const W = Math.max(420, rows.length*54), H = 220;
   const padL = 14, padR = 14, padT = 32, padB = 30;
   const plotW = W-padL-padR, plotH = H-padT-padB;
   const n = rows.length;
   const max = Math.max(1, meta, ...rows.map(r=>r.total));
-  const barW = Math.min(30, plotW/n*0.55);
+  const barW = Math.min(40, plotW/n*0.7);
   let bars = '', labels = '', xLabels = '';
   rows.forEach((r,i)=>{
     const cx = padL + (i+0.5)*(plotW/n);
@@ -560,7 +560,7 @@ function irBuildContadosPorDiaSvg(rows, meta, opts){
    depende do tema) pra funcionar igual em qualquer contexto. */
 function irDonutSvg(pct, opts){
   opts = opts||{};
-  const size = opts.size||180, stroke = opts.stroke||18;
+  const size = opts.size||190, stroke = opts.stroke||28;
   const color = opts.color||'var(--orange)', track = opts.track||'var(--surface2)', textColor = opts.textColor||'var(--ink)';
   const r = (size-stroke)/2, c = size/2, circ = 2*Math.PI*r;
   const dash = Math.max(0,Math.min(1,pct))*circ;
@@ -740,8 +740,8 @@ function irGerarRelatorioEmail(){
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
   const rowsLog = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
-  const rpDonutColors = {color:'#C9A227', track:'#EEF0F4', textColor:'#1F2430'};
-  const rpLogColors = {pecas:'#0B2545', posicoes:'#C9A227', valor:'#7C8AA5', grid:'#E4E7EE', axis:'#6B7280', dotStroke:'#fff'};
+  const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
+  const rpLogColors = {pecas:'#001A72', posicoes:'#FA4616', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
   const html = `<div class="rp-page">
     <div class="rp-hero">
       <div class="rp-hero-top">
