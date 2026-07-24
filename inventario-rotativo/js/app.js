@@ -339,7 +339,7 @@ function irRenderDashboard(){
   return `
     ${avisoDesatualizado}
     <div class="form-actions" style="margin:0 0 12px;">
-      <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Gerar relatório para e-mail</button>
+      <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>
     <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
@@ -573,10 +573,14 @@ function irDonutSvg(pct, opts){
 }
 /* Agrupa contadosPorDia por mês (YYYY-MM) — usado pra preencher o espaço
    vazio do painel "Status do Inventário" com o total contado por mês. */
-function irAgruparContadosPorMes(rows){
+function irAgruparContadosPorMes(rows, dataAbertura){
+  // Só considera meses a partir da abertura do ciclo — evita citar meses
+  // fora do ciclo por causa de algum registro perdido/fora do período.
+  const mesMin = dataAbertura ? String(dataAbertura).slice(0,7) : null;
   const map = new Map();
   for(const r of rows||[]){
     const mes = r.dia.slice(0,7);
+    if(mesMin && mes<mesMin) continue;
     map.set(mes, (map.get(mes)||0)+r.total);
   }
   return Array.from(map.entries()).sort((a,b)=>a[0].localeCompare(b[0])).map(([mes,total])=>{
@@ -587,7 +591,7 @@ function irAgruparContadosPorMes(rows){
 function irRenderStatusInventarioPanel(ind){
   const total = ind.locaisCongelados||0, contados = ind.locaisContadosTotal||0;
   const pct = total>0 ? contados/total : 0;
-  const porMes = irAgruparContadosPorMes(ind.contadosPorDia);
+  const porMes = irAgruparContadosPorMes(ind.contadosPorDia, IR.cicloAtivo && IR.cicloAtivo.dataAbertura);
   const maxMes = Math.max(1, ...porMes.map(m=>m.total));
   return `<div class="panel">
     <h3>Status do Inventário</h3>
@@ -759,7 +763,7 @@ function irGerarRelatorioEmail(){
   const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
   const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
   const rpLogColors = {pecas:'#001A72', posicoes:'#FA4616', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
-  const porMes = irAgruparContadosPorMes(ind.contadosPorDia);
+  const porMes = irAgruparContadosPorMes(ind.contadosPorDia, c.dataAbertura);
   const maxMes = Math.max(1, ...porMes.map(m=>m.total));
   const html = `<div class="rp-page">
     <div class="rp-hero">
@@ -873,7 +877,34 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
     a.href = url; a.download = nomeArquivo;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
-    irShowToast('✓ Boletim baixado! Confira na pasta de downloads.');
+
+    const numero = IR.cicloAtivo ? IR.cicloAtivo.numero : '';
+    const assunto = `Boletim Inventário Rotativo — Ciclo ${numero}`;
+    let compartilhou = false;
+    // Se o navegador suportar compartilhar arquivo (Web Share API), abre direto
+    // a folha de compartilhamento nativa — o usuário escolhe o e-mail e já
+    // manda com a imagem anexada, só falta escolher os destinatários.
+    if(navigator.canShare){
+      try{
+        const file = new File([blob], nomeArquivo, {type:'image/png'});
+        if(navigator.canShare({files:[file]})){
+          await navigator.share({files:[file], title:assunto, text:assunto});
+          compartilhou = true;
+        }
+      }catch(shareErr){
+        if(shareErr && shareErr.name==='AbortError') compartilhou = true; // usuário cancelou, não é erro
+      }
+    }
+    if(!compartilhou){
+      // Sem suporte a compartilhar arquivo: abre um rascunho de e-mail vazio
+      // (sem destinatário) pra o usuário só preencher quem recebe e anexar a
+      // imagem que já foi baixada — o mailto não permite anexar automaticamente.
+      const corpo = `Segue o boletim do Ciclo ${numero}.\n\nAnexe o arquivo "${nomeArquivo}" (baixado agora na pasta de downloads) antes de enviar.`;
+      window.open(`mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`, '_blank');
+      irShowToast('✓ Boletim baixado e rascunho de e-mail aberto — anexe a imagem e adicione os destinatários.');
+    } else {
+      irShowToast('✓ Boletim pronto — escolha os destinatários na tela de compartilhamento.');
+    }
   }catch(err){
     irShowToast('Erro ao gerar o boletim: '+err.message, true);
   }finally{
