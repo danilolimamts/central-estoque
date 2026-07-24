@@ -729,7 +729,7 @@ function irGerarRelatorioEmail(){
     rpTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
   );
 
-  const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.valorDivergenteAbsoluto-a.valorDivergenteAbsoluto).slice(0,8);
+  const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes);
   const topPos = (ind.topItensPositivos||[]).slice(0,5);
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
   const rowsLog = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
@@ -793,14 +793,15 @@ function irGerarRelatorioEmail(){
       ${irBuildContadosPorDiaSvg(ind.contadosPorDia, IR_META_DIARIA)}
     </div>` : ''}
 
-    ${sectionTitle('🛣️','Ruas mais divergentes','top 8 por valor financeiro')}
+    ${sectionTitle('🛣️','Ruas mais divergentes','todas as ruas, por peças divergentes')}
     <div class="rp-panel"><table class="rp-table">
-      <thead><tr><th>Rua</th><th>Locais orçados</th><th>Locais contados</th><th>Acur. Peças</th><th>Acur. Posições</th><th>Acur. Valor</th><th>Valor divergente</th></tr></thead>
+      <thead><tr><th>Rua</th><th>Peças divergentes</th><th>Locais divergentes</th><th>Valor divergente</th></tr></thead>
       <tbody>${rua.map(r=>`<tr>
-        <td>${irEsc(r.chave)}</td><td>${irFmtInt(r.locaisOrcados)}</td><td>${irFmtInt(r.locaisContados)}</td>
-        <td>${irFmtPct(r.acuraciaPecas)}</td><td>${irFmtPct(r.acuraciaPosicoes)}</td><td>${irFmtPct(r.acuraciaValor)}</td>
+        <td>${irEsc(r.chave)}</td>
+        <td>${irFmtInt(r.pecasDivergentes)}</td>
+        <td>${irFmtInt(r.locaisDivergentes)}</td>
         <td>${irFmtMoney(r.valorDivergenteAbsoluto)}</td>
-      </tr>`).join('') || '<tr><td colspan="7">Sem divergências registradas.</td></tr>'}</tbody>
+      </tr>`).join('') || '<tr><td colspan="4">Sem divergências registradas.</td></tr>'}</tbody>
     </table></div>
 
     ${sectionTitle('⚖️','Maiores saldos por item','sobra x falta')}
