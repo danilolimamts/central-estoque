@@ -655,26 +655,20 @@ function irHideDiaTooltip(){
   if(tt) tt.classList.add('hidden');
 }
 function irRenderRuasMaisDivergentesPanel(ind){
-  const base = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)');
-  if(!base.length) return `<div class="panel"><h3>Ruas mais divergentes</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
-  const rankFmt = (campo, fmt, cls)=>{
-    const rows = base.filter(r=>r[campo]>0).slice().sort((a,b)=>b[campo]-a[campo]).slice(0,8);
-    if(!rows.length) return `<p class="field-hint">Nenhuma divergência registrada ainda.</p>`;
-    const max = Math.max(...rows.map(r=>r[campo]));
-    return rows.map(r=>`<div class="bi-hbar-row">
-      <div class="bi-hbar-label mono">${irEsc(r.chave)}</div>
-      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(r[campo]/max*100)}%;"></div></div>
-      <div class="bi-hbar-val">${fmt(r[campo])}</div>
-    </div>`).join('');
-  };
+  const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes);
+  if(!rows.length) return `<div class="panel"><h3>Ruas mais divergentes</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
   return `<div class="panel">
     <h3>Ruas mais divergentes</h3>
-    <p class="panel-sub">Ranking das ruas com mais divergência em peças, locais e valor financeiro.</p>
-    <div class="bi-divrank-grid">
-      <div><h4 class="bi-divrank-title">Peças divergentes</h4>${rankFmt('pecasDivergentes', irFmtInt, 'orange')}</div>
-      <div><h4 class="bi-divrank-title">Locais divergentes</h4>${rankFmt('locaisDivergentes', irFmtInt, '')}</div>
-      <div><h4 class="bi-divrank-title">Valor divergente</h4>${rankFmt('valorDivergenteAbsoluto', irFmtMoney, 'orange')}</div>
-    </div>
+    <p class="panel-sub">Todas as ruas, ordenadas por peças divergentes absolutas (da maior para a menor).</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Rua</th><th>Peças Divergentes</th><th>Locais Divergentes</th><th>Valor Divergente</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td class="mono">${irEsc(r.chave)}</td>
+        <td class="mono">${irFmtInt(r.pecasDivergentes)}</td>
+        <td class="mono">${irFmtInt(r.locaisDivergentes)}</td>
+        <td class="mono">${irFmtMoney(r.valorDivergenteAbsoluto)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
   </div>`;
 }
 function irRenderTopItensPanel(ind){
