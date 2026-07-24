@@ -824,12 +824,15 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
   if(typeof html2canvas==='undefined'){ irShowToast('Não consegui carregar o gerador de imagem (sem internet?).', true); return; }
   const area = document.getElementById('irPrintArea');
   area.innerHTML = html;
-  area.style.cssText = 'display:block; position:fixed; left:-99999px; top:0; background:#F4F5F7;';
+  // Cobre a tela inteira (em vez de posicionar fora da viewport, que causava o
+  // html2canvas "vazar" pedaços do menu/sidebar na imagem capturada) — assim a
+  // captura fica isolada, só com o conteúdo do boletim.
+  area.style.cssText = 'display:flex; justify-content:center; position:fixed; inset:0; z-index:9999; overflow:auto; background:#F6F7FA;';
   irShowToast('Gerando boletim...');
   try{
     await new Promise(r=>setTimeout(r, 60)); // deixa o layout assentar antes de capturar
     const alvo = area.querySelector('.rp-page');
-    const canvas = await html2canvas(alvo, {backgroundColor:'#F4F5F7', scale:2, useCORS:true});
+    const canvas = await html2canvas(alvo, {backgroundColor:'#F6F7FA', scale:3, useCORS:true});
     const blob = await new Promise(resolve=>canvas.toBlob(resolve, 'image/png'));
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
