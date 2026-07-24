@@ -26,12 +26,36 @@ npm run dev       # servidor de desenvolvimento (a partir da fase 2)
 npm run build
 ```
 
-## Estado atual: Fase 1 concluida
+## Como usar
 
-Estrutura do projeto, design tokens, parsers e camada de dominio, com testes
-passando. **Ainda sem interface** (fases 2 em diante).
+1. `npm install`
+2. `npm run dev` e abra o endereco que aparecer no terminal.
+3. Na tela inicial, escolha o arquivo `08. Equalização de Elevadores CD CAJAMAR.xlsx`
+   (e, se quiser as fotos, tambem o `DE_PARA_LINK_FOTO.xlsx`) e clique em
+   **Processar planilha**.
 
-Camadas implementadas:
+Os dados ficam salvos no navegador (IndexedDB), entao da para fechar e voltar
+depois sem reimportar. O botao **Nova importacao** limpa e recomeca.
+
+## Estado atual: fases 1 a 4
+
+Dominio, parsers, as duas paginas e as exportacoes em Excel estao prontos e
+verificados no navegador. Falta a exportacao em PPTX e o deploy.
+
+### Telas
+
+- **Dashboard Geral** — KPIs de direcionamento, mapa de calor Fornecedor x
+  Tonelada (alternando marca/fabricante), ranking de gap, situacao dos
+  conjuntos, colunas x bases a comprar, plano de acao com filtros e a
+  auditoria de valoracao com as correcoes prontas para o Bseller.
+- **Status Projeto** — score decomposto nos quatro pilares, medidor de saude,
+  alertas automaticos, matriz Impacto x Esforco, BurnDown, Gantt com barra
+  tracejada de reagendamento e linha de hoje, e o plano de acao. Os filtros
+  globais valem para todos os indicadores, **inclusive o score**.
+- Menu lateral com os elevadores, foto do produto e o status do conjunto.
+- Tema claro e escuro.
+
+### Camadas
 
 - `src/config/` - `regras.ts` (ratio, cortes da matriz, pesos do score) e
   `tokens.ts` (paleta e tipografia da marca).
@@ -46,6 +70,17 @@ Camadas implementadas:
   com protecao contra a coluna `Marca` duplicada, filtro estrito de BASE/COLUNA
   e conversao de data em tres formatos.
 
+- `src/pages/`, `src/components/`, `src/store/` - telas, componentes de UI e
+  grafico, e a persistencia local.
+- `src/export/exportExcel.ts` - base completa, plano de acao e correcoes do
+  Bseller, geradas no navegador.
+
+### Exportacoes
+
+Ja disponiveis em Excel: base completa (as 18 colunas originais na mesma ordem
+mais as colunas de analise), plano de acao da equalizacao, correcoes de
+valoracao e plano de acao do projeto.
+
 ### Testes
 
 A suite roda com uma planilha sintetica gerada em memoria que cobre todas as
@@ -55,15 +90,24 @@ A validacao dos numeros exatos contra os dados reais (secao 9) fica em
 `tests/equalizacao.real.test.ts` e e **pulada** ate a planilha real ser colocada
 em `tests/fixtures/`. Veja `tests/fixtures/LEIA-ME.md`.
 
+Alem dos testes, `npm run verificar:navegador` sobe o build num Chromium,
+importa uma planilha de demonstracao, percorre as duas paginas, confere a
+persistencia e falha se aparecer qualquer erro de console, pagina ou rede.
+A planilha de demonstracao sai de `npm run demo:planilha` e traz de proposito
+as armadilhas da secao 8 (coluna `Marca` duplicada, BOMBA/COMANDO no meio dos
+componentes, datas em formatos diferentes e concluidas sem data).
+
 ## Deploy
 
 Este projeto vive na subpasta `elevadores/` do repositorio `central-estoque`
 (o app de Auditoria de Divergencias segue na raiz). No Netlify, configure a
-**base directory** como `elevadores/` (a partir da fase 5).
+**base directory** como `elevadores/`.
 
-## Proximas fases
+## O que falta
 
-2. Dashboard Geral (KPIs, mapa de calor, plano de acao, auditoria de valoracao).
-3. Status Projeto (score, alertas, BurnDown/BurnUp, Gantt, matriz).
-4. Exportacoes Excel e PPTX.
-5. Persistencia (IndexedDB), deploy no Netlify e ajustes finos.
+- Exportacao em PPTX (secao 12 do brief): apresentacao 16:9 com os quatro
+  recortes (executivo, completo, foco em atrasos e por responsavel).
+- BurnUp e velocidade semanal na pagina de projeto.
+- Base mestre editavel.
+- Deploy no Netlify.
+- Rodar os testes da secao 9 com a planilha real para confirmar os numeros.

@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Tokens da marca expostos como variaveis CSS. Os mesmos valores
+   vivem em src/config/tokens.ts como fonte da verdade para o TS.
+   ============================================================ */
+:root {
+  --navy: #001a72;
+  --navy-escuro: #00155b;
+  --navy-claro: #1a3180;
+  --navy-suave: #33488e;
+  --laranja: #fa4616;
+  --laranja-escuro: #c83812;
+  --laranja-suave: #fb6b45;
+  --verde: #1f7a4c;
+  --ambar: #b8860b;
+  --cinza: #5b5e6b;
+
+  /* Neutros com leve vies navy. */
+  --bg: #eef0f6;
+  --surface: #ffffff;
+  --surface-2: #f6f7fb;
+  --ink: #14162b;
+  --ink-soft: #4a4d66;
+  --line: #e1e4ef;
+  --sombra: 0 1px 3px rgba(10, 11, 35, 0.1), 0 1px 2px rgba(10, 11, 35, 0.05);
+  --sombra-hover: 0 8px 22px rgba(10, 11, 35, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0b23;
+    --surface: #171922;
+    --surface-2: #1d1f2a;
+    --ink: #edeff7;
+    --ink-soft: #a6a9be;
+    --line: #2c2e3e;
+    --sombra: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --sombra-hover: 0 10px 26px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* O seletor de tema do usuario vence a media query nos dois sentidos. */
+:root[data-theme='light'] {
+  --bg: #eef0f6;
+  --surface: #ffffff;
+  --surface-2: #f6f7fb;
+  --ink: #14162b;
+  --ink-soft: #4a4d66;
+  --line: #e1e4ef;
+  --sombra: 0 1px 3px rgba(10, 11, 35, 0.1), 0 1px 2px rgba(10, 11, 35, 0.05);
+  --sombra-hover: 0 8px 22px rgba(10, 11, 35, 0.14);
+}
+:root[data-theme='dark'] {
+  --bg: #0a0b23;
+  --surface: #171922;
+  --surface-2: #1d1f2a;
+  --ink: #edeff7;
+  --ink-soft: #a6a9be;
+  --line: #2c2e3e;
+  --sombra: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --sombra-hover: 0 10px 26px rgba(0, 0, 0, 0.5);
+}
+
+@layer base {
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: Poppins, 'Segoe UI', system-ui, sans-serif;
+    font-weight: 600;
+    margin: 0;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--laranja);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  .num {
+    font-family: Poppins, 'Segoe UI', system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .cartao {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--sombra);
+  }
+  .rolagem-x {
+    overflow-x: auto;
+  }
+}
