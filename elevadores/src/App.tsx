@@ -10,6 +10,7 @@ import { StatusProjeto } from './pages/StatusProjeto';
 import { agruparConjuntos } from './domain/equalizacao';
 import { auditarValoracao } from './domain/valoracao';
 import { coresStatus } from './config/tokens';
+import { FOTOS_PAIS } from './dados/fotosPais';
 import { Botao, Busca, Vazio } from './components/ui';
 import type { Componente, StatusConjunto } from './domain/tipos';
 
@@ -113,7 +114,14 @@ export default function App() {
 
   const hoje = useMemo(() => new Date(), []);
   const acoes = useAcoes(dados?.acoes, hoje);
-  const fotos = useMemo(() => new Map(dados?.fotos ?? []), [dados]);
+  /* As fotos ja vem embutidas por codigo do item pai; o que for importado
+     do DE_PARA_LINK_FOTO entra por cima, para atualizar ou cobrir itens
+     novos sem precisar mexer no codigo. */
+  const fotos = useMemo(() => {
+    const m = new Map<string, string>(Object.entries(FOTOS_PAIS));
+    for (const [item, url] of dados?.fotos ?? []) m.set(String(item), url);
+    return m;
+  }, [dados]);
 
   useEffect(() => {
     if (tema) document.documentElement.setAttribute('data-theme', tema === 'escuro' ? 'dark' : 'light');

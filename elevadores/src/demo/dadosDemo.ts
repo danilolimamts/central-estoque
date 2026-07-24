@@ -8,6 +8,11 @@
    importacao.
    ============================================================ */
 import type { Componente, Acao } from '../domain/tipos';
+import { FOTOS_PAIS } from '../dados/fotosPais';
+
+/* Usa codigos reais de elevador que possuem foto, para a demonstracao
+   mostrar o produto de verdade em vez de codigos inventados. */
+const CODIGOS_COM_FOTO = Object.keys(FOTOS_PAIS);
 
 interface Molde {
   marca: string;
@@ -44,7 +49,7 @@ function base(p: Partial<Componente>): Componente {
 
 export function componentesDemo(): Componente[] {
   const saida: Componente[] = [];
-  let idPai = 960000;
+  let iPai = 0;
   let idComp = 970000;
 
   for (const m of MOLDES) {
@@ -55,7 +60,8 @@ export function componentesDemo(): Componente[] {
       i === 0 ? v - Math.floor(v / nElev) * (nElev - 1) : Math.floor(v / nElev);
 
     for (let i = 0; i < nElev; i++) {
-      const pai = String(idPai++);
+      const pai = CODIGOS_COM_FOTO[iPai % CODIGOS_COM_FOTO.length] ?? String(960000 + iPai);
+      iPai++;
       const nomePai = `ELEVADOR ${m.marca} ${m.ton} MOD ${i + 1}`;
       // Um em cada tres elevadores fica com o S na base (a corrigir) e um
       // dos conjuntos fica sem nenhum S, para a auditoria ter o que mostrar.
