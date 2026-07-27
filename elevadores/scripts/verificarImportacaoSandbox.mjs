@@ -74,6 +74,17 @@ if (ok) {
   const kpi = await quadro.locator('.num').first().textContent();
   console.log('primeiro numero na tela:', kpi?.trim());
 
+  // Trocar de planilha precisa confirmar antes de descartar o que esta em uso.
+  await quadro.locator('.nav-item', { hasText: 'Importação' }).first().click();
+  await pagina.waitForTimeout(600);
+  const pediuConfirmacao = await quadro.locator('[role=dialog]').count();
+  console.log('confirmacao antes de descartar:', pediuConfirmacao ? 'sim' : 'NAO');
+  await pagina.screenshot({ path: join(SAIDA, 'sb-05-confirmar.png') });
+  await quadro.getByRole('button', { name: /Cancelar/i }).click();
+  await pagina.waitForTimeout(400);
+  const continuaComDados = await quadro.getByRole('heading', { name: /Dashboard Geral/i }).count();
+  console.log('dados preservados apos cancelar:', continuaComDados ? 'sim' : 'NAO');
+
   // Percorre as demais telas do menu lateral.
   for (const [rotulo, arquivo] of [['Status do Projeto', 'sb-03-projeto.png'], ['Elevadores', 'sb-04-elevadores.png']]) {
     await quadro.locator('.nav-item', { hasText: rotulo }).first().click();

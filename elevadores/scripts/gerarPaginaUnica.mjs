@@ -19,12 +19,11 @@ const css = await readFile(join(DIST, 'assets', arqCss), 'utf8');
 /* O container da pagina publicada injeta doctype, head e body, entao aqui
    vao apenas o conteudo: titulo, estilos, o ponto de montagem e o script. */
 const html = `<title>Central de Equalização de Elevadores — CD Cajamar</title>
-${tagIcone()}
+${await tagIcone()}
 <style>
 ${css}
 </style>
 <div id="root"></div>
-<script>window.__EQUALIZACAO_DEMO__ = true;</script>
 <script type="module">
 ${js}
 </script>

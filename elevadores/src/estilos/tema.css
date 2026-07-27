@@ -447,3 +447,12 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 
 /* A busca da barra de topo fica na mesma linha do selo de contexto. */
 .global-search{ width:auto; flex:1 1 220px; max-width:420px; }
+
+/* Confirmacao antes de trocar a planilha em uso. */
+.eq-modal-fundo{ position:fixed; inset:0; z-index:100; background:rgba(10,12,26,.55);
+  display:flex; align-items:center; justify-content:center; padding:20px; }
+.eq-modal{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg);
+  padding:20px 22px; max-width:420px; box-shadow:0 24px 60px rgba(0,0,0,.35); }
+.eq-modal h3{ font-size:15px; font-weight:700; color:var(--ink); margin-bottom:8px; }
+.eq-modal p{ font-size:12.5px; color:var(--ink-soft); line-height:1.55; }
+.eq-modal-acoes{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }

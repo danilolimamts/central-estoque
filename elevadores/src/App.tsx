@@ -10,7 +10,8 @@ import { DashboardGeral } from './pages/DashboardGeral';
 import { StatusProjeto } from './pages/StatusProjeto';
 import { Elevadores } from './pages/Elevadores';
 import { FOTOS_PAIS } from './dados/fotosPais';
-import { Vazio } from './components/ui';
+import { LOGO_HORIZONTAL } from './dados/logo';
+import { Botao, Vazio } from './components/ui';
 
 type Pagina = 'geral' | 'projeto' | 'elevadores' | 'importacao';
 
@@ -103,6 +104,7 @@ export default function App() {
   const [recolhido, setRecolhido] = useState(false);
   const [tema, setTema] = useState<'claro' | 'escuro' | null>(null);
   const [busca, setBusca] = useState('');
+  const [confirmarTroca, setConfirmarTroca] = useState(false);
 
   const hoje = useMemo(() => new Date(), []);
   const acoes = useAcoes(dados?.acoes, hoje);
@@ -138,13 +140,21 @@ export default function App() {
   const paginaAtual: Pagina = semDados ? 'importacao' : pagina;
   const cabecalho = PAGINAS[paginaAtual];
 
+  /* Ir para a importacao descarta a planilha que esta em uso, entao
+     pede confirmacao: e facil clicar no item do menu so para rever a
+     tela e perder o que ja foi importado. */
   function irPara(p: Pagina) {
     if (p === 'importacao') {
-      void limpar();
-      setPagina('geral');
+      setConfirmarTroca(true);
       return;
     }
     setPagina(p);
+  }
+
+  function trocarPlanilha() {
+    setConfirmarTroca(false);
+    setPagina('geral');
+    void limpar();
   }
 
   const itens: { id: Pagina; rotulo: string; secao?: string }[] = [
@@ -159,20 +169,7 @@ export default function App() {
       <aside className={`sidebar ${recolhido ? 'collapsed' : ''}`}>
         <div className="brand">
           <div className="brand-logo-chip">
-            <span
-              style={{
-                display: 'block',
-                background: '#FA4616',
-                color: '#fff',
-                fontWeight: 800,
-                fontSize: 11,
-                letterSpacing: '.02em',
-                padding: '3px 6px',
-                borderRadius: 4,
-              }}
-            >
-              LDM
-            </span>
+            <img src={LOGO_HORIZONTAL} alt="Loja do Mecânico" className="brand-logo-img" />
           </div>
           <div style={{ minWidth: 0 }}>
             <div className="brand-name">Equalização</div>
@@ -254,6 +251,30 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {confirmarTroca && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tituloTroca"
+          className="eq-modal-fundo"
+          onClick={() => setConfirmarTroca(false)}
+        >
+          <div className="eq-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 id="tituloTroca">Importar outra planilha?</h3>
+            <p>
+              Os dados de <strong>{dados?.arquivo}</strong> saem da tela e você precisa escolher o
+              arquivo de novo. A planilha no seu computador não é alterada.
+            </p>
+            <div className="eq-modal-acoes">
+              <Botao aoClicar={() => setConfirmarTroca(false)}>Cancelar</Botao>
+              <Botao variante="laranja" aoClicar={trocarPlanilha}>
+                Importar outra
+              </Botao>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

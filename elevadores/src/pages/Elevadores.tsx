@@ -10,6 +10,24 @@ import { Cartao, SeloStatus, SeloValoracao, Fornecedor, Vazio, BarraFiltros, Bus
 
 type Filtro = 'todos' | 'corrigir' | 'descasado';
 
+/* A foto vem do catalogo publico. Quando a rede da empresa bloqueia o
+   endereco, mostra o aviso no lugar de deixar o espaco quebrado. */
+function FotoProduto({ url, nome }: { url?: string; nome: string }) {
+  const [falhou, setFalhou] = useState(false);
+  if (!url || falhou) {
+    return <span className="eq-foto-erro">{url ? 'Foto indisponível nesta rede' : 'Sem foto cadastrada'}</span>;
+  }
+  return (
+    <img
+      src={url}
+      alt={nome}
+      loading="lazy"
+      style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }}
+      onError={() => setFalhou(true)}
+    />
+  );
+}
+
 export function Elevadores({
   componentes,
   fotos,
@@ -113,27 +131,7 @@ export function Elevadores({
                     placeItems: 'center',
                   }}
                 >
-                  {foto ? (
-                    <img
-                      src={foto}
-                      alt={e.nome}
-                      loading="lazy"
-                      style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }}
-                      onError={(ev) => {
-                        const alvo = ev.currentTarget;
-                        alvo.style.display = 'none';
-                        const pai = alvo.parentElement;
-                        if (pai && !pai.querySelector('.eq-foto-erro')) {
-                          const aviso = document.createElement('span');
-                          aviso.className = 'eq-foto-erro';
-                          aviso.textContent = 'Foto indisponível nesta rede';
-                          pai.appendChild(aviso);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span className="eq-foto-erro">Sem foto cadastrada</span>
-                  )}
+                  <FotoProduto url={foto} nome={e.nome} />
                 </div>
                 <div style={{ padding: '9px 11px', display: 'flex', flexDirection: 'column', gap: 5 }}>
                   <div className="mono" style={{ fontWeight: 700, fontSize: 12.5 }}>
