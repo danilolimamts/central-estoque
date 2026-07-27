@@ -26,6 +26,10 @@ function irFmtNum(n, dec){ return (n||0).toLocaleString('pt-BR', {minimumFractio
 function irFmtMoney(n){ return (n||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'}); }
 function irFmtPct(n){ return ((n||0)*100).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1})+'%'; }
 function irFmtDate(s){ if(!s) return '—'; const d = new Date(s); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR'); }
+/* Ano do ciclo, derivado da data de abertura — usado pra não confundir
+   "Ciclo 1" de anos diferentes (mesmo número, ciclos distintos). */
+function irCicloAno(c){ const d = new Date(c.dataAbertura); return isNaN(d.getTime()) ? null : d.getFullYear(); }
+function irCicloLabel(c){ const ano = irCicloAno(c); return `Ciclo ${c.numero}${ano?'/'+ano:''}`; }
 function irShowToast(msg, isError){
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -115,12 +119,12 @@ function irRenderCycleBadge(){
   if(!IR.ciclos.length){ badge.innerHTML = 'Nenhum ciclo ativo'; return; }
   if(IR.ciclos.length===1){
     const c = IR.ciclos[0];
-    badge.innerHTML = `Ciclo ${c.numero} — ${c.status==='aberto'?'Aberto':'Encerrado'}`;
+    badge.innerHTML = `${irCicloLabel(c)} — ${c.status==='aberto'?'Aberto':'Encerrado'}`;
     return;
   }
   const ordenados = IR.ciclos.slice().sort((a,b)=>b.numero-a.numero);
   badge.innerHTML = `<select id="cycleFilterSelect" onchange="irFiltrarCiclo(this.value)" title="Filtrar por ciclo">
-    ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id ? 'selected' : ''}>Ciclo ${c.numero} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
+    ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id ? 'selected' : ''}>${irCicloLabel(c)} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
   </select>`;
 }
 async function irFiltrarCiclo(cicloId){
@@ -177,7 +181,12 @@ function irRenderImportacao(){
       <p class="field-hint" style="margin-bottom:14px;">Arraste as 4 planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo.</p>
       <div class="dz-grid">${IR_FILE_TYPES.map(dz).join('')}</div>
       <div class="two-col" style="margin-top:16px;">
-        <div><label>Número do ciclo</label><input type="number" id="ir-inp-ciclo" min="1" value="${IR.cicloAtivo ? IR.cicloAtivo.numero : (IR.ciclos.length?Math.max(...IR.ciclos.map(c=>c.numero))+1:1)}"></div>
+        <div><label>Número do ciclo</label><input type="number" id="ir-inp-ciclo" min="1" value="${(()=>{
+          if(IR.cicloAtivo) return IR.cicloAtivo.numero;
+          const anoAtual = new Date().getFullYear();
+          const doAno = IR.ciclos.filter(c=>irCicloAno(c)===anoAtual);
+          return doAno.length ? Math.max(...doAno.map(c=>c.numero))+1 : 1;
+        })()}"></div>
         <div><label>Data de abertura</label><input type="date" id="ir-inp-abertura" value="${IR.cicloAtivo ? IR.cicloAtivo.dataAbertura : new Date().toISOString().slice(0,10)}"></div>
       </div>
       <div class="two-col">
@@ -198,7 +207,7 @@ function irRenderImportacao(){
 }
 function irRenderUltimoProcessamento(){
   const m = IR.importMeta;
-  return `<div class="panel"><h3>Último processamento — Ciclo ${IR.cicloAtivo.numero}</h3>
+  return `<div class="panel"><h3>Último processamento — ${irCicloLabel(IR.cicloAtivo)}</h3>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="num mono">${irFmtInt(m.totalLocaisCongelados)}</div><div class="label">Locais congelados</div></div>
       <div class="kpi-card orange"><div class="num mono">${irFmtInt(m.totalDivergencias)}</div><div class="label">Itens divergentes</div></div>
@@ -241,8 +250,11 @@ async function irProcessar(){
   const dataPrevistaTermino = document.getElementById('ir-inp-termino').value;
   if(!numero || !dataAbertura){ irShowToast('Informe o número do ciclo e a data de abertura.', true); return; }
 
-  const existente = IR.ciclos.find(c=>c.numero===numero);
-  const cicloId = existente ? existente.id : 'ciclo-'+numero+'-'+Date.now().toString(36);
+  // Ciclo é identificado por número + ano (não só o número) — evita que
+  // "Ciclo 1" de um ano novo sobrescreva o "Ciclo 1" de um ano anterior.
+  const anoNovo = new Date(dataAbertura).getFullYear();
+  const existente = IR.ciclos.find(c=>c.numero===numero && irCicloAno(c)===anoNovo);
+  const cicloId = existente ? existente.id : 'ciclo-'+numero+'-'+anoNovo+'-'+Date.now().toString(36);
   const ciclo = {
     id: cicloId, numero, dataAbertura, dataPrevistaTermino: dataPrevistaTermino||null,
     dataEncerramento: existente ? existente.dataEncerramento : null,
@@ -772,7 +784,7 @@ function irGerarRelatorioEmail(){
         <div class="rp-hero-status">${c.status==='aberto'?'Ciclo em andamento':'Ciclo encerrado'}</div>
       </div>
       <div class="rp-hero-badge">Boletim de Inventário Rotativo</div>
-      <h1>Andamento do Ciclo ${c.numero}</h1>
+      <h1>Andamento do ${irCicloLabel(c)}</h1>
       <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
       <div class="rp-hero-meta">
         <span>Gerado em ${agora}</span>
@@ -923,7 +935,7 @@ function irRenderGestaoCiclo(){
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div>
-          <h3 style="margin-bottom:4px;">Ciclo ${c.numero} — ${c.status==='aberto'?'Aberto':'Encerrado'}</h3>
+          <h3 style="margin-bottom:4px;">${irCicloLabel(c)} — ${c.status==='aberto'?'Aberto':'Encerrado'}</h3>
           <p class="field-hint">Abertura: ${irFmtDate(c.dataAbertura)} · Término previsto: ${irFmtDate(c.dataPrevistaTermino)}${c.dataEncerramento?' · Encerrado em: '+irFmtDate(c.dataEncerramento):''}</p>
         </div>
         <div class="form-actions" style="margin:0;">
@@ -1274,7 +1286,7 @@ function irRenderHistorico(){
   return `<div class="panel"><h3>Linha do tempo</h3>
     <div class="table-wrap"><table><thead><tr><th>Ciclo</th><th>Status</th><th>Abertura</th><th>Término previsto</th><th>Encerrado em</th><th></th></tr></thead>
     <tbody>${IR.ciclos.map(c=>`<tr>
-      <td class="mono">${c.numero}</td>
+      <td class="mono">${c.numero}${irCicloAno(c)?'/'+irCicloAno(c):''}</td>
       <td><span class="tag ${c.status==='aberto'?'tag-orange':'tag-good'}">${c.status==='aberto'?'Aberto':'Encerrado'}</span></td>
       <td>${irFmtDate(c.dataAbertura)}</td><td>${irFmtDate(c.dataPrevistaTermino)}</td><td>${irFmtDate(c.dataEncerramento)}</td>
       <td><button class="btn-link" onclick="irSelecionarCiclo('${c.id}')">Ver indicadores</button></td>
@@ -1293,7 +1305,7 @@ async function irSelecionarCiclo(cicloId){
    ============================================================ */
 function irRenderComparativo(){
   if(IR.ciclos.length<2) return irEmptyState('Precisa de ao menos 2 ciclos', 'Processe outro ciclo para poder comparar.', "irSwitchTab('importacao')", 'Ir para Importação');
-  const opts = IR.ciclos.map(c=>`<option value="${c.id}">Ciclo ${c.numero}</option>`).join('');
+  const opts = IR.ciclos.map(c=>`<option value="${c.id}">${irCicloLabel(c)}</option>`).join('');
   return `
     <div class="filter-bar">
       <select id="ir-cmp-a" onchange="irSetComparar('A', this.value)">${opts}</select>
@@ -1323,8 +1335,8 @@ async function irRenderComparativoResultado(){
     ['Tempo Médio (min)', irFmtNum(indA.tempoMedioContagemMin,1), irFmtNum(indB.tempoMedioContagemMin,1), indB.tempoMedioContagemMin-indA.tempoMedioContagemMin],
     ['Eficiência', irFmtPct(indA.eficiencia), irFmtPct(indB.eficiencia), indB.eficiencia-indA.eficiencia]
   ];
-  el.innerHTML = `<div class="panel"><h3>Ciclo ${ciA.numero} vs. Ciclo ${ciB.numero}</h3>
-    <div class="table-wrap"><table><thead><tr><th>Indicador</th><th>Ciclo ${ciA.numero}</th><th>Ciclo ${ciB.numero}</th><th>Tendência</th></tr></thead>
+  el.innerHTML = `<div class="panel"><h3>${irCicloLabel(ciA)} vs. ${irCicloLabel(ciB)}</h3>
+    <div class="table-wrap"><table><thead><tr><th>Indicador</th><th>${irCicloLabel(ciA)}</th><th>${irCicloLabel(ciB)}</th><th>Tendência</th></tr></thead>
     <tbody>${linhas.map(([label,a,b,delta])=>`<tr><td>${label}</td><td class="mono">${a}</td><td class="mono">${b}</td>
       <td><span class="tag ${delta>0?'tag-good':(delta<0?'tag-bad':'tag-muted')}">${delta>0?'▲ melhora':(delta<0?'▼ piora':'= igual')}</span></td></tr>`).join('')}</tbody>
     </table></div>
