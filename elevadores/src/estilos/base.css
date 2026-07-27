@@ -1,0 +1,5 @@
+/* Utilitarios do Tailwind, usados no arranjo das telas.
+   O design system (tema.css) e carregado depois, para prevalecer. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

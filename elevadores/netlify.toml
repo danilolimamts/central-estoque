@@ -1,0 +1,26 @@
+# Deploy estatico no Netlify (secao 4 do brief).
+# O projeto vive na subpasta elevadores/ do repositorio, entao a base
+# precisa apontar para ca; o app de Auditoria segue na raiz.
+
+[build]
+  base = "elevadores"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# App de pagina unica: qualquer rota cai no index.html.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# A planilha e lida no proprio navegador e nada e enviado para fora,
+# entao a politica pode bloquear conexoes externas.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"

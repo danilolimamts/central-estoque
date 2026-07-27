@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+coverage/
+.vite/
+
+# Planilhas reais (dados do negocio) nao entram no repositorio.
+tests/fixtures/*.xlsx
+
+# Artefatos gerados pela verificacao no navegador.
+demo.xlsx
+*.png
+dist-pagina-unica/
