@@ -14,6 +14,7 @@ import { cores, coresQuadrante, coresSaude } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
 import { Botao, Busca, Cartao, Kpi, Selecao, Selo, Tabela, Td, Th, Vazio } from '../components/ui';
 import { baixarPlanoProjeto } from '../export/exportExcel';
+import { baixarApresentacao, RECORTES, type Recorte } from '../export/exportPptx';
 
 const ROTULO_SAUDE: Record<Saude, string> = {
   saudavel: 'Saudável',
@@ -296,6 +297,8 @@ export function StatusProjeto({
   }, [acoes, responsavel, proposta, situacao, busca]);
 
   const m = useMemo(() => calcularMetricas(filtradas), [filtradas]);
+  const [recorte, setRecorte] = useState<Recorte>('executivo');
+  const [gerando, setGerando] = useState(false);
 
   return (
     <div className="flex flex-col" style={{ gap: 18 }}>
@@ -364,7 +367,32 @@ export function StatusProjeto({
       <Cartao
         titulo="Plano de ação — projeto"
         descricao={`${filtradas.length} ações`}
-        acoes={<Botao variante="secundario" aoClicar={() => baixarPlanoProjeto(filtradas)}>Exportar Excel</Botao>}
+        acoes={
+          <>
+            <Selecao
+              valor={recorte}
+              aoMudar={setRecorte}
+              opcoes={RECORTES.map((r) => ({ valor: r.valor, rotulo: `Apresentação: ${r.rotulo}` }))}
+              rotulo="Recorte da apresentação"
+            />
+            <Botao
+              variante="laranja"
+              desabilitado={gerando}
+              titulo={RECORTES.find((r) => r.valor === recorte)?.descricao}
+              aoClicar={async () => {
+                setGerando(true);
+                try {
+                  await baixarApresentacao(filtradas, recorte);
+                } finally {
+                  setGerando(false);
+                }
+              }}
+            >
+              {gerando ? 'Gerando…' : 'Baixar PowerPoint'}
+            </Botao>
+            <Botao aoClicar={() => baixarPlanoProjeto(filtradas)}>Exportar Excel</Botao>
+          </>
+        }
       >
         {filtradas.length === 0 ? (
           <Vazio>Nenhuma ação para os filtros escolhidos.</Vazio>

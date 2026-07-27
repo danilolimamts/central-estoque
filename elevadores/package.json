@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "demo:planilha": "node scripts/gerarPlanilhaDemo.mjs demo.xlsx",
+    "verificar:pptx": "npm run build && node scripts/verificarPptx.mjs dist/index.html demo.xlsx .",
     "verificar:navegador": "npm run build && node scripts/verificarNavegador.mjs demo.xlsx ."
   },
   "dependencies": {
