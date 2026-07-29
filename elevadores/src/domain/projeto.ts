@@ -348,3 +348,62 @@ export function totalDoPlano(linhas: LinhaPlano[]): TotalPlano {
   );
   return { ...t, pctConcluido: t.atividades ? Math.round((t.concluidas / t.atividades) * 100) : 0 };
 }
+
+/* ============================================================
+   Ganhos de cada acao.
+
+   A planilha marca com SIM ou NAO em que o item melhora a operacao.
+   Sao esses os ganhos que o projeto entrega, e o que justifica cada
+   acao existir no plano.
+   ============================================================ */
+
+export type Ganho = 'erro' | 'produtividade' | 'cliente' | 'custo' | 'seguranca';
+
+export const GANHOS: { chave: Ganho; rotulo: string; curto: string }[] = [
+  { chave: 'erro', rotulo: 'Reduz erro', curto: 'Erro' },
+  { chave: 'produtividade', rotulo: 'Melhora produtividade', curto: 'Produtividade' },
+  { chave: 'cliente', rotulo: 'Melhora para o cliente', curto: 'Cliente' },
+  { chave: 'custo', rotulo: 'Reduz custo', curto: 'Custo' },
+  { chave: 'seguranca', rotulo: 'Aumenta segurança', curto: 'Segurança' },
+];
+
+function marcado(v: string): boolean {
+  return String(v ?? '').trim().toUpperCase().startsWith('S');
+}
+
+/* Os ganhos de uma acao, na ordem fixa da lista acima. */
+export function ganhosDaAcao(a: Acao): Ganho[] {
+  const mapa: Record<Ganho, string> = {
+    erro: a.reduzErro,
+    produtividade: a.melhoraProdutividade,
+    cliente: a.melhoraCliente,
+    custo: a.reduzCusto,
+    seguranca: a.aumentaSeguranca,
+  };
+  return GANHOS.map((g) => g.chave).filter((k) => marcado(mapa[k]));
+}
+
+export interface ResumoGanho {
+  chave: Ganho;
+  rotulo: string;
+  curto: string;
+  total: number;
+  entregues: number;
+  pct: number;
+}
+
+/* Quantas acoes endereçam cada ganho e quantas dessas ja foram
+   entregues: e a diferenca entre o que foi prometido e o que ja
+   chegou na operacao. */
+export function resumirGanhos(acoes: Acao[]): ResumoGanho[] {
+  return GANHOS.map((g) => {
+    const comOGanho = acoes.filter((a) => ganhosDaAcao(a).includes(g.chave));
+    const entregues = comOGanho.filter((a) => a.concluida).length;
+    return {
+      ...g,
+      total: comOGanho.length,
+      entregues,
+      pct: comOGanho.length ? Math.round((entregues / comOGanho.length) * 100) : 0,
+    };
+  });
+}

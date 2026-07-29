@@ -685,3 +685,18 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 
 /* A rosca fica centrada na altura do cartao ao lado. */
 .eq-linha-rosca > .panel:first-child{ display:flex; flex-direction:column; justify-content:center; }
+
+/* Controle de zoom flutuante. Herda o formato do Inventario Rotativo. */
+.zoom-ctrl-float{ z-index:110; }
+.zoom-ctrl .zoom-reset{ font-size:12px; }
+/* O zoom vale para o conteudo: os tamanhos passam a ser relativos. */
+.page-scroll .panel h3{ font-size:1.08em; }
+.page-scroll .panel-sub{ font-size:.92em; }
+.page-scroll .kpi-card .num{ font-size:1.9em; }
+.page-scroll table{ font-size:.96em; }
+
+/* Ganhos de cada acao, na tabela detalhada. */
+.eq-ganhos{ display:flex; gap:4px; flex-wrap:wrap; }
+.eq-ganho{ font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:100px;
+  background:var(--blue-light); color:var(--blue); white-space:nowrap; }
+:root[data-theme="dark"] .eq-ganho{ color:#AEBBEA; }

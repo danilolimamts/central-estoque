@@ -122,6 +122,9 @@ export default function App() {
   const [busca, setBusca] = useState('');
   const [confirmarTroca, setConfirmarTroca] = useState(false);
   const [apresentando, setApresentando] = useState(false);
+  /* Zoom da area de conteudo, no mesmo formato do Inventario Rotativo:
+     serve para caber mais na tela ou aumentar para ler de longe. */
+  const [zoom, setZoom] = useState(100);
 
   const hoje = useMemo(() => new Date(), []);
   const acoes = useAcoes(dados?.acoes, hoje);
@@ -305,7 +308,7 @@ export default function App() {
           </div>
         )}
 
-        <div className="page-scroll">
+        <div className="page-scroll" style={{ fontSize: `${zoom}%` }}>
           {carregando ? (
             <Vazio icone="⏳">Carregando dados salvos…</Vazio>
           ) : !dados ? (
@@ -321,6 +324,23 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {/* Fica flutuando no canto para nao empurrar o conteudo e continua
+          ao alcance depois de rolar o painel inteiro. */}
+      {dados && (
+        <div className="zoom-ctrl zoom-ctrl-float">
+          <button onClick={() => setZoom((z) => Math.max(60, z - 10))} title="Diminuir" aria-label="Diminuir a tela">
+            −
+          </button>
+          <span>{zoom}%</span>
+          <button onClick={() => setZoom((z) => Math.min(160, z + 10))} title="Aumentar" aria-label="Aumentar a tela">
+            +
+          </button>
+          <button onClick={() => setZoom(100)} title="Voltar ao tamanho normal" aria-label="Tamanho normal" className="zoom-reset">
+            ⤾
+          </button>
+        </div>
+      )}
 
       {apresentando && (
         <button className="eq-sair-apresentacao" onClick={() => setApresentando(false)}>

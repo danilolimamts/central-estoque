@@ -10,6 +10,7 @@ import type { ChartConfiguration } from 'chart.js';
 import type { Acao, MetricasProjeto } from '../domain/tipos';
 import {
   calcularMetricas, montarMatriz, planoPorAcao, totalDoPlano, situacaoDe,
+  resumirGanhos, ganhosDaAcao, GANHOS,
 } from '../domain/projeto';
 import { cores } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
@@ -204,6 +205,49 @@ function EntregasPorSemana({ acoes }: { acoes: Acao[] }) {
             <span className="eq-semana-rotulo">{s.rotulo}</span>
           </div>
         ))}
+      </div>
+    </Cartao>
+  );
+}
+
+
+/* Ganhos do projeto: o que cada acao promete melhorar e o quanto disso
+   ja chegou na operacao. Responde "para que serve esse plano". */
+function GanhosDoProjeto({ acoes }: { acoes: Acao[] }) {
+  const linhas = useMemo(() => resumirGanhos(acoes), [acoes]);
+  const comAlgum = linhas.filter((l) => l.total > 0);
+  if (comAlgum.length === 0) return null;
+
+  return (
+    <Cartao
+      titulo="Ganhos do projeto"
+      descricao="quantas ações endereçam cada ganho e quanto já foi entregue"
+    >
+      <div className="eq-frentes">
+        {comAlgum.map((l) => (
+          <div key={l.chave} className="eq-frente">
+            <div className="eq-frente-nome" title={l.rotulo}>
+              {l.rotulo}
+            </div>
+            <div className="eq-frente-barra" title={`${l.entregues} de ${l.total} já entregues`}>
+              <span style={{ width: `${l.pct}%`, background: ESCALA.concluida }} />
+              <span style={{ width: `${100 - l.pct}%`, background: ESCALA.pendente }} />
+            </div>
+            <div className="eq-frente-pct">
+              {l.entregues}/{l.total}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="eq-legenda">
+        <span>
+          <i style={{ background: ESCALA.concluida }} />
+          Já entregue
+        </span>
+        <span>
+          <i style={{ background: ESCALA.pendente }} />
+          Ainda em aberto
+        </span>
       </div>
     </Cartao>
   );
@@ -673,8 +717,10 @@ export function StatusProjeto({
 
       <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
         <EntregasPorSemana acoes={filtradas} />
-        <Matriz acoes={filtradas} />
+        <GanhosDoProjeto acoes={filtradas} />
       </div>
+
+      <Matriz acoes={filtradas} />
 
       {/* A tabela vem antes dos graficos: e por ela que a reuniao
           comeca, e o resto detalha o que ela mostra. */}
@@ -739,6 +785,7 @@ export function StatusProjeto({
                 <Th>Responsável</Th>
                 <Th>Prazo</Th>
                 <Th>Situação</Th>
+                <Th>Ganhos</Th>
                 <Th alinha="right">Esf.</Th>
                 <Th alinha="right">Imp.</Th>
               </tr>
@@ -766,6 +813,21 @@ export function StatusProjeto({
                     ) : (
                       <Selo cor={cores.navy.claro}>{a.situacao || 'Em aberto'}</Selo>
                     )}
+                  </Td>
+                  <Td>
+                    {/* Ganhos que a acao entrega, na ordem fixa da lista,
+                        para a leitura ser sempre a mesma linha a linha. */}
+                    <div className="eq-ganhos">
+                      {ganhosDaAcao(a).length === 0 ? (
+                        <span style={{ color: 'var(--ink-soft)', fontSize: 11 }}>—</span>
+                      ) : (
+                        ganhosDaAcao(a).map((g) => (
+                          <span key={g} className="eq-ganho" title={GANHOS.find((x) => x.chave === g)?.rotulo}>
+                            {GANHOS.find((x) => x.chave === g)?.curto}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </Td>
                   <Td alinha="right" numerico>{a.esforco}</Td>
                   <Td alinha="right" numerico>{a.impacto}</Td>

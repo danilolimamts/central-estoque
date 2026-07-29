@@ -12,6 +12,8 @@ import {
   explicarSaude,
   pilarMaisFraco,
   proximosPassos,
+  ganhosDaAcao,
+  resumirGanhos,
 } from '../src/domain/projeto';
 import type { Acao } from '../src/domain/tipos';
 
@@ -160,5 +162,37 @@ describe('leitura em texto do status', () => {
     const passos = proximosPassos(emDia, calcularMetricas(emDia), []);
     expect(passos).toHaveLength(1);
     expect(passos[0].texto).toContain('em dia');
+  });
+});
+
+describe('ganhos de cada acao', () => {
+  it('le as colunas de beneficio da planilha, na ordem fixa', () => {
+    const a = acao({
+      reduzErro: 'SIM', melhoraProdutividade: 'NAO', melhoraCliente: 'Sim',
+      reduzCusto: '', aumentaSeguranca: 'SIM',
+    });
+    expect(ganhosDaAcao(a)).toEqual(['erro', 'cliente', 'seguranca']);
+  });
+
+  it('acao sem nenhum beneficio marcado devolve lista vazia', () => {
+    expect(ganhosDaAcao(acao({
+      reduzErro: 'NAO', melhoraProdutividade: 'NAO', melhoraCliente: 'NAO',
+      reduzCusto: 'NAO', aumentaSeguranca: 'NAO',
+    }))).toEqual([]);
+  });
+
+  it('resume quantas acoes endereçam cada ganho e quantas ja entregaram', () => {
+    const lista = derivarAcoes([
+      acao({ situacao: 'Concluída', dataConclusao: new Date(Date.UTC(2026, 5, 9)), reduzErro: 'SIM', reduzCusto: 'SIM' }),
+      acao({ situacao: 'Pendente', reduzErro: 'SIM', reduzCusto: 'NAO' }),
+    ], HOJE);
+    const r = resumirGanhos(lista);
+    const erro = r.find((x) => x.chave === 'erro')!;
+    expect(erro.total).toBe(2);
+    expect(erro.entregues).toBe(1);
+    expect(erro.pct).toBe(50);
+    const custo = r.find((x) => x.chave === 'custo')!;
+    expect(custo.total).toBe(1);
+    expect(custo.pct).toBe(100);
   });
 });
