@@ -12,7 +12,9 @@
    ============================================================ */
 import PptxGenJS from 'pptxgenjs';
 import type { Acao, MetricasProjeto, PontoMatriz } from '../domain/tipos';
-import { calcularMetricas, montarMatriz } from '../domain/projeto';
+import {
+  calcularMetricas, montarMatriz, proximosPassos, explicarSaude,
+} from '../domain/projeto';
 import { IMPACTO_CRITICO, ESFORCO_ALTO } from '../config/regras';
 
 export type Recorte = 'executivo' | 'completo' | 'atrasos' | 'responsavel';
@@ -448,58 +450,29 @@ function slideDistribuicao(pptx: PptxGenJS, acoes: Acao[], m: MetricasProjeto) {
   });
 }
 
-/* O ultimo slide sai dos proprios dados: nada e escrito a mao. */
+/* O ultimo slide sai dos proprios dados. O texto vem do dominio, o
+   mesmo que a tela usa, para a apresentacao e o sistema nunca darem
+   explicacoes diferentes. */
 function slideProximosPassos(pptx: PptxGenJS, acoes: Acao[], m: MetricasProjeto, pontos: PontoMatriz[]) {
-  const s = slide(pptx, 'Próximos passos', 'gerado a partir dos dados deste recorte');
-  const passos: string[] = [];
-
-  const atrasadas = acoes.filter((a) => a.atrasada);
-  if (atrasadas.length) {
-    const nomes = [...new Set(atrasadas.map((a) => a.responsavel).filter(Boolean))].slice(0, 3);
-    passos.push(
-      `Repactuar as ${atrasadas.length} ações em atraso com ${nomes.join(', ') || 'os responsáveis'}, definindo nova data ou tirando do plano.`
-    );
-  }
-  if (m.concluidasSemData > 0) {
-    passos.push(
-      `Preencher a data de conclusão das ${m.concluidasSemData} ações já concluídas, para o acompanhamento parar de distorcer.`
-    );
-  }
-  const ganhos = pontos.filter((p) => p.quadrante === 'ganhos_rapidos');
-  if (ganhos.length) {
-    passos.push(
-      `Priorizar os ganhos rápidos (${ganhos.slice(0, 3).map((p) => p.proposta).join(', ')}): impacto alto com esforço baixo.`
-    );
-  }
-  const criticas = acoes.filter((a) => a.impacto >= IMPACTO_CRITICO && !a.concluida);
-  if (criticas.length) {
-    passos.push(`Destravar as ${criticas.length} ações de impacto ${IMPACTO_CRITICO} ainda em aberto.`);
-  }
-  if (m.reagendadas / (m.total || 1) > 0.3) {
-    passos.push(
-      `Revisar o dimensionamento do plano: ${m.reagendadas} de ${m.total} ações já foram reagendadas.`
-    );
-  }
-  if (passos.length === 0) {
-    passos.push('Plano em dia neste recorte. Manter a rotina de acompanhamento semanal.');
-  }
-
-  passos.slice(0, 5).forEach((texto, i) => {
-    const y = 1.5 + i * 1.0;
-    s.addShape('roundRect', {
-      x: 0.5, y, w: 12.33, h: 0.82,
-      fill: { color: 'FFFFFF' }, line: { color: 'E1E4EF', width: 1 }, rectRadius: 0.08,
+  const s = slide(pptx, 'Próximos passos', explicarSaude(m));
+  proximosPassos(acoes, m, pontos)
+    .slice(0, 5)
+    .forEach((passo, i) => {
+      const y = 1.5 + i * 1.0;
+      s.addShape('roundRect', {
+        x: 0.5, y, w: 12.33, h: 0.82,
+        fill: { color: 'FFFFFF' }, line: { color: 'E1E4EF', width: 1 }, rectRadius: 0.08,
+      });
+      s.addShape('ellipse', { x: 0.75, y: y + 0.21, w: 0.4, h: 0.4, fill: { color: LARANJA } });
+      s.addText(String(i + 1), {
+        x: 0.75, y: y + 0.24, w: 0.4, h: 0.35,
+        fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', fontFace: 'Segoe UI',
+      });
+      s.addText(passo.texto, {
+        x: 1.35, y: y + 0.14, w: 11.2, h: 0.55,
+        fontSize: 12, color: TINTA, fontFace: 'Segoe UI', valign: 'middle',
+      });
     });
-    s.addShape('ellipse', { x: 0.75, y: y + 0.21, w: 0.4, h: 0.4, fill: { color: LARANJA } });
-    s.addText(String(i + 1), {
-      x: 0.75, y: y + 0.24, w: 0.4, h: 0.35,
-      fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', fontFace: 'Segoe UI',
-    });
-    s.addText(texto, {
-      x: 1.35, y: y + 0.14, w: 11.2, h: 0.55,
-      fontSize: 12, color: TINTA, fontFace: 'Segoe UI', valign: 'middle',
-    });
-  });
 }
 
 /* ---------------------------------------------------------------

@@ -7,8 +7,10 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
-import type { Acao, Saude } from '../domain/tipos';
-import { calcularMetricas, montarMatriz } from '../domain/projeto';
+import type { Acao, Saude, MetricasProjeto } from '../domain/tipos';
+import {
+  calcularMetricas, montarMatriz, proximosPassos, explicarSaude, pilarMaisFraco,
+} from '../domain/projeto';
 import { MATRIZ, IMPACTO_CRITICO, ESFORCO_ALTO } from '../config/regras';
 import { cores, coresQuadrante, coresSaude } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
@@ -28,6 +30,15 @@ const ROTULO_QUADRANTE = {
   incrementais: 'Melhorias incrementais',
   baixa_prioridade: 'Baixa prioridade',
 } as const;
+
+/* O que cada pilar mede, dito com os numeros do proprio plano, para
+   nao ser preciso decorar a formula. */
+const EXPLICACAO_PILAR: Record<string, (m: MetricasProjeto) => string> = {
+  entrega: (m) => `${m.concluidas} de ${m.total} concluídas`,
+  prazo: (m) => `${m.atrasadas} em atraso`,
+  estabilidade: (m) => `${m.reagendadas} reagendadas`,
+  retorno: (m) => `impacto ${m.mediaImpacto.toFixed(1)} · esforço ${m.mediaEsforco.toFixed(1)}`,
+};
 
 function Medidor({ score, saude }: { score: number; saude: Saude }) {
   const cor = coresSaude[saude];
@@ -129,7 +140,7 @@ function Alertas({ acoes }: { acoes: Acao[] }) {
 
     const lista: { cor: string; icone: string; texto: string }[] = [];
     if (atrasadas > 0) lista.push({ cor: cores.laranja.base, icone: '!', texto: `<b>${atrasadas} ação(ões) atrasada(s)</b> — prazo vencido sem conclusão` });
-    if (semData > 0) lista.push({ cor: cores.laranja.escuro, icone: '⚠', texto: `<b>${semData} concluída(s) sem data</b> — distorcem o BurnDown` });
+    if (semData > 0) lista.push({ cor: cores.laranja.escuro, icone: '⚠', texto: `<b>${semData} concluída(s) sem data</b> — falta registrar quando terminaram` });
     if (reagendadas > 0) lista.push({ cor: cores.semantico.ambar, icone: '↻', texto: `<b>${reagendadas} reagendada(s)</b> — de ${acoes.length} ações` });
     if (criticas > 0) lista.push({ cor: cores.navy.base, icone: '◆', texto: `<b>${criticas} ação(ões) crítica(s)</b> — impacto ${IMPACTO_CRITICO} ainda em aberto` });
     if (altoEsforco > 0) lista.push({ cor: cores.navy.claro, icone: '▲', texto: `<b>${altoEsforco} de alto esforço</b> — esforço ≥ ${ESFORCO_ALTO} em aberto` });
@@ -196,8 +207,8 @@ function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
   }, [acoes, hoje]);
 
   return (
-    <Cartao titulo="BurnDown" descricao="ritmo de entrega x ideal">
-      {config ? <Grafico config={config} altura={260} rotulo="BurnDown do projeto" /> : <Vazio>Sem datas suficientes.</Vazio>}
+    <Cartao titulo="Ritmo de entrega" descricao="quantas ações ainda faltam, comparado ao ritmo necessário para terminar no prazo">
+      {config ? <Grafico config={config} altura={260} rotulo="Ritmo de entrega do projeto" /> : <Vazio>Sem datas suficientes.</Vazio>}
     </Cartao>
   );
 }
@@ -300,8 +311,32 @@ export function StatusProjeto({
   const [recorte, setRecorte] = useState<Recorte>('executivo');
   const [gerando, setGerando] = useState(false);
 
+  const passos = useMemo(() => proximosPassos(filtradas, m, montarMatriz(filtradas)), [filtradas, m]);
+  const fraco = useMemo(() => pilarMaisFraco(m), [m]);
+
   return (
     <div className="flex flex-col" style={{ gap: 18 }}>
+      {/* Leitura em texto antes dos numeros: quem abre a tela pela
+          primeira vez entende a situacao sem precisar interpretar
+          grafico nenhum. */}
+      <section className="panel eq-leitura">
+        <div className="eq-leitura-topo">
+          <span className="eq-leitura-selo" style={{ background: coresSaude[m.saude] }}>
+            {ROTULO_SAUDE[m.saude]}
+          </span>
+          <h2>{explicarSaude(m)}</h2>
+        </div>
+        <div className="eq-leitura-passos">
+          <div className="eq-leitura-titulo">Por onde começar</div>
+          {passos.slice(0, 3).map((passo, i) => (
+            <div key={passo.texto} className="eq-passo">
+              <span className="eq-passo-n">{i + 1}</span>
+              <span>{passo.texto}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <Cartao titulo="Filtros" descricao="todos os indicadores abaixo respeitam esta seleção">
         <div className="flex flex-wrap gap-2">
           <Busca valor={busca} aoMudar={setBusca} placeholder="Buscar ação…" />
@@ -315,17 +350,24 @@ export function StatusProjeto({
       </Cartao>
 
       <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-        <Kpi rotulo="Score do projeto" valor={m.score} sufixo="/100" dica={`saúde: ${ROTULO_SAUDE[m.saude]}`} cor={coresSaude[m.saude]} />
+        <Kpi rotulo="Score do projeto" valor={m.score} sufixo="/100" dica={`quanto maior, melhor`} cor={coresSaude[m.saude]} />
         <Kpi rotulo="Concluídas" valor={m.concluidas} sufixo={`/ ${m.total}`} dica={`${m.pctConcluidas.toFixed(0)}% do plano`} cor={cores.semantico.verde} />
-        <Kpi rotulo="Atrasadas" valor={m.atrasadas} dica="prazo vencido" cor={cores.laranja.base} />
-        <Kpi rotulo="Concluídas sem data" valor={m.concluidasSemData} dica="distorcem o BurnDown" cor={cores.semantico.ambar} />
+        <Kpi rotulo="Atrasadas" valor={m.atrasadas} dica="passaram da data combinada" cor={cores.laranja.base} />
+        <Kpi rotulo="Concluídas sem data" valor={m.concluidasSemData} dica="falta registrar quando terminaram" cor={cores.semantico.ambar} />
       </div>
 
       <div className="grid gap-4.5 lg:grid-cols-[300px_1fr]" style={{ gap: 18 }}>
         <Cartao>
           <Medidor score={m.score} saude={m.saude} />
         </Cartao>
-        <Cartao titulo="Score decomposto" descricao="para defender em reunião">
+        <Cartao
+          titulo="De onde vem o score"
+          descricao={
+            fraco
+              ? `O que mais puxa para baixo é ${fraco.pilar.rotulo.toLowerCase()}: deixou de somar ${fraco.perdido.toFixed(1)} pontos.`
+              : 'para defender em reunião'
+          }
+        >
           {m.pilares.map((p) => (
             <div key={p.chave} className="mb-3 grid items-center gap-2.5" style={{ gridTemplateColumns: '110px 1fr 96px' }}>
               <div>
@@ -333,7 +375,7 @@ export function StatusProjeto({
                   {p.rotulo}
                 </div>
                 <div className="text-[11px]" style={{ color: 'var(--ink-soft)' }}>
-                  peso {p.peso.toFixed(2)}
+                  {EXPLICACAO_PILAR[p.chave](m)}
                 </div>
               </div>
               <div className="h-3.5 overflow-hidden rounded" style={{ background: 'var(--surface-2)' }}>

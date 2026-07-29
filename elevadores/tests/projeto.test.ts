@@ -9,6 +9,9 @@ import {
   calcularSaude,
   quadranteDe,
   montarMatriz,
+  explicarSaude,
+  pilarMaisFraco,
+  proximosPassos,
 } from '../src/domain/projeto';
 import type { Acao } from '../src/domain/tipos';
 
@@ -112,5 +115,50 @@ describe('7.6 matriz Impacto x Esforco', () => {
     const pontos = montarMatriz(acoes);
     expect(pontos).toHaveLength(2);
     expect(pontos.find((p) => p.proposta === 'A')?.acoes).toBe(2);
+  });
+});
+
+describe('leitura em texto do status', () => {
+  const comAtraso = derivarAcoes(
+    [
+      acao({ situacao: 'Concluída', dataConclusao: new Date(Date.UTC(2026, 5, 9)), fim: new Date(Date.UTC(2026, 5, 10)) }),
+      acao({ situacao: 'Pendente', fim: new Date(Date.UTC(2026, 5, 5)) }),
+      acao({ situacao: 'Pendente', fim: new Date(Date.UTC(2026, 5, 5)) }),
+      acao({ situacao: 'Concluída', dataConclusao: null, fim: new Date(Date.UTC(2026, 5, 10)) }),
+    ],
+    HOJE
+  );
+  const met = calcularMetricas(comAtraso);
+
+  it('a explicacao da saude cita os numeros que a decidiram', () => {
+    const texto = explicarSaude(met);
+    expect(texto).toContain('2 de 4');
+    expect(texto).toMatch(/crítico|atenção|em dia/i);
+  });
+
+  it('aponta o pilar que mais custou pontos', () => {
+    const fraco = pilarMaisFraco(met);
+    expect(fraco).not.toBeNull();
+    expect(fraco!.perdido).toBeGreaterThan(0);
+    // Nenhum outro pilar pode ter perdido mais que o apontado.
+    for (const p of met.pilares) {
+      expect((100 - p.valor) * p.peso).toBeLessThanOrEqual(fraco!.perdido + 0.001);
+    }
+  });
+
+  it('os proximos passos saem dos dados, em ordem do que trava mais', () => {
+    const passos = proximosPassos(comAtraso, met, montarMatriz(comAtraso));
+    expect(passos[0].texto).toContain('2 ações em atraso');
+    expect(passos.some((p) => p.texto.includes('data de conclusão'))).toBe(true);
+  });
+
+  it('plano em dia nao inventa pendencia', () => {
+    const emDia = derivarAcoes(
+      [acao({ situacao: 'Concluída', dataConclusao: new Date(Date.UTC(2026, 5, 9)), fim: new Date(Date.UTC(2026, 5, 10)), proposta: '' })],
+      HOJE
+    );
+    const passos = proximosPassos(emDia, calcularMetricas(emDia), []);
+    expect(passos).toHaveLength(1);
+    expect(passos[0].texto).toContain('em dia');
   });
 });

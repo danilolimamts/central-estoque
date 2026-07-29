@@ -13,7 +13,7 @@ import type {
   Quadrante,
   Saude,
 } from './tipos';
-import { PESOS_SCORE, RETORNO, SAUDE, MATRIZ } from '../config/regras';
+import { PESOS_SCORE, RETORNO, SAUDE, MATRIZ, IMPACTO_CRITICO } from '../config/regras';
 
 function clamp01(x: number): number {
   if (Number.isNaN(x)) return 0;
@@ -154,4 +154,92 @@ export function montarMatriz(acoes: Acao[]): PontoMatriz[] {
     });
   }
   return pontos;
+}
+
+/* ============================================================
+   Leitura em texto do que os numeros querem dizer.
+
+   Serve tanto a tela quanto a apresentacao, para as duas darem a
+   mesma explicacao. Nada aqui e fixo: tudo sai dos dados que
+   chegam, ja filtrados.
+   ============================================================ */
+
+/* Por que a saude esta nesse nivel, com os numeros que decidiram. */
+export function explicarSaude(m: MetricasProjeto): string {
+  const pctAtraso = m.total > 0 ? (m.atrasadas / m.total) * 100 : 0;
+  const atraso = `${m.atrasadas} de ${m.total} ações com prazo vencido (${pctAtraso.toFixed(0)}%)`;
+
+  if (m.saude === 'saudavel') {
+    return `O plano está em dia: ${m.concluidas} ações concluídas e ${atraso}.`;
+  }
+  if (m.saude === 'critico') {
+    const motivo =
+      m.score < SAUDE.scoreAtencao
+        ? `o score está em ${m.score}, abaixo de ${SAUDE.scoreAtencao}`
+        : `o atraso passou de ${SAUDE.atrasoAtencao * 100}%`;
+    return `O projeto está crítico porque ${motivo}: ${atraso}.`;
+  }
+  return `O projeto pede atenção: ${atraso}, com ${m.concluidas} de ${m.total} ações concluídas.`;
+}
+
+/* O pilar que mais puxa o score para baixo, com quanto ele deixou
+   de somar. E a resposta para "onde mexer primeiro". */
+export function pilarMaisFraco(m: MetricasProjeto): { pilar: PilarScore; perdido: number } | null {
+  if (m.pilares.length === 0) return null;
+  const comPerda = m.pilares.map((p) => ({ pilar: p, perdido: (100 - p.valor) * p.peso }));
+  return comPerda.sort((a, b) => b.perdido - a.perdido)[0];
+}
+
+export interface Passo {
+  texto: string;
+  quantidade: number;
+}
+
+/* Os proximos passos, em ordem do que trava mais. */
+export function proximosPassos(acoes: Acao[], m: MetricasProjeto, pontos: PontoMatriz[]): Passo[] {
+  const passos: Passo[] = [];
+
+  const atrasadas = acoes.filter((a) => a.atrasada);
+  if (atrasadas.length) {
+    const nomes = [...new Set(atrasadas.map((a) => a.responsavel).filter(Boolean))].slice(0, 3);
+    passos.push({
+      quantidade: atrasadas.length,
+      texto: `Repactuar as ${atrasadas.length} ações em atraso com ${nomes.join(', ') || 'os responsáveis'}, definindo nova data ou tirando do plano.`,
+    });
+  }
+
+  if (m.concluidasSemData > 0) {
+    passos.push({
+      quantidade: m.concluidasSemData,
+      texto: `Preencher a data de conclusão das ${m.concluidasSemData} ações já concluídas, senão o acompanhamento continua distorcido.`,
+    });
+  }
+
+  const ganhos = pontos.filter((p) => p.quadrante === 'ganhos_rapidos');
+  if (ganhos.length) {
+    passos.push({
+      quantidade: ganhos.length,
+      texto: `Priorizar os ganhos rápidos (${ganhos.slice(0, 3).map((p) => p.proposta).join(', ')}): muito impacto com pouco esforço.`,
+    });
+  }
+
+  const criticas = acoes.filter((a) => a.impacto >= IMPACTO_CRITICO && !a.concluida);
+  if (criticas.length) {
+    passos.push({
+      quantidade: criticas.length,
+      texto: `Destravar as ${criticas.length} ações de impacto ${IMPACTO_CRITICO} que seguem em aberto.`,
+    });
+  }
+
+  if (m.total > 0 && m.reagendadas / m.total > 0.3) {
+    passos.push({
+      quantidade: m.reagendadas,
+      texto: `Revisar o tamanho do plano: ${m.reagendadas} de ${m.total} ações já foram reagendadas ao menos uma vez.`,
+    });
+  }
+
+  if (passos.length === 0) {
+    passos.push({ quantidade: 0, texto: 'Plano em dia. Manter a rotina de acompanhamento semanal.' });
+  }
+  return passos;
 }

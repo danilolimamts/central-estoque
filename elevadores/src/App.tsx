@@ -189,8 +189,8 @@ export default function App() {
             <img src={LOGO_HORIZONTAL} alt="Loja do Mecânico" className="brand-logo-img" />
           </div>
           <div style={{ minWidth: 0 }}>
-            <div className="brand-name">Equalização</div>
-            <div className="brand-sub">Elevadores · CD Cajamar</div>
+            <div className="brand-name">Elevadores</div>
+            <div className="brand-sub">CD Cajamar</div>
           </div>
           <button
             className="sidebar-toggle"
