@@ -9,11 +9,11 @@ import { useMemo, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
 import type { Acao, MetricasProjeto } from '../domain/tipos';
 import {
-  calcularMetricas, montarMatriz, pilarMaisFraco, planoPorAcao, totalDoPlano, situacaoDe,
+  calcularMetricas, montarMatriz, planoPorAcao, totalDoPlano, situacaoDe,
 } from '../domain/projeto';
-import { cores, coresQuadrante, coresSaude } from '../config/tokens';
+import { cores, coresQuadrante } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
-import { Botao, Busca, Cartao, Kpi, Selecao, Selo, Tabela, Td, Th, Vazio } from '../components/ui';
+import { BarraFiltros, Botao, Busca, Cartao, Chips, Selecao, Selo, Tabela, Td, Th, Vazio } from '../components/ui';
 import { baixarPlanoProjeto } from '../export/exportExcel';
 import { baixarApresentacao, RECORTES, type Recorte } from '../export/exportPptx';
 import { MATRIZ } from '../config/regras';
@@ -26,18 +26,9 @@ const ROTULO_QUADRANTE = {
   baixa_prioridade: 'Baixa prioridade',
 } as const;
 
-/* O que cada pilar mede, dito com os numeros do proprio plano, para
-   nao ser preciso decorar a formula. */
-const EXPLICACAO_PILAR: Record<string, (m: MetricasProjeto) => string> = {
-  entrega: (m) => `${m.concluidas} de ${m.total} concluídas`,
-  prazo: (m) => `${m.atrasadas} em atraso`,
-  estabilidade: (m) => `${m.reagendadas} reagendadas`,
-  retorno: (m) => `impacto ${m.mediaImpacto.toFixed(1)} · esforço ${m.mediaEsforco.toFixed(1)}`,
-};
-
 /* Medidor de conclusao do plano. Mostra o quanto ja foi entregue,
    sem rotulo de julgamento: o andamento fala por si. */
-function Medidor({ pct }: { pct: number }) {
+function Medidor({ pct, metricas }: { pct: number; metricas: MetricasProjeto }) {
   const cor = pct === 100 ? cores.semantico.verde : cores.laranja.base;
   const r = 72;
   const cx = 90;
@@ -56,29 +47,52 @@ function Medidor({ pct }: { pct: number }) {
   return (
     <div className="flex flex-col items-center">
       <svg width="180" height="148" viewBox="0 0 180 148" role="img" aria-label={`${pct}% do plano concluído`}>
-        <path d={arco(1)} fill="none" stroke="var(--line)" strokeWidth="14" strokeLinecap="round" />
-        <path d={arco(pct / 100)} fill="none" stroke={cor} strokeWidth="14" strokeLinecap="round" />
+        <path d={arco(1)} fill="none" stroke="var(--line)" strokeWidth="22" strokeLinecap="round" />
+        <path d={arco(pct / 100)} fill="none" stroke={cor} strokeWidth="22" strokeLinecap="round" />
         <text x="90" y="92" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="42" fontWeight="600" fill="var(--ink)">
           {pct}%
         </text>
-        <text x="90" y="114" textAnchor="middle" fontSize="12" fill="var(--ink-soft)">
+        <text x="90" y="118" textAnchor="middle" fontSize="12" fill="var(--ink-soft)">
           do plano concluído
         </text>
       </svg>
+
+      {/* Os numeros que antes ficavam em cartoes soltos passam a viver
+          junto da rosca, que e o que a reuniao olha primeiro. */}
+      <div className="eq-rosca-numeros">
+        <div>
+          <span className="n" style={{ color: cores.semantico.verde }}>
+            {metricas.concluidas}<i>/{metricas.total}</i>
+          </span>
+          <span className="l">Concluídas</span>
+        </div>
+        <div>
+          <span className="n" style={{ color: metricas.atrasadas > 0 ? cores.laranja.base : 'var(--ink)' }}>
+            {metricas.atrasadas}
+          </span>
+          <span className="l">Atrasadas</span>
+        </div>
+        <div>
+          <span className="n" style={{ color: metricas.concluidasSemData > 0 ? cores.semantico.ambar : 'var(--ink)' }}>
+            {metricas.concluidasSemData}
+          </span>
+          <span className="l">Concluídas sem data</span>
+        </div>
+      </div>
     </div>
   );
 }
 
 function Matriz({ acoes }: { acoes: Acao[] }) {
   const pontos = useMemo(() => montarMatriz(acoes), [acoes]);
-  const L = 400;
-  const A = 320;
-  const pad = 44;
+  const L = 760;
+  const A = 380;
+  const pad = 52;
   const X = (v: number) => pad + (v / MATRIZ.eixoEsforcoMax) * (L - pad - 18);
   const Y = (v: number) => A - pad - (v / MATRIZ.eixoImpactoMax) * (A - pad - 18);
 
   return (
-    <Cartao titulo="Matriz Impacto × Esforço" descricao={`${pontos.length} propostas`}>
+    <Cartao titulo="Matriz Impacto × Esforço" descricao={`${pontos.length} propostas · quanto mais à esquerda e acima, melhor a relação`}>
       <div className="flex justify-center">
         <svg width="100%" viewBox={`0 0 ${L} ${A}`} style={{ maxWidth: L }} role="img" aria-label="Matriz de impacto por esforço">
           <rect x={X(0)} y={Y(MATRIZ.eixoImpactoMax)} width={X(MATRIZ.corteEsforco) - X(0)} height={Y(MATRIZ.corteImpacto) - Y(MATRIZ.eixoImpactoMax)} fill={coresQuadrante.ganhos_rapidos} opacity="0.08" />
@@ -96,11 +110,38 @@ function Matriz({ acoes }: { acoes: Acao[] }) {
               {e}
             </text>
           ))}
-          {pontos.map((p) => (
-            <circle key={p.proposta} cx={X(p.esforco)} cy={Y(p.impacto)} r="8" fill={coresQuadrante[p.quadrante]} opacity="0.9">
-              <title>{`${p.proposta} — esforço ${p.esforco}, impacto ${p.impacto} (${p.acoes} ações)`}</title>
-            </circle>
-          ))}
+          {pontos.map((p) => {
+            const cx = X(p.esforco);
+            const cy = Y(p.impacto);
+            /* Pontos na mesma faixa de impacto teriam os nomes um sobre o
+               outro. Cada um recebe um degrau vertical conforme a ordem
+               em que aparece na faixa. */
+            const naFaixa = pontos
+              .filter((o) => Math.abs(Y(o.impacto) - cy) < 14)
+              .sort((a, b) => X(a.esforco) - X(b.esforco));
+            const degrau = naFaixa.findIndex((o) => o.proposta === p.proposta);
+            const dy = naFaixa.length > 1 ? (degrau - (naFaixa.length - 1) / 2) * 15 : 0;
+            /* O nome vai para a esquerda quando o ponto esta na metade
+               direita, senao o texto sai do quadro. */
+            const aDireita = cx < L * 0.55;
+            return (
+              <g key={p.proposta}>
+                <circle cx={cx} cy={cy} r="9" fill={coresQuadrante[p.quadrante]} opacity="0.95">
+                  <title>{`${p.proposta} — esforço ${p.esforco}, impacto ${p.impacto}`}</title>
+                </circle>
+                <text
+                  x={aDireita ? cx + 14 : cx - 14}
+                  y={cy + 4 + dy}
+                  textAnchor={aDireita ? 'start' : 'end'}
+                  fontSize="11"
+                  fontWeight="600"
+                  fill="var(--ink)"
+                >
+                  {p.proposta}
+                </text>
+              </g>
+            );
+          })}
           <text x={X(MATRIZ.eixoEsforcoMax / 2)} y={A - 10} textAnchor="middle" fontSize="11" fill="var(--ink-soft)">
             Esforço →
           </text>
@@ -135,7 +176,14 @@ function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
     const total = acoes.length;
     const real = semanas.map((s) => {
       if (s > hoje) return null;
-      const feitas = acoes.filter((a) => a.dataConclusao && a.dataConclusao <= s).length;
+      /* Acao concluida sem data de conclusao ainda foi entregue. Para
+         nao inflar o que falta, ela conta na data que estava combinada.
+         Sem isso a curva termina acima do numero real de pendentes. */
+      const feitas = acoes.filter((a) => {
+        if (!a.concluida) return false;
+        const quando = a.dataConclusao ?? a.prazoValido ?? a.fim;
+        return quando != null && quando <= s;
+      }).length;
       return total - feitas;
     });
     const ideal = semanas.map((_, i) => Math.round(total * (1 - i / (semanas.length - 1 || 1))));
@@ -271,7 +319,18 @@ function Gantt({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
       };
     });
 
-    return { grupos, pct, hojePct: pct(hoje.getTime()) };
+    /* Marcas de tempo no topo, para dar para ler o prazo de cada barra
+       sem precisar passar o mouse. */
+    const marcas: { rotulo: string; pct: number }[] = [];
+    const passo = Math.max(1, Math.ceil((t1 - t0) / 86400000 / 8));
+    for (let d = new Date(t0); d.getTime() <= t1; d = new Date(d.getTime() + passo * 86400000)) {
+      marcas.push({
+        rotulo: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }),
+        pct: pct(d.getTime()),
+      });
+    }
+
+    return { grupos, pct, marcas, hojePct: pct(hoje.getTime()) };
   }, [acoes, hoje]);
 
   if (!dados) return null;
@@ -281,6 +340,23 @@ function Gantt({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
       titulo="Gantt"
       descricao="cada frente com o seu avanço · barra tracejada = reagendamento · linha vertical = hoje"
     >
+      {/* Regua de datas: fica fixa no topo e as linhas descem por tras
+          das barras, para o prazo ser lido na vertical. */}
+      <div className="eq-gantt-regua" style={{ gridTemplateColumns: '230px 1fr 52px' }}>
+        <div />
+        <div className="eq-gantt-regua-faixa">
+          {dados.marcas.map((mk) => (
+            <span key={mk.rotulo + mk.pct} style={{ left: `${mk.pct}%` }}>
+              {mk.rotulo}
+            </span>
+          ))}
+          <span className="eq-gantt-hoje-rotulo" style={{ left: `${dados.hojePct}%` }}>
+            hoje
+          </span>
+        </div>
+        <div />
+      </div>
+
       <div className="relative">
         <div
           className="pointer-events-none absolute inset-0 grid gap-2"
@@ -289,9 +365,16 @@ function Gantt({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
         >
           <div />
           <div className="relative">
+            {dados.marcas.map((mk) => (
+              <div
+                key={`linha-${mk.pct}`}
+                className="absolute inset-y-0 w-px"
+                style={{ left: `${mk.pct}%`, background: 'var(--line)' }}
+              />
+            ))}
             <div
-              className="absolute inset-y-0 w-px"
-              style={{ left: `${dados.hojePct}%`, background: cores.laranja.base }}
+              className="absolute inset-y-0"
+              style={{ left: `${dados.hojePct}%`, width: 2, background: cores.laranja.base }}
             />
           </div>
           <div />
@@ -415,8 +498,21 @@ export function StatusProjeto({
   const m = useMemo(() => calcularMetricas(filtradas), [filtradas]);
   const [recorte, setRecorte] = useState<Recorte>('executivo');
   const [gerando, setGerando] = useState(false);
+  /* Filtro proprio da tabela detalhada, separado do filtro do topo:
+     serve para achar rapido o que esta pendente sem mexer no recorte
+     que os graficos estao mostrando. */
+  const [soSituacao, setSoSituacao] = useState<'todas' | 'pendente' | 'andamento' | 'concluida' | 'atrasada'>('todas');
 
-  const fraco = useMemo(() => pilarMaisFraco(m), [m]);
+  const acoesDaTabela = useMemo(
+    () =>
+      filtradas.filter((a) => {
+        if (soSituacao === 'todas') return true;
+        if (soSituacao === 'atrasada') return a.atrasada;
+        return situacaoDe(a) === soSituacao;
+      }),
+    [filtradas, soSituacao]
+  );
+
 
   return (
     <div className="flex flex-col" style={{ gap: 18 }}>
@@ -436,53 +532,11 @@ export function StatusProjeto({
       </Cartao>
       </div>
 
-      <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-        <Kpi rotulo="Score do projeto" valor={m.score} sufixo="/100" dica={`quanto maior, melhor`} cor={coresSaude[m.saude]} />
-        <Kpi rotulo="Concluídas" valor={m.concluidas} sufixo={`/ ${m.total}`} dica={`${m.pctConcluidas.toFixed(0)}% do plano`} cor={cores.semantico.verde} />
-        <Kpi rotulo="Atrasadas" valor={m.atrasadas} dica="passaram da data combinada" cor={cores.laranja.base} />
-        <Kpi rotulo="Concluídas sem data" valor={m.concluidasSemData} dica="falta registrar quando terminaram" cor={cores.semantico.ambar} />
-      </div>
-
-      <div className="grid gap-4.5 lg:grid-cols-[300px_1fr]" style={{ gap: 18 }}>
+      <div className="eq-linha-rosca">
         <Cartao>
-          <Medidor pct={Math.round(m.pctConcluidas)} />
+          <Medidor pct={Math.round(m.pctConcluidas)} metricas={m} />
         </Cartao>
-        <Cartao
-          titulo="De onde vem o score"
-          descricao={
-            fraco
-              ? `O que mais puxa para baixo é ${fraco.pilar.rotulo.toLowerCase()}: deixou de somar ${fraco.perdido.toFixed(1)} pontos.`
-              : 'para defender em reunião'
-          }
-        >
-          {m.pilares.map((p) => (
-            <div key={p.chave} className="mb-3 grid items-center gap-2.5" style={{ gridTemplateColumns: '110px 1fr 96px' }}>
-              <div>
-                <div className="text-[12.5px]" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                  {p.rotulo}
-                </div>
-                <div className="text-[11px]" style={{ color: 'var(--ink-soft)' }}>
-                  {EXPLICACAO_PILAR[p.chave](m)}
-                </div>
-              </div>
-              <div className="h-3.5 overflow-hidden rounded" style={{ background: 'var(--surface-2)' }}>
-                <div className="h-full rounded" style={{ width: `${Math.max(0, Math.min(100, p.valor))}%`, background: cores.navy.base }} />
-              </div>
-              <div className="text-right text-[12px]" style={{ color: 'var(--ink-soft)' }}>
-                {p.valor.toFixed(0)} × {p.peso.toFixed(2)} ={' '}
-                <b className="num" style={{ color: 'var(--ink)' }}>
-                  {p.contribuicao.toFixed(1)}
-                </b>
-              </div>
-            </div>
-          ))}
-          <div className="mt-1 text-right text-[13px]" style={{ color: 'var(--ink-soft)' }}>
-            Soma ={' '}
-            <b className="num text-base" style={{ color: 'var(--ink)' }}>
-              {m.score}
-            </b>
-          </div>
-        </Cartao>
+        <Matriz acoes={filtradas} />
       </div>
 
       {/* A tabela vem antes dos graficos: e por ela que a reuniao
@@ -490,14 +544,11 @@ export function StatusProjeto({
       <PlanoDeAcao acoes={filtradas} />
       <Gantt acoes={filtradas} hoje={hoje} />
 
-      <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
-        <Matriz acoes={filtradas} />
-        <BurnDown acoes={filtradas} hoje={hoje} />
-      </div>
+      <BurnDown acoes={filtradas} hoje={hoje} />
 
       <Cartao
         titulo="Plano de ação — projeto"
-        descricao={`${filtradas.length} ações`}
+        descricao={`${acoesDaTabela.length} de ${filtradas.length} ações`}
         acoes={
           <>
             <Selecao
@@ -525,8 +576,22 @@ export function StatusProjeto({
           </>
         }
       >
-        {filtradas.length === 0 ? (
-          <Vazio>Nenhuma ação para os filtros escolhidos.</Vazio>
+        <BarraFiltros>
+          <Chips
+            valor={soSituacao}
+            aoMudar={setSoSituacao}
+            opcoes={[
+              { valor: 'todas', rotulo: `Todas (${filtradas.length})` },
+              { valor: 'pendente', rotulo: `Pendentes (${filtradas.filter((a) => situacaoDe(a) === 'pendente').length})` },
+              { valor: 'andamento', rotulo: `Em andamento (${filtradas.filter((a) => situacaoDe(a) === 'andamento').length})` },
+              { valor: 'concluida', rotulo: `Concluídas (${filtradas.filter((a) => situacaoDe(a) === 'concluida').length})` },
+              { valor: 'atrasada', rotulo: `Atrasadas (${filtradas.filter((a) => a.atrasada).length})` },
+            ]}
+          />
+        </BarraFiltros>
+
+        {acoesDaTabela.length === 0 ? (
+          <Vazio icone="🔎">Nenhuma ação para os filtros escolhidos.</Vazio>
         ) : (
           <Tabela>
             <thead>
@@ -542,7 +607,7 @@ export function StatusProjeto({
               </tr>
             </thead>
             <tbody>
-              {filtradas.map((a) => (
+              {acoesDaTabela.map((a) => (
                 <tr key={a.numPlanAction + a.oQueFazer}>
                   <Td numerico>{a.numPlanAction}</Td>
                   <Td>{a.proposta}</Td>

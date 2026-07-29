@@ -213,10 +213,6 @@ export default function App() {
           <div className="brand-logo-chip">
             <img src={LOGO_HORIZONTAL} alt="Loja do Mecânico" className="brand-logo-img" />
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div className="brand-name">Elevadores</div>
-            <div className="brand-sub">CD Cajamar</div>
-          </div>
           <button
             className="sidebar-toggle"
             onClick={() => setRecolhido((v) => !v)}
@@ -224,6 +220,13 @@ export default function App() {
           >
             <Icone nome="menu" />
           </button>
+        </div>
+
+        {/* Nome do sistema abaixo do logo: com a marca maior nao sobra
+            largura para os dois na mesma linha. */}
+        <div className="eq-marca-nome">
+          <strong>Equalização de Elevadores</strong>
+          <span>CD Cajamar</span>
         </div>
 
         <nav className="sidebar-nav">
@@ -288,6 +291,19 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/* Na apresentacao o menu sai de cena e a marca iria junto, entao
+            a identificacao volta como faixa no topo da projecao. */}
+        {apresentando && (
+          <div className="eq-marca-apresentacao">
+            <img src={LOGO_HORIZONTAL} alt="Loja do Mecânico" />
+            <div>
+              <strong>{cabecalho.titulo}</strong>
+              <span>Equalização de Elevadores · CD Cajamar</span>
+            </div>
+            <time>{new Date().toLocaleDateString('pt-BR')}</time>
+          </div>
+        )}
 
         <div className="page-scroll">
           {carregando ? (
