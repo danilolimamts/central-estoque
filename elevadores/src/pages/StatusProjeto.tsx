@@ -7,22 +7,17 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
-import type { Acao, Saude, MetricasProjeto } from '../domain/tipos';
+import type { Acao, MetricasProjeto } from '../domain/tipos';
 import {
-  calcularMetricas, montarMatriz, proximosPassos, explicarSaude, pilarMaisFraco,
+  calcularMetricas, montarMatriz, pilarMaisFraco, planoPorAcao, totalDoPlano, situacaoDe,
 } from '../domain/projeto';
-import { MATRIZ, IMPACTO_CRITICO, ESFORCO_ALTO } from '../config/regras';
 import { cores, coresQuadrante, coresSaude } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
 import { Botao, Busca, Cartao, Kpi, Selecao, Selo, Tabela, Td, Th, Vazio } from '../components/ui';
 import { baixarPlanoProjeto } from '../export/exportExcel';
 import { baixarApresentacao, RECORTES, type Recorte } from '../export/exportPptx';
+import { MATRIZ } from '../config/regras';
 
-const ROTULO_SAUDE: Record<Saude, string> = {
-  saudavel: 'Saudável',
-  atencao: 'Atenção',
-  critico: 'Crítico',
-};
 
 const ROTULO_QUADRANTE = {
   ganhos_rapidos: 'Ganhos rápidos',
@@ -40,8 +35,10 @@ const EXPLICACAO_PILAR: Record<string, (m: MetricasProjeto) => string> = {
   retorno: (m) => `impacto ${m.mediaImpacto.toFixed(1)} · esforço ${m.mediaEsforco.toFixed(1)}`,
 };
 
-function Medidor({ score, saude }: { score: number; saude: Saude }) {
-  const cor = coresSaude[saude];
+/* Medidor de conclusao do plano. Mostra o quanto ja foi entregue,
+   sem rotulo de julgamento: o andamento fala por si. */
+function Medidor({ pct }: { pct: number }) {
+  const cor = pct === 100 ? cores.semantico.verde : cores.laranja.base;
   const r = 72;
   const cx = 90;
   const cy = 95;
@@ -58,17 +55,16 @@ function Medidor({ score, saude }: { score: number; saude: Saude }) {
 
   return (
     <div className="flex flex-col items-center">
-      <svg width="180" height="148" viewBox="0 0 180 148" role="img" aria-label={`Score ${score} de 100`}>
+      <svg width="180" height="148" viewBox="0 0 180 148" role="img" aria-label={`${pct}% do plano concluído`}>
         <path d={arco(1)} fill="none" stroke="var(--line)" strokeWidth="14" strokeLinecap="round" />
-        <path d={arco(score / 100)} fill="none" stroke={cor} strokeWidth="14" strokeLinecap="round" />
+        <path d={arco(pct / 100)} fill="none" stroke={cor} strokeWidth="14" strokeLinecap="round" />
         <text x="90" y="92" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="42" fontWeight="600" fill="var(--ink)">
-          {score}
+          {pct}%
         </text>
         <text x="90" y="114" textAnchor="middle" fontSize="12" fill="var(--ink-soft)">
-          de 100
+          do plano concluído
         </text>
       </svg>
-      <Selo cor={cor}>● Saúde: {ROTULO_SAUDE[saude]}</Selo>
     </div>
   );
 }
@@ -125,52 +121,6 @@ function Matriz({ acoes }: { acoes: Acao[] }) {
   );
 }
 
-function Alertas({ acoes }: { acoes: Acao[] }) {
-  const itens = useMemo(() => {
-    const porResponsavel = new Map<string, number>();
-    for (const a of acoes) {
-      if (!a.concluida && a.responsavel) porResponsavel.set(a.responsavel, (porResponsavel.get(a.responsavel) ?? 0) + 1);
-    }
-    const sobrecarga = [...porResponsavel.entries()].sort((x, y) => y[1] - x[1])[0];
-    const criticas = acoes.filter((a) => a.impacto >= IMPACTO_CRITICO && !a.concluida).length;
-    const altoEsforco = acoes.filter((a) => a.esforco >= ESFORCO_ALTO && !a.concluida).length;
-    const atrasadas = acoes.filter((a) => a.atrasada).length;
-    const reagendadas = acoes.filter((a) => a.reagendada).length;
-    const semData = acoes.filter((a) => a.concluidaSemData).length;
-
-    const lista: { cor: string; icone: string; texto: string }[] = [];
-    if (atrasadas > 0) lista.push({ cor: cores.laranja.base, icone: '!', texto: `<b>${atrasadas} ação(ões) atrasada(s)</b> — prazo vencido sem conclusão` });
-    if (semData > 0) lista.push({ cor: cores.laranja.escuro, icone: '⚠', texto: `<b>${semData} concluída(s) sem data</b> — falta registrar quando terminaram` });
-    if (reagendadas > 0) lista.push({ cor: cores.semantico.ambar, icone: '↻', texto: `<b>${reagendadas} reagendada(s)</b> — de ${acoes.length} ações` });
-    if (criticas > 0) lista.push({ cor: cores.navy.base, icone: '◆', texto: `<b>${criticas} ação(ões) crítica(s)</b> — impacto ${IMPACTO_CRITICO} ainda em aberto` });
-    if (altoEsforco > 0) lista.push({ cor: cores.navy.claro, icone: '▲', texto: `<b>${altoEsforco} de alto esforço</b> — esforço ≥ ${ESFORCO_ALTO} em aberto` });
-    if (sobrecarga && sobrecarga[1] >= 5) lista.push({ cor: cores.laranja.suave, icone: '●', texto: `<b>Sobrecarga</b> — ${sobrecarga[0]} com ${sobrecarga[1]} ações abertas` });
-    return lista;
-  }, [acoes]);
-
-  return (
-    <Cartao titulo="Alertas automáticos" descricao="o que precisa de atenção">
-      {itens.length === 0 ? (
-        <Vazio>Nenhum alerta para os filtros escolhidos.</Vazio>
-      ) : (
-        <div className="grid gap-2.5 sm:grid-cols-2">
-          {itens.map((a) => (
-            <div key={a.texto} className="flex items-start gap-2.5 rounded-xl px-3 py-2.5" style={{ background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
-              <span className="grid h-6.5 w-6.5 flex-none place-items-center rounded-lg text-sm text-white" style={{ background: a.cor, width: 26, height: 26 }}>
-                {a.icone}
-              </span>
-              <span className="text-[12.5px]" dangerouslySetInnerHTML={{ __html: a.texto }} />
-            </div>
-          ))}
-        </div>
-      )}
-    </Cartao>
-  );
-}
-
-/* BurnDown: pendentes ao longo do tempo, comparando o ritmo real com
-   a linha ideal. Acoes concluidas sem data ficam de fora da curva real
-   (por isso o alerta especifico). */
 function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
   const config: ChartConfiguration | null = useMemo(() => {
     const datas = acoes.flatMap((a) => [a.inicio, a.prazoValido].filter(Boolean) as Date[]);
@@ -213,6 +163,85 @@ function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
   );
 }
 
+
+/* Tabela consolidada por PLAN ACTION, no formato que a operacao ja
+   usa para reportar: quantas atividades, em que pe estao, o periodo
+   e a barra de conclusao. */
+function PlanoDeAcao({ acoes }: { acoes: Acao[] }) {
+  const linhas = useMemo(() => planoPorAcao(acoes), [acoes]);
+  const total = useMemo(() => totalDoPlano(linhas), [linhas]);
+
+  if (linhas.length === 0) return null;
+
+  const barra = (pct: number) => (
+    <div className="eq-status-celula">
+      <div className="eq-status-track">
+        <div
+          className="eq-status-fill"
+          style={{
+            width: `${Math.max(pct === 0 ? 0 : 4, pct)}%`,
+            background: pct === 100 ? cores.semantico.verde : cores.laranja.base,
+          }}
+        />
+      </div>
+      <span style={{ color: pct === 100 ? cores.semantico.verde : cores.laranja.base }}>{pct}%</span>
+    </div>
+  );
+
+  return (
+    <Cartao titulo="Plano de ação" descricao="uma linha por PLAN ACTION, com o andamento de cada frente">
+      <Tabela>
+        <thead>
+          <tr>
+            <Th largura={44} alinha="centro">Nº</Th>
+            <Th>Plan action</Th>
+            <Th alinha="centro">Atividades</Th>
+            <Th alinha="centro">Em andamento</Th>
+            <Th alinha="centro">Pendentes</Th>
+            <Th alinha="centro">Concluídas</Th>
+            <Th alinha="centro">Início</Th>
+            <Th alinha="centro">Fim</Th>
+            <Th alinha="centro">Reagendamento</Th>
+            <Th alinha="centro" largura={150}>Status</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map((l) => (
+            <tr key={l.proposta}>
+              <Td alinha="centro">{l.numero}</Td>
+              <Td style={{ fontWeight: 600 }}>{l.proposta}</Td>
+              <Td alinha="centro" numerico>{l.atividades}</Td>
+              <Td alinha="centro" numerico>{l.emAndamento || '-'}</Td>
+              <Td alinha="centro" numerico>{l.pendentes || '-'}</Td>
+              <Td alinha="centro" numerico>{l.concluidas || '-'}</Td>
+              <Td alinha="centro" numerico>{dataBR(l.inicio)}</Td>
+              <Td alinha="centro" numerico>{dataBR(l.fim)}</Td>
+              <Td alinha="centro" numerico>{dataBR(l.reagendamento)}</Td>
+              <Td>{barra(l.pctConcluido)}</Td>
+            </tr>
+          ))}
+          <tr className="eq-linha-total">
+            <Td alinha="centro">—</Td>
+            <Td>TOTAL</Td>
+            <Td alinha="centro" numerico>{total.atividades}</Td>
+            <Td alinha="centro" numerico>{total.emAndamento}</Td>
+            <Td alinha="centro" numerico>{total.pendentes}</Td>
+            <Td alinha="centro" numerico style={{ color: cores.semantico.verde }}>{total.concluidas}</Td>
+            <Td alinha="centro">—</Td>
+            <Td alinha="centro">—</Td>
+            <Td alinha="centro">—</Td>
+            <Td>{barra(total.pctConcluido)}</Td>
+          </tr>
+        </tbody>
+      </Tabela>
+    </Cartao>
+  );
+}
+
+function dataBR(d: Date | null): string {
+  return d ? d.toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-';
+}
+
 function Gantt({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
   const dados = useMemo(() => {
     const comData = acoes.filter((a) => a.inicio && a.prazoValido);
@@ -221,52 +250,128 @@ function Gantt({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
     const t1 = Math.max(...comData.map((a) => a.prazoValido!.getTime()), hoje.getTime());
     const span = t1 - t0 || 1;
     const pct = (t: number) => ((t - t0) / span) * 100;
-    return { linhas: comData.slice(0, 20), pct, hojePct: pct(hoje.getTime()) };
+
+    /* Agrupa por PLAN ACTION para o Gantt contar a mesma historia da
+       tabela: cada frente com o seu avanco, e dentro dela as
+       atividades. */
+    const porPlano = new Map<string, Acao[]>();
+    for (const a of comData) {
+      const chave = String(a.proposta ?? '').trim() || 'Sem proposta';
+      const lista = porPlano.get(chave);
+      if (lista) lista.push(a);
+      else porPlano.set(chave, [a]);
+    }
+    const grupos = [...porPlano.entries()].map(([proposta, lista]) => {
+      const concluidas = lista.filter((a) => situacaoDe(a) === 'concluida').length;
+      return {
+        proposta,
+        lista,
+        pctConcluido: Math.round((concluidas / lista.length) * 100),
+        concluidas,
+      };
+    });
+
+    return { grupos, pct, hojePct: pct(hoje.getTime()) };
   }, [acoes, hoje]);
 
   if (!dados) return null;
 
   return (
-    <Cartao titulo="Gantt" descricao="barra tracejada = reagendamento · linha vertical = hoje">
-      {/* A linha de hoje mora numa camada com o mesmo grid das barras, para
-          ficar alinhada a coluna do tempo em qualquer largura de tela. */}
+    <Cartao
+      titulo="Gantt"
+      descricao="cada frente com o seu avanço · barra tracejada = reagendamento · linha vertical = hoje"
+    >
       <div className="relative">
         <div
           className="pointer-events-none absolute inset-0 grid gap-2"
-          style={{ gridTemplateColumns: '200px 1fr' }}
+          style={{ gridTemplateColumns: '230px 1fr 52px' }}
           aria-hidden="true"
         >
           <div />
           <div className="relative">
-            <div className="absolute inset-y-0 w-px" style={{ left: `${dados.hojePct}%`, background: cores.laranja.base }} />
+            <div
+              className="absolute inset-y-0 w-px"
+              style={{ left: `${dados.hojePct}%`, background: cores.laranja.base }}
+            />
           </div>
+          <div />
         </div>
-        {dados.linhas.map((a) => {
-          const ini = dados.pct(a.inicio!.getTime());
-          const fimOriginal = a.fim ? dados.pct(a.fim.getTime()) : ini;
-          const fimReal = dados.pct(a.prazoValido!.getTime());
-          const cor = a.concluida ? cores.semantico.verde : a.atrasada ? cores.laranja.base : cores.navy.claro;
-          return (
-            <div key={a.numPlanAction + a.oQueFazer} className="mb-1.5 grid items-center gap-2" style={{ gridTemplateColumns: '200px 1fr' }}>
-              <div className="truncate text-[11.5px]" title={a.oQueFazer}>
-                {a.oQueFazer || a.proposta}
+
+        {dados.grupos.map((g) => (
+          <div key={g.proposta}>
+            {/* Cabecalho da frente, com a porcentagem do plano de acao. */}
+            <div
+              className="eq-gantt-grupo"
+              style={{ gridTemplateColumns: '230px 1fr 52px' }}
+            >
+              <div className="eq-gantt-grupo-nome" title={g.proposta}>
+                {g.proposta}
               </div>
-              <div className="relative h-4 rounded" style={{ background: 'var(--surface-2)' }}>
-                <div className="absolute inset-y-0 rounded" style={{ left: `${ini}%`, width: `${Math.max(1, fimOriginal - ini)}%`, background: cor }} />
-                {a.reagendada && fimReal > fimOriginal && (
-                  <div
-                    className="absolute inset-y-0.5 rounded"
-                    style={{
-                      left: `${fimOriginal}%`,
-                      width: `${Math.max(1, fimReal - fimOriginal)}%`,
-                      border: `1.5px dashed ${cores.semantico.ambar}`,
-                    }}
-                  />
-                )}
+              <div className="eq-gantt-grupo-track">
+                <div
+                  className="eq-gantt-grupo-fill"
+                  style={{
+                    width: `${g.pctConcluido}%`,
+                    background: g.pctConcluido === 100 ? cores.semantico.verde : cores.laranja.base,
+                  }}
+                />
+              </div>
+              <div
+                className="eq-gantt-pct"
+                style={{ color: g.pctConcluido === 100 ? cores.semantico.verde : cores.laranja.base }}
+              >
+                {g.pctConcluido}%
               </div>
             </div>
-          );
-        })}
+
+            {g.lista.map((a) => {
+              const inicio = dados.pct(a.inicio!.getTime());
+              const fimOriginal = a.fim ? dados.pct(a.fim.getTime()) : inicio;
+              const fimReal = dados.pct(a.prazoValido!.getTime());
+              const concluida = situacaoDe(a) === 'concluida';
+              const cor = concluida ? cores.semantico.verde : cores.laranja.base;
+              return (
+                <div
+                  key={a.numPlanAction + a.oQueFazer}
+                  className="mb-1.5 grid items-center gap-2"
+                  style={{ gridTemplateColumns: '230px 1fr 52px' }}
+                >
+                  <div className="truncate pl-3 text-[11.5px]" title={a.oQueFazer}>
+                    {a.oQueFazer || a.proposta}
+                  </div>
+                  <div className="relative h-4 rounded" style={{ background: 'var(--surface2)' }}>
+                    <div
+                      className="absolute inset-y-0 rounded"
+                      style={{
+                        left: `${inicio}%`,
+                        width: `${Math.max(1, fimOriginal - inicio)}%`,
+                        background: cor,
+                      }}
+                    />
+                    {a.reagendada && fimReal > fimOriginal && (
+                      <div
+                        className="absolute inset-y-0.5 rounded"
+                        style={{
+                          left: `${fimOriginal}%`,
+                          width: `${Math.max(1, fimReal - fimOriginal)}%`,
+                          border: `1.5px dashed ${cores.semantico.ambar}`,
+                        }}
+                      />
+                    )}
+                  </div>
+                  {/* Cada atividade so pode estar feita ou nao, entao a
+                      porcentagem dela e 100 ou 0. */}
+                  <div
+                    className="eq-gantt-pct"
+                    style={{ color: concluida ? cores.semantico.verde : 'var(--ink-soft)' }}
+                  >
+                    {concluida ? '100%' : '0%'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </Cartao>
   );
@@ -311,32 +416,10 @@ export function StatusProjeto({
   const [recorte, setRecorte] = useState<Recorte>('executivo');
   const [gerando, setGerando] = useState(false);
 
-  const passos = useMemo(() => proximosPassos(filtradas, m, montarMatriz(filtradas)), [filtradas, m]);
   const fraco = useMemo(() => pilarMaisFraco(m), [m]);
 
   return (
     <div className="flex flex-col" style={{ gap: 18 }}>
-      {/* Leitura em texto antes dos numeros: quem abre a tela pela
-          primeira vez entende a situacao sem precisar interpretar
-          grafico nenhum. */}
-      <section className="panel eq-leitura">
-        <div className="eq-leitura-topo">
-          <span className="eq-leitura-selo" style={{ background: coresSaude[m.saude] }}>
-            {ROTULO_SAUDE[m.saude]}
-          </span>
-          <h2>{explicarSaude(m)}</h2>
-        </div>
-        <div className="eq-leitura-passos">
-          <div className="eq-leitura-titulo">Por onde começar</div>
-          {passos.slice(0, 3).map((passo, i) => (
-            <div key={passo.texto} className="eq-passo">
-              <span className="eq-passo-n">{i + 1}</span>
-              <span>{passo.texto}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* Os filtros somem na apresentacao: a selecao ja foi feita antes
           de projetar, e em reuniao eles so tiram espaco. */}
       <div className="oculta-apresentacao">
@@ -362,7 +445,7 @@ export function StatusProjeto({
 
       <div className="grid gap-4.5 lg:grid-cols-[300px_1fr]" style={{ gap: 18 }}>
         <Cartao>
-          <Medidor score={m.score} saude={m.saude} />
+          <Medidor pct={Math.round(m.pctConcluidas)} />
         </Cartao>
         <Cartao
           titulo="De onde vem o score"
@@ -402,13 +485,15 @@ export function StatusProjeto({
         </Cartao>
       </div>
 
+      {/* A tabela vem antes dos graficos: e por ela que a reuniao
+          comeca, e o resto detalha o que ela mostra. */}
+      <PlanoDeAcao acoes={filtradas} />
+      <Gantt acoes={filtradas} hoje={hoje} />
+
       <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
         <Matriz acoes={filtradas} />
-        <Alertas acoes={filtradas} />
+        <BurnDown acoes={filtradas} hoje={hoje} />
       </div>
-
-      <BurnDown acoes={filtradas} hoje={hoje} />
-      <Gantt acoes={filtradas} hoje={hoje} />
 
       <Cartao
         titulo="Plano de ação — projeto"

@@ -89,8 +89,8 @@ export function calcularSaude(score: number, atrasadas: number, total: number): 
 export function calcularMetricas(acoes: Acao[]): MetricasProjeto {
   const total = acoes.length;
   const concluidas = acoes.filter((a) => a.concluida).length;
-  const emAndamento = acoes.filter((a) => !a.concluida && a.reagendada).length;
-  const pendentes = acoes.filter((a) => !a.concluida && !a.reagendada).length;
+  const emAndamento = acoes.filter((a) => situacaoDe(a) === 'andamento').length;
+  const pendentes = acoes.filter((a) => situacaoDe(a) === 'pendente').length;
   const atrasadas = acoes.filter((a) => a.atrasada).length;
   const reagendadas = acoes.filter((a) => a.reagendada).length;
   const concluidasSemData = acoes.filter((a) => a.concluidaSemData).length;
@@ -242,4 +242,109 @@ export function proximosPassos(acoes: Acao[], m: MetricasProjeto, pontos: PontoM
     passos.push({ quantidade: 0, texto: 'Plano em dia. Manter a rotina de acompanhamento semanal.' });
   }
   return passos;
+}
+
+/* ============================================================
+   Plano de acao consolidado (uma linha por PLAN ACTION).
+
+   E a visao que a operacao usa para reportar: quantas atividades
+   cada frente tem, em que pe estao, o periodo e o quanto ja
+   avancou.
+   ============================================================ */
+
+export type SituacaoAcao = 'concluida' | 'andamento' | 'pendente';
+
+/* A situacao vem da coluna SITUACAO da planilha. So quando ela nao
+   diz nada e que o reagendamento decide, porque uma acao remarcada
+   ja saiu do papel. */
+export function situacaoDe(a: Acao): SituacaoAcao {
+  if (a.concluida) return 'concluida';
+  const texto = `${a.situacao ?? ''} ${a.status ?? ''}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (texto.includes('andamento') || texto.includes('execucao')) return 'andamento';
+  if (texto.includes('pendente') || texto.includes('nao iniciad')) return 'pendente';
+  return a.reagendada ? 'andamento' : 'pendente';
+}
+
+export interface LinhaPlano {
+  numero: number;
+  proposta: string;
+  atividades: number;
+  emAndamento: number;
+  pendentes: number;
+  concluidas: number;
+  inicio: Date | null;
+  fim: Date | null;
+  reagendamento: Date | null;
+  pctConcluido: number;
+}
+
+function menorData(datas: (Date | null)[]): Date | null {
+  const validas = datas.filter((d): d is Date => d != null);
+  return validas.length ? new Date(Math.min(...validas.map((d) => d.getTime()))) : null;
+}
+
+function maiorData(datas: (Date | null)[]): Date | null {
+  const validas = datas.filter((d): d is Date => d != null);
+  return validas.length ? new Date(Math.max(...validas.map((d) => d.getTime()))) : null;
+}
+
+export function planoPorAcao(acoes: Acao[]): LinhaPlano[] {
+  const grupos = new Map<string, Acao[]>();
+  for (const a of acoes) {
+    const p = String(a.proposta ?? '').trim() || 'Sem proposta';
+    const lista = grupos.get(p);
+    if (lista) lista.push(a);
+    else grupos.set(p, [a]);
+  }
+
+  const linhas = [...grupos.entries()].map(([proposta, lista]) => {
+    const concluidas = lista.filter((a) => situacaoDe(a) === 'concluida').length;
+    return {
+      numero: 0,
+      proposta,
+      atividades: lista.length,
+      emAndamento: lista.filter((a) => situacaoDe(a) === 'andamento').length,
+      pendentes: lista.filter((a) => situacaoDe(a) === 'pendente').length,
+      concluidas,
+      inicio: menorData(lista.map((a) => a.inicio)),
+      fim: maiorData(lista.map((a) => a.fim)),
+      reagendamento: maiorData(lista.map((a) => a.reagendamento)),
+      pctConcluido: lista.length ? Math.round((concluidas / lista.length) * 100) : 0,
+    };
+  });
+
+  /* A numeracao segue a ordem em que as acoes aparecem na planilha,
+     que e a ordem que a operacao conhece. */
+  return linhas
+    .sort((a, z) => {
+      const na = Math.min(...(grupos.get(a.proposta) ?? []).map((x) => Number(x.numPlanAction) || 9999));
+      const nz = Math.min(...(grupos.get(z.proposta) ?? []).map((x) => Number(x.numPlanAction) || 9999));
+      return na - nz;
+    })
+    .map((l, i) => ({ ...l, numero: i + 1 }));
+}
+
+export interface TotalPlano {
+  atividades: number;
+  emAndamento: number;
+  pendentes: number;
+  concluidas: number;
+  pctConcluido: number;
+}
+
+export function totalDoPlano(linhas: LinhaPlano[]): TotalPlano {
+  const t = linhas.reduce(
+    (acc, l) => ({
+      atividades: acc.atividades + l.atividades,
+      emAndamento: acc.emAndamento + l.emAndamento,
+      pendentes: acc.pendentes + l.pendentes,
+      concluidas: acc.concluidas + l.concluidas,
+      pctConcluido: 0,
+    }),
+    { atividades: 0, emAndamento: 0, pendentes: 0, concluidas: 0, pctConcluido: 0 }
+  );
+  return { ...t, pctConcluido: t.atividades ? Math.round((t.concluidas / t.atividades) * 100) : 0 };
 }

@@ -553,3 +553,20 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 }
 .eq-sair-apresentacao:hover{ opacity:1; }
 :root.apresentando .oculta-apresentacao{ display:none !important; }
+
+/* Barra de conclusao dentro da tabela do plano de acao. */
+.eq-status-celula{ display:flex; align-items:center; gap:8px; }
+.eq-status-track{ flex:1; height:11px; border-radius:100px; background:var(--surface2); overflow:hidden; min-width:60px; }
+.eq-status-fill{ height:100%; border-radius:100px; }
+.eq-status-celula span{ font-family:'SFMono-Regular',Consolas,monospace; font-size:11.5px;
+  font-weight:800; min-width:38px; text-align:right; }
+.eq-linha-total td{ background:var(--surface2); font-weight:800; }
+
+/* Cabecalho de cada frente no Gantt, com o avanco do plano de acao. */
+.eq-gantt-grupo{ display:grid; align-items:center; gap:8px; margin:14px 0 7px; }
+.eq-gantt-grupo-nome{ font-size:11.5px; font-weight:800; text-transform:uppercase;
+  letter-spacing:.03em; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.eq-gantt-grupo-track{ height:7px; border-radius:100px; background:var(--surface2); overflow:hidden; }
+.eq-gantt-grupo-fill{ height:100%; border-radius:100px; }
+.eq-gantt-pct{ font-family:'SFMono-Regular',Consolas,monospace; font-size:11px;
+  font-weight:800; text-align:right; }
