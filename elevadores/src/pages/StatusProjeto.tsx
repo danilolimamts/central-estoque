@@ -11,7 +11,7 @@ import type { Acao, MetricasProjeto } from '../domain/tipos';
 import {
   calcularMetricas, montarMatriz, planoPorAcao, totalDoPlano, situacaoDe,
 } from '../domain/projeto';
-import { cores, coresQuadrante } from '../config/tokens';
+import { cores } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
 import { BarraFiltros, Botao, Busca, Cartao, Chips, Selecao, Selo, Tabela, Td, Th, Vazio } from '../components/ui';
 import { baixarPlanoProjeto } from '../export/exportExcel';
@@ -83,30 +83,162 @@ function Medidor({ pct, metricas }: { pct: number; metricas: MetricasProjeto }) 
   );
 }
 
+
+/* Escala monocromatica do andamento. E sequencial, nao categorica: vai
+   do pendente (claro) ao concluido (escuro), acompanhando o avanco. O
+   laranja fica reservado ao atraso, que e estado, nao etapa. */
+const ESCALA = {
+  concluida: '#001A72',
+  andamento: '#4F63AE',
+  pendente: '#B9C0DC',
+} as const;
+
+/* Os quadrantes tambem sao uma ordem de prioridade, entao seguem a
+   mesma escala: quanto mais escuro, mais cedo entra na fila. */
+const ESCALA_QUADRANTE = {
+  ganhos_rapidos: '#001A72',
+  estrategicos: '#4F63AE',
+  incrementais: '#8B96C6',
+  baixa_prioridade: '#B9C0DC',
+} as const;
+
+const ROTULO_SITUACAO = {
+  concluida: 'Concluídas',
+  andamento: 'Em andamento',
+  pendente: 'Pendentes',
+} as const;
+
+function Legenda() {
+  return (
+    <div className="eq-legenda">
+      {(['concluida', 'andamento', 'pendente'] as const).map((k) => (
+        <span key={k}>
+          <i style={{ background: ESCALA[k] }} />
+          {ROTULO_SITUACAO[k]}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/* Avanco de cada frente, em barra empilhada. Responde "quem esta
+   andando e quem parou" sem precisar ler a tabela inteira. */
+function AvancoPorFrente({ acoes }: { acoes: Acao[] }) {
+  const linhas = useMemo(() => planoPorAcao(acoes), [acoes]);
+  if (linhas.length === 0) return null;
+
+  return (
+    <Cartao titulo="Avanço por frente" descricao="cada barra é um plan action, na ordem do plano">
+      <div className="eq-frentes">
+        {linhas.map((l) => (
+          <div key={l.proposta} className="eq-frente">
+            <div className="eq-frente-nome" title={l.proposta}>
+              {l.proposta}
+            </div>
+            <div className="eq-frente-barra">
+              {(['concluida', 'andamento', 'pendente'] as const).map((k) => {
+                const qtd = k === 'concluida' ? l.concluidas : k === 'andamento' ? l.emAndamento : l.pendentes;
+                if (qtd === 0) return null;
+                return (
+                  <span
+                    key={k}
+                    style={{ width: `${(qtd / l.atividades) * 100}%`, background: ESCALA[k] }}
+                    title={`${ROTULO_SITUACAO[k]}: ${qtd} de ${l.atividades}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="eq-frente-pct">{l.pctConcluido}%</div>
+          </div>
+        ))}
+      </div>
+      <Legenda />
+    </Cartao>
+  );
+}
+
+/* Entregas por semana: mostra se o time esta entregando em ritmo
+   constante ou em picos. */
+function EntregasPorSemana({ acoes }: { acoes: Acao[] }) {
+  const semanas = useMemo(() => {
+    const feitas = acoes
+      .filter((a) => a.concluida)
+      .map((a) => a.dataConclusao ?? a.prazoValido ?? a.fim)
+      .filter((d): d is Date => d != null);
+    if (feitas.length === 0) return [];
+
+    const t0 = Math.min(...feitas.map((d) => d.getTime()));
+    const t1 = Math.max(...feitas.map((d) => d.getTime()));
+    const baldes: { rotulo: string; qtd: number }[] = [];
+    for (let t = t0; t <= t1 + 1; t += 7 * 86400000) {
+      const fim = t + 7 * 86400000;
+      baldes.push({
+        rotulo: new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }),
+        qtd: feitas.filter((d) => d.getTime() >= t && d.getTime() < fim).length,
+      });
+    }
+    return baldes;
+  }, [acoes]);
+
+  if (semanas.length === 0) return null;
+  const maximo = Math.max(...semanas.map((s) => s.qtd), 1);
+  const media = semanas.reduce((acc, s) => acc + s.qtd, 0) / semanas.length;
+
+  return (
+    <Cartao
+      titulo="Entregas por semana"
+      descricao={`média de ${media.toFixed(1)} ações concluídas por semana`}
+    >
+      <div className="eq-semanas">
+        {semanas.map((s) => (
+          <div key={s.rotulo} className="eq-semana">
+            <span className="eq-semana-valor">{s.qtd || ''}</span>
+            <span
+              className="eq-semana-barra"
+              style={{
+                height: `${(s.qtd / maximo) * 100}%`,
+                background: s.qtd === 0 ? 'var(--line)' : ESCALA.concluida,
+              }}
+              title={`Semana de ${s.rotulo}: ${s.qtd} concluída(s)`}
+            />
+            <span className="eq-semana-rotulo">{s.rotulo}</span>
+          </div>
+        ))}
+      </div>
+    </Cartao>
+  );
+}
+
 function Matriz({ acoes }: { acoes: Acao[] }) {
   const pontos = useMemo(() => montarMatriz(acoes), [acoes]);
-  const L = 760;
-  const A = 380;
-  const pad = 52;
+  const L = 700;
+  const A = 300;
+  const pad = 48;
+  /* O eixo ia de 0 a 6 mesmo quando todos os pontos ficavam entre 3 e 5,
+     deixando metade do quadro vazio. Encolhe ate os dados, sem esconder
+     a linha de corte. */
+  const impactos = pontos.map((p) => p.impacto);
+  const yMin = Math.max(0, Math.min(MATRIZ.corteImpacto - 1, ...impactos) - 0.5);
+  const yMax = Math.max(MATRIZ.corteImpacto + 1, ...impactos) + 0.5;
   const X = (v: number) => pad + (v / MATRIZ.eixoEsforcoMax) * (L - pad - 18);
-  const Y = (v: number) => A - pad - (v / MATRIZ.eixoImpactoMax) * (A - pad - 18);
+  const Y = (v: number) => A - pad - ((v - yMin) / (yMax - yMin)) * (A - pad - 18);
 
   return (
     <Cartao titulo="Matriz Impacto × Esforço" descricao={`${pontos.length} propostas · quanto mais à esquerda e acima, melhor a relação`}>
       <div className="flex justify-center">
         <svg width="100%" viewBox={`0 0 ${L} ${A}`} style={{ maxWidth: L }} role="img" aria-label="Matriz de impacto por esforço">
-          <rect x={X(0)} y={Y(MATRIZ.eixoImpactoMax)} width={X(MATRIZ.corteEsforco) - X(0)} height={Y(MATRIZ.corteImpacto) - Y(MATRIZ.eixoImpactoMax)} fill={coresQuadrante.ganhos_rapidos} opacity="0.08" />
-          <rect x={X(MATRIZ.corteEsforco)} y={Y(MATRIZ.eixoImpactoMax)} width={X(MATRIZ.eixoEsforcoMax) - X(MATRIZ.corteEsforco)} height={Y(MATRIZ.corteImpacto) - Y(MATRIZ.eixoImpactoMax)} fill={coresQuadrante.estrategicos} opacity="0.08" />
-          <rect x={X(0)} y={Y(MATRIZ.corteImpacto)} width={X(MATRIZ.corteEsforco) - X(0)} height={Y(0) - Y(MATRIZ.corteImpacto)} fill={coresQuadrante.incrementais} opacity="0.08" />
-          <rect x={X(MATRIZ.corteEsforco)} y={Y(MATRIZ.corteImpacto)} width={X(MATRIZ.eixoEsforcoMax) - X(MATRIZ.corteEsforco)} height={Y(0) - Y(MATRIZ.corteImpacto)} fill={coresQuadrante.baixa_prioridade} opacity="0.08" />
+          <rect x={X(0)} y={Y(yMax)} width={X(MATRIZ.corteEsforco) - X(0)} height={Y(MATRIZ.corteImpacto) - Y(yMax)} fill={ESCALA_QUADRANTE.ganhos_rapidos} opacity="0.08" />
+          <rect x={X(MATRIZ.corteEsforco)} y={Y(yMax)} width={X(MATRIZ.eixoEsforcoMax) - X(MATRIZ.corteEsforco)} height={Y(MATRIZ.corteImpacto) - Y(yMax)} fill={ESCALA_QUADRANTE.estrategicos} opacity="0.08" />
+          <rect x={X(0)} y={Y(MATRIZ.corteImpacto)} width={X(MATRIZ.corteEsforco) - X(0)} height={Y(yMin) - Y(MATRIZ.corteImpacto)} fill={ESCALA_QUADRANTE.incrementais} opacity="0.08" />
+          <rect x={X(MATRIZ.corteEsforco)} y={Y(MATRIZ.corteImpacto)} width={X(MATRIZ.eixoEsforcoMax) - X(MATRIZ.corteEsforco)} height={Y(yMin) - Y(MATRIZ.corteImpacto)} fill={ESCALA_QUADRANTE.baixa_prioridade} opacity="0.08" />
 
-          <line x1={X(MATRIZ.corteEsforco)} y1={Y(0)} x2={X(MATRIZ.corteEsforco)} y2={Y(MATRIZ.eixoImpactoMax)} stroke="var(--line)" strokeDasharray="4 4" />
+          <line x1={X(MATRIZ.corteEsforco)} y1={Y(yMin)} x2={X(MATRIZ.corteEsforco)} y2={Y(yMax)} stroke="var(--line)" strokeDasharray="4 4" />
           <line x1={X(0)} y1={Y(MATRIZ.corteImpacto)} x2={X(MATRIZ.eixoEsforcoMax)} y2={Y(MATRIZ.corteImpacto)} stroke="var(--line)" strokeDasharray="4 4" />
-          <line x1={X(0)} y1={Y(0)} x2={X(MATRIZ.eixoEsforcoMax)} y2={Y(0)} stroke="var(--ink-soft)" />
-          <line x1={X(0)} y1={Y(0)} x2={X(0)} y2={Y(MATRIZ.eixoImpactoMax)} stroke="var(--ink-soft)" />
+          <line x1={X(0)} y1={Y(yMin)} x2={X(MATRIZ.eixoEsforcoMax)} y2={Y(yMin)} stroke="var(--ink-soft)" />
+          <line x1={X(0)} y1={Y(yMin)} x2={X(0)} y2={Y(yMax)} stroke="var(--ink-soft)" />
 
           {MATRIZ.escalaEsforco.map((e) => (
-            <text key={e} x={X(e)} y={Y(0) + 15} textAnchor="middle" fontSize="10" fill="var(--ink-soft)">
+            <text key={e} x={X(e)} y={Y(yMin) + 15} textAnchor="middle" fontSize="10" fill="var(--ink-soft)">
               {e}
             </text>
           ))}
@@ -126,7 +258,7 @@ function Matriz({ acoes }: { acoes: Acao[] }) {
             const aDireita = cx < L * 0.55;
             return (
               <g key={p.proposta}>
-                <circle cx={cx} cy={cy} r="9" fill={coresQuadrante[p.quadrante]} opacity="0.95">
+                <circle cx={cx} cy={cy} r="9" fill={ESCALA_QUADRANTE[p.quadrante]} opacity="0.95">
                   <title>{`${p.proposta} — esforço ${p.esforco}, impacto ${p.impacto}`}</title>
                 </circle>
                 <text
@@ -153,7 +285,7 @@ function Matriz({ acoes }: { acoes: Acao[] }) {
       <div className="mt-2 flex flex-wrap gap-3 text-[11.5px]" style={{ color: 'var(--ink-soft)' }}>
         {(Object.keys(ROTULO_QUADRANTE) as (keyof typeof ROTULO_QUADRANTE)[]).map((q) => (
           <span key={q} className="inline-flex items-center gap-1.5">
-            <i className="inline-block h-3 w-3 rounded" style={{ background: coresQuadrante[q] }} />
+            <i className="inline-block h-3 w-3 rounded" style={{ background: ESCALA_QUADRANTE[q] }} />
             {ROTULO_QUADRANTE[q]} ({pontos.filter((p) => p.quadrante === q).length})
           </span>
         ))}
@@ -536,6 +668,11 @@ export function StatusProjeto({
         <Cartao>
           <Medidor pct={Math.round(m.pctConcluidas)} metricas={m} />
         </Cartao>
+        <AvancoPorFrente acoes={filtradas} />
+      </div>
+
+      <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
+        <EntregasPorSemana acoes={filtradas} />
         <Matriz acoes={filtradas} />
       </div>
 
