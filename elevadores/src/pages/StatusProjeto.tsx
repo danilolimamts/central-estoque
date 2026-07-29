@@ -337,6 +337,9 @@ export function StatusProjeto({
         </div>
       </section>
 
+      {/* Os filtros somem na apresentacao: a selecao ja foi feita antes
+          de projetar, e em reuniao eles so tiram espaco. */}
+      <div className="oculta-apresentacao">
       <Cartao titulo="Filtros" descricao="todos os indicadores abaixo respeitam esta seleção">
         <div className="flex flex-wrap gap-2">
           <Busca valor={busca} aoMudar={setBusca} placeholder="Buscar ação…" />
@@ -348,6 +351,7 @@ export function StatusProjeto({
           </span>
         </div>
       </Cartao>
+      </div>
 
       <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         <Kpi rotulo="Score do projeto" valor={m.score} sufixo="/100" dica={`quanto maior, melhor`} cor={coresSaude[m.saude]} />

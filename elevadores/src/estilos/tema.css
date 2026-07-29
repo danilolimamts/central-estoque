@@ -508,3 +508,48 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-passo:last-child{ margin-bottom:0; }
 .eq-passo-n{ flex:none; width:20px; height:20px; border-radius:50%; background:var(--blue); color:#fff;
   font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+
+/* ============================================================
+   Modo apresentacao: a tela vira o slide.
+
+   Tira o que e de operacao (menu, filtros, busca, botoes de
+   exportar) e aumenta o texto, para o status ser lido de longe,
+   projetado. Sai com Esc.
+   ============================================================ */
+:root.apresentando .sidebar,
+:root.apresentando .topbar,
+:root.apresentando .filter-bar,
+:root.apresentando .panel .btn,
+:root.apresentando .panel select { display:none !important; }
+
+:root.apresentando .shell{ height:100vh; }
+:root.apresentando .content{ width:100%; }
+:root.apresentando .page-scroll{ padding:26px 34px 70px; }
+
+/* Tudo cresce junto, mantendo a proporcao entre os elementos. */
+:root.apresentando body{ font-size:16px; }
+:root.apresentando .panel{ padding:22px 26px; margin-bottom:20px; }
+:root.apresentando .panel h3{ font-size:17px; }
+:root.apresentando .panel-sub{ font-size:14px; }
+:root.apresentando .kpi-card .num{ font-size:44px; }
+:root.apresentando .kpi-card .label{ font-size:13px; }
+:root.apresentando .kpi-card .sub{ font-size:13px; }
+:root.apresentando .eq-leitura-topo h2{ font-size:27px; line-height:1.35; }
+:root.apresentando .eq-leitura-selo{ font-size:13px; padding:6px 15px; }
+:root.apresentando .eq-passo{ font-size:18px; margin-bottom:13px; }
+:root.apresentando .eq-passo-n{ width:26px; height:26px; font-size:14px; }
+:root.apresentando .eq-leitura-titulo{ font-size:13px; }
+:root.apresentando thead th{ font-size:13px; padding:11px 14px; }
+:root.apresentando tbody td{ font-size:15px; padding:11px 14px; }
+:root.apresentando .tag{ font-size:12px; padding:3px 11px; }
+:root.apresentando .bi-hbar-row{ font-size:14px; }
+:root.apresentando .bi-hbar-val{ font-size:14px; }
+
+.eq-sair-apresentacao{
+  position:fixed; right:18px; bottom:18px; z-index:120;
+  background:var(--blue); color:#fff; border:none; border-radius:100px;
+  padding:11px 20px; font-size:13px; font-weight:600; cursor:pointer;
+  box-shadow:0 8px 22px rgba(0,0,0,.28); opacity:.35; transition:opacity .15s;
+}
+.eq-sair-apresentacao:hover{ opacity:1; }
+:root.apresentando .oculta-apresentacao{ display:none !important; }

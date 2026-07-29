@@ -121,6 +121,7 @@ export default function App() {
   const [tema, setTema] = useState<'claro' | 'escuro' | null>(null);
   const [busca, setBusca] = useState('');
   const [confirmarTroca, setConfirmarTroca] = useState(false);
+  const [apresentando, setApresentando] = useState(false);
 
   const hoje = useMemo(() => new Date(), []);
   const acoes = useAcoes(dados?.acoes, hoje);
@@ -145,6 +146,30 @@ export default function App() {
     if (carregando || dados) return;
     if (new URLSearchParams(window.location.search).has('exemplo')) void carregarDemo();
   }, [carregando, dados, carregarDemo]);
+
+  /* Modo apresentacao: esconde menu, filtros e controles, aumenta o
+     texto e ocupa a tela toda. Serve para projetar o status em reuniao
+     sem precisar de print nem de slide. */
+  useEffect(() => {
+    document.documentElement.classList.toggle('apresentando', apresentando);
+    if (!apresentando) return;
+
+    void document.documentElement.requestFullscreen?.().catch(() => undefined);
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setApresentando(false);
+    };
+    /* Sair pelo Esc do proprio navegador tambem precisa desligar o modo. */
+    const aoTrocarTela = () => {
+      if (!document.fullscreenElement) setApresentando(false);
+    };
+    window.addEventListener('keydown', aoTeclar);
+    document.addEventListener('fullscreenchange', aoTrocarTela);
+    return () => {
+      window.removeEventListener('keydown', aoTeclar);
+      document.removeEventListener('fullscreenchange', aoTrocarTela);
+      if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => undefined);
+    };
+  }, [apresentando]);
 
   function alternarTema() {
     const escuroAgora =
@@ -246,6 +271,16 @@ export default function App() {
           )}
 
           {dados && (
+            <button
+              className="btn btn-orange"
+              onClick={() => setApresentando(true)}
+              title="Tela cheia, sem menu nem filtros, para projetar em reunião"
+            >
+              Apresentar
+            </button>
+          )}
+
+          {dados && (
             <div className="cycle-badge">
               {dados.demonstracao
                 ? 'Dados de exemplo'
@@ -270,6 +305,12 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {apresentando && (
+        <button className="eq-sair-apresentacao" onClick={() => setApresentando(false)}>
+          Sair da apresentação (Esc)
+        </button>
+      )}
 
       {confirmarTroca && (
         <div
