@@ -9,7 +9,7 @@ const IR = {
   ciclos:[], cicloAtivo:null,
   indicadores:null, importMeta:null,
   prioridadeConfig:null,
-  files:{f390:null, f114:null, f843:null, fCong:null},
+  files:{f390:null, f843:null, fCong:null, f278:null, f051:null},
   processing:false, progress:{stage:'', pct:0},
   divergencias:[], locais:[], contagens:[],
   divFilters:{search:'', local:''},
@@ -157,13 +157,14 @@ function irRenderView(){
    ============================================================ */
 const IR_FILE_TYPES = [
   {key:'f390', label:'QRY0390', desc:'Estoque por Local', pattern:/0390/i},
-  {key:'f114', label:'QRY0114', desc:'Divergências de Inventário (final)', pattern:/0114/i},
-  {key:'f843', label:'QRY0843', desc:'Produtividade', pattern:/0843/i},
-  {key:'fCong', label:'Base Congelada', desc:'Locais congelados do ciclo (planilha manual)', pattern:/congelad/i}
+  {key:'f843', label:'QRY0843', desc:'Produtividade (peças, locais, itens e divergências)', pattern:/0843/i},
+  {key:'fCong', label:'Base Congelada', desc:'Locais congelados do ciclo (planilha manual)', pattern:/congelad/i},
+  {key:'f278', label:'SIGEQ278', desc:'Preço de custo/compra por item', pattern:/278/i},
+  {key:'f051', label:'ZBIQ0051', desc:'Item pai x componente (kits/múltiplos), S/N de valoração', pattern:/0051|zbiq/i}
 ];
 function irRenderImportacao(){
   const f = IR.files;
-  const allSelected = f.f390 && f.f114 && f.f843 && f.fCong;
+  const allSelected = f.f390 && f.f843 && f.fCong && f.f278 && f.f051;
   const dz = (t)=>{
     const file = f[t.key];
     return `<div class="dropzone ${file?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropSingle(event,'${t.key}')">
@@ -178,7 +179,7 @@ function irRenderImportacao(){
   return `
     <div class="panel" ondragover="event.preventDefault()" ondrop="irOnDropMulti(event)">
       <h3>Importar planilhas</h3>
-      <p class="field-hint" style="margin-bottom:14px;">Arraste as 4 planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo.</p>
+      <p class="field-hint" style="margin-bottom:14px;">Arraste as 5 planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo.</p>
       <div class="dz-grid">${IR_FILE_TYPES.map(dz).join('')}</div>
       <div class="two-col" style="margin-top:16px;">
         <div><label>Número do ciclo</label><input type="number" id="ir-inp-ciclo" min="1" value="${(()=>{
@@ -199,7 +200,7 @@ function irRenderImportacao(){
           <div class="progress-track"><div class="progress-fill orange" style="width:${IR.progress.pct}%"></div></div>
         </div>` : allSelected
           ? `<div class="form-actions"><button class="btn btn-primary" style="font-size:14px;padding:11px 28px;" onclick="irProcessar()">PROCESSAR CICLO</button></div>`
-          : `<p class="field-hint" style="margin-top:14px;">Selecione as 4 planilhas para habilitar o processamento.</p>`
+          : `<p class="field-hint" style="margin-top:14px;">Selecione as 5 planilhas para habilitar o processamento.</p>`
       }
     </div>
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
@@ -244,7 +245,7 @@ function irOnDropMulti(e){
 async function irProcessar(){
   if(IR.processing) return;
   const f = IR.files;
-  if(!(f.f390 && f.f114 && f.f843 && f.fCong)) return;
+  if(!(f.f390 && f.f843 && f.fCong && f.f278 && f.f051)) return;
   const numero = parseInt(document.getElementById('ir-inp-ciclo').value, 10);
   const dataAbertura = document.getElementById('ir-inp-abertura').value;
   const dataPrevistaTermino = document.getElementById('ir-inp-termino').value;
@@ -264,8 +265,8 @@ async function irProcessar(){
   IR.processing = true; IR.progress = {stage:'Lendo arquivos...', pct:0};
   irRenderView();
   try{
-    const [buf390, buf114, buf843, bufCongelada] = await Promise.all([
-      f.f390.arrayBuffer(), f.f114.arrayBuffer(), f.f843.arrayBuffer(), f.fCong.arrayBuffer()
+    const [buf390, buf843, bufCongelada, buf278, buf051] = await Promise.all([
+      f.f390.arrayBuffer(), f.f843.arrayBuffer(), f.fCong.arrayBuffer(), f.f278.arrayBuffer(), f.f051.arrayBuffer()
     ]);
     const worker = new Worker('js/worker.js');
     worker.onmessage = async (e)=>{
@@ -277,7 +278,7 @@ async function irProcessar(){
       } else if(msg.type==='done'){
         IR.processing = false; worker.terminate();
         await irSaveCiclo(ciclo);
-        IR.files = {f390:null, f114:null, f843:null, fCong:null};
+        IR.files = {f390:null, f843:null, fCong:null, f278:null, f051:null};
         IR.ciclos = await irGetAllCiclos();
         IR.cicloAtivo = IR.ciclos.find(c=>c.id===cicloId);
         await irLoadCicloData(cicloId);
@@ -287,10 +288,10 @@ async function irProcessar(){
     };
     worker.onerror = (err)=>{ IR.processing=false; irShowToast('Erro no worker: '+err.message, true); irRenderView(); };
     worker.postMessage({
-      type:'process', buf390, buf114, buf843, bufCongelada,
+      type:'process', buf390, buf843, bufCongelada, buf278, buf051,
       cicloId, cicloNumero:numero, dataAbertura, dataPrevistaTermino,
       prioridadeConfig: IR.prioridadeConfig
-    }, [buf390, buf114, buf843, bufCongelada]);
+    }, [buf390, buf843, bufCongelada, buf278, buf051]);
   }catch(err){
     IR.processing=false; irShowToast('Erro ao ler arquivos: '+err.message, true); irRenderView();
   }
@@ -314,7 +315,7 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 3; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 5; // mantido em sincronia com worker.js
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
@@ -338,6 +339,11 @@ function irRenderDashboard(){
     irKpiTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
     irKpiTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
   );
+  const blocoItens = irKpiBlock('purple','🔢','Itens',
+    irKpiTile('📋', irFmtInt(ind.itensContados), 'Itens Contados', '', 'SKUs distintos verificados') +
+    irKpiTile('⚠️', irFmtInt(ind.itensDivergentes), 'Itens Divergentes', 'bad', 'de '+irFmtInt(ind.itensContados)+' contados') +
+    irKpiTile('📉', irFmtPct(ind.itensContados>0 ? 1-(ind.itensDivergentes/ind.itensContados) : 1), 'Acerto por Item', ind.itensContados>0 && (1-(ind.itensDivergentes/ind.itensContados))>=ind.meta?'good':'bad', metaHint)
+  );
   const blocoValor = irKpiBlock('black','💰','Valor',
     irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
     irKpiTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
@@ -354,7 +360,7 @@ function irRenderDashboard(){
       <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>
     <div class="kpi-blocks">
-      ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
+      ${blocoPecas}${blocoLocais}${blocoItens}${blocoValor}${blocoCiclo}
     </div>
     ${irRenderStatusInventarioPanel(ind)}
     ${irRenderPorRuaPanel(ind)}
@@ -430,7 +436,7 @@ function irRenderLogTablePanel(ind){
       <thead><tr>
         <th>Log</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Divergentes</th>
         <th>Peças Contadas</th><th>Peças Divergentes</th>
-        <th>Acurácia Peças</th><th>Locais</th><th>Valor</th>
+        <th>Acurácia Peças</th><th>Acurácia Posições</th><th>Acurácia Valor</th>
       </tr></thead>
       <tbody>${rows.map(r=>`<tr>
         <td class="mono">${irEsc(r.chave)}</td>
@@ -757,6 +763,11 @@ function irGerarRelatorioEmail(){
     rpTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
     rpTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
   );
+  const blocoItens = rpBlock('purple','🔢','Itens',
+    rpTile('📋', irFmtInt(ind.itensContados), 'Itens Contados', '', 'SKUs distintos') +
+    rpTile('⚠️', irFmtInt(ind.itensDivergentes), 'Itens Divergentes', 'bad', 'de '+irFmtInt(ind.itensContados)+' contados') +
+    rpTile('📉', irFmtPct(ind.itensContados>0 ? 1-(ind.itensDivergentes/ind.itensContados) : 1), 'Acerto por Item', '', metaHint)
+  );
   const blocoValor = rpBlock('black','💰','Valor',
     rpTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
     rpTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
@@ -795,7 +806,7 @@ function irGerarRelatorioEmail(){
     <div class="rp-body">
 
     <div class="rp-blocks">
-      ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
+      ${blocoPecas}${blocoLocais}${blocoItens}${blocoValor}${blocoCiclo}
     </div>
 
     ${sectionTitle('🟡','Status do Inventário','percentual de locais contados')}
@@ -1148,7 +1159,7 @@ function irDivergenciasFiltered(){
     if(d.diferenca===0) return false;
     if(f.local && d.local!==f.local) return false;
     if(search){
-      const hay = (d.item+' '+d.ean+' '+d.descricao+' '+d.local).toLowerCase();
+      const hay = (d.item+' '+d.itemNome+' '+d.local).toLowerCase();
       if(!hay.includes(search)) return false;
     }
     return true;
@@ -1159,7 +1170,7 @@ function irRenderDivergencias(){
   const locais = Array.from(new Set(IR.divergencias.map(d=>d.local))).sort();
   return `
     <div class="filter-bar">
-      <input type="text" placeholder="Buscar por item, EAN, descrição ou local..." value="${irEsc(IR.divFilters.search)}" oninput="irDivSetSearch(this.value)">
+      <input type="text" placeholder="Buscar por item, descrição ou local..." value="${irEsc(IR.divFilters.search)}" oninput="irDivSetSearch(this.value)">
       <select onchange="irDivSetFilter('local', this.value)">
         <option value="">Todos os locais</option>${locais.map(l=>`<option value="${irEsc(l)}" ${IR.divFilters.local===l?'selected':''}>${irEsc(l)}</option>`).join('')}
       </select>
@@ -1168,7 +1179,7 @@ function irRenderDivergencias(){
     <p class="field-hint" id="ir-div-count" style="margin-bottom:8px;">${irFmtInt(irDivergenciasFiltered().length)} itens divergentes</p>
     <div class="table-wrap">
       <div class="table-scroll" id="ir-div-scroll" style="height:calc(100vh - 300px);">
-        <table><thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local</th><th>Qtde Lógica</th><th>Qtde Física</th><th>Diferença</th><th>Valor</th></tr></thead>
+        <table><thead><tr><th>Item</th><th>Descrição</th><th>Local</th><th>Qtde Sistema</th><th>Qtde Física</th><th>Diferença</th><th>Valor</th></tr></thead>
         <tbody id="ir-div-window"></tbody></table>
       </div>
     </div>
@@ -1191,24 +1202,24 @@ function irRenderDivWindow(){
   const el = document.getElementById('ir-div-scroll'); const winEl = document.getElementById('ir-div-window');
   if(!el || !winEl) return;
   const rows = irDivergenciasFiltered();
-  if(!rows.length){ winEl.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:20px;">Nenhum item encontrado.</td></tr>`; return; }
+  if(!rows.length){ winEl.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:20px;">Nenhum item encontrado.</td></tr>`; return; }
   const viewH = el.clientHeight||400, scrollTop = el.scrollTop, buffer=8;
   const start = Math.max(0, Math.floor(scrollTop/IR_DIV_ROW_H)-buffer);
   const end = Math.min(rows.length, start+Math.ceil(viewH/IR_DIV_ROW_H)+buffer*2);
   const top=start*IR_DIV_ROW_H, bottom=(rows.length-end)*IR_DIV_ROW_H;
-  winEl.innerHTML = `<tr style="height:${top}px;"><td colspan="8" style="padding:0;border:none;"></td></tr>`
+  winEl.innerHTML = `<tr style="height:${top}px;"><td colspan="7" style="padding:0;border:none;"></td></tr>`
     + rows.slice(start,end).map(d=>`<tr style="height:${IR_DIV_ROW_H}px;">
-        <td class="mono">${irEsc(d.item)}</td><td>${irEsc(d.ean)}</td><td>${irEsc(d.descricao)}</td><td>${irEsc(d.local)}</td>
-        <td class="mono">${irFmtInt(d.qtdeLogica)}</td><td class="mono">${irFmtInt(d.qtdeFisica)}</td>
+        <td class="mono">${irEsc(d.item)}</td><td>${irEsc(d.itemNome)}</td><td>${irEsc(d.local)}</td>
+        <td class="mono">${irFmtInt(d.qtdeSistema)}</td><td class="mono">${irFmtInt(d.qtdeFisica)}</td>
         <td class="mono ${d.diferenca>=0?'pos':'neg'}">${d.diferenca>0?'+':''}${irFmtInt(d.diferenca)}</td>
         <td class="mono ${d.vlDivergencia>=0?'pos':'neg'}">${irFmtMoney(d.vlDivergencia)}</td>
       </tr>`).join('')
-    + `<tr style="height:${bottom}px;"><td colspan="8" style="padding:0;border:none;"></td></tr>`;
+    + `<tr style="height:${bottom}px;"><td colspan="7" style="padding:0;border:none;"></td></tr>`;
 }
 function irExportDivergenciasCsv(){
   const rows = irDivergenciasFiltered();
   if(!rows.length){ irShowToast('Nada para exportar.', true); return; }
-  const cols = ['item','ean','descricao','local','qtdeLogica','qtdeFisica','diferenca','vlLogico','vlFisico','vlDivergencia','usuario','dataFim'];
+  const cols = ['item','itemNome','local','qtdeSistema','qtdeFisica','diferenca','precoUnitario','vlFisico','vlDivergencia'];
   const header = cols.join(';');
   const lines = rows.map(r=>cols.map(c=>{ let v=r[c]; if(typeof v==='string') v='"'+v.replace(/"/g,'""')+'"'; return v??''; }).join(';'));
   const csv = '﻿'+header+'\n'+lines.join('\n');
@@ -1270,7 +1281,7 @@ function irRenderAudWindow(){
   winEl.innerHTML = `<tr style="height:${top}px;"><td colspan="7" style="padding:0;border:none;"></td></tr>`
     + rows.slice(start,end).map(d=>`<tr style="height:${IR_AUD_ROW_H}px;">
         <td><span class="priority-badge" style="background:${irPrioridadeCor(d.prioridade)};">${d.prioridade}</span></td>
-        <td class="mono">${irEsc(d.item)}</td><td>${irEsc(d.descricao)}</td><td>${irEsc(d.local)}</td>
+        <td class="mono">${irEsc(d.item)}</td><td>${irEsc(d.itemNome)}</td><td>${irEsc(d.local)}</td>
         <td class="mono ${d.diferenca>=0?'pos':'neg'}">${d.diferenca>0?'+':''}${irFmtInt(d.diferenca)}</td>
         <td class="mono ${d.vlDivergencia>=0?'pos':'neg'}">${irFmtMoney(d.vlDivergencia)}</td>
         <td class="mono">${d.rodadasLocal}</td>
@@ -1355,8 +1366,9 @@ function irRenderIndicadores(){
     ['Acurácia Valor', irFmtPct(ind.acuraciaValor), IR_KPI_FORMULAS.acuraciaValor],
     ['Andamento do Ciclo', irFmtPct(ind.andamentoCiclo), IR_KPI_FORMULAS.andamentoCiclo],
     ['Peças Contadas', irFmtInt(ind.pecasContadas), 'Soma do QT_FIS da última contagem de cada item, nos locais liquidados (QRY0843).'],
-    ['Peças Divergentes', irFmtInt(ind.pecasDivergentes), 'Soma de |Diferença| das divergências (QRY0114).'],
-    ['Itens Divergentes', irFmtInt(ind.itensDivergentes), 'Nº de linhas da QRY0114 com Diferença ≠ 0.'],
+    ['Itens Contados', irFmtInt(ind.itensContados), 'Nº de pares (local, item) verificados na QRY0843, com valor cruzado da SIGEQ278/ZBIQ0051.'],
+    ['Peças Divergentes', irFmtInt(ind.pecasDivergentes), 'Soma de |Diferença| entre rodada final e rodada 1 (sistêmico), derivado da QRY0843.'],
+    ['Itens Divergentes', irFmtInt(ind.itensDivergentes), 'Nº de pares (local, item) da QRY0843 com Diferença ≠ 0.'],
     ['Qtd. de Recontagens', irFmtInt(ind.qtdRecontagens), IR_KPI_FORMULAS.qtdRecontagens],
     ['Tempo Médio por Contagem', irFmtNum(ind.tempoMedioContagemMin,1)+' min', IR_KPI_FORMULAS.tempoMedioContagem],
     ['Dias Restantes', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), IR_KPI_FORMULAS.diasRestantes],

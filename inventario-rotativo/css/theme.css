@@ -160,6 +160,7 @@ button{ font-family:inherit; cursor:pointer; }
 .kpi-block.theme-blue .kpi-block-header{ background:linear-gradient(90deg,var(--blue),var(--blue-soft)); }
 .kpi-block.theme-black .kpi-block-header{ background:linear-gradient(90deg,#1D1F2A,#3A3D4D); }
 .kpi-block.theme-neutral .kpi-block-header{ background:linear-gradient(90deg,#6B7280,#8B93A3); }
+.kpi-block.theme-purple .kpi-block-header{ background:linear-gradient(90deg,#5B3A9E,#8467C7); }
 .kpi-block-body{ display:grid; grid-template-columns:repeat(3,1fr); gap:2px; background:var(--line); }
 @media(max-width:480px){ .kpi-block-body{ grid-template-columns:1fr; } }
 .kpi-tile{ background:var(--surface); padding:14px 10px; text-align:center; min-width:0; overflow:hidden; }
@@ -171,6 +172,7 @@ button{ font-family:inherit; cursor:pointer; }
 .kpi-block.theme-blue .kt-icon{ background:radial-gradient(circle at 32% 28%, #DCE3F7, var(--blue-light)); }
 .kpi-block.theme-black .kt-icon{ background:radial-gradient(circle at 32% 28%, #CBCDD6, #E3E4E9); }
 .kpi-block.theme-neutral .kt-icon{ background:radial-gradient(circle at 32% 28%, #E8E9EC, var(--surface2)); }
+.kpi-block.theme-purple .kt-icon{ background:radial-gradient(circle at 32% 28%, #E4D9F7, #C9B6EA); }
 .kpi-tile .num{ font-family:'SFMono-Regular',Consolas,monospace; font-size:17px; font-weight:800; color:var(--ink); line-height:1.2; overflow-wrap:break-word; }
 .kpi-tile .num.bad{ color:var(--danger); } .kpi-tile .num.good{ color:var(--success); }
 .kpi-tile .label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-top:5px; }
@@ -378,6 +380,7 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .rp-block.theme-blue{ border-left-color:#001A72; }
 .rp-block.theme-black{ border-left-color:#1D1F2A; }
 .rp-block.theme-neutral{ border-left-color:#9AA1B4; }
+.rp-block.theme-purple{ border-left-color:#5B3A9E; }
 .rp-block-header{ display:flex; align-items:center; gap:8px; padding:12px 16px 10px; }
 .rp-bh-icon{ font-size:14px; opacity:.75; }
 .rp-bh-title{ font-size:11px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#4B5165; }

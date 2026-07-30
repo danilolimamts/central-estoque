@@ -12,9 +12,9 @@ const IR_STATUS_LOCAL = {
 };
 
 const IR_KPI_FORMULAS = {
-  acuraciaPecas: 'Acurácia Peças = 1 − (Σ|Diferença| ÷ Σ Qtde Lógica)',
-  acuraciaLocal: 'Acurácia Local = 1 − (Locais com pelo menos 1 item divergente ÷ Locais congelados no ciclo)',
-  acuraciaValor: 'Acurácia Valor = 1 − (Σ|Vl. Divergência| ÷ Σ Vl. Lógico)',
+  acuraciaPecas: 'Acurácia Peças = 1 − (Σ|Diferença| ÷ Σ Peças físicas contadas), tudo derivado da QRY0843 (Rodada 1 = sistêmico x rodada final = físico)',
+  acuraciaLocal: 'Acurácia Local = 1 − (Locais com pelo menos 1 item divergente ÷ Locais contados no ciclo)',
+  acuraciaValor: 'Acurácia Valor = 1 − (Σ|Vl. Divergência| ÷ Σ Vl. Físico), valorado pela SIGEQ278 (preço de custo) cruzada com a ZBIQ0051 (S/N do componente no kit)',
   andamentoCiclo: 'Andamento do Ciclo = Locais concluídos ÷ Locais congelados',
   qtdRecontagens: 'Locais que precisaram de mais de 2 rodadas de contagem',
   tempoMedioContagem: 'Média de (Data Fim Contagem − Data Início Contagem) por conferência, excluindo a contagem 1 (abertura)',
@@ -32,7 +32,8 @@ function irNormKey(s){
 }
 
 /* Índice de Prioridade de Auditoria (0-100), pesos configuráveis.
-   Cada componente já deve vir normalizado 0-1 antes de chamar esta função. */
+   Cada componente já deve vir normalizado 0-1 antes de chamar esta função.
+   Valor financeiro agora vem da SIGEQ278 + ZBIQ0051 (não mais da QRY0114). */
 function irCalcularPrioridade(pesos, nValor, nQtd, nRecontagens, nReincidencia){
   const score = (nValor*pesos.valor + nQtd*pesos.quantidade + nRecontagens*pesos.recontagens + nReincidencia*pesos.reincidencia) * 100;
   return Math.round(Math.max(0, Math.min(100, score)));
