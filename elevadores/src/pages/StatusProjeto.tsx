@@ -14,26 +14,19 @@ import {
 } from '../domain/projeto';
 import { cores } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
+import { MiniTabela, LinhaDica } from '../components/ui/MiniTabela';
 import { BarraFiltros, Botao, Busca, Cartao, Chips, Selecao, Selo, Tabela, Td, Th, Vazio } from '../components/ui';
 import { baixarPlanoProjeto } from '../export/exportExcel';
 import { baixarApresentacao, RECORTES, type Recorte } from '../export/exportPptx';
 import { MATRIZ } from '../config/regras';
 
-
-const ROTULO_QUADRANTE = {
-  ganhos_rapidos: 'Ganhos rápidos',
-  estrategicos: 'Projetos estratégicos',
-  incrementais: 'Melhorias incrementais',
-  baixa_prioridade: 'Baixa prioridade',
-} as const;
-
 /* Medidor de conclusao do plano. Mostra o quanto ja foi entregue,
    sem rotulo de julgamento: o andamento fala por si. */
 function Medidor({ pct, metricas }: { pct: number; metricas: MetricasProjeto }) {
   const cor = pct === 100 ? cores.semantico.verde : cores.laranja.base;
-  const r = 72;
-  const cx = 90;
-  const cy = 95;
+  const r = 96;
+  const cx = 118;
+  const cy = 124;
   const a0 = (-220 * Math.PI) / 180;
   const a1 = (40 * Math.PI) / 180;
   const ponto = (a: number) => [cx + r * Math.cos(a), cy + r * Math.sin(a)] as const;
@@ -47,13 +40,13 @@ function Medidor({ pct, metricas }: { pct: number; metricas: MetricasProjeto }) 
 
   return (
     <div className="flex flex-col items-center">
-      <svg width="180" height="148" viewBox="0 0 180 148" role="img" aria-label={`${pct}% do plano concluído`}>
-        <path d={arco(1)} fill="none" stroke="var(--line)" strokeWidth="22" strokeLinecap="round" />
-        <path d={arco(pct / 100)} fill="none" stroke={cor} strokeWidth="22" strokeLinecap="round" />
-        <text x="90" y="92" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="42" fontWeight="600" fill="var(--ink)">
+      <svg width="236" height="196" viewBox="0 0 236 196" role="img" aria-label={`${pct}% do plano concluído`}>
+        <path d={arco(1)} fill="none" stroke="var(--line)" strokeWidth="28" strokeLinecap="round" />
+        <path d={arco(pct / 100)} fill="none" stroke={cor} strokeWidth="28" strokeLinecap="round" />
+        <text x="118" y="120" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="54" fontWeight="600" fill="var(--ink)">
           {pct}%
         </text>
-        <text x="90" y="118" textAnchor="middle" fontSize="12" fill="var(--ink-soft)">
+        <text x="118" y="150" textAnchor="middle" fontSize="13" fill="var(--ink-soft)">
           do plano concluído
         </text>
       </svg>
@@ -96,6 +89,20 @@ const ESCALA = {
 
 /* Os quadrantes tambem sao uma ordem de prioridade, entao seguem a
    mesma escala: quanto mais escuro, mais cedo entra na fila. */
+/* Cor de cada frente na matriz: verde quando fechou, amarelo quando
+   comecou e vermelho quando nao saiu do papel. */
+const COR_ANDAMENTO = {
+  concluido: '#1F7A4C',
+  iniciado: '#B8860B',
+  nao_iniciado: '#C83812',
+} as const;
+
+const ROTULO_ANDAMENTO = {
+  concluido: 'Concluído',
+  iniciado: 'Iniciado',
+  nao_iniciado: 'Não iniciado',
+} as const;
+
 const ESCALA_QUADRANTE = {
   ganhos_rapidos: '#001A72',
   estrategicos: '#4F63AE',
@@ -161,55 +168,98 @@ function AvancoPorFrente({ acoes }: { acoes: Acao[] }) {
 /* Entregas por semana: mostra se o time esta entregando em ritmo
    constante ou em picos. */
 function EntregasPorSemana({ acoes }: { acoes: Acao[] }) {
-  const semanas = useMemo(() => {
+  const dados = useMemo(() => {
     const feitas = acoes
       .filter((a) => a.concluida)
       .map((a) => a.dataConclusao ?? a.prazoValido ?? a.fim)
       .filter((d): d is Date => d != null);
-    if (feitas.length === 0) return [];
+    if (feitas.length === 0) return null;
 
     const t0 = Math.min(...feitas.map((d) => d.getTime()));
     const t1 = Math.max(...feitas.map((d) => d.getTime()));
-    const baldes: { rotulo: string; qtd: number }[] = [];
+    const pontos: { semana: number; qtd: number; inicio: Date }[] = [];
+    let n = 1;
     for (let t = t0; t <= t1 + 1; t += 7 * 86400000) {
-      const fim = t + 7 * 86400000;
-      baldes.push({
-        rotulo: new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }),
-        qtd: feitas.filter((d) => d.getTime() >= t && d.getTime() < fim).length,
+      const fimBalde = t + 7 * 86400000;
+      pontos.push({
+        semana: n++,
+        qtd: feitas.filter((d) => d.getTime() >= t && d.getTime() < fimBalde).length,
+        inicio: new Date(t),
       });
     }
-    return baldes;
+    return pontos;
   }, [acoes]);
 
-  if (semanas.length === 0) return null;
-  const maximo = Math.max(...semanas.map((s) => s.qtd), 1);
-  const media = semanas.reduce((acc, s) => acc + s.qtd, 0) / semanas.length;
+  if (!dados || dados.length === 0) return null;
+
+  const L = 640;
+  const A = 240;
+  const pad = { esq: 38, dir: 16, topo: 22, base: 40 };
+  const maximo = Math.max(...dados.map((d) => d.qtd), 1);
+  const X = (i: number) =>
+    pad.esq + (dados.length === 1 ? (L - pad.esq - pad.dir) / 2 : (i / (dados.length - 1)) * (L - pad.esq - pad.dir));
+  const Y = (v: number) => A - pad.base - (v / maximo) * (A - pad.base - pad.topo);
+
+  const linha = dados.map((d, i) => `${X(i).toFixed(1)},${Y(d.qtd).toFixed(1)}`).join(' ');
+  /* A area fecha na base para o gradiente ter onde se apoiar. */
+  const area = `${X(0)},${Y(0)} ${linha} ${X(dados.length - 1)},${Y(0)}`;
+  const media = dados.reduce((acc, d) => acc + d.qtd, 0) / dados.length;
 
   return (
     <Cartao
       titulo="Entregas por semana"
       descricao={`média de ${media.toFixed(1)} ações concluídas por semana`}
     >
-      <div className="eq-semanas">
-        {semanas.map((s) => (
-          <div key={s.rotulo} className="eq-semana">
-            <span className="eq-semana-valor">{s.qtd || ''}</span>
-            <span
-              className="eq-semana-barra"
-              style={{
-                height: `${(s.qtd / maximo) * 100}%`,
-                background: s.qtd === 0 ? 'var(--line)' : ESCALA.concluida,
-              }}
-              title={`Semana de ${s.rotulo}: ${s.qtd} concluída(s)`}
-            />
-            <span className="eq-semana-rotulo">{s.rotulo}</span>
-          </div>
+      <svg width="100%" viewBox={`0 0 ${L} ${A}`} role="img" aria-label="Entregas por semana">
+        <defs>
+          <linearGradient id="gradEntregas" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#FA4616" stopOpacity="0.42" />
+            <stop offset="100%" stopColor="#FA4616" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+
+        {/* Grade horizontal discreta, so para dar referencia de altura. */}
+        {[0, 0.5, 1].map((f) => (
+          <line
+            key={f}
+            x1={pad.esq}
+            y1={Y(maximo * f)}
+            x2={L - pad.dir}
+            y2={Y(maximo * f)}
+            stroke="var(--line)"
+            strokeWidth="1"
+          />
         ))}
-      </div>
+
+        <polygon points={area} fill="url(#gradEntregas)" />
+        <polyline points={linha} fill="none" stroke="#FA4616" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+
+        {dados.map((d, i) => (
+          <g key={d.semana}>
+            <circle cx={X(i)} cy={Y(d.qtd)} r="4.5" fill="#FA4616" stroke="var(--surface)" strokeWidth="2">
+              <title>{`Semana ${d.semana} (${d.inicio.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}): ${d.qtd} concluída(s)`}</title>
+            </circle>
+            {d.qtd > 0 && (
+              <text x={X(i)} y={Y(d.qtd) - 11} textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--ink)">
+                {d.qtd}
+              </text>
+            )}
+            <text x={X(i)} y={A - 16} textAnchor="middle" fontSize="10.5" fill="var(--ink-soft)">
+              S{d.semana}
+            </text>
+          </g>
+        ))}
+
+        <text x={pad.esq - 8} y={Y(maximo) + 4} textAnchor="end" fontSize="10" fill="var(--ink-soft)">
+          {maximo}
+        </text>
+        <text x={pad.esq - 8} y={Y(0) + 4} textAnchor="end" fontSize="10" fill="var(--ink-soft)">
+          0
+        </text>
+      </svg>
     </Cartao>
   );
 }
-
 
 /* Ganhos do projeto: o que cada acao promete melhorar e o quanto disso
    ja chegou na operacao. Responde "para que serve esse plano". */
@@ -253,8 +303,80 @@ function GanhosDoProjeto({ acoes }: { acoes: Acao[] }) {
   );
 }
 
+
+/* Funil do plano: de tudo que foi planejado, quanto saiu do papel,
+   quanto fechou e quanto fechou dentro do prazo. Cada degrau perde
+   o que ficou para tras, que e onde o plano trava. */
+function Funil({ acoes }: { acoes: Acao[] }) {
+  const etapas = useMemo(() => {
+    const total = acoes.length;
+    const iniciadas = acoes.filter((a) => situacaoDe(a) !== 'pendente').length;
+    const concluidas = acoes.filter((a) => situacaoDe(a) === 'concluida').length;
+    const noPrazo = acoes.filter(
+      (a) =>
+        situacaoDe(a) === 'concluida' &&
+        a.dataConclusao != null &&
+        a.prazoValido != null &&
+        a.dataConclusao <= a.prazoValido
+    ).length;
+    return [
+      { rotulo: 'Planejadas', qtd: total, cor: '#001A72' },
+      { rotulo: 'Iniciadas', qtd: iniciadas, cor: '#2C4593' },
+      { rotulo: 'Concluídas', qtd: concluidas, cor: '#5E70B6' },
+      { rotulo: 'Concluídas no prazo', qtd: noPrazo, cor: '#9BA5CE' },
+    ];
+  }, [acoes]);
+
+  const total = etapas[0].qtd;
+  if (total === 0) return null;
+
+  return (
+    <Cartao titulo="Funil do plano" descricao="onde as ações param entre o planejado e o entregue no prazo">
+      <div className="eq-funil">
+        {etapas.map((e, i) => {
+          const pct = Math.round((e.qtd / total) * 100);
+          const anterior = i > 0 ? etapas[i - 1].qtd : e.qtd;
+          const perdidas = anterior - e.qtd;
+          return (
+            <div key={e.rotulo} className="eq-funil-etapa">
+              <div className="eq-funil-rotulo">
+                <span>{e.rotulo}</span>
+                {i > 0 && perdidas > 0 && (
+                  <span className="eq-funil-perda">−{perdidas}</span>
+                )}
+              </div>
+              <div className="eq-funil-faixa">
+                <div
+                  className="eq-funil-barra"
+                  style={{ width: `${Math.max(6, pct)}%`, background: e.cor }}
+                  title={`${e.qtd} de ${total} (${pct}%)`}
+                >
+                  <span>{e.qtd}</span>
+                </div>
+              </div>
+              <div className="eq-funil-pct">{pct}%</div>
+            </div>
+          );
+        })}
+      </div>
+    </Cartao>
+  );
+}
+
 function Matriz({ acoes }: { acoes: Acao[] }) {
   const pontos = useMemo(() => montarMatriz(acoes), [acoes]);
+  /* O andamento de cada frente decide a cor do ponto, entao a matriz
+     mostra prioridade e situacao ao mesmo tempo. */
+  const andamento = useMemo(() => {
+    const mapa = new Map<string, keyof typeof COR_ANDAMENTO>();
+    for (const l of planoPorAcao(acoes)) {
+      mapa.set(
+        l.proposta,
+        l.pctConcluido === 100 ? 'concluido' : l.concluidas + l.emAndamento > 0 ? 'iniciado' : 'nao_iniciado'
+      );
+    }
+    return mapa;
+  }, [acoes]);
   const L = 700;
   const A = 300;
   const pad = 48;
@@ -302,7 +424,7 @@ function Matriz({ acoes }: { acoes: Acao[] }) {
             const aDireita = cx < L * 0.55;
             return (
               <g key={p.proposta}>
-                <circle cx={cx} cy={cy} r="9" fill={ESCALA_QUADRANTE[p.quadrante]} opacity="0.95">
+                <circle cx={cx} cy={cy} r="9" fill={COR_ANDAMENTO[andamento.get(p.proposta) ?? 'nao_iniciado']} opacity="0.95">
                   <title>{`${p.proposta} — esforço ${p.esforco}, impacto ${p.impacto}`}</title>
                 </circle>
                 <text
@@ -327,10 +449,10 @@ function Matriz({ acoes }: { acoes: Acao[] }) {
         </svg>
       </div>
       <div className="mt-2 flex flex-wrap gap-3 text-[11.5px]" style={{ color: 'var(--ink-soft)' }}>
-        {(Object.keys(ROTULO_QUADRANTE) as (keyof typeof ROTULO_QUADRANTE)[]).map((q) => (
-          <span key={q} className="inline-flex items-center gap-1.5">
-            <i className="inline-block h-3 w-3 rounded" style={{ background: ESCALA_QUADRANTE[q] }} />
-            {ROTULO_QUADRANTE[q]} ({pontos.filter((p) => p.quadrante === q).length})
+        {(['concluido', 'iniciado', 'nao_iniciado'] as const).map((k) => (
+          <span key={k} className="inline-flex items-center gap-1.5">
+            <i className="inline-block h-3 w-3 rounded" style={{ background: COR_ANDAMENTO[k] }} />
+            {ROTULO_ANDAMENTO[k]} ({[...andamento.values()].filter((v) => v === k).length})
           </span>
         ))}
       </div>
@@ -363,6 +485,11 @@ function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
       return total - feitas;
     });
     const ideal = semanas.map((_, i) => Math.round(total * (1 - i / (semanas.length - 1 || 1))));
+    /* BurnUp: o acumulado ja entregue contra a linha do escopo. O
+       BurnDown responde "quanto falta" e o BurnUp "quanto foi feito";
+       juntos mostram tambem se o escopo mexeu. */
+    const entregue = real.map((r) => (r == null ? null : total - r));
+    const escopo = semanas.map(() => total);
 
     return {
       type: 'line',
@@ -370,19 +497,24 @@ function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
         labels: semanas.map((s) => s.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
         datasets: [
           { label: 'Ideal', data: ideal, borderColor: cores.semantico.cinza, borderDash: [5, 5], pointRadius: 0, borderWidth: 1.5 },
-          { label: 'Real', data: real, borderColor: cores.laranja.base, backgroundColor: 'rgba(250,70,22,.12)', fill: true, tension: 0.25, pointRadius: 3, spanGaps: false },
+          { label: 'Ainda faltam (BurnDown)', data: real, borderColor: cores.laranja.base, backgroundColor: 'rgba(250,70,22,.12)', fill: true, tension: 0.25, pointRadius: 3, spanGaps: false },
+          { label: 'Escopo total', data: escopo, borderColor: cores.navy.suave, borderDash: [2, 3], pointRadius: 0, borderWidth: 1.5 },
+          { label: 'Já entregue (BurnUp)', data: entregue, borderColor: cores.navy.base, backgroundColor: 'rgba(0,26,114,.10)', fill: true, tension: 0.25, pointRadius: 3, spanGaps: false },
         ],
       },
       options: {
-        scales: { y: { beginAtZero: true, title: { display: true, text: 'Ações pendentes', color: 'var(--ink-soft)' } } },
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'Ações', color: 'var(--ink-soft)' } } },
         plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 12 } }, datalabels: { display: false } },
       },
     };
   }, [acoes, hoje]);
 
   return (
-    <Cartao titulo="Ritmo de entrega" descricao="quantas ações ainda faltam, comparado ao ritmo necessário para terminar no prazo">
-      {config ? <Grafico config={config} altura={260} rotulo="Ritmo de entrega do projeto" /> : <Vazio>Sem datas suficientes.</Vazio>}
+    <Cartao
+      titulo="Ritmo de entrega"
+      descricao="BurnDown: quanto ainda falta · BurnUp: quanto já foi entregue, contra o escopo"
+    >
+      {config ? <Grafico config={config} altura={300} rotulo="Ritmo de entrega do projeto" /> : <Vazio>Sem datas suficientes.</Vazio>}
     </Cartao>
   );
 }
@@ -433,7 +565,43 @@ function PlanoDeAcao({ acoes }: { acoes: Acao[] }) {
           {linhas.map((l) => (
             <tr key={l.proposta}>
               <Td alinha="centro">{l.numero}</Td>
-              <Td style={{ fontWeight: 600 }}>{l.proposta}</Td>
+              <Td style={{ fontWeight: 600 }}>
+                <MiniTabela
+                  largura={340}
+                  conteudo={
+                    <>
+                      <span className="eq-dica-titulo">
+                        {l.proposta} — {l.concluidas}/{l.atividades} concluídas
+                      </span>
+                      {acoes
+                        .filter((a) => (a.proposta || 'Sem proposta') === l.proposta)
+                        .map((a) => {
+                          const sit = situacaoDe(a);
+                          return (
+                            <span key={a.numPlanAction + a.oQueFazer} className="eq-dica-item">
+                              <span>{a.oQueFazer || '—'}</span>
+                              <span
+                                style={{
+                                  color: a.atrasada
+                                    ? cores.laranja.base
+                                    : sit === 'concluida'
+                                      ? cores.semantico.verde
+                                      : 'var(--ink-soft)',
+                                  fontWeight: 700,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {a.atrasada ? 'Atrasada' : ROTULO_SITUACAO[sit]}
+                              </span>
+                            </span>
+                          );
+                        })}
+                    </>
+                  }
+                >
+                  <span>{l.proposta}</span>
+                </MiniTabela>
+              </Td>
               <Td alinha="centro" numerico>{l.atividades}</Td>
               <Td alinha="centro" numerico>{l.emAndamento || '-'}</Td>
               <Td alinha="centro" numerico>{l.pendentes || '-'}</Td>
@@ -595,9 +763,34 @@ function Gantt({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
                   className="mb-1.5 grid items-center gap-2"
                   style={{ gridTemplateColumns: '230px 1fr 52px' }}
                 >
-                  <div className="truncate pl-3 text-[11.5px]" title={a.oQueFazer}>
-                    {a.oQueFazer || a.proposta}
-                  </div>
+                  <MiniTabela
+                    largura={320}
+                    conteudo={
+                      <>
+                        <span className="eq-dica-titulo">{a.oQueFazer || a.proposta}</span>
+                        <LinhaDica rotulo="Plan action" valor={a.proposta} />
+                        <LinhaDica rotulo="Responsável" valor={a.responsavel || '—'} />
+                        <LinhaDica rotulo="Início" valor={dataBR(a.inicio)} />
+                        <LinhaDica rotulo="Fim previsto" valor={dataBR(a.fim)} />
+                        {a.reagendada && <LinhaDica rotulo="Reagendado para" valor={dataBR(a.reagendamento)} />}
+                        <LinhaDica
+                          rotulo="Prazo válido"
+                          valor={
+                            <b style={{ color: a.atrasada ? cores.laranja.base : 'var(--ink)' }}>
+                              {dataBR(a.prazoValido)}
+                            </b>
+                          }
+                        />
+                        <LinhaDica rotulo="Conclusão" valor={dataBR(a.dataConclusao)} />
+                        <LinhaDica
+                          rotulo="Situação"
+                          valor={concluida ? 'Concluída' : a.atrasada ? 'Atrasada' : a.situacao || 'Em aberto'}
+                        />
+                      </>
+                    }
+                  >
+                    <span className="block truncate pl-3 text-[11.5px]">{a.oQueFazer || a.proposta}</span>
+                  </MiniTabela>
                   <div className="relative h-4 rounded" style={{ background: 'var(--surface2)' }}>
                     <div
                       className="absolute inset-y-0 rounded"
@@ -716,11 +909,14 @@ export function StatusProjeto({
       </div>
 
       <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
-        <EntregasPorSemana acoes={filtradas} />
+        <Funil acoes={filtradas} />
         <GanhosDoProjeto acoes={filtradas} />
       </div>
 
-      <Matriz acoes={filtradas} />
+      <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
+        <EntregasPorSemana acoes={filtradas} />
+        <Matriz acoes={filtradas} />
+      </div>
 
       {/* A tabela vem antes dos graficos: e por ela que a reuniao
           comeca, e o resto detalha o que ela mostra. */}
@@ -795,7 +991,25 @@ export function StatusProjeto({
                 <tr key={a.numPlanAction + a.oQueFazer}>
                   <Td numerico>{a.numPlanAction}</Td>
                   <Td>{a.proposta}</Td>
-                  <Td>{a.oQueFazer}</Td>
+                  <Td>
+                    <MiniTabela
+                      largura={330}
+                      conteudo={
+                        <>
+                          <span className="eq-dica-titulo">{a.oQueFazer || a.proposta}</span>
+                          <LinhaDica rotulo="Por quê" valor={a.porque || '—'} />
+                          <LinhaDica rotulo="Como resolver" valor={a.comoSolucionar || '—'} />
+                          <LinhaDica rotulo="Início" valor={dataBR(a.inicio)} />
+                          <LinhaDica rotulo="Fim previsto" valor={dataBR(a.fim)} />
+                          {a.reagendada && <LinhaDica rotulo="Reagendado" valor={dataBR(a.reagendamento)} />}
+                          <LinhaDica rotulo="Conclusão" valor={dataBR(a.dataConclusao)} />
+                          {a.obs && <LinhaDica rotulo="Observação" valor={a.obs} />}
+                        </>
+                      }
+                    >
+                      <span>{a.oQueFazer}</span>
+                    </MiniTabela>
+                  </Td>
                   <Td>{a.responsavel}</Td>
                   <Td>
                     {a.prazoValido?.toLocaleDateString('pt-BR') ?? '—'}

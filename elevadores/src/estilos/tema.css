@@ -700,3 +700,33 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-ganho{ font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:100px;
   background:var(--blue-light); color:var(--blue); white-space:nowrap; }
 :root[data-theme="dark"] .eq-ganho{ color:#AEBBEA; }
+
+/* Mini tabela ao passar o cursor. */
+.eq-dica-alvo{ position:relative; display:block; cursor:help; outline:none; }
+.eq-dica{ position:absolute; left:0; z-index:95; display:block; padding:10px 12px;
+  background:var(--surface); border:1px solid var(--line); border-radius:9px;
+  box-shadow:0 14px 34px rgba(0,0,0,.26); font-size:11.5px; line-height:1.5;
+  text-transform:none; letter-spacing:0; font-weight:400; color:var(--ink); }
+.eq-dica-linha{ display:grid; grid-template-columns:96px 1fr; gap:8px; padding:2px 0; }
+.eq-dica-rotulo{ color:var(--ink-soft); font-size:10.5px; text-transform:uppercase;
+  letter-spacing:.03em; font-weight:700; }
+.eq-dica-valor{ color:var(--ink); }
+.eq-dica-titulo{ display:block; font-weight:800; font-size:12.5px; margin-bottom:7px;
+  padding-bottom:7px; border-bottom:1px solid var(--line); }
+.eq-dica-item{ display:grid; grid-template-columns:1fr auto; gap:8px; padding:3px 0;
+  border-bottom:1px dashed var(--line); }
+.eq-dica-item:last-child{ border-bottom:none; }
+
+/* Funil do plano. */
+.eq-funil{ display:flex; flex-direction:column; gap:11px; }
+.eq-funil-etapa{ display:grid; grid-template-columns:150px 1fr 46px; align-items:center; gap:11px; }
+.eq-funil-rotulo{ display:flex; flex-direction:column; gap:1px; }
+.eq-funil-rotulo > span:first-child{ font-size:11.5px; font-weight:600; color:var(--ink); }
+.eq-funil-perda{ font-size:10px; font-weight:700; color:var(--danger); }
+.eq-funil-faixa{ background:var(--surface2); border-radius:6px; height:26px; }
+.eq-funil-barra{ height:100%; border-radius:6px; display:flex; align-items:center;
+  justify-content:flex-end; padding-right:9px; transition:width .2s; }
+.eq-funil-barra span{ color:#fff; font-family:'SFMono-Regular',Consolas,monospace;
+  font-size:12px; font-weight:800; }
+.eq-funil-pct{ font-family:'SFMono-Regular',Consolas,monospace; font-size:11.5px;
+  font-weight:800; text-align:right; color:var(--ink-soft); }
