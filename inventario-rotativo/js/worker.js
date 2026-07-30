@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 3;
+const IR_INDICADORES_VERSION = 5;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -49,7 +49,6 @@ function parseDateVal(v){
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
-function isoDate(d){ return d ? d.toISOString().slice(0,10) : ''; }
 function isSim(v){ return String(v||'').trim().toUpperCase()==='SIM'; }
 
 function buildAliasResolver(headers, aliasMap){
@@ -80,14 +79,6 @@ const ALIAS_390 = {
   item: ['Item'], descricao: ['Descrição','Descricao'], codTerceiro: ['Cod Terceiro'],
   local: ['Local'], situacao: ['Situação','Situacao'], quantidade: ['Quantidade'], classeSku: ['Classe Sku']
 };
-const ALIAS_114 = {
-  inventario: ['Inventário','Inventario'], local: ['Local'], endereco: ['Endereco','Endereço'],
-  situacao: ['Situação','Situacao'], itemWms: ['Item WMS'], itemSige: ['Item SIGE'],
-  descricao: ['Descricão','Descrição'], ean: ['EAN'], codTerceiro: ['Cod.Terceiro'],
-  qtdeLogica: ['Qtde. Lógica','Qtde. Logica'], qtdeFisica: ['Qtde. Fisica','Qtde. Física'],
-  diferenca: ['Diferença','Diferenca'], vlLogico: ['Vl. Lógico'], vlFisico: ['Vl. Físico'],
-  vlDivergencia: ['Vl. Divergência'], dataInicio: ['Data inicio'], dataFim: ['Data Fim'], usuario: ['Usuario','Usuário']
-};
 const ALIAS_843 = {
   inventario: ['Inventario','Inventário'], local: ['Local'], descricaoLocal: ['Descrição Local'],
   dataSituacao: ['Data Situação','Data Situacao'],
@@ -95,6 +86,14 @@ const ALIAS_843 = {
   obsInventario: ['Obs Inventario','Obs Inventário'], usuario: ['Usuário Conferencia','Usuario Conferencia'],
   situacaoInventario: ['Situação Inventario'], situacaoLocal: ['Situação Local'],
   idConferencia: ['Id Conferencia'], item: ['Id Item'], itemNome: ['Item Nome'], qtFis: ['QT_FIS']
+};
+const ALIAS_278 = {
+  item: ['Item'], nomeItem: ['Nome item','Nome Item'],
+  precoCusto: ['Preço de custo','Preco de custo'], precoCompra: ['Preço de compra','Preco de compra']
+};
+const ALIAS_051 = {
+  itemPai: ['item_vol_multiplo'], itemComponente: ['item_componente'],
+  qtde: ['qtde'], inInterface: ['in_interface'], usuario: ['usuario'], datahora: ['datahora']
 };
 const ALIAS_CONGELADA = {
   idLocal: ['Id Local'], descricao: ['Descrição','Descricao'], x1: ['X1'], x2: ['X2'],
@@ -112,32 +111,37 @@ self.onmessage = async (e)=>{
 };
 function post(type, data){ self.postMessage({type, ...data}); }
 
-async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, cicloNumero, dataAbertura, dataPrevistaTermino, prioridadeConfig}){
+async function runPipeline({buf390, buf843, bufCongelada, buf278, buf051, cicloId, cicloNumero, dataAbertura, dataPrevistaTermino, prioridadeConfig}){
   post('progress', {stage:'Lendo planilhas...', pct:2});
   const wb390 = XLSX.read(buf390, {type:'array', cellDates:true});
-  const wb114 = XLSX.read(buf114, {type:'array', cellDates:true});
   const wb843 = XLSX.read(buf843, {type:'array', cellDates:true});
   const wbCong = XLSX.read(bufCongelada, {type:'array', cellDates:true});
+  const wb278 = XLSX.read(buf278, {type:'array', cellDates:true});
+  const wb051 = XLSX.read(buf051, {type:'array', cellDates:true});
 
   const rows390 = sheetToRows(wb390);
-  const rows114 = sheetToRows(wb114);
   const rows843 = sheetToRows(wb843);
   const rowsCong = sheetToRows(wbCong);
+  const rows278 = sheetToRows(wb278);
+  const rows051 = sheetToRows(wb051);
 
   if(!rows390.length) throw new Error('QRY0390: planilha vazia.');
-  if(!rows114.length) throw new Error('QRY0114: planilha vazia.');
   if(!rows843.length) throw new Error('QRY0843: planilha vazia.');
   if(!rowsCong.length) throw new Error('Base congelada: planilha vazia.');
+  if(!rows278.length) throw new Error('SIGEQ278: planilha vazia.');
+  if(!rows051.length) throw new Error('ZBIQ0051: planilha vazia.');
 
   const r390 = buildAliasResolver(Object.keys(rows390[0]), ALIAS_390);
-  const r114 = buildAliasResolver(Object.keys(rows114[0]), ALIAS_114);
   const r843 = buildAliasResolver(Object.keys(rows843[0]), ALIAS_843);
   const rCong = buildAliasResolver(Object.keys(rowsCong[0]), ALIAS_CONGELADA);
+  const r278 = buildAliasResolver(Object.keys(rows278[0]), ALIAS_278);
+  const r051 = buildAliasResolver(Object.keys(rows051[0]), ALIAS_051);
 
   validateColumns(r390, ['item','local','quantidade'], 'QRY0390');
-  validateColumns(r114, ['inventario','local','itemWms','diferenca','vlDivergencia'], 'QRY0114');
   validateColumns(r843, ['local','item','idConferencia','qtFis','usuario'], 'QRY0843');
   validateColumns(rCong, ['idLocal','noInventario'], 'Base congelada');
+  validateColumns(r278, ['item','precoCusto'], 'SIGEQ278');
+  validateColumns(r051, ['itemPai','itemComponente','inInterface'], 'ZBIQ0051');
 
   post('progress', {stage:'Indexando estoque atual (QRY0390)...', pct:10});
   const map390 = new Map();
@@ -146,6 +150,34 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
     if(!item) continue;
     const qtd = parseNumber(getVal(row, r390.quantidade));
     map390.set(item, (map390.get(item)||0) + qtd);
+  }
+
+  // Valoração dos itens (seção 7.4 do fluxo de equalização, mesma lógica reaproveitada
+  // aqui): a SIGEQ278 só traz o preço do ITEM PAI quando o item é um "múltiplo" (kit
+  // com mais de um componente físico). A ZBIQ0051 diz, por componente, se ele é quem
+  // "carrega" o valor do kit (in_interface = S) ou não (N). Um item que não aparece na
+  // ZBIQ0051 não é um múltiplo — valora normalmente pelo próprio preço na 278.
+  post('progress', {stage:'Indexando preços (SIGEQ278)...', pct:14});
+  const precoPorItem = new Map(); // item -> preço de custo
+  for(const row of rows278){
+    const item = String(getVal(row, r278.item) ?? '').trim();
+    if(!item) continue;
+    precoPorItem.set(item, parseNumber(getVal(row, r278.precoCusto)));
+  }
+  const valoracaoPorComponente = new Map(); // item_componente -> {itemPai, inInterface}
+  for(const row of rows051){
+    const itemComponente = String(getVal(row, r051.itemComponente) ?? '').trim();
+    if(!itemComponente) continue;
+    valoracaoPorComponente.set(itemComponente, {
+      itemPai: String(getVal(row, r051.itemPai) ?? '').trim(),
+      inInterface: String(getVal(row, r051.inInterface) ?? '').trim().toUpperCase()
+    });
+  }
+  function precoUnitarioDoItem(item){
+    const val = valoracaoPorComponente.get(item);
+    if(!val) return precoPorItem.get(item) || 0; // não é múltiplo: valora por si só
+    if(val.inInterface !== 'S') return 0; // componente "N" não carrega valor do kit
+    return precoPorItem.get(val.itemPai) || 0; // componente "S": valor vem do item pai
   }
 
   post('progress', {stage:'Processando base congelada...', pct:20});
@@ -205,13 +237,6 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
       qtFis: parseNumber(getVal(row, r843.qtFis))
     });
   }
-  // Inventários (nº de sessão de contagem) reconhecidos como Ajuste Inventário Rotativo
-  // (AIR) e liquidados nesta importação — usado para herdar o mesmo filtro na QRY0114,
-  // que não tem coluna de Observação/Situação. O cruzamento é pelo Inventário (não pelo
-  // Local): o mesmo Local pode aparecer em ajustes de outros tipos ao longo do tempo,
-  // então só o nº do inventário garante que a divergência é da mesma sessão AIR liquidada.
-  const airInventarioSet = new Set(contagens.map(c=>c.inventario));
-
   post('progress', {stage:'Calculando convergência por local...', pct:50});
   const porLocal = new Map();
   for(const c of contagens){
@@ -241,57 +266,42 @@ async function runPipeline({buf390, buf114, buf843, bufCongelada, cicloId, ciclo
     }
     statusPorLocal.set(local, {status, rodadas: maxRodada});
   }
-  // Peças físicas totais por local = soma do QT_FIS de todos os itens na ÚLTIMA rodada
-  // de contagem do local (a "foto" mais recente do que tem fisicamente ali). Usado como
-  // denominador da Acurácia Peças — a QRY0114 sozinha só traz os itens que passaram pela
-  // liquidação/divergência, não o total físico do local.
+  // Peças físicas por local + divergências — tudo derivado só da QRY0843, sem QRY0114.
+  // Por item dentro do local: a Rodada 1 é a quantidade SISTÊMICA (registrada por quem
+  // abre o inventário — confirmado com o usuário), e a última rodada em que o item foi
+  // de fato recontado é a quantidade FÍSICA final. A diferença entre as duas é a
+  // divergência do item, valorada pela SIGEQ278/ZBIQ0051 (não mais pela QRY0114).
   // A rodada final varia por ITEM, não só por local: um item pode ter parado de ser
   // recontado antes da última rodada do local (ex.: já bateu e não precisou repetir).
-  // Por isso pegamos, para cada item dentro do local, a rodada mais alta em que ELE
-  // foi contado — não a rodada máxima do local aplicada a todos os itens.
   const pecasFisicasPorLocal = new Map();
-  for(const [local, lista] of porLocal){
-    const ultimaPorItem = new Map(); // item -> {rodada, qt}
-    for(const c of lista){
-      const atual = ultimaPorItem.get(c.item);
-      if(!atual || c.idConferencia>atual.rodada) ultimaPorItem.set(c.item, {rodada:c.idConferencia, qt:c.qtFis});
-    }
-    let total = 0;
-    for(const v of ultimaPorItem.values()) total += v.qt;
-    pecasFisicasPorLocal.set(local, total);
-  }
-
-  post('progress', {stage:'Processando divergências finais (QRY0114)...', pct:65});
   const divergencias = [];
-  let idx114 = 0;
-  for(const row of rows114){
-    idx114++;
-    const local = String(getVal(row, r114.local) ?? '').trim();
-    const itemWms = String(getVal(row, r114.itemWms) ?? '').trim();
-    const inventario114 = String(getVal(row, r114.inventario) ?? '').trim();
-    if(!itemWms || !airInventarioSet.has(inventario114)) continue;
-    const diferenca = parseNumber(getVal(row, r114.diferenca));
-    const vlDivergencia = parseNumber(getVal(row, r114.vlDivergencia));
-    divergencias.push({
-      id: cicloId+'|'+local+'|'+itemWms+'|'+idx114,
-      cicloId,
-      inventario: inventario114, local,
-      endereco: String(getVal(row, r114.endereco) ?? '').trim(),
-      situacao: String(getVal(row, r114.situacao) ?? '').trim(),
-      item: itemWms, itemSige: String(getVal(row, r114.itemSige) ?? '').trim(),
-      descricao: String(getVal(row, r114.descricao) ?? '').trim(),
-      ean: String(getVal(row, r114.ean) ?? '').trim(),
-      codTerceiro: String(getVal(row, r114.codTerceiro) ?? '').trim(),
-      qtdeLogica: parseNumber(getVal(row, r114.qtdeLogica)),
-      qtdeFisica: parseNumber(getVal(row, r114.qtdeFisica)),
-      diferenca, vlLogico: parseNumber(getVal(row, r114.vlLogico)), vlFisico: parseNumber(getVal(row, r114.vlFisico)),
-      vlDivergencia,
-      dataInicio: isoDate(parseDateVal(getVal(row, r114.dataInicio))), dataFim: isoDate(parseDateVal(getVal(row, r114.dataFim))),
-      usuario: String(getVal(row, r114.usuario) ?? '').trim(),
-      statusLocal: (statusPorLocal.get(local)||{status:'em_contagem'}).status,
-      rodadasLocal: (statusPorLocal.get(local)||{rodadas:0}).rodadas,
-      diagnostico: diferenca!==0 ? 'divergente' : 'correto'
-    });
+  for(const [local, lista] of porLocal){
+    const porItem = new Map(); // item -> {sistema, final, rodadaFinal, itemNome}
+    for(const c of lista){
+      if(!c.item) continue; // local vazio, sem item nesta linha
+      let g = porItem.get(c.item);
+      if(!g){ g = {sistema:null, final:0, rodadaFinal:-1, itemNome:c.itemNome}; porItem.set(c.item, g); }
+      if(c.idConferencia===1) g.sistema = c.qtFis;
+      if(c.idConferencia>=g.rodadaFinal){ g.final = c.qtFis; g.rodadaFinal = c.idConferencia; }
+      if(c.itemNome) g.itemNome = c.itemNome;
+    }
+    let totalFisico = 0;
+    const st = statusPorLocal.get(local) || {status:'em_contagem', rodadas:0};
+    for(const [item, g] of porItem){
+      totalFisico += g.final;
+      const sistema = g.sistema ?? 0;
+      const diferenca = g.final - sistema;
+      const precoUnitario = precoUnitarioDoItem(item);
+      divergencias.push({
+        id: cicloId+'|'+local+'|'+item,
+        cicloId, local, item, itemNome: g.itemNome,
+        qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
+        precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
+        statusLocal: st.status, rodadasLocal: st.rodadas,
+        diagnostico: diferenca!==0 ? 'divergente' : 'correto'
+      });
+    }
+    pecasFisicasPorLocal.set(local, totalFisico);
   }
 
   post('progress', {stage:'Calculando prioridade de auditoria...', pct:78});
@@ -354,18 +364,23 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const clamp01 = (n)=>Math.max(0, Math.min(1, n));
 
   // Denominador da Acurácia Peças = peças físicas totais nos locais congelados (última
-  // rodada de contagem por local), não a "Qtde. Lógica" da QRY0114 — essa planilha só
-  // traz os itens que passaram pela liquidação/divergência, não o total físico do local.
+  // rodada de contagem por local, derivada só da QRY0843: Rodada 1 sistêmica x rodada
+  // final física).
   const totalPecasFisicas = congelados.reduce((s,l)=>s+(pecasFisicasPorLocal.get(l.idLocal)||0), 0);
   const totalDiferencaAbs = divergencias.reduce((s,d)=>s+Math.abs(d.diferenca),0);
   const acuraciaPecas = clamp01(totalPecasFisicas>0 ? 1-(totalDiferencaAbs/totalPecasFisicas) : 1);
+  const totalItensContados = divergencias.length;
 
-  const totalVlLogico = divergencias.reduce((s,d)=>s+d.vlLogico,0);
+  // Acurácia Valor: valorado pela SIGEQ278 (preço de custo) cruzada com a ZBIQ0051
+  // (S/N do componente no kit) — não mais pela QRY0114.
+  const totalVlFisico = divergencias.reduce((s,d)=>s+d.vlFisico,0);
   const totalVlDivergenciaAbs = divergencias.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
-  const acuraciaValor = clamp01(totalVlLogico>0 ? 1-(totalVlDivergenciaAbs/totalVlLogico) : 1);
+  const acuraciaValor = clamp01(totalVlFisico>0 ? 1-(totalVlDivergenciaAbs/totalVlFisico) : 1);
+  const valorDivergenteLiquido = divergencias.reduce((s,d)=>s+d.vlDivergencia,0);
+  const valorDivergenteAbsoluto = totalVlDivergenciaAbs;
 
   // Acurácia Local (Posições) é medida sobre os locais CONTADOS (liquidados), não sobre
-  // o total orçado do CD — mesma regra da Acurácia Peças/Valor ("1 − divergência ÷ total contado").
+  // o total orçado do CD — mesma regra da Acurácia Peças ("1 − divergência ÷ total contado").
   const locaisContadosTotal = statusPorLocal.size;
   const locaisComDivergencia = new Set(divergencias.filter(d=>d.diferenca!==0).map(d=>d.local));
   const acuraciaLocal = clamp01(locaisContadosTotal>0 ? 1-(locaisComDivergencia.size/locaisContadosTotal) : 1);
@@ -381,8 +396,6 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const andamentoCiclo = locaisCongelados>0 ? locaisConcluidos/locaisCongelados : 0;
 
   const itensDivergentes = divergencias.filter(d=>d.diferenca!==0).length;
-  const valorDivergenteLiquido = divergencias.reduce((s,d)=>s+d.vlDivergencia,0);
-  const valorDivergenteAbsoluto = totalVlDivergenciaAbs;
 
   let qtdRecontagens = 0;
   for(const [, st] of statusPorLocal) if(st.rodadas>2) qtdRecontagens++;
@@ -419,23 +432,25 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     const totalPecasGrupo = locaisDoGrupo.reduce((s,l)=>s+(pecasFisicasPorLocal.get(l.idLocal)||0), 0);
     const totalDiferencaAbs = divs.reduce((s,d)=>s+Math.abs(d.diferenca),0);
     const acuraciaPecas = clamp01(totalPecasGrupo>0 ? 1-(totalDiferencaAbs/totalPecasGrupo) : 1);
-    const totalVlLogico = divs.reduce((s,d)=>s+d.vlLogico,0);
+    const totalVlFisico = divs.reduce((s,d)=>s+d.vlFisico,0);
     const totalVlDivergenciaAbs = divs.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
-    const acuraciaValor = clamp01(totalVlLogico>0 ? 1-(totalVlDivergenciaAbs/totalVlLogico) : 1);
+    const acuraciaValor = clamp01(totalVlFisico>0 ? 1-(totalVlDivergenciaAbs/totalVlFisico) : 1);
     const locaisComDivergencia = new Set(divs.filter(d=>d.diferenca!==0).map(d=>d.local));
     const acuraciaPosicoes = clamp01(baseLocais>0 ? 1-(locaisComDivergencia.size/baseLocais) : 1);
     return {
       acuraciaPecas, acuraciaValor, acuraciaPosicoes,
       pecasContadas: totalPecasGrupo, pecasDivergentes: totalDiferencaAbs,
+      itensContados: divs.length,
       locaisDivergentes: locaisComDivergencia.size,
       valorDivergenteLiquido: divs.reduce((s,d)=>s+d.vlDivergencia,0),
       valorDivergenteAbsoluto: totalVlDivergenciaAbs
     };
   }
-  function agruparPor(campo, rotuloVazio){
-    const chaves = Array.from(new Set(congelados.map(l=>l[campo] || rotuloVazio)));
+  function agruparPor(campo, rotuloVazio, baseCongelados){
+    const base = baseCongelados || congelados;
+    const chaves = Array.from(new Set(base.map(l=>l[campo] || rotuloVazio)));
     return chaves.map(chave=>{
-      const locaisDoGrupo = congelados.filter(l=>(l[campo]||rotuloVazio)===chave);
+      const locaisDoGrupo = base.filter(l=>(l[campo]||rotuloVazio)===chave);
       const idsGrupo = new Set(locaisDoGrupo.map(l=>l.idLocal));
       const locaisOrcados = locaisDoGrupo.length;
       const locaisContados = locaisDoGrupo.filter(l=>locaisContadosSet.has(l.idLocal)).length;
@@ -447,7 +462,14 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
       };
     }).sort((a,b)=>b.locaisOrcados-a.locaisOrcados);
   }
-  const porRua = agruparPor('x1', '(sem rua)');
+  // "AIR" (X1) não é uma rua física — são locais sistêmicos de ajuste (um por LOG,
+  // ex.: "AIR LOG 001 00"), usados quando o local real não pode ser inventariado por
+  // ter pedido atrelado. A divergência deles já é corretamente atribuída ao respectivo
+  // LOG (Grupo Classe); incluí-los na visão por Rua só cria uma linha "AIR" sempre com
+  // 0% de acurácia, sem sentido físico — por isso ficam de fora aqui, mas continuam
+  // valendo normalmente na quebra por Log.
+  const congeladosSemAir = congelados.filter(l=>l.x1!=='AIR');
+  const porRua = agruparPor('x1', '(sem rua)', congeladosSemAir);
   const porLog = agruparPor('grupoClasse', '(sem log)');
 
   // Locais distintos contados por dia. Cada local é contado UMA ÚNICA VEZ, no dia da
@@ -508,7 +530,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   for(const d of divergencias){
     if(d.diferenca===0) continue;
     let g = porItemSaldo.get(d.item);
-    if(!g) g = {item:d.item, descricao:d.descricao, saldoQtd:0, saldoValor:0, locais:new Set()};
+    if(!g) g = {item:d.item, descricao:d.itemNome, saldoQtd:0, saldoValor:0, locais:new Set()};
     g.saldoQtd += d.diferenca;
     g.saldoValor += d.vlDivergencia;
     g.locais.add(d.local);
@@ -540,7 +562,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     _v: IR_INDICADORES_VERSION,
     locaisCongelados, locaisContadosTotal, locaisConcluidos, locaisPendentes, locaisEmContagem, locaisNaoIniciados,
     andamentoCiclo, acuraciaPecas, acuraciaLocal, acuraciaValor, meta: IR_META_ACURACIA,
-    itensDivergentes, valorDivergenteLiquido, valorDivergenteAbsoluto,
+    itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
     rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, topItensPositivos, topItensNegativos
