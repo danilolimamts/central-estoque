@@ -111,65 +111,65 @@ self.onmessage = async (e)=>{
 };
 function post(type, data){ self.postMessage({type, ...data}); }
 
-async function runPipeline({buf390, bufs843, bufCongelada, buf278, buf051, cicloId, cicloNumero, dataAbertura, dataPrevistaTermino, prioridadeConfig}){
+// Lê e concatena vários arquivos da mesma planilha, deduplicando linhas por uma chave
+// composta (keyFields, nomes canônicos já resolvidos pelo alias). Usado nos slots que
+// aceitam múltiplos arquivos por ciclo (extrações em pedaços, uploads repetidos etc).
+function readMultiSheet(bufs, aliasMap, requiredCols, label, keyFields){
+  let rowsRaw = [];
+  for(const buf of bufs){
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    rowsRaw = rowsRaw.concat(sheetToRows(wb));
+  }
+  if(!rowsRaw.length) throw new Error(label+': planilha vazia.');
+  const resolved = buildAliasResolver(Object.keys(rowsRaw[0]), aliasMap);
+  validateColumns(resolved, requiredCols, label);
+  if(bufs.length > 1){
+    const lastResolved = buildAliasResolver(Object.keys(rowsRaw[rowsRaw.length-1]), aliasMap);
+    validateColumns(lastResolved, requiredCols, label+' (último arquivo)');
+  }
+  if(bufs.length === 1) return {rows: rowsRaw, resolved, duplicatas: 0};
+  const seen = new Set();
+  const rows = [];
+  let duplicatas = 0;
+  for(const row of rowsRaw){
+    const key = keyFields.map(f=>String(getVal(row, resolved[f]) ?? '')).join('|');
+    if(seen.has(key)){ duplicatas++; continue; }
+    seen.add(key);
+    rows.push(row);
+  }
+  return {rows, resolved, duplicatas};
+}
+
+async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, cicloId, cicloNumero, dataAbertura, dataPrevistaTermino, prioridadeConfig}){
   post('progress', {stage:'Lendo planilhas...', pct:2});
   const wb390 = XLSX.read(buf390, {type:'array', cellDates:true});
-  const wbCong = XLSX.read(bufCongelada, {type:'array', cellDates:true});
-  const wb278 = XLSX.read(buf278, {type:'array', cellDates:true});
-  const wb051 = XLSX.read(buf051, {type:'array', cellDates:true});
-
   const rows390 = sheetToRows(wb390);
-  const rowsCong = sheetToRows(wbCong);
-  const rows278 = sheetToRows(wb278);
-  const rows051 = sheetToRows(wb051);
-
-  // QRY0843 pode vir em vários arquivos (a query de origem tem limite de período por
-  // extração). Concatena todos e deduplica por linha, já que exports em pedaços
-  // costumam se sobrepor nas bordas do período.
-  post('progress', {stage:'Lendo QRY0843 ('+bufs843.length+' arquivo(s))...', pct:4});
-  let rows843Raw = [];
-  for(const buf of bufs843){
-    const wb843 = XLSX.read(buf, {type:'array', cellDates:true});
-    rows843Raw = rows843Raw.concat(sheetToRows(wb843));
-  }
-  if(!rows843Raw.length) throw new Error('QRY0843: planilha vazia.');
-  const r843Peek = buildAliasResolver(Object.keys(rows843Raw[0]), ALIAS_843);
-  validateColumns(r843Peek, ['local','item','idConferencia','qtFis','usuario'], 'QRY0843');
-  if(bufs843.length > 1 && Object.keys(rows843Raw[0]).length){
-    // valida também a última linha lida, caso as colunas variem entre arquivos concatenados
-    const lastPeek = buildAliasResolver(Object.keys(rows843Raw[rows843Raw.length-1]), ALIAS_843);
-    validateColumns(lastPeek, ['local','item','idConferencia','qtFis','usuario'], 'QRY0843 (último arquivo)');
-  }
-  const dedupSeen = new Set();
-  const rows843 = [];
-  let duplicatas = 0;
-  for(const row of rows843Raw){
-    const key = [
-      getVal(row, r843Peek.local), getVal(row, r843Peek.idConferencia), getVal(row, r843Peek.item),
-      getVal(row, r843Peek.usuario), getVal(row, r843Peek.dataFimContagem), getVal(row, r843Peek.dataInicioContagem)
-    ].map(v=>String(v??'')).join('|');
-    if(dedupSeen.has(key)){ duplicatas++; continue; }
-    dedupSeen.add(key);
-    rows843.push(row);
-  }
-  if(duplicatas) post('progress', {stage:'Removidas '+duplicatas+' linha(s) duplicada(s) entre arquivos da QRY0843...', pct:6});
-
   if(!rows390.length) throw new Error('QRY0390: planilha vazia.');
-  if(!rowsCong.length) throw new Error('Base congelada: planilha vazia.');
-  if(!rows278.length) throw new Error('SIGEQ278: planilha vazia.');
-  if(!rows051.length) throw new Error('ZBIQ0051: planilha vazia.');
-
   const r390 = buildAliasResolver(Object.keys(rows390[0]), ALIAS_390);
-  const r843 = buildAliasResolver(Object.keys(rows843[0]), ALIAS_843);
-  const rCong = buildAliasResolver(Object.keys(rowsCong[0]), ALIAS_CONGELADA);
-  const r278 = buildAliasResolver(Object.keys(rows278[0]), ALIAS_278);
-  const r051 = buildAliasResolver(Object.keys(rows051[0]), ALIAS_051);
-
   validateColumns(r390, ['item','local','quantidade'], 'QRY0390');
-  validateColumns(r843, ['local','item','idConferencia','qtFis','usuario'], 'QRY0843');
-  validateColumns(rCong, ['idLocal','noInventario'], 'Base congelada');
-  validateColumns(r278, ['item','precoCusto'], 'SIGEQ278');
-  validateColumns(r051, ['itemPai','itemComponente','inInterface'], 'ZBIQ0051');
+
+  // QRY0843, Base Congelada, SIGEQ278 e ZBIQ0051 podem vir em vários arquivos (a
+  // extração de origem tem limite de período/linhas, ou os dados chegam em pedaços por
+  // ciclo). Concatena tudo e deduplica por uma chave natural de cada planilha.
+  post('progress', {stage:'Lendo QRY0843 ('+bufs843.length+' arquivo(s))...', pct:4});
+  const m843 = readMultiSheet(bufs843, ALIAS_843, ['local','item','idConferencia','qtFis','usuario'], 'QRY0843',
+    ['local','idConferencia','item','usuario','dataFimContagem','dataInicioContagem']);
+  const rows843 = m843.rows, r843 = m843.resolved;
+
+  post('progress', {stage:'Lendo Base Congelada ('+bufsCongelada.length+' arquivo(s))...', pct:5});
+  const mCong = readMultiSheet(bufsCongelada, ALIAS_CONGELADA, ['idLocal','noInventario'], 'Base congelada', ['idLocal']);
+  const rowsCong = mCong.rows, rCong = mCong.resolved;
+
+  post('progress', {stage:'Lendo SIGEQ278 ('+bufs278.length+' arquivo(s))...', pct:6});
+  const m278 = readMultiSheet(bufs278, ALIAS_278, ['item','precoCusto'], 'SIGEQ278', ['item']);
+  const rows278 = m278.rows, r278 = m278.resolved;
+
+  post('progress', {stage:'Lendo ZBIQ0051 ('+bufs051.length+' arquivo(s))...', pct:7});
+  const m051 = readMultiSheet(bufs051, ALIAS_051, ['itemPai','itemComponente','inInterface'], 'ZBIQ0051', ['itemComponente']);
+  const rows051 = m051.rows, r051 = m051.resolved;
+
+  const duplicatasTotais = m843.duplicatas + mCong.duplicatas + m278.duplicatas + m051.duplicatas;
+  if(duplicatasTotais) post('progress', {stage:'Removidas '+duplicatasTotais+' linha(s) duplicada(s) entre arquivos importados...', pct:8});
 
   post('progress', {stage:'Indexando estoque atual (QRY0390)...', pct:10});
   const map390 = new Map();

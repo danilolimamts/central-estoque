@@ -9,7 +9,7 @@ const IR = {
   ciclos:[], cicloAtivo:null,
   indicadores:null, importMeta:null,
   prioridadeConfig:null,
-  files:{f390:null, f843:[], fCong:null, f278:null, f051:null},
+  files:{f390:null, f843:[], fCong:[], f278:[], f051:[]},
   processing:false, progress:{stage:'', pct:0},
   divergencias:[], locais:[], contagens:[],
   divFilters:{search:'', local:''},
@@ -162,21 +162,25 @@ const IR_FILE_TYPES = [
   {key:'f278', label:'SIGEQ278', desc:'Preço de custo/compra por item', pattern:/278/i},
   {key:'f051', label:'ZBIQ0051', desc:'Item pai x componente (kits/múltiplos), S/N de valoração', pattern:/0051|zbiq/i}
 ];
+// Slots que aceitam vários arquivos por ciclo (concatenados e deduplicados no worker) —
+// úteis quando a extração de origem tem limite de período/linhas por consulta.
+const IR_MULTI_KEYS = new Set(['f843', 'fCong', 'f278', 'f051']);
 function irRenderImportacao(){
   const f = IR.files;
-  const allSelected = f.f390 && (f.f843 && f.f843.length) && f.fCong && f.f278 && f.f051;
+  const filled = (k)=> IR_MULTI_KEYS.has(k) ? !!(f[k] && f[k].length) : !!f[k];
+  const allSelected = IR_FILE_TYPES.every(t=>filled(t.key));
   const dz = (t)=>{
-    if(t.key==='f843'){
-      const files = f.f843||[];
-      return `<div class="dropzone ${files.length?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDrop843(event)">
-        <input type="file" id="ir-file-f843" accept=".xlsx,.xls" multiple style="display:none" onchange="irOnFiles843(this.files)">
+    if(IR_MULTI_KEYS.has(t.key)){
+      const files = f[t.key]||[];
+      return `<div class="dropzone ${files.length?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropMultiKey(event,'${t.key}')">
+        <input type="file" id="ir-file-${t.key}" accept=".xlsx,.xls" multiple style="display:none" onchange="irOnFilesMulti('${t.key}', this.files)">
         <div class="dz-icon">📄</div>
         <div class="dz-title">${t.label}</div>
         <div class="dz-desc">${t.desc}</div>
-        <p class="field-hint" style="margin:2px 0 8px;">O período não sai tudo de uma vez? Extraia em pedaços e selecione/arraste todos juntos — duplicatas entre eles são removidas automaticamente.</p>
-        ${files.length ? `<div class="dz-file-list">${files.map((file,i)=>`<div class="dz-file mono">${irEsc(file.name)} <button class="btn-link" onclick="irRemoveFile843(${i})">Remover</button></div>`).join('')}</div>
-              <button class="btn-link" onclick="document.getElementById('ir-file-f843').click()">+ Adicionar mais arquivos</button>`
-             : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-f843').click()">Selecionar (um ou vários)</button>`}
+        <p class="field-hint" style="margin:2px 0 8px;">Não sai tudo de uma vez? Selecione/arraste vários arquivos juntos — duplicatas entre eles são removidas automaticamente.</p>
+        ${files.length ? `<div class="dz-file-list">${files.map((file,i)=>`<div class="dz-file mono">${irEsc(file.name)} <button class="btn-link" onclick="irRemoveFileMulti('${t.key}', ${i})">Remover</button></div>`).join('')}</div>
+              <button class="btn-link" onclick="document.getElementById('ir-file-${t.key}').click()">+ Adicionar mais arquivos</button>`
+             : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-${t.key}').click()">Selecionar (um ou vários)</button>`}
       </div>`;
     }
     const file = f[t.key];
@@ -192,7 +196,7 @@ function irRenderImportacao(){
   return `
     <div class="panel" ondragover="event.preventDefault()" ondrop="irOnDropMulti(event)">
       <h3>Importar planilhas</h3>
-      <p class="field-hint" style="margin-bottom:14px;">Arraste as planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo. A QRY0843 aceita vários arquivos (para quando o período precisa ser extraído em pedaços).</p>
+      <p class="field-hint" style="margin-bottom:14px;">Arraste as planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo. QRY0843, Base Congelada, SIGEQ278 e ZBIQ0051 aceitam vários arquivos (para quando os dados vêm em pedaços por ciclo).</p>
       <div class="dz-grid">${IR_FILE_TYPES.map(dz).join('')}</div>
       <div class="two-col" style="margin-top:16px;">
         <div><label>Número do ciclo</label><input type="number" id="ir-inp-ciclo" min="1" value="${(()=>{
@@ -236,19 +240,19 @@ function irClassifyFile(file){
 }
 function irOnFile(key, file){ if(!file) return; IR.files[key] = file; irRenderView(); }
 function irRemoveFile(key){ IR.files[key] = null; irRenderView(); }
-function irOnFiles843(fileList){
+function irOnFilesMulti(key, fileList){
   const files = Array.from(fileList||[]);
   if(!files.length) return;
-  IR.files.f843 = (IR.files.f843||[]).concat(files);
+  IR.files[key] = (IR.files[key]||[]).concat(files);
   irRenderView();
 }
-function irRemoveFile843(index){
-  IR.files.f843 = (IR.files.f843||[]).filter((_,i)=>i!==index);
+function irRemoveFileMulti(key, index){
+  IR.files[key] = (IR.files[key]||[]).filter((_,i)=>i!==index);
   irRenderView();
 }
-function irOnDrop843(e){
+function irOnDropMultiKey(e, key){
   e.preventDefault();
-  irOnFiles843(e.dataTransfer.files);
+  irOnFilesMulti(key, e.dataTransfer.files);
 }
 function irOnDropSingle(e, key){
   e.preventDefault();
@@ -262,7 +266,7 @@ function irOnDropMulti(e){
   let matched = 0, unmatched = [];
   for(const file of files){
     const key = irClassifyFile(file);
-    if(key==='f843'){ IR.files.f843 = (IR.files.f843||[]).concat([file]); matched++; }
+    if(key && IR_MULTI_KEYS.has(key)){ IR.files[key] = (IR.files[key]||[]).concat([file]); matched++; }
     else if(key){ IR.files[key] = file; matched++; }
     else unmatched.push(file.name);
   }
@@ -273,7 +277,7 @@ function irOnDropMulti(e){
 async function irProcessar(){
   if(IR.processing) return;
   const f = IR.files;
-  if(!(f.f390 && f.f843 && f.f843.length && f.fCong && f.f278 && f.f051)) return;
+  if(!(f.f390 && f.f843.length && f.fCong.length && f.f278.length && f.f051.length)) return;
   const numero = parseInt(document.getElementById('ir-inp-ciclo').value, 10);
   const dataAbertura = document.getElementById('ir-inp-abertura').value;
   const dataPrevistaTermino = document.getElementById('ir-inp-termino').value;
@@ -293,10 +297,12 @@ async function irProcessar(){
   IR.processing = true; IR.progress = {stage:'Lendo arquivos...', pct:0};
   irRenderView();
   try{
-    const [buf390, bufs843, bufCongelada, buf278, buf051] = await Promise.all([
+    const [buf390, bufs843, bufsCongelada, bufs278, bufs051] = await Promise.all([
       f.f390.arrayBuffer(),
       Promise.all(f.f843.map(file=>file.arrayBuffer())),
-      f.fCong.arrayBuffer(), f.f278.arrayBuffer(), f.f051.arrayBuffer()
+      Promise.all(f.fCong.map(file=>file.arrayBuffer())),
+      Promise.all(f.f278.map(file=>file.arrayBuffer())),
+      Promise.all(f.f051.map(file=>file.arrayBuffer()))
     ]);
     const worker = new Worker('js/worker.js');
     worker.onmessage = async (e)=>{
@@ -308,7 +314,7 @@ async function irProcessar(){
       } else if(msg.type==='done'){
         IR.processing = false; worker.terminate();
         await irSaveCiclo(ciclo);
-        IR.files = {f390:null, f843:[], fCong:null, f278:null, f051:null};
+        IR.files = {f390:null, f843:[], fCong:[], f278:[], f051:[]};
         IR.ciclos = await irGetAllCiclos();
         IR.cicloAtivo = IR.ciclos.find(c=>c.id===cicloId);
         await irLoadCicloData(cicloId);
@@ -318,10 +324,10 @@ async function irProcessar(){
     };
     worker.onerror = (err)=>{ IR.processing=false; irShowToast('Erro no worker: '+err.message, true); irRenderView(); };
     worker.postMessage({
-      type:'process', buf390, bufs843, bufCongelada, buf278, buf051,
+      type:'process', buf390, bufs843, bufsCongelada, bufs278, bufs051,
       cicloId, cicloNumero:numero, dataAbertura, dataPrevistaTermino,
       prioridadeConfig: IR.prioridadeConfig
-    }, [buf390, ...bufs843, bufCongelada, buf278, buf051]);
+    }, [buf390, ...bufs843, ...bufsCongelada, ...bufs278, ...bufs051]);
   }catch(err){
     IR.processing=false; irShowToast('Erro ao ler arquivos: '+err.message, true); irRenderView();
   }
