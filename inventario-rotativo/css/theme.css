@@ -50,10 +50,12 @@ button{ font-family:inherit; cursor:pointer; }
   overflow:hidden;
 }
 .sidebar.collapsed{ width:56px; }
-.sidebar .brand{ display:flex; align-items:center; gap:10px; padding:14px; border-bottom:1px solid rgba(255,255,255,.12); flex-shrink:0; }
-.brand-logo-chip{ background:#fff; border-radius:8px; padding:6px 9px; display:flex; align-items:center; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,.15); }
-.brand-logo-img{ height:32px; width:auto; display:block; }
-.sidebar .brand-name{ font-weight:700; font-size:13px; white-space:nowrap; overflow:hidden; color:rgba(255,255,255,.9); }
+.sidebar .brand{ display:flex; align-items:center; gap:8px; padding:14px; border-bottom:1px solid rgba(255,255,255,.12); flex-shrink:0; }
+.brand-text{ min-width:0; flex:1; }
+.sidebar.collapsed .brand-text{ display:none; }
+.brand-logo-chip{ background:#fff; border-radius:8px; padding:4px 6px; display:flex; align-items:center; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,.15); }
+.brand-logo-img{ height:24px; width:auto; display:block; }
+.sidebar .brand-name{ font-weight:700; font-size:12px; line-height:1.25; white-space:normal; overflow-wrap:break-word; color:rgba(255,255,255,.9); min-width:0; flex:1; }
 .sidebar .brand-sub{ font-size:10px; color:rgba(255,255,255,.6); white-space:nowrap; }
 .sidebar.collapsed .brand-logo-chip{ display:none; }
 .sidebar-toggle{ background:none; border:none; color:#fff; opacity:.7; padding:4px; margin-left:auto; }
@@ -321,8 +323,16 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .dz-title{ font-weight:700; font-size:13px; }
 .dz-desc{ font-size:11px; color:var(--ink-soft); margin-bottom:6px; }
 .dz-file{ font-size:10.5px; word-break:break-all; }
-.dz-file-list{ display:flex; flex-direction:column; gap:3px; width:100%; margin-bottom:4px; max-height:110px; overflow-y:auto; }
-.dz-file-list .dz-file{ text-align:left; background:var(--surface); border-radius:4px; padding:3px 6px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
+.dz-multi{ text-align:left; align-items:stretch; }
+.dz-period-list{ display:flex; flex-direction:column; gap:4px; width:100%; margin-bottom:6px; max-height:220px; overflow-y:auto; }
+.dz-period-row{
+  display:flex; align-items:center; gap:6px; background:var(--surface); border-radius:5px; padding:5px 7px;
+  border:1px solid var(--line); flex-wrap:wrap;
+}
+.dz-period-row.has-file{ border-color:var(--orange); }
+.dz-period-label{ font-size:10px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; min-width:64px; }
+.dz-period-row .dz-file{ flex:1; min-width:0; }
+.dz-period-row .btn-link{ font-size:10.5px; white-space:nowrap; }
 
 .progress-wrap{ margin-top:16px; }
 .progress-stage{ font-size:12px; color:var(--ink-soft); margin-bottom:6px; }
