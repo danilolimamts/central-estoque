@@ -389,12 +389,6 @@ const IR_INDICADORES_VERSION = 5; // mantido em sincronia com worker.js
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  const avisoDesatualizado = (ind._v||0) < IR_INDICADORES_VERSION
-    ? `<div class="panel" style="border-left:4px solid var(--orange);background:var(--orange-light);">
-        <strong>⚠️ Dados desatualizados.</strong> Este ciclo foi processado com uma versão anterior do sistema.
-        Vá em <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> e reprocesse as mesmas planilhas pra atualizar todos os números e gráficos.
-      </div>`
-    : '';
   // Cada bloco tem sempre 3 bullets, no mesmo formato: ícone + acurácia (com meta),
   // + volume principal, + divergência/pendência. Os demais indicadores (itens
   // divergentes, recontagens, tempo médio etc.) continuam na aba Indicadores.
@@ -420,7 +414,6 @@ function irRenderDashboard(){
     irKpiTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
   );
   return `
-    ${avisoDesatualizado}
     <div class="form-actions" style="margin:0 0 12px;">
       <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>
