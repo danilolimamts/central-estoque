@@ -409,11 +409,6 @@ function irRenderDashboard(){
     irKpiTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
     irKpiTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
   );
-  const blocoItens = irKpiBlock('purple','🔢','Itens',
-    irKpiTile('📋', irFmtInt(ind.itensContados), 'Itens Contados', '', 'SKUs distintos verificados') +
-    irKpiTile('⚠️', irFmtInt(ind.itensDivergentes), 'Itens Divergentes', 'bad', 'de '+irFmtInt(ind.itensContados)+' contados') +
-    irKpiTile('📉', irFmtPct(ind.itensContados>0 ? 1-(ind.itensDivergentes/ind.itensContados) : 1), 'Acerto por Item', ind.itensContados>0 && (1-(ind.itensDivergentes/ind.itensContados))>=ind.meta?'good':'bad', metaHint)
-  );
   const blocoValor = irKpiBlock('black','💰','Valor',
     irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
     irKpiTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
@@ -430,7 +425,7 @@ function irRenderDashboard(){
       <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>
     <div class="kpi-blocks">
-      ${blocoPecas}${blocoLocais}${blocoItens}${blocoValor}${blocoCiclo}
+      ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
     ${irRenderStatusInventarioPanel(ind)}
     ${irRenderPorRuaPanel(ind)}
