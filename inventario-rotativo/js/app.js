@@ -9,7 +9,7 @@ const IR = {
   ciclos:[], cicloAtivo:null,
   indicadores:null, importMeta:null,
   prioridadeConfig:null,
-  files:{f390:null, f843:[], fCong:[], f278:[], f051:[]},
+  files:{f390:null, f843:[null,null,null,null], fCong:[null,null,null,null], f278:[null,null,null,null], f051:[null,null,null,null]},
   processing:false, progress:{stage:'', pct:0},
   divergencias:[], locais:[], contagens:[],
   divFilters:{search:'', local:''},
@@ -163,24 +163,35 @@ const IR_FILE_TYPES = [
   {key:'f051', label:'ZBIQ0051', desc:'Item pai x componente (kits/múltiplos), S/N de valoração', pattern:/0051|zbiq/i}
 ];
 // Slots que aceitam vários arquivos por ciclo (concatenados e deduplicados no worker) —
-// úteis quando a extração de origem tem limite de período/linhas por consulta.
+// úteis quando a extração de origem tem limite de período/linhas por consulta, ou quando
+// o dado é importado por período (ex: trimestre dividido em partes). Cada arquivo ocupa
+// um "período" numerado; reimportar no mesmo período troca o arquivo daquele período.
 const IR_MULTI_KEYS = new Set(['f843', 'fCong', 'f278', 'f051']);
+const IR_MULTI_DEFAULT_SLOTS = 4;
 function irRenderImportacao(){
   const f = IR.files;
-  const filled = (k)=> IR_MULTI_KEYS.has(k) ? !!(f[k] && f[k].length) : !!f[k];
+  const filled = (k)=> IR_MULTI_KEYS.has(k) ? (f[k]||[]).some(Boolean) : !!f[k];
   const allSelected = IR_FILE_TYPES.every(t=>filled(t.key));
   const dz = (t)=>{
     if(IR_MULTI_KEYS.has(t.key)){
-      const files = f[t.key]||[];
-      return `<div class="dropzone ${files.length?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropMultiKey(event,'${t.key}')">
-        <input type="file" id="ir-file-${t.key}" accept=".xlsx,.xls" multiple style="display:none" onchange="irOnFilesMulti('${t.key}', this.files)">
+      const slots = f[t.key]||[];
+      return `<div class="dropzone dz-multi ${slots.some(Boolean)?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropMultiKey(event,'${t.key}')">
         <div class="dz-icon">📄</div>
         <div class="dz-title">${t.label}</div>
         <div class="dz-desc">${t.desc}</div>
-        <p class="field-hint" style="margin:2px 0 8px;">Não sai tudo de uma vez? Selecione/arraste vários arquivos juntos — duplicatas entre eles são removidas automaticamente.</p>
-        ${files.length ? `<div class="dz-file-list">${files.map((file,i)=>`<div class="dz-file mono">${irEsc(file.name)} <button class="btn-link" onclick="irRemoveFileMulti('${t.key}', ${i})">Remover</button></div>`).join('')}</div>
-              <button class="btn-link" onclick="document.getElementById('ir-file-${t.key}').click()">+ Adicionar mais arquivos</button>`
-             : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-${t.key}').click()">Selecionar (um ou vários)</button>`}
+        <p class="field-hint" style="margin:2px 0 8px;">Um arquivo por período do ciclo. Se um relatório mudar, reimporte no mesmo período pra substituir.</p>
+        <div class="dz-period-list">
+          ${slots.map((file,i)=>`<div class="dz-period-row ${file?'has-file':''}">
+            <span class="dz-period-label">Período ${i+1}</span>
+            <input type="file" id="ir-file-${t.key}-${i}" accept=".xlsx,.xls" style="display:none" onchange="irSetSlotFile('${t.key}', ${i}, this.files[0])">
+            ${file
+              ? `<span class="dz-file mono">${irEsc(file.name)}</span>
+                 <button class="btn-link" onclick="document.getElementById('ir-file-${t.key}-${i}').click()">Trocar</button>
+                 <button class="btn-link" onclick="irRemoveSlot('${t.key}', ${i})">Remover</button>`
+              : `<button class="btn-link" onclick="document.getElementById('ir-file-${t.key}-${i}').click()">Selecionar</button>`}
+          </div>`).join('')}
+        </div>
+        <button class="btn-link" onclick="irAddSlot('${t.key}')">+ Adicionar período</button>
       </div>`;
     }
     const file = f[t.key];
@@ -240,19 +251,38 @@ function irClassifyFile(file){
 }
 function irOnFile(key, file){ if(!file) return; IR.files[key] = file; irRenderView(); }
 function irRemoveFile(key){ IR.files[key] = null; irRenderView(); }
-function irOnFilesMulti(key, fileList){
-  const files = Array.from(fileList||[]);
-  if(!files.length) return;
-  IR.files[key] = (IR.files[key]||[]).concat(files);
+// Slots multi-arquivo: cada posição do array é um "período" — pode estar vazia (null)
+// até o usuário selecionar um arquivo pra ela. Reimportar na mesma posição substitui.
+function irSetSlotFile(key, index, file){
+  if(!file) return;
+  if(!IR.files[key]) IR.files[key] = [];
+  IR.files[key][index] = file;
   irRenderView();
 }
-function irRemoveFileMulti(key, index){
-  IR.files[key] = (IR.files[key]||[]).filter((_,i)=>i!==index);
+function irRemoveSlot(key, index){
+  IR.files[key].splice(index, 1);
+  if(!IR.files[key].length) IR.files[key].push(null);
+  irRenderView();
+}
+function irAddSlot(key){
+  IR.files[key].push(null);
+  irRenderView();
+}
+// Encaixa arquivos soltos nos primeiros períodos vazios; cria períodos novos se faltar espaço.
+function irAssignFilesToSlots(key, files){
+  if(!files.length) return;
+  if(!IR.files[key]) IR.files[key] = [];
+  const arr = IR.files[key];
+  let fi = 0;
+  for(let i=0; i<arr.length && fi<files.length; i++){
+    if(!arr[i]) arr[i] = files[fi++];
+  }
+  while(fi<files.length) arr.push(files[fi++]);
   irRenderView();
 }
 function irOnDropMultiKey(e, key){
   e.preventDefault();
-  irOnFilesMulti(key, e.dataTransfer.files);
+  irAssignFilesToSlots(key, Array.from(e.dataTransfer.files||[]));
 }
 function irOnDropSingle(e, key){
   e.preventDefault();
@@ -264,12 +294,14 @@ function irOnDropMulti(e){
   const files = Array.from(e.dataTransfer.files || []);
   if(!files.length) return;
   let matched = 0, unmatched = [];
+  const porChave = {};
   for(const file of files){
     const key = irClassifyFile(file);
-    if(key && IR_MULTI_KEYS.has(key)){ IR.files[key] = (IR.files[key]||[]).concat([file]); matched++; }
+    if(key && IR_MULTI_KEYS.has(key)){ (porChave[key]=porChave[key]||[]).push(file); matched++; }
     else if(key){ IR.files[key] = file; matched++; }
     else unmatched.push(file.name);
   }
+  for(const key in porChave) irAssignFilesToSlots(key, porChave[key]);
   irRenderView();
   if(matched) irShowToast(matched+' arquivo(s) reconhecido(s) automaticamente.');
   if(unmatched.length) irShowToast('Não consegui identificar: '+unmatched.join(', ')+'. Selecione manualmente.', true);
@@ -277,7 +309,9 @@ function irOnDropMulti(e){
 async function irProcessar(){
   if(IR.processing) return;
   const f = IR.files;
-  if(!(f.f390 && f.f843.length && f.fCong.length && f.f278.length && f.f051.length)) return;
+  const files843 = f.f843.filter(Boolean), filesCong = f.fCong.filter(Boolean),
+        files278 = f.f278.filter(Boolean), files051 = f.f051.filter(Boolean);
+  if(!(f.f390 && files843.length && filesCong.length && files278.length && files051.length)) return;
   const numero = parseInt(document.getElementById('ir-inp-ciclo').value, 10);
   const dataAbertura = document.getElementById('ir-inp-abertura').value;
   const dataPrevistaTermino = document.getElementById('ir-inp-termino').value;
@@ -299,10 +333,10 @@ async function irProcessar(){
   try{
     const [buf390, bufs843, bufsCongelada, bufs278, bufs051] = await Promise.all([
       f.f390.arrayBuffer(),
-      Promise.all(f.f843.map(file=>file.arrayBuffer())),
-      Promise.all(f.fCong.map(file=>file.arrayBuffer())),
-      Promise.all(f.f278.map(file=>file.arrayBuffer())),
-      Promise.all(f.f051.map(file=>file.arrayBuffer()))
+      Promise.all(files843.map(file=>file.arrayBuffer())),
+      Promise.all(filesCong.map(file=>file.arrayBuffer())),
+      Promise.all(files278.map(file=>file.arrayBuffer())),
+      Promise.all(files051.map(file=>file.arrayBuffer()))
     ]);
     const worker = new Worker('js/worker.js');
     worker.onmessage = async (e)=>{
@@ -314,7 +348,7 @@ async function irProcessar(){
       } else if(msg.type==='done'){
         IR.processing = false; worker.terminate();
         await irSaveCiclo(ciclo);
-        IR.files = {f390:null, f843:[], fCong:[], f278:[], f051:[]};
+        IR.files = {f390:null, f843:[null,null,null,null], fCong:[null,null,null,null], f278:[null,null,null,null], f051:[null,null,null,null]};
         IR.ciclos = await irGetAllCiclos();
         IR.cicloAtivo = IR.ciclos.find(c=>c.id===cicloId);
         await irLoadCicloData(cicloId);
