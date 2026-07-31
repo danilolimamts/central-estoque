@@ -11,7 +11,7 @@ const IR = {
   prioridadeConfig:null,
   files:{f390:null, f843:[null,null,null,null], fCong:[null,null,null,null], f278:[null,null,null,null], f051:[null,null,null,null]},
   processing:false, progress:{stage:'', pct:0},
-  divergencias:[], locais:[], contagens:[], historico:[],
+  divergencias:[], locais:[], contagens:[],
   divFilters:{search:'', local:''},
   auditFilters:{minPrioridade:0},
   prodFilters:{de:'', ate:''},
@@ -67,18 +67,6 @@ async function irLoadCicloData(cicloId){
   IR.divergencias = await irGetByCiclo(IR_STORES.divergencias, cicloId);
   IR.locais = await irGetByCiclo(IR_STORES.locais, cicloId);
   IR.contagens = await irGetByCiclo(IR_STORES.contagens, cicloId);
-  await irLoadHistorico();
-}
-// Indicadores de todos os ciclos, em ordem cronológica (por Data de abertura) — usado
-// pelos gráficos de evolução e pela comparação "vs ciclo anterior" do Dashboard.
-async function irLoadHistorico(){
-  const ordenados = IR.ciclos.slice().sort((a,b)=> new Date(a.dataAbertura) - new Date(b.dataAbertura));
-  const list = [];
-  for(const c of ordenados){
-    const ind = await irGetIndicadores(c.id);
-    if(ind) list.push({ciclo:c, ind});
-  }
-  IR.historico = list;
 }
 function irToggleSidebar(){ document.getElementById('sidebar').classList.toggle('collapsed'); }
 function irToggleTheme(){
@@ -398,352 +386,52 @@ function irKpiBlock(theme, icon, title, tilesHtml){
   </div>`;
 }
 const IR_INDICADORES_VERSION = 5; // mantido em sincronia com worker.js
-/* ---------- Dashboard Executivo premium (BI corporativo) ---------- */
-function irXAcuraciaGeral(ind){ return (ind.acuraciaPecas + ind.acuraciaLocal + ind.acuraciaValor) / 3; }
-function irXPrevIndicadores(){
-  const hist = IR.historico||[];
-  if(!IR.cicloAtivo) return null;
-  const idx = hist.findIndex(h=>h.ciclo.id===IR.cicloAtivo.id);
-  if(idx<=0) return null;
-  return hist[idx-1].ind;
-}
-function irXTrendPct(curr, prev){
-  if(prev===undefined || prev===null) return null;
-  const diff = (curr-prev)*100;
-  const dir = diff>0.05?'up':(diff<-0.05?'down':'flat');
-  return {dir, text:(diff>=0?'+':'')+diff.toFixed(1)+' p.p. vs ciclo anterior'};
-}
-function irXTrendCount(curr, prev){
-  if(prev===undefined || prev===null) return null;
-  const diff = curr-prev;
-  const dir = diff>0?'up':(diff<0?'down':'flat');
-  return {dir, text:(diff>=0?'+':'')+irFmtInt(Math.abs(diff))+' vs ciclo anterior'};
-}
-function irXTrendMoney(curr, prev){
-  if(prev===undefined || prev===null) return null;
-  const diff = curr-prev;
-  const dir = diff>0?'up':(diff<0?'down':'flat');
-  return {dir, text:(diff>=0?'+':'-')+irFmtMoney(Math.abs(diff))+' vs ciclo anterior'};
-}
-function irXTrendBadge(trend, goodDir){
-  if(!trend) return `<span class="xc-kpi-trend flat">— sem ciclo anterior</span>`;
-  const arrow = trend.dir==='up'?'↑':(trend.dir==='down'?'↓':'→');
-  const cls = trend.dir==='flat' ? 'flat' : (trend.dir===goodDir?'good':'bad');
-  return `<span class="xc-kpi-trend ${cls}">${arrow} ${trend.text}</span>`;
-}
-function irXKpi(o){
-  return `<div class="xc-kpi">
-    <div class="xc-kpi-head">
-      <div class="xc-kpi-icon" style="background:var(--xc-${o.tone}-soft);color:var(--xc-${o.tone});">${o.icon}</div>
-      ${o.trendHtml||''}
-    </div>
-    <div class="xc-kpi-label">${irEsc(o.label)}</div>
-    <div class="xc-kpi-value">${o.value}</div>
-    ${o.goalHtml?`<div class="xc-kpi-goal">${o.goalHtml}</div>`:''}
-    ${o.barPct!==undefined ? `<div class="xc-kpi-bar"><div class="xc-kpi-bar-fill" style="width:${Math.max(0,Math.min(100,o.barPct))}%;background:var(--xc-${o.barColor||o.tone});"></div></div>` : ''}
-  </div>`;
-}
-function irXThemeColors(){
-  const dark = (document.documentElement.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'))==='dark';
-  return dark
-    ? {grid:'#232B3D', axis:'#7C8AA5', track:'#1B2233', ink:'#F1F5F9'}
-    : {grid:'#E2E8F0', axis:'#94A3B8', track:'#F1F5F9', ink:'#0F172A'};
-}
-function irShowXTooltip(ev, ns, idx){
-  const html = ((IR._xdashTooltips||{})[ns]||[])[idx];
-  if(!html) return;
-  const tt = document.getElementById('irChartTooltip');
-  if(!tt) return;
-  tt.innerHTML = html;
-  tt.classList.remove('hidden');
-  irMoveDiaTooltip(ev);
-}
-/* Gráfico de linha/área — reutilizado pra "Evolução da Acurácia" (linha) e
-   "Evolução das Divergências" (área, fillOpacity maior). */
-function irXLineChart(points, opts){
-  opts = opts||{};
-  const tc = irXThemeColors();
-  const W = opts.w||600, H = opts.h||220;
-  const padL=40, padR=16, padT=16, padB=26;
-  const plotW=W-padL-padR, plotH=H-padT-padB;
-  const n = points.length;
-  if(!n) return `<p class="field-hint">Sem histórico suficiente ainda.</p>`;
-  const vals = points.map(p=>p.value);
-  const maxV = opts.max!==undefined ? opts.max : Math.max(1e-9, ...vals)*1.0;
-  const minV = opts.min!==undefined ? opts.min : Math.min(0, ...vals);
-  const span = (maxV-minV)||1;
-  const x = i => n<=1 ? padL+plotW/2 : padL + (i/(n-1))*plotW;
-  const y = v => padT + plotH - ((v-minV)/span)*plotH;
-  const gridY = [0,0.25,0.5,0.75,1].map(t=>{
-    const yy = padT+plotH*(1-t);
-    const val = minV + t*span;
-    return `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="${tc.grid}" stroke-width="1"/>
-      <text x="${(padL-6).toFixed(1)}" y="${(yy+3).toFixed(1)}" font-size="9" text-anchor="end" fill="${tc.axis}">${opts.fmtY ? opts.fmtY(val) : Math.round(val*100)+'%'}</text>`;
-  }).join('');
-  const linePath = points.map((p,i)=> (i===0?'M':'L')+x(i).toFixed(1)+','+y(p.value).toFixed(1)).join(' ');
-  const areaPath = linePath + ` L${x(n-1).toFixed(1)},${(padT+plotH).toFixed(1)} L${x(0).toFixed(1)},${(padT+plotH).toFixed(1)} Z`;
-  const ns = opts.ns||'line';
-  IR._xdashTooltips[ns] = [];
-  const dots = points.map((p,i)=>{
-    IR._xdashTooltips[ns][i] = `<div class="ct-title">${irEsc(p.label)}</div><table><tbody><tr><td>Valor</td><td class="mono">${opts.fmtY?opts.fmtY(p.value):irFmtPct(p.value)}</td></tr></tbody></table>`;
-    return `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="4" fill="${opts.color||'#2563EB'}" stroke="${opts.dotStroke||'#fff'}" stroke-width="2"
-      onmouseenter="irShowXTooltip(event,'${ns}',${i})" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()" style="cursor:pointer;"/>`;
-  }).join('');
-  const xLabels = points.map((p,i)=>`<text x="${x(i).toFixed(1)}" y="${H-8}" font-size="9.5" text-anchor="middle" fill="${tc.axis}">${irEsc(p.label)}</text>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="xMidYMid meet">
-    ${gridY}
-    <path d="${areaPath}" fill="${opts.color||'#2563EB'}" opacity="${opts.fillOpacity!==undefined?opts.fillOpacity:0.08}"/>
-    <path d="${linePath}" fill="none" stroke="${opts.color||'#2563EB'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    ${dots}
-    ${xLabels}
-  </svg>`;
-}
-function irXHBarChart(items, opts){
-  opts = opts||{};
-  const tc = irXThemeColors();
-  if(!items.length) return `<p class="field-hint">Sem divergências suficientes ainda.</p>`;
-  const W = opts.w||480;
-  const rowH = 26, gap=12;
-  const H = items.length*(rowH+gap)-gap+8;
-  const maxV = Math.max(1, ...items.map(i=>i.value));
-  const labelW = opts.labelW||64;
-  const valLabelW = 46;
-  const plotW = W-labelW-valLabelW;
-  const ns = opts.ns||'bar';
-  IR._xdashTooltips[ns] = [];
-  const bars = items.map((it,i)=>{
-    const yy = 4+i*(rowH+gap);
-    const w = Math.max(2, (it.value/maxV)*plotW);
-    IR._xdashTooltips[ns][i] = `<div class="ct-title">${irEsc(it.label)}</div><table><tbody><tr><td>${irEsc(opts.unit||'Peças divergentes')}</td><td class="mono">${irFmtInt(it.value)}</td></tr></tbody></table>`;
-    return `<g onmouseenter="irShowXTooltip(event,'${ns}',${i})" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()" style="cursor:pointer;">
-      <text x="0" y="${(yy+rowH*0.68).toFixed(1)}" font-size="10.5" fill="${tc.ink}" font-weight="600">${irEsc(it.label)}</text>
-      <rect x="${labelW}" y="${yy.toFixed(1)}" width="${plotW.toFixed(1)}" height="${rowH}" rx="6" fill="${tc.track}"/>
-      <rect x="${labelW}" y="${yy.toFixed(1)}" width="${w.toFixed(1)}" height="${rowH}" rx="6" fill="${opts.color||'#2563EB'}"/>
-      <text x="${(labelW+plotW+8).toFixed(1)}" y="${(yy+rowH*0.68).toFixed(1)}" font-size="10.5" fill="${tc.ink}" font-weight="700">${irFmtInt(it.value)}</text>
-    </g>`;
-  }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${bars}</svg>`;
-}
-function irXGauge(pct, opts){
-  opts = opts||{};
-  const tc = irXThemeColors();
-  const W=240,H=148, cx=120, cy=128, r=98;
-  const p = Math.max(0,Math.min(1,pct));
-  const angle = Math.PI - p*Math.PI;
-  const polar = ang=>({x:cx+r*Math.cos(ang), y:cy-r*Math.sin(ang)});
-  const startPt = polar(Math.PI), endPt = polar(0), valPt = polar(angle);
-  const bgArc = `M${startPt.x.toFixed(1)},${startPt.y.toFixed(1)} A${r},${r} 0 0 1 ${endPt.x.toFixed(1)},${endPt.y.toFixed(1)}`;
-  const largeArc = p>0.5?1:0;
-  const valArc = `M${startPt.x.toFixed(1)},${startPt.y.toFixed(1)} A${r},${r} 0 ${largeArc} 1 ${valPt.x.toFixed(1)},${valPt.y.toFixed(1)}`;
-  const color = opts.color || '#2563EB';
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
-    <path d="${bgArc}" fill="none" stroke="${tc.track}" stroke-width="18" stroke-linecap="round"/>
-    ${p>0 ? `<path d="${valArc}" fill="none" stroke="${color}" stroke-width="18" stroke-linecap="round"/>` : ''}
-    <text x="${cx}" y="${cy-16}" font-size="30" font-weight="800" text-anchor="middle" fill="${tc.ink}">${Math.round(p*100)}%</text>
-    <text x="${cx}" y="${cy+6}" font-size="10.5" text-anchor="middle" fill="${tc.axis}">${irEsc(opts.label||'')}</text>
-  </svg>`;
-}
-function irXTop10Locais(){
-  const map = new Map();
-  for(const d of IR.divergencias){
-    if(d.diferenca===0) continue;
-    let g = map.get(d.local);
-    if(!g){ g = {local:d.local, itens:0, pecas:0, valor:0}; map.set(d.local, g); }
-    g.itens++; g.pecas += Math.abs(d.diferenca); g.valor += Math.abs(d.vlDivergencia);
-  }
-  return Array.from(map.values()).sort((a,b)=> (b.valor-a.valor) || (b.pecas-a.pecas)).slice(0,10);
-}
-function irXCategoriaBars(ind){
-  return (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.pecasDivergentes>0)
-    .slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes).slice(0,8)
-    .map(r=>({label:r.chave, value:r.pecasDivergentes}));
-}
-function irXInsights(ind){
-  const ag = irXAcuraciaGeral(ind);
-  const list = [];
-  list.push({
-    tone: ag>=ind.meta ? 'good':'bad', icon: ag>=ind.meta ? '✅':'⚠️',
-    text: `Acurácia geral ${ag>=ind.meta?'acima':'abaixo'} da meta em ${Math.abs((ag-ind.meta)*100).toFixed(1)} p.p. (${irFmtPct(ag)} vs meta ${irFmtPct(ind.meta)}).`
-  });
-  list.push({
-    tone: ind.itensDivergentes>0 ? 'warn':'good', icon: ind.itensDivergentes>0 ? '⚠️':'✅',
-    text: ind.itensDivergentes>0
-      ? `Locais apresentam ${irFmtInt(ind.itensDivergentes)} itens com divergência, de ${irFmtInt(ind.itensContados)} contados.`
-      : 'Nenhum item divergente identificado até o momento.'
-  });
-  if(ind.valorDivergenteAbsoluto>0){
-    list.push({tone:'warn', icon:'⚠️', text:`Valor divergente representa ${irFmtMoney(ind.valorDivergenteAbsoluto)} (soma absoluta).`});
-  }
-  list.push({
-    tone: ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':'warn'), icon: ind.eficiencia>=0.8?'✅':'⚠️',
-    text: `Eficiência operacional de ${irFmtPct(ind.eficiencia)} (qualidade x velocidade do ciclo).`
-  });
-  if(ind.qtdRecontagens>0){
-    list.push({tone:'warn', icon:'⚠️', text:`${irFmtInt(ind.qtdRecontagens)} locais precisaram de recontagem (mais de 2 rodadas).`});
-  }
-  return list;
-}
-function irXFooterSummary(ind){
-  const cicloTxt = irCicloLabel(IR.cicloAtivo);
-  const avancoTxt = irFmtPct(ind.andamentoCiclo);
-  const prazoTxt = ind.diasRestantes===null ? 'sem data prevista de término definida'
-    : (ind.diasRestantes>=0 ? `projeção de conclusão dentro do prazo (${irFmtInt(ind.diasRestantes)} dias restantes no ritmo atual)` : 'projeção de conclusão fora do prazo previsto');
-  const efTxt = ind.eficiencia>=0.8 ? 'acima da meta estabelecida' : (ind.eficiencia<0.5?'abaixo da meta estabelecida':'próxima da meta estabelecida');
-  return `${irEsc(cicloTxt)} encontra-se com ${avancoTxt} de avanço, ${prazoTxt}, e eficiência operacional ${efTxt} (${irFmtPct(ind.eficiencia)}).`;
-}
-function irXExportSnapshot(){
-  const ind = IR.indicadores;
-  if(!ind) return;
-  const rows = [
-    ['Indicador','Valor'],
-    ['Ciclo', irCicloLabel(IR.cicloAtivo)],
-    ['Acurácia Geral', irFmtPct(irXAcuraciaGeral(ind))],
-    ['Acurácia Peças', irFmtPct(ind.acuraciaPecas)],
-    ['Acurácia Local', irFmtPct(ind.acuraciaLocal)],
-    ['Acurácia Valor', irFmtPct(ind.acuraciaValor)],
-    ['Locais Auditados', irFmtInt(ind.locaisContadosTotal)],
-    ['Itens Divergentes', irFmtInt(ind.itensDivergentes)],
-    ['Valor Divergente (abs.)', irFmtMoney(ind.valorDivergenteAbsoluto)],
-    ['Eficiência do Ciclo', irFmtPct(ind.eficiencia)],
-    ['Peças Contadas', irFmtInt(ind.pecasContadas)],
-    ['Locais Pendentes', irFmtInt(ind.locaisPendentes)],
-    ['Dias Restantes', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes)],
-    ['Recontagens', irFmtInt(ind.qtdRecontagens)]
-  ];
-  const csv = '﻿'+rows.map(r=>r.map(v=>{ let s=String(v??''); if(s.includes(';')||s.includes('"')) s='"'+s.replace(/"/g,'""')+'"'; return s; }).join(';')).join('\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'dashboard_'+(IR.cicloAtivo?irCicloLabel(IR.cicloAtivo).replace(/\W+/g,'_'):'ciclo')+'.csv'; a.click(); URL.revokeObjectURL(a.href);
-}
-function irXDrillLocal(local){
-  IR.divFilters.local = local;
-  IR.divFilters.search = '';
-  irSwitchTab('divergencias');
-}
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  IR._xdashTooltips = {};
   const avisoDesatualizado = (ind._v||0) < IR_INDICADORES_VERSION
-    ? `<div class="panel" style="border-left:4px solid var(--orange);background:var(--orange-light);margin-bottom:16px;">
+    ? `<div class="panel" style="border-left:4px solid var(--orange);background:var(--orange-light);">
         <strong>⚠️ Dados desatualizados.</strong> Este ciclo foi processado com uma versão anterior do sistema.
         Vá em <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> e reprocesse as mesmas planilhas pra atualizar todos os números e gráficos.
       </div>`
     : '';
-
-  const ag = irXAcuraciaGeral(ind);
-  const prevInd = irXPrevIndicadores();
-  const metaHint = `Meta ${irFmtPct(ind.meta)}`;
-
-  // Topo executivo: título, seletor de ciclo, última atualização, indicador "online",
-  // exportar (CSV snapshot) e enviar boletim por e-mail (reaproveita irGerarRelatorioEmail).
-  const ordenados = IR.ciclos.slice().sort((a,b)=>b.numero-a.numero);
-  const cicloSelect = IR.ciclos.length>1
-    ? `<select class="xc-select" onchange="irFiltrarCiclo(this.value)" title="Selecionar ciclo">
-        ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id?'selected':''}>${irEsc(irCicloLabel(c))} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
-      </select>`
-    : `<span class="xc-select" style="cursor:default;">${irEsc(irCicloLabel(IR.cicloAtivo))}</span>`;
-  const atualizadoTxt = IR.importMeta && IR.importMeta.processedAt ? new Date(IR.importMeta.processedAt).toLocaleString('pt-BR') : '—';
-  const topo = `<div class="xc-topbar">
-    <div>
-      <h2>Dashboard Executivo de Inventário Rotativo</h2>
-      <p>Monitoramento em tempo real do ciclo vigente</p>
+  // Cada bloco tem sempre 3 bullets, no mesmo formato: ícone + acurácia (com meta),
+  // + volume principal, + divergência/pendência. Os demais indicadores (itens
+  // divergentes, recontagens, tempo médio etc.) continuam na aba Indicadores.
+  const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
+  const blocoPecas = irKpiBlock('orange','📦','Peças',
+    irKpiTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint) +
+    irKpiTile('📦', irFmtInt(ind.pecasContadas), 'Peças Contadas', '', 'total físico') +
+    irKpiTile('⚠️', irFmtInt(ind.pecasDivergentes), 'Peças Divergentes', 'bad', irFmtInt(ind.itensDivergentes)+' itens')
+  );
+  const blocoLocais = irKpiBlock('blue','📍','Locais',
+    irKpiTile('🎯', irFmtPct(ind.acuraciaLocal), 'Acurácia Local', ind.acuraciaLocal>=ind.meta?'good':'bad', metaHint) +
+    irKpiTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
+    irKpiTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
+  );
+  const blocoItens = irKpiBlock('purple','🔢','Itens',
+    irKpiTile('📋', irFmtInt(ind.itensContados), 'Itens Contados', '', 'SKUs distintos verificados') +
+    irKpiTile('⚠️', irFmtInt(ind.itensDivergentes), 'Itens Divergentes', 'bad', 'de '+irFmtInt(ind.itensContados)+' contados') +
+    irKpiTile('📉', irFmtPct(ind.itensContados>0 ? 1-(ind.itensDivergentes/ind.itensContados) : 1), 'Acerto por Item', ind.itensContados>0 && (1-(ind.itensDivergentes/ind.itensContados))>=ind.meta?'good':'bad', metaHint)
+  );
+  const blocoValor = irKpiBlock('black','💰','Valor',
+    irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
+    irKpiTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
+    irKpiTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líquido)', '', 'ganho − perda')
+  );
+  const blocoCiclo = irKpiBlock('neutral','🔄','Ciclo',
+    irKpiTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
+    irKpiTile('📅', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), 'Dias Restantes', '', 'no ritmo atual') +
+    irKpiTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
+  );
+  return `
+    ${avisoDesatualizado}
+    <div class="form-actions" style="margin:0 0 12px;">
+      <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>
-    <div class="xc-topbar-right">
-      ${cicloSelect}
-      <span class="xc-updated" title="Data do último processamento local">Atualizado em ${atualizadoTxt}</span>
-      <span class="xc-online" title="Processado 100% localmente no navegador — não há sincronização com servidor.">
-        <span class="xc-online-dot"></span>Online
-      </span>
-      <button class="xc-btn" onclick="irXExportSnapshot()">⬇️ Exportar</button>
-      <button class="xc-btn primary" onclick="irGerarRelatorioEmail()">📧 Enviar Relatório</button>
+    <div class="kpi-blocks">
+      ${blocoPecas}${blocoLocais}${blocoItens}${blocoValor}${blocoCiclo}
     </div>
-  </div>`;
-
-  // KPIs — linha 1 (visão geral) e linha 2 (operacional).
-  const row1 = `<div class="xc-kpi-row">
-    ${irXKpi({tone: ag>=ind.meta?'green':'red', icon:'🎯', label:'Acurácia Geral', value:irFmtPct(ag),
-      trendHtml:irXTrendBadge(irXTrendPct(ag, prevInd?irXAcuraciaGeral(prevInd):null), 'up'),
-      goalHtml:metaHint, barPct:ag*100})}
-    ${irXKpi({tone:'blue', icon:'📍', label:'Locais Auditados', value:irFmtInt(ind.locaisContadosTotal),
-      trendHtml:irXTrendBadge(irXTrendCount(ind.locaisContadosTotal, prevInd?.locaisContadosTotal), 'up'),
-      goalHtml:'de '+irFmtInt(ind.locaisCongelados)+' congelados', barPct: ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados*100 : 0})}
-    ${irXKpi({tone: ind.itensDivergentes>0?'amber':'green', icon:'⚠️', label:'Itens Divergentes', value:irFmtInt(ind.itensDivergentes),
-      trendHtml:irXTrendBadge(irXTrendCount(ind.itensDivergentes, prevInd?.itensDivergentes), 'down'),
-      goalHtml:'de '+irFmtInt(ind.itensContados)+' contados', barPct: ind.itensContados>0 ? ind.itensDivergentes/ind.itensContados*100 : 0})}
-    ${irXKpi({tone:'amber', icon:'💸', label:'Valor Divergente', value:irFmtMoney(ind.valorDivergenteAbsoluto),
-      trendHtml:irXTrendBadge(irXTrendMoney(ind.valorDivergenteAbsoluto, prevInd?.valorDivergenteAbsoluto), 'down'),
-      goalHtml:'líquido: '+irFmtMoney(ind.valorDivergenteLiquido)})}
-    ${irXKpi({tone: ind.eficiencia>=0.8?'green':(ind.eficiencia<0.5?'red':'amber'), icon:'⚡', label:'Eficiência do Ciclo', value:irFmtPct(ind.eficiencia),
-      trendHtml:irXTrendBadge(irXTrendPct(ind.eficiencia, prevInd?.eficiencia), 'up'),
-      goalHtml:'qualidade x velocidade', barPct:ind.eficiencia*100})}
-  </div>`;
-  const row2 = `<div class="xc-kpi-row">
-    ${irXKpi({tone:'gray', icon:'📦', label:'Peças Contadas', value:irFmtInt(ind.pecasContadas),
-      trendHtml:irXTrendBadge(irXTrendCount(ind.pecasContadas, prevInd?.pecasContadas), 'up'), goalHtml:'total físico'})}
-    ${irXKpi({tone:'amber', icon:'⏳', label:'Locais Pendentes', value:irFmtInt(ind.locaisPendentes),
-      trendHtml:irXTrendBadge(irXTrendCount(ind.locaisPendentes, prevInd?.locaisPendentes), 'down'),
-      goalHtml:'de '+irFmtInt(ind.locaisCongelados), barPct: ind.locaisCongelados>0 ? ind.locaisPendentes/ind.locaisCongelados*100 : 0})}
-    ${irXKpi({tone:'blue', icon:'📅', label:'Dias Restantes', value: ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes),
-      trendHtml: ind.diasRestantes===null ? '' : irXTrendBadge(irXTrendCount(ind.diasRestantes, prevInd?.diasRestantes), 'down'), goalHtml:'no ritmo atual'})}
-    ${irXKpi({tone:'red', icon:'🔁', label:'Recontagens', value:irFmtInt(ind.qtdRecontagens),
-      trendHtml:irXTrendBadge(irXTrendCount(ind.qtdRecontagens, prevInd?.qtdRecontagens), 'down'), goalHtml:'mais de 2 rodadas'})}
-  </div>`;
-
-  // Histórico (últimos até 6 ciclos, incluindo o atual) pros gráficos de evolução.
-  const histPontos = (IR.historico||[]).slice(-6);
-  const acuraciaPontos = histPontos.map(h=>({label:'C'+h.ciclo.numero+'/'+(irCicloAno(h.ciclo)||''), value:irXAcuraciaGeral(h.ind)}));
-  const divergPontos = histPontos.map(h=>({label:'C'+h.ciclo.numero+'/'+(irCicloAno(h.ciclo)||''), value:h.ind.itensDivergentes}));
-  const categoriaBars = irXCategoriaBars(ind);
-  const top10 = irXTop10Locais();
-  const insights = irXInsights(ind);
-
-  const chartsRow1 = `<div class="xdash-grid">
-    <div class="xc-panel xc-col-7">
-      <div class="xc-panel-title">Evolução da Acurácia</div>
-      <div class="xc-panel-sub">Acurácia geral (peças + local + valor) nos últimos ciclos.</div>
-      ${irXLineChart(acuraciaPontos, {ns:'linhaAcuracia', color:'#2563EB', fmtY:v=>irFmtPct(v), max:1, min:0})}
-    </div>
-    <div class="xc-panel xc-col-5">
-      <div class="xc-panel-title">Status do Ciclo</div>
-      <div class="xc-panel-sub">Percentual de locais concluídos em relação ao total congelado.</div>
-      <div class="xc-gauge-wrap">${irXGauge(ind.andamentoCiclo, {color:'#2563EB', label:irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)+' locais'})}</div>
-    </div>
-  </div>`;
-  const chartsRow2 = `<div class="xdash-grid">
-    <div class="xc-panel xc-col-5">
-      <div class="xc-panel-title">Divergências por Categoria</div>
-      <div class="xc-panel-sub">Peças divergentes por Log (Grupo Classe), maiores primeiro.</div>
-      ${irXHBarChart(categoriaBars, {ns:'barCategoria', color:'#EF4444'})}
-    </div>
-    <div class="xc-panel xc-col-7">
-      <div class="xc-panel-title">Evolução das Divergências</div>
-      <div class="xc-panel-sub">Itens divergentes por ciclo (área).</div>
-      ${irXLineChart(divergPontos, {ns:'areaDiverg', color:'#F59E0B', fillOpacity:0.28, fmtY:v=>irFmtInt(v), min:0})}
-    </div>
-  </div>`;
-  const top10Html = `<div class="xc-panel">
-    <div class="xc-panel-title">Top 10 Locais Críticos</div>
-    <div class="xc-panel-sub">Locais com maior divergência de valor/quantidade no ciclo. Clique numa linha pra ver os itens.</div>
-    ${top10.length ? `<div class="table-wrap"><table class="xc-table">
-      <thead><tr><th>#</th><th>Local</th><th>Itens Div.</th><th>Peças Div.</th><th>Valor Div.</th></tr></thead>
-      <tbody>${top10.map((r,i)=>`<tr class="clickable" onclick="irXDrillLocal('${irEsc(r.local)}')">
-        <td><span class="xc-rank-badge ${i<3?'top3':''}">${i+1}</span></td>
-        <td class="mono">${irEsc(r.local)}</td>
-        <td class="mono">${irFmtInt(r.itens)}</td>
-        <td class="mono">${irFmtInt(r.pecas)}</td>
-        <td class="mono">${irFmtMoney(r.valor)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>` : '<p class="field-hint">Nenhuma divergência registrada ainda.</p>'}
-  </div>`;
-  const insightsHtml = `<div class="xc-panel">
-    <div class="xc-panel-title">Insights Automáticos</div>
-    <div class="xc-panel-sub">Gerados a partir dos indicadores do ciclo vigente.</div>
-    <div class="xc-insights">${insights.map(i=>`<div class="xc-insight ${i.tone}"><span>${i.icon}</span><span>${i.text}</span></div>`).join('')}</div>
-  </div>`;
-  const footer = `<div class="xc-footer">${irXFooterSummary(ind)}</div>`;
-
-  const detalhamento = `
-    <div class="xc-section-divider">Detalhamento operacional</div>
     ${irRenderStatusInventarioPanel(ind)}
     ${irRenderPorRuaPanel(ind)}
     <div class="bi-grid-2">
@@ -754,21 +442,6 @@ function irRenderDashboard(){
     ${irRenderTopItensPanel(ind)}
     ${irRenderLogTablePanel(ind)}
     ${irRenderCalendarioPanel(ind)}
-  `;
-
-  return `
-    ${avisoDesatualizado}
-    <div class="xdash">
-      ${topo}
-      ${row1}
-      ${row2}
-      ${chartsRow1}
-      ${chartsRow2}
-      <div class="xdash-grid"><div class="xc-col-12">${top10Html}</div></div>
-      <div class="xdash-grid"><div class="xc-col-12">${insightsHtml}</div></div>
-      ${footer}
-    </div>
-    ${detalhamento}
   `;
 }
 const IR_META_DIARIA = 962;
