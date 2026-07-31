@@ -111,22 +111,50 @@ self.onmessage = async (e)=>{
 };
 function post(type, data){ self.postMessage({type, ...data}); }
 
-async function runPipeline({buf390, buf843, bufCongelada, buf278, buf051, cicloId, cicloNumero, dataAbertura, dataPrevistaTermino, prioridadeConfig}){
+async function runPipeline({buf390, bufs843, bufCongelada, buf278, buf051, cicloId, cicloNumero, dataAbertura, dataPrevistaTermino, prioridadeConfig}){
   post('progress', {stage:'Lendo planilhas...', pct:2});
   const wb390 = XLSX.read(buf390, {type:'array', cellDates:true});
-  const wb843 = XLSX.read(buf843, {type:'array', cellDates:true});
   const wbCong = XLSX.read(bufCongelada, {type:'array', cellDates:true});
   const wb278 = XLSX.read(buf278, {type:'array', cellDates:true});
   const wb051 = XLSX.read(buf051, {type:'array', cellDates:true});
 
   const rows390 = sheetToRows(wb390);
-  const rows843 = sheetToRows(wb843);
   const rowsCong = sheetToRows(wbCong);
   const rows278 = sheetToRows(wb278);
   const rows051 = sheetToRows(wb051);
 
+  // QRY0843 pode vir em vários arquivos (a query de origem tem limite de período por
+  // extração). Concatena todos e deduplica por linha, já que exports em pedaços
+  // costumam se sobrepor nas bordas do período.
+  post('progress', {stage:'Lendo QRY0843 ('+bufs843.length+' arquivo(s))...', pct:4});
+  let rows843Raw = [];
+  for(const buf of bufs843){
+    const wb843 = XLSX.read(buf, {type:'array', cellDates:true});
+    rows843Raw = rows843Raw.concat(sheetToRows(wb843));
+  }
+  if(!rows843Raw.length) throw new Error('QRY0843: planilha vazia.');
+  const r843Peek = buildAliasResolver(Object.keys(rows843Raw[0]), ALIAS_843);
+  validateColumns(r843Peek, ['local','item','idConferencia','qtFis','usuario'], 'QRY0843');
+  if(bufs843.length > 1 && Object.keys(rows843Raw[0]).length){
+    // valida também a última linha lida, caso as colunas variem entre arquivos concatenados
+    const lastPeek = buildAliasResolver(Object.keys(rows843Raw[rows843Raw.length-1]), ALIAS_843);
+    validateColumns(lastPeek, ['local','item','idConferencia','qtFis','usuario'], 'QRY0843 (último arquivo)');
+  }
+  const dedupSeen = new Set();
+  const rows843 = [];
+  let duplicatas = 0;
+  for(const row of rows843Raw){
+    const key = [
+      getVal(row, r843Peek.local), getVal(row, r843Peek.idConferencia), getVal(row, r843Peek.item),
+      getVal(row, r843Peek.usuario), getVal(row, r843Peek.dataFimContagem), getVal(row, r843Peek.dataInicioContagem)
+    ].map(v=>String(v??'')).join('|');
+    if(dedupSeen.has(key)){ duplicatas++; continue; }
+    dedupSeen.add(key);
+    rows843.push(row);
+  }
+  if(duplicatas) post('progress', {stage:'Removidas '+duplicatas+' linha(s) duplicada(s) entre arquivos da QRY0843...', pct:6});
+
   if(!rows390.length) throw new Error('QRY0390: planilha vazia.');
-  if(!rows843.length) throw new Error('QRY0843: planilha vazia.');
   if(!rowsCong.length) throw new Error('Base congelada: planilha vazia.');
   if(!rows278.length) throw new Error('SIGEQ278: planilha vazia.');
   if(!rows051.length) throw new Error('ZBIQ0051: planilha vazia.');

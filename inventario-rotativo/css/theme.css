@@ -321,6 +321,8 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .dz-title{ font-weight:700; font-size:13px; }
 .dz-desc{ font-size:11px; color:var(--ink-soft); margin-bottom:6px; }
 .dz-file{ font-size:10.5px; word-break:break-all; }
+.dz-file-list{ display:flex; flex-direction:column; gap:3px; width:100%; margin-bottom:4px; max-height:110px; overflow-y:auto; }
+.dz-file-list .dz-file{ text-align:left; background:var(--surface); border-radius:4px; padding:3px 6px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
 
 .progress-wrap{ margin-top:16px; }
 .progress-stage{ font-size:12px; color:var(--ink-soft); margin-bottom:6px; }
