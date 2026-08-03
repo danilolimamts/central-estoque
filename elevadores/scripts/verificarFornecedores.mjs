@@ -63,6 +63,26 @@ if (antes.linhas !== antes.descasadas) {
 console.log('grupos:', antes.fornecedores.slice(0, 4), '| toneladas:', antes.toneladas.slice(0, 3));
 console.log('linhas de componente:', antes.linhas, '|', antes.resumo);
 
+/* Kit cadastrado so com um lado: a linha do par entra com saldo zero. */
+await pagina.fill('input[placeholder^="Buscar item"]', '4570344');
+await pagina.waitForTimeout(400);
+const semPar = await pagina.evaluate(() => {
+  const cartao = document.querySelector('.eq-forn-cab').closest('.panel');
+  const linhas = [...cartao.querySelectorAll('tbody tr:not(.eq-forn-cab):not(.eq-forn-ton)')];
+  return linhas.map((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent.trim()));
+});
+const linhaBase = semPar.find((l) => l.includes('BASE'));
+if (!linhaBase) problemas.push('o kit so com coluna nao ganhou a linha da base');
+else if (!linhaBase.some((c) => /não cadastrado/i.test(c))) {
+  problemas.push(`a linha da base ausente nao foi marcada: ${JSON.stringify(linhaBase)}`);
+}
+await pagina.locator('.eq-forn-cab').first().scrollIntoViewIfNeeded();
+await pagina.waitForTimeout(200);
+await pagina.screenshot({ path: join(SAIDA, 'sem-par.png') });
+console.log('kit sem base:', JSON.stringify(semPar));
+await pagina.fill('input[placeholder^="Buscar item"]', '');
+await pagina.waitForTimeout(400);
+
 /* Foto ao passar o cursor no codigo do elevador. */
 await pagina.locator('.eq-forn-item button').first().hover();
 await pagina.waitForTimeout(400);
@@ -103,10 +123,44 @@ for (const esperado of ['Itens descasados no CD', 'No CD hoje:', 'Total ']) {
 }
 if (/[\u2013\u2014]/.test(mensagem)) problemas.push('a mensagem tem travessao');
 await pagina.screenshot({ path: join(SAIDA, 'compartilhar.png') });
-await pagina.keyboard.press('Escape');
-await pagina.waitForTimeout(300);
-if (await pagina.locator('.eq-compartilhar-texto').count()) problemas.push('o Esc nao fechou a janela de compartilhar');
 console.log('mensagem do e-mail:', mensagem.length, 'caracteres');
+
+/* Anexos: a imagem e a planilha saem do proprio navegador. */
+const baixados = [];
+pagina.on('download', async (d) => {
+  baixados.push(d.suggestedFilename());
+  await d.saveAs(join(SAIDA, d.suggestedFilename()));
+});
+await pagina.getByRole('button', { name: 'Baixar imagem' }).click();
+await pagina.waitForTimeout(3000);
+await pagina.getByRole('button', { name: 'Baixar Excel' }).click();
+await pagina.waitForTimeout(1500);
+if (!baixados.some((n) => n.endsWith('.png'))) problemas.push('a imagem nao foi gerada');
+if (!baixados.some((n) => n.endsWith('.xlsx'))) problemas.push('a planilha nao foi gerada');
+console.log('anexos:', baixados);
+
+await pagina.keyboard.press('Escape');
+await pagina.waitForTimeout(400);
+if (await pagina.locator('.eq-compartilhar-texto').count()) problemas.push('o Esc nao fechou a janela de compartilhar');
+
+/* Zoom: aumentar precisa crescer a tabela inteira, nao so o titulo. */
+const antesZoom = await pagina.evaluate(() => {
+  const f = document.querySelector('.eq-forn-cab').getBoundingClientRect();
+  const t = document.querySelector('.eq-forn-saldo').getBoundingClientRect();
+  return { faixa: Math.round(f.height), saldo: Math.round(t.width) };
+});
+for (let i = 0; i < 3; i++) await pagina.getByRole('button', { name: 'Aumentar a tela' }).click();
+await pagina.waitForTimeout(500);
+const depoisZoom = await pagina.evaluate(() => {
+  const f = document.querySelector('.eq-forn-cab').getBoundingClientRect();
+  const t = document.querySelector('.eq-forn-saldo').getBoundingClientRect();
+  return { faixa: Math.round(f.height), saldo: Math.round(t.width) };
+});
+if (depoisZoom.faixa <= antesZoom.faixa || depoisZoom.saldo <= antesZoom.saldo) {
+  problemas.push(`o zoom nao aumentou a tabela: ${JSON.stringify(antesZoom)} para ${JSON.stringify(depoisZoom)}`);
+}
+console.log('zoom 100% ->130%:', antesZoom, depoisZoom);
+await pagina.screenshot({ path: join(SAIDA, 'zoom.png') });
 
 await navegador.close();
 servidor.close();

@@ -308,7 +308,9 @@ export default function App() {
           </div>
         )}
 
-        <div className="page-scroll" style={{ fontSize: `${zoom}%` }}>
+        {/* zoom amplia a tela inteira: caixas, tabelas e graficos, nao so
+            o texto que usa medida relativa. */}
+        <div className="page-scroll" style={{ zoom: `${zoom}%` }}>
           {carregando ? (
             <Vazio icone="⏳">Carregando dados salvos…</Vazio>
           ) : !dados ? (

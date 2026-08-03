@@ -2,7 +2,7 @@
    Exportacoes em Excel (secao 12 do brief), geradas no proprio
    navegador com SheetJS. Nenhuma chamada de rede.
    ============================================================ */
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import type { Componente, Conjunto, Valoracao, Acao } from '../domain/tipos';
 
 function baixar(wb: XLSX.WorkBook, nome: string): void {

@@ -3,7 +3,7 @@
    tabela dinamica, componentes BOMBA/COMANDO/MOTOR, datas em formatos
    diferentes e acoes concluidas sem data). Usada para validar o app no
    navegador sem expor a planilha real do negocio. */
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 import { writeFileSync } from 'node:fs';
 
 const CAB = [

@@ -226,6 +226,7 @@ export function ItensPorFornecedor({
                           key={`${i.item}-${c.codigo}-${indice}`}
                           className={
                             (indice === 0 ? 'eq-forn-inicio ' : '') +
+                            (c.ausente ? 'eq-forn-falta ' : '') +
                             (i.situacao === 'DESCASADO' ? 'eq-forn-alerta' : '')
                           }
                         >
@@ -240,7 +241,7 @@ export function ItensPorFornecedor({
                             </>
                           )}
                           <Td mono>
-                            {c.codigo}
+                            {c.ausente ? <span className="eq-forn-ausente">não cadastrado</span> : c.codigo}
                             {c.paisQueUsam > 1 && (
                               <span
                                 className="eq-forn-repete"
@@ -250,9 +251,17 @@ export function ItensPorFornecedor({
                               </span>
                             )}
                           </Td>
-                          <Td style={{ fontSize: 11.5 }}>{c.nome || '—'}</Td>
+                          <Td style={{ fontSize: 11.5 }} {...(c.ausente ? { className: 'eq-forn-ausente' } : {})}>
+                            {c.nome || '—'}
+                          </Td>
                           <Td>
-                            <span className={`tag ${c.tipo === 'BASE' ? 'tag-blue' : 'tag-muted'}`}>{c.tipo}</span>
+                            <span
+                              className={`tag ${
+                                c.tipo === 'BASE' ? 'tag-blue' : c.tipo === 'COLUNA' ? 'tag-orange' : 'tag-muted'
+                              }`}
+                            >
+                              {c.tipo}
+                            </span>
                           </Td>
                           <Td>{c.sn === 'S' || c.sn === 'N' ? <SeloSN valor={c.sn} /> : '—'}</Td>
                           <td
@@ -299,6 +308,7 @@ export function ItensPorFornecedor({
         <CompartilharCompra
           mensagem={mensagem}
           assunto={`Itens descasados no CD - faltam ${total.colunas} coluna(s) e ${total.bases} base(s)`}
+          grupos={filtrados}
           aoFechar={() => setCompartilhando(false)}
         />
       )}

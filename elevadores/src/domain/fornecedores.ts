@@ -13,11 +13,14 @@ import { ratioDaTonelada } from '../config/regras';
 
 export type SituacaoItem = 'CASADO' | 'DESCASADO' | 'SEM ESTOQUE';
 
-/* Uma linha de componente do item pai (base ou coluna). */
+/* Uma linha de componente do item pai. Traz o kit inteiro, nao so a
+   base e a coluna: bomba, comando e motor tambem faltam no CD e o
+   comprador precisa ver. */
 export interface LinhaComponente {
   codigo: string;
   nome: string;
-  tipo: 'BASE' | 'COLUNA';
+  /* BASE, COLUNA ou o que vier na planilha (BOMBA, COMANDO, MOTOR...). */
+  tipo: string;
   /* Campo "in interface": o S deve ficar na coluna. */
   sn: string;
   cd: number;
@@ -26,6 +29,9 @@ export interface LinhaComponente {
      CD e o mesmo estoque nos dois lugares, entao a compra nao pode ser
      somada duas vezes. */
   paisQueUsam: number;
+  /* Linha criada pelo sistema porque o kit nao tem esse lado cadastrado.
+     Entra com saldo zero, para o comprador ver que falta o par. */
+  ausente?: boolean;
 }
 
 export interface ItemFornecedor {
@@ -47,6 +53,8 @@ export interface ItemFornecedor {
   situacao: SituacaoItem;
   comprarColuna: number;
   comprarBase: number;
+  /* Componentes do kit com saldo zero no CD, de qualquer tipo. */
+  semSaldo: number;
 }
 
 export interface GrupoTonelada {
@@ -81,10 +89,33 @@ function ordemTonelada(t: string): number {
   return parseFloat(String(t ?? '').replace(',', '.')) || 0;
 }
 
+/* Base primeiro, coluna depois, o resto do kit em seguida. */
+function ordemTipo(t: string): number {
+  return t === 'BASE' ? 0 : t === 'COLUNA' ? 1 : 2;
+}
+
 function fecharItem(item: ItemFornecedor): ItemFornecedor {
+  /* O kit sem um dos lados cadastrados ganha a linha com saldo zero: o
+     comprador precisa ver que ha 1 coluna e nenhuma base. */
+  for (const tipo of ['BASE', 'COLUNA'] as const) {
+    if (item.componentes.some((c) => c.tipo === tipo)) continue;
+    item.componentes.push({
+      codigo: '',
+      nome: `Sem ${tipo.toLowerCase()} cadastrada neste kit`,
+      tipo,
+      sn: '',
+      cd: 0,
+      reversa: 0,
+      paisQueUsam: 0,
+      ausente: true,
+    });
+  }
+
   item.componentes.sort(
-    (a, b) => a.tipo.localeCompare(b.tipo) || a.codigo.localeCompare(b.codigo)
+    (a, b) => ordemTipo(a.tipo) - ordemTipo(b.tipo) || a.tipo.localeCompare(b.tipo) ||
+      a.codigo.localeCompare(b.codigo)
   );
+  item.semSaldo = item.componentes.filter((c) => c.cd === 0).length;
   item.colunasNecessarias = item.bases * item.ratio;
   item.deficit = item.colunasNecessarias - item.colunas;
   item.completos = Math.max(0, Math.min(item.bases, Math.floor(item.colunas / item.ratio)));
@@ -109,9 +140,12 @@ function fecharItem(item: ItemFornecedor): ItemFornecedor {
   return item;
 }
 
-/* Monta a arvore Fornecedor -> Tonelada -> Item pai. Componentes que
-   nao sao base nem coluna (bomba, comando, motor) ficam de fora, pelo
-   mesmo criterio da equalizacao. */
+/* Monta a arvore Fornecedor -> Tonelada -> Item pai.
+
+   Entram os kits que tem base ou coluna, que sao os elevadores do
+   projeto. De cada kit vem o componente inteiro, incluindo bomba,
+   comando e motor: eles nao entram na conta do casamento, mas faltam
+   no CD do mesmo jeito e o comprador precisa ver. */
 export function listarPorFornecedor(componentes: Componente[]): GrupoFornecedor[] {
   const itens = new Map<string, ItemFornecedor>();
   const marcasPorFornecedor = new Map<string, Set<string>>();
@@ -120,7 +154,6 @@ export function listarPorFornecedor(componentes: Componente[]): GrupoFornecedor[
      saldo deles e o mesmo estoque, e a compra nao pode dobrar. */
   const paisPorComponente = new Map<string, Set<string>>();
   for (const c of componentes) {
-    if (tipoComponente(c) === 'OUTRO') continue;
     const codigo = String(c.itemComponente ?? '').trim();
     const pai = String(c.itemVolMultiplo ?? '').trim();
     if (!codigo || !pai) continue;
@@ -129,11 +162,21 @@ export function listarPorFornecedor(componentes: Componente[]): GrupoFornecedor[
     paisPorComponente.set(codigo, pais);
   }
 
+  /* Quais itens pai sao elevadores do projeto: os que tem base ou
+     coluna. O resto da planilha nao entra na lista de compra. */
+  const kits = new Set<string>();
   for (const c of componentes) {
-    const tipo = tipoComponente(c);
-    if (tipo === 'OUTRO') continue;
+    if (tipoComponente(c) === 'OUTRO') continue;
+    const pai = String(c.itemVolMultiplo ?? '').trim();
+    if (pai) kits.add(pai);
+  }
+
+  for (const c of componentes) {
     const codigoPai = String(c.itemVolMultiplo ?? '').trim();
-    if (!codigoPai) continue;
+    if (!codigoPai || !kits.has(codigoPai)) continue;
+    const bruto = tipoComponente(c);
+    const tipo =
+      bruto === 'OUTRO' ? String(c.componenteBaseColuna ?? '').trim().toUpperCase() || 'OUTRO' : bruto;
 
     const fornecedor = nomeDoFornecedor(c);
     let item = itens.get(codigoPai);
@@ -154,6 +197,7 @@ export function listarPorFornecedor(componentes: Componente[]): GrupoFornecedor[
         situacao: 'SEM ESTOQUE',
         comprarColuna: 0,
         comprarBase: 0,
+        semSaldo: 0,
       };
       itens.set(codigoPai, item);
     }
@@ -168,8 +212,9 @@ export function listarPorFornecedor(componentes: Componente[]): GrupoFornecedor[
       reversa: c.reversa,
       paisQueUsam: paisPorComponente.get(codigo)?.size ?? 1,
     });
+    /* So base e coluna entram na conta do casamento. */
     if (tipo === 'BASE') item.bases += c.cd;
-    else item.colunas += c.cd;
+    else if (tipo === 'COLUNA') item.colunas += c.cd;
 
     const marcas = marcasPorFornecedor.get(fornecedor) ?? new Set<string>();
     if (c.marca) marcas.add(c.marca);
@@ -265,7 +310,11 @@ export function mensagemDeCompra(
         );
         for (const c of i.componentes) {
           const repete = c.paisQueUsam > 1 ? ` [serve ${c.paisQueUsam} elevadores]` : '';
-          linhas.push(`   ${c.tipo.padEnd(6)} ${c.codigo}  saldo ${c.cd}  ${c.nome}${repete}`);
+          const codigo = c.ausente ? '(sem cadastro)' : c.codigo;
+          linhas.push(`   ${c.tipo.padEnd(7)} ${codigo.padEnd(14)} saldo ${c.cd}  ${c.nome}${repete}`);
+        }
+        if (i.semSaldo > 0) {
+          linhas.push(`   ${i.semSaldo} componente(s) do kit estao com saldo zero no CD.`);
         }
       }
     }

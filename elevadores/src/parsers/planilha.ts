@@ -4,7 +4,7 @@
    EstoqueAtual e Cadastros tem centenas de milhares de linhas e
    travam a leitura - regressao 8.6), sempre com cellDates: true.
    ============================================================ */
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import type { Componente, Acao } from '../domain/tipos';
 import { lerMultiplos } from './lerMultiplos';
 import { lerProjeto } from './lerProjeto';

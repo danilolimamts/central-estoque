@@ -6,6 +6,8 @@ import {
   listarPorFornecedor, textoCompra, nomeDoFornecedor, mensagemDeCompra,
 } from '../src/domain/fornecedores';
 import type { Componente } from '../src/domain/tipos';
+import { planejarImagem, LARGURA } from '../src/export/imagemCompra';
+import { montarPlanilhaCompra } from '../src/export/excelCompra';
 
 function comp(p: Partial<Componente>): Componente {
   return {
@@ -86,16 +88,74 @@ describe('agrupamento por fornecedor', () => {
     expect(mr.comprarBase).toBe(0);
   });
 
-  it('componente fora do kit nao vira linha', () => {
+  it('traz o kit inteiro, inclusive a bomba, sem contar no casamento', () => {
     const grupos2 = listarPorFornecedor([
       ...MAQUINAS,
-      comp({ itemVolMultiplo: '865413', itemComponente: '999', componenteBaseColuna: 'BOMBA', cd: 40, fabricante: 'MAQUINAS RIBEIRO', toneladaFixa: '4 t' }),
+      comp({ itemVolMultiplo: '865413', itemComponente: '999', nomeItemComponente: 'BOMBA 4T', componenteBaseColuna: 'BOMBA', cd: 0, fabricante: 'MAQUINAS RIBEIRO', toneladaFixa: '4 t' }),
     ]);
     const item = grupos2
       .find((g) => g.fornecedor === 'MAQUINAS RIBEIRO')!
       .toneladas.find((t) => t.tonelada === '4 t')!.itens[0];
-    expect(item.componentes.map((c) => c.codigo)).not.toContain('999');
+    const bomba = item.componentes.find((c) => c.codigo === '999')!;
+    expect(bomba.tipo).toBe('BOMBA');
+    expect(bomba.cd).toBe(0);
+    // A bomba nao mexe na conta de base contra coluna.
     expect(item.colunas).toBe(1);
+    expect(item.comprarColuna).toBe(1);
+    // Mas conta como peca do kit sem saldo: a 965801 e a bomba.
+    expect(item.semSaldo).toBe(2);
+  });
+
+  it('item pai sem base nem coluna fica fora da lista', () => {
+    const grupos2 = listarPorFornecedor([
+      comp({ itemVolMultiplo: 'SOBOMBA', itemComponente: '77', componenteBaseColuna: 'BOMBA', cd: 5, fabricante: 'JM', toneladaFixa: '2 t' }),
+    ]);
+    expect(grupos2).toHaveLength(0);
+  });
+
+  it('base primeiro, coluna depois, o resto do kit no fim', () => {
+    const item = listarPorFornecedor([
+      ...MAQUINAS,
+      comp({ itemVolMultiplo: '865413', itemComponente: '999', componenteBaseColuna: 'BOMBA', cd: 3, fabricante: 'MAQUINAS RIBEIRO', toneladaFixa: '4 t' }),
+    ])
+      .find((g) => g.fornecedor === 'MAQUINAS RIBEIRO')!
+      .toneladas.find((t) => t.tonelada === '4 t')!.itens[0];
+    expect(item.componentes.map((c) => c.tipo)).toEqual(['BASE', 'COLUNA', 'COLUNA', 'BOMBA']);
+  });
+});
+
+describe('kit sem um dos lados cadastrado', () => {
+  /* O caso do 4570344: so existe a linha da coluna. O comprador precisa
+     ver a base com saldo zero, senao parece que o kit esta completo. */
+  const soColuna = listarPorFornecedor([
+    comp({ itemVolMultiplo: '4570344', nomeItemVolMultiplo: 'ELEVADOR DOUBLE LOCK', itemComponente: '4570497', inInterface: 'S', componenteBaseColuna: 'COLUNA', cd: 1, fabricante: 'MAQUINAS RIBEIRO', toneladaFixa: '4 t' }),
+  ]);
+  const item = soColuna[0].toneladas[0].itens[0];
+
+  it('cria a linha da base com saldo zero', () => {
+    const base = item.componentes.find((c) => c.tipo === 'BASE')!;
+    expect(base.cd).toBe(0);
+    expect(base.ausente).toBe(true);
+    expect(base.codigo).toBe('');
+    expect(base.nome).toMatch(/sem base cadastrada/i);
+  });
+
+  it('a linha criada nao inventa saldo nem muda a conta', () => {
+    expect(item.bases).toBe(0);
+    expect(item.colunas).toBe(1);
+    expect(item.situacao).toBe('DESCASADO');
+    expect(item.comprarBase).toBe(1);
+    expect(item.comprarColuna).toBe(1); // 1 base pede 2 colunas, ja ha 1
+  });
+
+  it('kit so com base ganha a linha da coluna', () => {
+    const soBase = listarPorFornecedor([
+      comp({ itemVolMultiplo: 'X1', itemComponente: 'B1', componenteBaseColuna: 'BASE', cd: 2, fabricante: 'JM', toneladaFixa: '2 t' }),
+    ])[0].toneladas[0].itens[0];
+    const coluna = soBase.componentes.find((c) => c.tipo === 'COLUNA')!;
+    expect(coluna.ausente).toBe(true);
+    expect(coluna.cd).toBe(0);
+    expect(soBase.comprarColuna).toBe(2);
   });
 });
 
@@ -174,5 +234,74 @@ describe('mensagem para o comprador', () => {
 
   it('nao usa travessao, para nao quebrar no corpo do e-mail', () => {
     expect(texto).not.toMatch(/[\u2013\u2014]/);
+  });
+});
+
+describe('plano da imagem da lista', () => {
+  const grupos = listarPorFornecedor(MAQUINAS);
+
+  it('abre cada fornecedor, cada tonelada e cada componente', () => {
+    const plano = planejarImagem(grupos, { data: new Date(2026, 7, 3) });
+    const tipos = plano.linhas.map((l) => l.tipo);
+    expect(tipos.filter((t) => t === 'fornecedor')).toHaveLength(2);
+    expect(tipos.filter((t) => t === 'tonelada')).toHaveLength(3); // 2 t, 4 t e 3,2 t
+    expect(plano.ocultas).toBe(0);
+    expect(plano.resumo).toContain('3 elevador(es)');
+    expect(plano.data).toBe('03/08/2026');
+  });
+
+  it('a altura cresce com o numero de linhas', () => {
+    const cheio = planejarImagem(grupos);
+    const vazio = planejarImagem([]);
+    expect(cheio.altura).toBeGreaterThan(vazio.altura);
+    expect(cheio.largura).toBe(LARGURA);
+  });
+
+  it('marca a primeira e a ultima linha de cada elevador, com o total no fim', () => {
+    const plano = planejarImagem(grupos);
+    const doItem = plano.linhas.filter(
+      (l): l is Extract<typeof l, { tipo: 'componente' }> => l.tipo === 'componente'
+    );
+    const primeiras = doItem.filter((l) => l.primeira);
+    const ultimas = doItem.filter((l) => l.ultima);
+    expect(primeiras).toHaveLength(3); // um por elevador
+    expect(ultimas).toHaveLength(3);
+    expect(ultimas[0].totalItem).toMatch(/base . \d+ coluna/);
+    /* So a primeira linha do elevador repete o codigo e a situacao. */
+    for (const l of doItem) {
+      if (!l.primeira) expect(l.item).toBe('');
+      if (!l.primeira) expect(l.situacao).toBe('');
+    }
+  });
+
+  it('corta por fornecedor inteiro quando passa do limite, e conta o resto', () => {
+    const plano = planejarImagem(grupos, { maxLinhas: 6 });
+    expect(plano.ocultas).toBeGreaterThan(0);
+    expect(plano.linhas.filter((l) => l.tipo === 'fornecedor')).toHaveLength(1);
+  });
+});
+
+describe('planilha da lista de compra', () => {
+  const wb = montarPlanilhaCompra(listarPorFornecedor(MAQUINAS), { data: new Date(2026, 7, 3) });
+  const aba = wb.Sheets[wb.SheetNames[0]];
+
+  it('tem uma aba com o titulo da marca e o cabecalho das colunas', () => {
+    expect(wb.SheetNames).toEqual(['Itens descasados']);
+    expect(String(aba.A1.v)).toContain('Itens descasados no CD');
+    expect(aba.A4.v).toBe('Item (elevador)');
+    expect(aba.G4.v).toBe('Saldo CD');
+  });
+
+  it('as celulas levam a formatacao, nao so o valor', () => {
+    expect((aba.A4.s as { fill: { fgColor: { rgb: string } } }).fill.fgColor.rgb).toBe('FA4616');
+    expect((aba.A1.s as { fill: { fgColor: { rgb: string } } }).fill.fgColor.rgb).toBe('001A72');
+    expect(aba['!cols']).toHaveLength(10);
+    expect(aba['!merges']!.length).toBeGreaterThan(0);
+  });
+
+  it('o saldo do componente entra como numero, para o Excel somar', () => {
+    const celulas = Object.keys(aba).filter((k) => /^G\d+$/.test(k));
+    const saldos = celulas.map((k) => aba[k]).filter((c) => c.t === 'n');
+    expect(saldos.length).toBeGreaterThan(0);
   });
 });

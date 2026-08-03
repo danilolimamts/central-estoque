@@ -82,12 +82,26 @@ export function componentesDemo(): Componente[] {
       // Componentes que nao entram no kit.
       if (i === 0) {
         saida.push(base({ ...comum, itemComponente: String(idComp++),
-          nomeItemComponente: `BOMBA ${m.marca}`, componenteBaseColuna: 'BOMBA', cd: 99 }));
+          // Uma bomba zerada, para a lista de compra mostrar que o kit
+          // tem peca faltando fora do par base e coluna.
+          nomeItemComponente: `BOMBA ${m.marca}`, componenteBaseColuna: 'BOMBA',
+          cd: m.marca === 'ENGECASS' ? 0 : 99 }));
         saida.push(base({ ...comum, itemComponente: String(idComp++),
           nomeItemComponente: `COMANDO ${m.marca}`, componenteBaseColuna: 'COMANDO', cd: 40 }));
       }
     }
   }
+
+  // Kit cadastrado so com a coluna: o comprador precisa ver a base com
+  // saldo zero para saber que falta o par.
+  saida.push(base({
+    itemVolMultiplo: '4570344', nomeItemVolMultiplo: 'ELEVADOR DOUBLE LOCK 4000KG AZUL',
+    itemComponente: '4570497', nomeItemComponente: 'COLUNAS_ELEV HIDRAULICO 4T DOUBLE LOCK AZUL',
+    componenteBaseColuna: 'COLUNA', inInterface: 'S', quantidade: 2, cd: 1,
+    marca: 'FORTG', fabricante: 'MAQUINAS RIBEIRO', chave: 'FORTG MAQUINAS RIBEIRO 4 t',
+    toneladaFixa: '4 t', peso: 4000,
+  }));
+
   return saida;
 }
 

@@ -4,7 +4,7 @@
    depender da planilha real. A planilha real (secao 9) entra pela
    fixture tests/fixtures e e validada em *.real.test.ts.
    ============================================================ */
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 
 /* Cabecalho da aba Multiplos (colunas A a R), seguido de duas colunas
    vazias e de uma tabela dinamica com uma SEGUNDA coluna "Marca" (col U).

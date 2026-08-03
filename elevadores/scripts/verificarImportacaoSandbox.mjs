@@ -59,9 +59,12 @@ await pagina.screenshot({ path: join(SAIDA, 'sb-01-importar.png') });
 await quadro.locator('input[type=file]').first().setInputFiles(PLANILHA);
 await quadro.getByRole('button', { name: /Processar planilha/i }).click();
 
+// Depois de importar, o app cai na tabela por chave, que e a primeira tela.
 let ok = false;
 try {
-  await quadro.getByRole('heading', { name: /Dashboard Geral/i }).waitFor({ timeout: 20000 });
+  await quadro.getByRole('heading', { name: /Conjuntos por chave/i }).first().waitFor({ timeout: 20000 });
+  await quadro.locator('.nav-item', { hasText: 'Dashboard Geral' }).first().click();
+  await quadro.getByRole('heading', { name: /Dashboard Geral/i }).first().waitFor({ timeout: 10000 });
   ok = true;
 } catch {
   ok = false;
