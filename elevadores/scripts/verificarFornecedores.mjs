@@ -69,6 +69,8 @@ await pagina.waitForTimeout(400);
 const foto = await pagina.locator('[role=tooltip] img').count();
 if (foto === 0) problemas.push('a foto nao abriu ao passar o cursor no item');
 await pagina.locator('.eq-forn-cab').first().scrollIntoViewIfNeeded();
+await pagina.mouse.move(5, 5);
+await pagina.waitForTimeout(200);
 await pagina.screenshot({ path: join(SAIDA, 'fornecedores.png') });
 
 /* Mostrar todos os itens tem que trazer linhas casadas junto. */
@@ -77,6 +79,34 @@ await pagina.waitForTimeout(400);
 const depois = await pagina.evaluate(NO_CARTAO);
 if (depois.linhas <= antes.linhas) problemas.push('o recorte "todos" nao trouxe mais linhas');
 console.log('linhas com todos os itens:', depois.linhas, '| foto no hover:', foto > 0);
+
+/* A caixa do saldo do CD amarra os componentes do mesmo elevador. */
+const caixa = await pagina.evaluate(() => {
+  const cartao = document.querySelector('.eq-forn-cab').closest('.panel');
+  const saldos = cartao.querySelectorAll('.eq-forn-saldo');
+  const inicios = cartao.querySelectorAll('.eq-forn-saldo.inicio');
+  const fins = cartao.querySelectorAll('.eq-forn-saldo.fim');
+  const totais = [...cartao.querySelectorAll('.eq-forn-saldo-total')].map((e) => e.textContent);
+  return { saldos: saldos.length, inicios: inicios.length, fins: fins.length, totais };
+});
+if (caixa.saldos === 0) problemas.push('a coluna do saldo perdeu a caixa do item pai');
+if (caixa.inicios !== caixa.fins) problemas.push(`caixa aberta sem fechar: ${caixa.inicios} inicios, ${caixa.fins} fins`);
+if (caixa.totais.length !== caixa.fins) problemas.push('faltou o total de base e coluna no fim da caixa');
+console.log('caixas do saldo:', caixa.inicios, '| exemplo de total:', caixa.totais[0]);
+
+/* Botao de compartilhar: monta a mensagem do e-mail. */
+await pagina.getByRole('button', { name: 'Compartilhar' }).click();
+await pagina.waitForSelector('.eq-compartilhar-texto', { timeout: 3000 });
+const mensagem = await pagina.inputValue('.eq-compartilhar-texto');
+for (const esperado of ['Itens descasados no CD', 'No CD hoje:', 'Total ']) {
+  if (!mensagem.includes(esperado)) problemas.push(`a mensagem nao traz "${esperado}"`);
+}
+if (/[\u2013\u2014]/.test(mensagem)) problemas.push('a mensagem tem travessao');
+await pagina.screenshot({ path: join(SAIDA, 'compartilhar.png') });
+await pagina.keyboard.press('Escape');
+await pagina.waitForTimeout(300);
+if (await pagina.locator('.eq-compartilhar-texto').count()) problemas.push('o Esc nao fechou a janela de compartilhar');
+console.log('mensagem do e-mail:', mensagem.length, 'caracteres');
 
 await navegador.close();
 servidor.close();

@@ -2,7 +2,9 @@
    Testes da lista de compra por fornecedor.
    ============================================================ */
 import { describe, it, expect } from 'vitest';
-import { listarPorFornecedor, textoCompra, nomeDoFornecedor } from '../src/domain/fornecedores';
+import {
+  listarPorFornecedor, textoCompra, nomeDoFornecedor, mensagemDeCompra,
+} from '../src/domain/fornecedores';
 import type { Componente } from '../src/domain/tipos';
 
 function comp(p: Partial<Componente>): Componente {
@@ -132,5 +134,45 @@ describe('nome do fornecedor e texto de compra', () => {
     expect(textoCompra({ situacao: 'DESCASADO', comprarColuna: 1, comprarBase: 1 })).toBe('comprar 1 coluna(s) e 1 base(s)');
     expect(textoCompra({ situacao: 'CASADO', comprarColuna: 0, comprarBase: 0 })).toBe('equalizado');
     expect(textoCompra({ situacao: 'SEM ESTOQUE', comprarColuna: 0, comprarBase: 0 })).toBe('sem estoque');
+  });
+});
+
+describe('mensagem para o comprador', () => {
+  const texto = mensagemDeCompra(listarPorFornecedor(MAQUINAS), {
+    data: new Date(2026, 7, 3),
+    local: 'CD Cajamar',
+  });
+
+  it('abre com a posicao e o total que falta comprar', () => {
+    expect(texto).toContain('CD Cajamar');
+    expect(texto).toContain('03/08/2026');
+    expect(texto).toMatch(/Faltam 1 coluna\(s\) e 1 base\(s\)/);
+  });
+
+  it('separa por fornecedor e detalha o item descasado', () => {
+    expect(texto).toContain('MAQUINAS RIBEIRO');
+    expect(texto).toContain('AUTOP');
+    expect(texto).toContain('865413');
+    expect(texto).toContain('No CD hoje: 1 base(s) e 1 coluna(s). comprar 1 coluna(s).');
+  });
+
+  it('lista os componentes de cada elevador com o saldo', () => {
+    expect(texto).toMatch(/BASE\s+965799\s+saldo 1/);
+    expect(texto).toMatch(/COLUNA\s+965801\s+saldo 0/);
+  });
+
+  it('avisa quando um componente serve mais de um elevador', () => {
+    const compartilhado = listarPorFornecedor([
+      comp({ itemVolMultiplo: 'P1', itemComponente: 'B99', componenteBaseColuna: 'BASE', cd: 4, fabricante: 'JM', toneladaFixa: '2 t' }),
+      comp({ itemVolMultiplo: 'P2', itemComponente: 'B99', componenteBaseColuna: 'BASE', cd: 4, fabricante: 'JM', toneladaFixa: '2 t' }),
+    ]);
+    const aviso = mensagemDeCompra(compartilhado);
+    expect(aviso).toContain('serve 2 elevadores');
+    expect(aviso).toMatch(/nao pode ser somada duas vezes/);
+    expect(mensagemDeCompra(listarPorFornecedor(MAQUINAS))).not.toContain('nao pode ser somada');
+  });
+
+  it('nao usa travessao, para nao quebrar no corpo do e-mail', () => {
+    expect(texto).not.toMatch(/[\u2013\u2014]/);
   });
 });

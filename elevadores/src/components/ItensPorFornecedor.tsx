@@ -8,9 +8,10 @@
    ============================================================ */
 import { Fragment, useMemo, useState } from 'react';
 import type { Componente } from '../domain/tipos';
-import { listarPorFornecedor, textoCompra } from '../domain/fornecedores';
+import { listarPorFornecedor, textoCompra, mensagemDeCompra } from '../domain/fornecedores';
 import type { ItemFornecedor } from '../domain/fornecedores';
 import { FotoAoPassar } from './ui/FotoAoPassar';
+import { CompartilharCompra } from './CompartilharCompra';
 import {
   Cartao, Tabela, Th, Td, Botao, Busca, Selecao, BarraFiltros, Chips, SeloSN, Vazio,
 } from './ui';
@@ -44,6 +45,7 @@ export function ItensPorFornecedor({
   const [tonelada, setTonelada] = useState('');
   const [recorte, setRecorte] = useState<Recorte>('descasados');
   const [copiado, setCopiado] = useState(false);
+  const [compartilhando, setCompartilhando] = useState(false);
 
   const grupos = useMemo(() => listarPorFornecedor(componentes), [componentes]);
 
@@ -107,6 +109,8 @@ export function ItensPorFornecedor({
     };
   }, [filtrados]);
 
+  const mensagem = useMemo(() => mensagemDeCompra(filtrados), [filtrados]);
+
   /* Uma linha por componente, separada por tabulacao: cola direto no
      Excel e no e-mail do fornecedor. */
   async function copiar() {
@@ -136,15 +140,24 @@ export function ItensPorFornecedor({
 
   return (
     <Cartao
-      titulo="Itens por fornecedor — o que comprar"
+      titulo="Itens por fornecedor: o que comprar"
       descricao={
         `${total.itens} elevador(es) · ${total.descasados} descasado(s) no estoque · ` +
         `faltam ${total.colunas} coluna(s) e ${total.bases} base(s)`
       }
       acoes={
-        <Botao aoClicar={copiar} titulo="Cola direto no Excel ou no e-mail do fornecedor">
-          {copiado ? 'Copiado' : 'Copiar tabela'}
-        </Botao>
+        <>
+          <Botao aoClicar={copiar} titulo="Cola direto no Excel ou no e-mail do fornecedor">
+            {copiado ? 'Copiado' : 'Copiar tabela'}
+          </Botao>
+          <Botao
+            variante="laranja"
+            aoClicar={() => setCompartilhando(true)}
+            titulo="Monta a mensagem e abre no seu programa de e-mail"
+          >
+            Compartilhar
+          </Botao>
+        </>
       }
     >
       <BarraFiltros>
@@ -181,7 +194,7 @@ export function ItensPorFornecedor({
               <Th>Descrição do componente</Th>
               <Th largura={80}>Tipo</Th>
               <Th largura={54}>S/N</Th>
-              <Th alinha="direita" largura={80}>Saldo CD</Th>
+              <Th alinha="direita" largura={124}>Saldo CD</Th>
               <Th largura={110}>Situação</Th>
               <Th largura={150}>O que comprar</Th>
             </tr>
@@ -211,7 +224,10 @@ export function ItensPorFornecedor({
                       i.componentes.map((c, indice) => (
                         <tr
                           key={`${i.item}-${c.codigo}-${indice}`}
-                          className={i.situacao === 'DESCASADO' ? 'eq-forn-alerta' : undefined}
+                          className={
+                            (indice === 0 ? 'eq-forn-inicio ' : '') +
+                            (i.situacao === 'DESCASADO' ? 'eq-forn-alerta' : '')
+                          }
                         >
                           {indice === 0 && (
                             <>
@@ -239,9 +255,21 @@ export function ItensPorFornecedor({
                             <span className={`tag ${c.tipo === 'BASE' ? 'tag-blue' : 'tag-muted'}`}>{c.tipo}</span>
                           </Td>
                           <Td>{c.sn === 'S' || c.sn === 'N' ? <SeloSN valor={c.sn} /> : '—'}</Td>
-                          <Td numerico style={c.cd === 0 ? { color: 'var(--ink-soft)' } : undefined}>
+                          <td
+                            className={
+                              'mono eq-forn-saldo' +
+                              (indice === 0 ? ' inicio' : '') +
+                              (indice === i.componentes.length - 1 ? ' fim' : '') +
+                              (c.cd === 0 ? ' zerado' : '')
+                            }
+                          >
                             {c.cd}
-                          </Td>
+                            {indice === i.componentes.length - 1 && (
+                              <span className="eq-forn-saldo-total">
+                                {i.bases} base · {i.colunas} coluna
+                              </span>
+                            )}
+                          </td>
                           {indice === 0 && (
                             <>
                               <td className="eq-forn-sit" rowSpan={i.componentes.length}>
@@ -265,6 +293,14 @@ export function ItensPorFornecedor({
             ))}
           </tbody>
         </Tabela>
+      )}
+
+      {compartilhando && (
+        <CompartilharCompra
+          mensagem={mensagem}
+          assunto={`Itens descasados no CD - faltam ${total.colunas} coluna(s) e ${total.bases} base(s)`}
+          aoFechar={() => setCompartilhando(false)}
+        />
       )}
     </Cartao>
   );

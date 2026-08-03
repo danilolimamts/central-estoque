@@ -499,6 +499,20 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-forn-sit{ vertical-align:top; }
 .eq-forn-compra{ vertical-align:top; font-size:11.5px; color:var(--ink-soft); }
 .eq-forn-compra.falta{ color:var(--orange); font-weight:700; }
+/* Delimitacao do item pai na coluna do saldo: os componentes de um
+   mesmo elevador ficam dentro da mesma caixa, entao da para ver o
+   conjunto olhando so para a coluna do CD. */
+.eq-forn-saldo{ text-align:right; position:relative; padding-right:14px;
+  border-left:2px solid var(--blue-soft); border-right:2px solid var(--blue-soft); }
+.eq-forn-saldo.inicio{ border-top:2px solid var(--blue-soft); }
+.eq-forn-saldo.fim{ border-bottom:2px solid var(--blue-soft); padding-bottom:20px; }
+.eq-forn-saldo.zerado{ color:var(--ink-soft); }
+.eq-forn-saldo-total{ position:absolute; left:6px; right:6px; bottom:3px; font-size:9px; font-weight:700;
+  letter-spacing:.02em; color:var(--blue-soft); white-space:nowrap; text-align:right; overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; }
+/* Risco grosso entre um elevador e o proximo. */
+.eq-forn-inicio td{ border-top:2px solid var(--line); }
+
 /* Componente que serve mais de um elevador: o saldo e o mesmo estoque. */
 .eq-forn-repete{ display:inline-block; margin-left:6px; padding:1px 5px; border-radius:5px;
   background:var(--orange-light); color:var(--orange); font-size:9.5px; font-weight:800;
@@ -565,7 +579,11 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
   padding:20px 22px; max-width:420px; box-shadow:0 24px 60px rgba(0,0,0,.35); }
 .eq-modal h3{ font-size:15px; font-weight:700; color:var(--ink); margin-bottom:8px; }
 .eq-modal p{ font-size:12.5px; color:var(--ink-soft); line-height:1.55; }
-.eq-modal-acoes{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+.eq-modal-acoes{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; flex-wrap:wrap; }
+.eq-modal-largo{ max-width:640px; width:100%; }
+.eq-compartilhar-texto{ width:100%; margin-top:12px; padding:10px 12px; border-radius:8px;
+  border:1px solid var(--line); background:var(--paper); color:var(--ink); resize:vertical;
+  font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:11px; line-height:1.5; }
 
 /* Leitura em texto do status, antes dos numeros. */
 .eq-leitura{ border-left:4px solid var(--orange); }
