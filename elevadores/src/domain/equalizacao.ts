@@ -130,6 +130,50 @@ export function agruparConjuntos(componentes: Componente[]): Conjunto[] {
   return conjuntos;
 }
 
+/* Quantidade de elevadores de um item pai.
+
+   O item pai nao tem saldo proprio: o que existe no CD sao as bases e as
+   colunas dele. Elevador montado e o menor numero que fecha os dois lados,
+   respeitando o ratio da tonelada (4 t e 5 t pedem duas colunas por base).
+   E o mesmo criterio de kit usado no conjunto, so que por item. */
+export interface ContagemItem {
+  bases: number;
+  colunas: number;
+  ratio: number;
+  completos: number;
+  /* Pecas soltas que nao formam elevador por falta do outro lado. */
+  basesSobrando: number;
+  colunasSobrando: number;
+}
+
+export function contarElevadoresPorItem(componentes: Componente[]): Map<string, ContagemItem> {
+  const contagem = new Map<string, ContagemItem>();
+  for (const c of componentes) {
+    const item = String(c.itemVolMultiplo ?? '').trim();
+    if (!item) continue;
+    const tipo = tipoComponente(c);
+    if (tipo === 'OUTRO') continue;
+
+    let atual = contagem.get(item);
+    if (!atual) {
+      atual = {
+        bases: 0, colunas: 0, ratio: ratioDaTonelada(c.toneladaFixa),
+        completos: 0, basesSobrando: 0, colunasSobrando: 0,
+      };
+      contagem.set(item, atual);
+    }
+    if (tipo === 'BASE') atual.bases += c.cd;
+    else atual.colunas += c.cd;
+  }
+
+  for (const v of contagem.values()) {
+    v.completos = Math.max(0, Math.min(v.bases, Math.floor(v.colunas / v.ratio)));
+    v.basesSobrando = Math.max(0, v.bases - v.completos);
+    v.colunasSobrando = Math.max(0, v.colunas - v.completos * v.ratio);
+  }
+  return contagem;
+}
+
 export interface ResumoEqualizacao {
   conjuntos: Conjunto[];
   comConjuntoNoCD: number; // conjuntos com algum saldo no CD
