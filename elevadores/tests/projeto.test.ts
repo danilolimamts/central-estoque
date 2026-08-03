@@ -14,6 +14,7 @@ import {
   proximosPassos,
   ganhosDaAcao,
   resumirGanhos,
+  acoesUnicas,
 } from '../src/domain/projeto';
 import type { Acao } from '../src/domain/tipos';
 
@@ -194,5 +195,78 @@ describe('ganhos de cada acao', () => {
     const custo = r.find((x) => x.chave === 'custo')!;
     expect(custo.total).toBe(1);
     expect(custo.pct).toBe(100);
+  });
+});
+
+describe('linhas repetidas da planilha', () => {
+  const repetida = {
+    numPlanAction: '9', proposta: 'EQUALIZAÇÃO DE SALDO', oQueFazer: 'Ajustar saldo',
+    responsavel: 'DARLAN SANTOS', situacao: 'Pendente',
+    fim: new Date(Date.UTC(2026, 6, 27)),
+  };
+
+  it('a mesma linha duas vezes conta uma vez so', () => {
+    const { lista, repetidas } = acoesUnicas(derivarAcoes([acao(repetida), acao(repetida)], HOJE));
+    expect(lista).toHaveLength(1);
+    expect(repetidas).toBe(1);
+  });
+
+  it('atividades diferentes do mesmo PLAN ACTION continuam as duas', () => {
+    const { lista, repetidas } = acoesUnicas(
+      derivarAcoes(
+        [acao(repetida), acao({ ...repetida, oQueFazer: 'Capacidade do local' })],
+        HOJE
+      )
+    );
+    expect(lista).toHaveLength(2);
+    expect(repetidas).toBe(0);
+  });
+
+  it('mesmo texto com responsavel diferente sao duas acoes', () => {
+    const { lista } = acoesUnicas(
+      derivarAcoes([acao(repetida), acao({ ...repetida, responsavel: 'ANA SOUZA' })], HOJE)
+    );
+    expect(lista).toHaveLength(2);
+  });
+
+  it('mantem a ordem original, guardando a primeira aparicao', () => {
+    const { lista } = acoesUnicas(
+      derivarAcoes(
+        [
+          acao({ ...repetida, oQueFazer: 'Primeira' }),
+          acao({ ...repetida, oQueFazer: 'Segunda' }),
+          acao({ ...repetida, oQueFazer: 'Primeira' }),
+        ],
+        HOJE
+      )
+    );
+    expect(lista.map((a) => a.oQueFazer)).toEqual(['Primeira', 'Segunda']);
+  });
+});
+
+describe('recorte concluida contra nao concluida', () => {
+  const lista = derivarAcoes(
+    [
+      acao({ situacao: 'Concluída', dataConclusao: new Date(Date.UTC(2026, 5, 9)) }),
+      acao({ situacao: 'Pendente', fim: new Date(Date.UTC(2026, 5, 5)) }), // atrasada
+      acao({ situacao: 'Em andamento', fim: new Date(Date.UTC(2026, 8, 5)) }),
+    ],
+    HOJE
+  );
+
+  it('os dois recortes somam o total, sem sobra nem repeticao', () => {
+    const concluidas = lista.filter((a) => a.concluida);
+    const abertas = lista.filter((a) => !a.concluida);
+    expect(concluidas).toHaveLength(1);
+    expect(abertas).toHaveLength(2);
+    expect(concluidas.length + abertas.length).toBe(lista.length);
+    /* Nenhuma acao cai nos dois lados: era o que acontecia com o recorte
+       de atrasadas, que repetia as pendentes e as em andamento. */
+    expect(concluidas.filter((a) => abertas.includes(a))).toHaveLength(0);
+  });
+
+  it('a acao atrasada entra em nao concluida', () => {
+    const atrasada = lista.find((a) => a.atrasada)!;
+    expect(atrasada.concluida).toBe(false);
   });
 });

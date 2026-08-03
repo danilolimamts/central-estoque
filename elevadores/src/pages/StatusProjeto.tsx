@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
 import type { Acao, MetricasProjeto } from '../domain/tipos';
 import {
-  calcularMetricas, montarMatriz, planoPorAcao, totalDoPlano, situacaoDe,
+  calcularMetricas, montarMatriz, planoPorAcao, totalDoPlano, situacaoDe, acoesUnicas,
   resumirGanhos, ganhosDaAcao, GANHOS,
 } from '../domain/projeto';
 import { cores } from '../config/tokens';
@@ -853,16 +853,20 @@ export function StatusProjeto({
     [acoes]
   );
 
+  /* A planilha as vezes repete a mesma linha. A lista unica vale para a
+     pagina inteira, senao o grafico conta a mesma acao duas vezes. */
+  const semRepetidas = useMemo(() => acoesUnicas(acoes), [acoes]);
+
   // Todos os indicadores abaixo usam esta lista: o filtro vale inclusive
   // para o score (secao 11 do brief).
   const filtradas = useMemo(() => {
     const b = `${buscaGlobal} ${busca}`.trim().toLowerCase();
-    return acoes
+    return semRepetidas.lista
       .filter((a) => !responsavel || a.responsavel === responsavel)
       .filter((a) => !proposta || a.proposta === proposta)
       .filter((a) => !situacao || a.situacao === situacao)
       .filter((a) => !b || `${a.oQueFazer} ${a.proposta} ${a.obs}`.toLowerCase().includes(b));
-  }, [acoes, responsavel, proposta, situacao, busca]);
+  }, [semRepetidas, responsavel, proposta, situacao, busca]);
 
   const m = useMemo(() => calcularMetricas(filtradas), [filtradas]);
   const [recorte, setRecorte] = useState<Recorte>('executivo');
@@ -870,14 +874,16 @@ export function StatusProjeto({
   /* Filtro proprio da tabela detalhada, separado do filtro do topo:
      serve para achar rapido o que esta pendente sem mexer no recorte
      que os graficos estao mostrando. */
-  const [soSituacao, setSoSituacao] = useState<'todas' | 'pendente' | 'andamento' | 'concluida' | 'atrasada'>('todas');
+  /* Dois recortes que nao se sobrepoem: ou a acao esta concluida, ou
+     nao esta. Antes uma acao atrasada aparecia tambem em pendentes e em
+     andamento, e a mesma linha era contada duas vezes. */
+  const [soSituacao, setSoSituacao] = useState<'todas' | 'concluida' | 'aberta'>('todas');
 
   const acoesDaTabela = useMemo(
     () =>
       filtradas.filter((a) => {
         if (soSituacao === 'todas') return true;
-        if (soSituacao === 'atrasada') return a.atrasada;
-        return situacaoDe(a) === soSituacao;
+        return soSituacao === 'concluida' ? a.concluida : !a.concluida;
       }),
     [filtradas, soSituacao]
   );
@@ -927,7 +933,12 @@ export function StatusProjeto({
 
       <Cartao
         titulo="Plano de ação — projeto"
-        descricao={`${acoesDaTabela.length} de ${filtradas.length} ações`}
+        descricao={
+          `${acoesDaTabela.length} de ${filtradas.length} ações` +
+          (semRepetidas.repetidas > 0
+            ? ` · ${semRepetidas.repetidas} linha(s) repetida(s) na planilha ficaram de fora`
+            : '')
+        }
         acoes={
           <>
             <Selecao
@@ -961,10 +972,8 @@ export function StatusProjeto({
             aoMudar={setSoSituacao}
             opcoes={[
               { valor: 'todas', rotulo: `Todas (${filtradas.length})` },
-              { valor: 'pendente', rotulo: `Pendentes (${filtradas.filter((a) => situacaoDe(a) === 'pendente').length})` },
-              { valor: 'andamento', rotulo: `Em andamento (${filtradas.filter((a) => situacaoDe(a) === 'andamento').length})` },
-              { valor: 'concluida', rotulo: `Concluídas (${filtradas.filter((a) => situacaoDe(a) === 'concluida').length})` },
-              { valor: 'atrasada', rotulo: `Atrasadas (${filtradas.filter((a) => a.atrasada).length})` },
+              { valor: 'concluida', rotulo: `Concluídas (${filtradas.filter((a) => a.concluida).length})` },
+              { valor: 'aberta', rotulo: `Não concluídas (${filtradas.filter((a) => !a.concluida).length})` },
             ]}
           />
         </BarraFiltros>
@@ -988,7 +997,7 @@ export function StatusProjeto({
             </thead>
             <tbody>
               {acoesDaTabela.map((a) => (
-                <tr key={a.numPlanAction + a.oQueFazer}>
+                <tr key={`${a.numPlanAction}-${a.oQueFazer}-${a.responsavel}`}>
                   <Td numerico>{a.numPlanAction}</Td>
                   <Td>{a.proposta}</Td>
                   <Td>

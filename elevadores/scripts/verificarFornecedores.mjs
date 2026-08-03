@@ -162,6 +162,38 @@ if (depoisZoom.faixa <= antesZoom.faixa || depoisZoom.saldo <= antesZoom.saldo) 
 console.log('zoom 100% ->130%:', antesZoom, depoisZoom);
 await pagina.screenshot({ path: join(SAIDA, 'zoom.png') });
 
+await pagina.getByRole('button', { name: 'Tamanho normal' }).click();
+await pagina.waitForTimeout(300);
+
+/* Plano de acao do projeto: dois recortes que nao se sobrepoem, e a
+   linha repetida da planilha entra uma vez so. */
+await pagina.locator('.nav-item', { hasText: 'Status do Projeto' }).first().click();
+await pagina.waitForTimeout(1200);
+const plano = await pagina.evaluate(() => {
+  const cartoes = [...document.querySelectorAll('.panel')];
+  const cartao = cartoes.find((p) => /Plano de ação . projeto/i.test(p.querySelector('h3')?.textContent ?? ''));
+  const chips = [...cartao.querySelectorAll('.filter-bar button')].map((b) => b.textContent.trim());
+  const linhas = cartao.querySelectorAll('tbody tr').length;
+  return { chips, linhas, descricao: cartao.querySelector('.panel-sub')?.textContent ?? '' };
+});
+console.log('recortes:', plano.chips, '|', plano.descricao);
+if (plano.chips.length !== 3) problemas.push(`esperava 3 recortes, veio ${plano.chips.length}`);
+if (!plano.chips.some((c) => /^Concluídas/.test(c))) problemas.push('faltou o recorte de concluídas');
+if (!plano.chips.some((c) => /^Não concluídas/.test(c))) problemas.push('faltou o recorte de não concluídas');
+const numeros = plano.chips.map((c) => Number(c.match(/\((\d+)\)/)?.[1] ?? 0));
+if (numeros[1] + numeros[2] !== numeros[0]) {
+  problemas.push(`os dois recortes nao somam o total: ${JSON.stringify(numeros)}`);
+}
+if (!/repetida/.test(plano.descricao)) problemas.push('a linha repetida da planilha nao foi apontada');
+if (plano.linhas !== numeros[0]) problemas.push(`a tabela mostra ${plano.linhas} linhas para ${numeros[0]} acoes`);
+await pagina.evaluate(() => {
+  const cartao = [...document.querySelectorAll('.panel')]
+    .find((p) => /Plano de ação . projeto/i.test(p.querySelector('h3')?.textContent ?? ''));
+  cartao.scrollIntoView();
+});
+await pagina.waitForTimeout(400);
+await pagina.screenshot({ path: join(SAIDA, 'plano-acao.png') });
+
 await navegador.close();
 servidor.close();
 if (problemas.length > 0) {
