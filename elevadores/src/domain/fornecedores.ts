@@ -233,6 +233,58 @@ export function listarPorFornecedor(componentes: Componente[]): GrupoFornecedor[
   return saida;
 }
 
+/* Mensagem pronta para o comprador, em texto puro.
+
+   Vai por e-mail, entao nada de tabela: um bloco por fornecedor, e
+   dentro dele um bloco por elevador com o saldo de hoje, o que falta e
+   os componentes que formam o conjunto. */
+export function mensagemDeCompra(
+  grupos: GrupoFornecedor[],
+  opcoes: { data?: Date; local?: string } = {}
+): string {
+  const data = opcoes.data ?? new Date();
+  const local = opcoes.local ?? 'CD Cajamar';
+  const itens = grupos.reduce((s, g) => s + g.itens, 0);
+  const colunas = grupos.reduce((s, g) => s + g.comprarColuna, 0);
+  const bases = grupos.reduce((s, g) => s + g.comprarBase, 0);
+
+  const linhas: string[] = [
+    `Itens descasados no CD - ${local}`,
+    `Posicao de ${data.toLocaleDateString('pt-BR')}`,
+    '',
+    `${itens} elevador(es) na lista. Faltam ${colunas} coluna(s) e ${bases} base(s) para fechar os conjuntos.`,
+  ];
+
+  for (const g of grupos) {
+    linhas.push('', `${g.fornecedor.toUpperCase()}`, '-'.repeat(g.fornecedor.length));
+    for (const t of g.toneladas) {
+      for (const i of t.itens) {
+        linhas.push(
+          `${i.item} - ${i.nome || 'sem descricao'} (${i.tonelada}, ratio 1:${i.ratio})`,
+          `   No CD hoje: ${i.bases} base(s) e ${i.colunas} coluna(s). ${textoCompra(i)}.`
+        );
+        for (const c of i.componentes) {
+          const repete = c.paisQueUsam > 1 ? ` [serve ${c.paisQueUsam} elevadores]` : '';
+          linhas.push(`   ${c.tipo.padEnd(6)} ${c.codigo}  saldo ${c.cd}  ${c.nome}${repete}`);
+        }
+      }
+    }
+    linhas.push(
+      `Total ${g.fornecedor}: comprar ${g.comprarColuna} coluna(s) e ${g.comprarBase} base(s).`
+    );
+  }
+
+  const repetidos = grupos.reduce((s, g) => s + g.compartilhados, 0);
+  if (repetidos > 0) {
+    linhas.push(
+      '',
+      `Atencao: ${repetidos} componente(s) servem mais de um elevador. O saldo do CD deles e o mesmo`,
+      'estoque em todos, entao a quantidade a comprar nao pode ser somada duas vezes.'
+    );
+  }
+  return linhas.join('\n');
+}
+
 /* O que comprar, em texto curto, igual na tela e na copia. */
 export function textoCompra(i: {
   situacao: SituacaoItem;
