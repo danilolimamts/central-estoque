@@ -268,6 +268,34 @@ export function situacaoDe(a: Acao): SituacaoAcao {
   return a.reagendada ? 'andamento' : 'pendente';
 }
 
+/* Chave que identifica uma acao dentro do projeto. Quando a planilha
+   repete a mesma linha, tudo aqui e igual e a segunda nao acrescenta
+   nada na tela. */
+function identidadeDaAcao(a: Acao): string {
+  return [
+    a.numPlanAction, a.proposta, a.oQueFazer, a.responsavel,
+    a.situacao, a.status,
+    a.inicio?.getTime() ?? '', a.fim?.getTime() ?? '', a.reagendamento?.getTime() ?? '',
+  ]
+    .map((v) => String(v).trim().toUpperCase())
+    .join('|');
+}
+
+/* Tira as linhas repetidas da planilha, mantendo a primeira. Acoes
+   diferentes com o mesmo numero de PLAN ACTION continuam, porque sao
+   atividades distintas da mesma frente. */
+export function acoesUnicas(acoes: Acao[]): { lista: Acao[]; repetidas: number } {
+  const vistas = new Set<string>();
+  const lista: Acao[] = [];
+  for (const a of acoes) {
+    const chave = identidadeDaAcao(a);
+    if (vistas.has(chave)) continue;
+    vistas.add(chave);
+    lista.push(a);
+  }
+  return { lista, repetidas: acoes.length - lista.length };
+}
+
 export interface LinhaPlano {
   numero: number;
   proposta: string;

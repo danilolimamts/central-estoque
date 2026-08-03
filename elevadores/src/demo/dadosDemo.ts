@@ -143,7 +143,9 @@ export function acoesDemo(): Acao[] {
         situacao: concluida ? 'Concluída' : reagendada ? 'Em andamento' : 'Pendente',
         dataConclusao: concluida && !semData ? D(6, 20 + (i % 8)) : null,
         duracao: `${10 + i}d`,
-        status: concluida ? 'CONCLUIDO' : 'ANDAMENTO',
+        // O status acompanha a situacao: com os dois em desacordo, a
+        // leitura da coluna joga tudo em andamento.
+        status: concluida ? 'CONCLUIDO' : reagendada ? 'ANDAMENTO' : 'PENDENTE',
         obs: semData ? 'sem data de conclusão' : '',
         esforco,
         reduzErro: 'SIM',
@@ -157,5 +159,10 @@ export function acoesDemo(): Acao[] {
       });
     }
   });
+
+  // A planilha de verdade traz linhas repetidas. Uma copia exata entra
+  // aqui para a tela mostrar que junta as duas em uma so.
+  saida.push({ ...saida[0] });
+
   return saida;
 }
