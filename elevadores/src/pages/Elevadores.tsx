@@ -3,7 +3,8 @@
    tonelada, situacao do conjunto e da valoracao.
    ============================================================ */
 import { useMemo, useState } from 'react';
-import { agruparConjuntos } from '../domain/equalizacao';
+import { agruparConjuntos, contarElevadoresPorItem } from '../domain/equalizacao';
+import type { ContagemItem } from '../domain/equalizacao';
 import { auditarValoracao } from '../domain/valoracao';
 import type { Componente, StatusConjunto, DiagnosticoValoracao } from '../domain/tipos';
 import { Cartao, SeloStatus, SeloValoracao, Fornecedor, Vazio, BarraFiltros, Busca, Chips } from '../components/ui';
@@ -17,15 +18,22 @@ function FotoProduto({ url, nome }: { url?: string; nome: string }) {
   if (!url || falhou) {
     return <span className="eq-foto-erro">{url ? 'Foto indisponível nesta rede' : 'Sem foto cadastrada'}</span>;
   }
-  return (
-    <img
-      src={url}
-      alt={nome}
-      loading="lazy"
-      style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }}
-      onError={() => setFalhou(true)}
-    />
-  );
+  return <img src={url} alt={nome} loading="lazy" onError={() => setFalhou(true)} />;
+}
+
+const VAZIO: ContagemItem = {
+  bases: 0, colunas: 0, ratio: 1, completos: 0, basesSobrando: 0, colunasSobrando: 0,
+};
+
+/* Frase que explica de onde saiu a quantidade, no titulo do selo. */
+function explicarQuantidade(q: ContagemItem): string {
+  const base = `${q.bases} base(s) e ${q.colunas} coluna(s) no CD, ratio 1:${q.ratio}`;
+  if (q.completos === 0) return `Nenhum elevador completo: ${base}.`;
+  const sobra: string[] = [];
+  if (q.basesSobrando > 0) sobra.push(`${q.basesSobrando} base(s)`);
+  if (q.colunasSobrando > 0) sobra.push(`${q.colunasSobrando} coluna(s)`);
+  return `${q.completos} elevador(es) montado(s) com ${base}.` +
+    (sobra.length > 0 ? ` Sobram ${sobra.join(' e ')} sem par.` : '');
 }
 
 export function Elevadores({
@@ -43,6 +51,7 @@ export function Elevadores({
   const elevadores = useMemo(() => {
     const conjuntos = new Map(agruparConjuntos(componentes).map((c) => [c.chave, c]));
     const valoracoes = new Map(auditarValoracao(componentes).map((v) => [v.itemVolMultiplo, v]));
+    const quantidades = contarElevadoresPorItem(componentes);
     const vistos = new Map<
       string,
       {
@@ -53,6 +62,7 @@ export function Elevadores({
         ton: string;
         status: StatusConjunto;
         diagnostico: DiagnosticoValoracao;
+        quantidade: ContagemItem;
       }
     >();
     for (const c of componentes) {
@@ -65,9 +75,13 @@ export function Elevadores({
         ton: c.toneladaFixa,
         status: conjuntos.get(c.chave)?.status ?? 'SEM ESTOQUE',
         diagnostico: valoracoes.get(c.itemVolMultiplo)?.diagnostico ?? 'SEM S',
+        quantidade: quantidades.get(c.itemVolMultiplo) ?? VAZIO,
       });
     }
-    return [...vistos.values()];
+    /* Quem tem elevador montado aparece primeiro: e o que a reuniao pergunta. */
+    return [...vistos.values()].sort(
+      (a, z) => z.quantidade.completos - a.quantidade.completos || a.item.localeCompare(z.item, 'pt-BR')
+    );
   }, [componentes]);
 
   const filtrados = useMemo(() => {
@@ -101,57 +115,34 @@ export function Elevadores({
       {filtrados.length === 0 ? (
         <Vazio icone="🔎">Nenhum elevador encontrado com esses filtros.</Vazio>
       ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
-            gap: 12,
-          }}
-        >
+        <div className="eq-elev-grade">
           {filtrados.map((e) => {
             const foto = fotos.get(String(e.item));
+            const q = e.quantidade;
             return (
-              <article
-                key={e.item}
-                style={{
-                  border: '1px solid var(--line)',
-                  borderRadius: 'var(--radius-lg)',
-                  background: 'var(--surface)',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
-                <div
-                  style={{
-                    height: 130,
-                    background: '#fff',
-                    borderBottom: '1px solid var(--line)',
-                    display: 'grid',
-                    placeItems: 'center',
-                  }}
-                >
+              <article key={e.item} className="eq-elev-card">
+                <div className="eq-elev-foto">
                   <FotoProduto url={foto} nome={e.nome} />
+                  <span
+                    className={`eq-elev-qtd${q.completos === 0 ? ' zero' : ''}`}
+                    title={explicarQuantidade(q)}
+                  >
+                    <b>{q.completos}</b>
+                    <span>{q.completos === 1 ? 'elevador' : 'elevadores'}</span>
+                  </span>
                 </div>
-                <div style={{ padding: '9px 11px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <div className="eq-elev-corpo">
+                  <div className="eq-elev-nome" title={e.nome}>
+                    {e.nome || '—'}
+                  </div>
                   <div className="mono" style={{ fontWeight: 700, fontSize: 12.5 }}>
                     {e.item}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 10.5,
-                      color: 'var(--ink-soft)',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                    }}
-                    title={e.nome}
-                  >
-                    {e.nome || '—'}
+                  <div className="eq-elev-pecas" title={explicarQuantidade(q)}>
+                    {q.bases} base(s) · {q.colunas} coluna(s) no CD
                   </div>
                   <Fornecedor nome={e.fabricante || e.marca} />
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 2 }}>
+                  <div className="eq-elev-tags">
                     <span className="tag tag-muted">{e.ton || '—'}</span>
                     <SeloStatus status={e.status} />
                     <SeloValoracao diagnostico={e.diagnostico} />

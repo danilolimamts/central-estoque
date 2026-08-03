@@ -9,6 +9,7 @@ import {
   aplicarCompras,
   resumirEqualizacao,
   tipoComponente,
+  contarElevadoresPorItem,
 } from '../src/domain/equalizacao';
 import type { Componente } from '../src/domain/tipos';
 
@@ -142,5 +143,45 @@ describe('tipoComponente e estrito', () => {
     expect(tipoComponente(comp({ componenteBaseColuna: 'BASE' }))).toBe('BASE');
     expect(tipoComponente(comp({ componenteBaseColuna: 'COLUNA' }))).toBe('COLUNA');
     expect(tipoComponente(comp({ componenteBaseColuna: 'MOTOR' }))).toBe('OUTRO');
+  });
+});
+
+describe('quantidade de elevadores por item pai', () => {
+  it('conta o elevador montado pelo lado que falta, respeitando o ratio', () => {
+    const q = contarElevadoresPorItem([
+      base('FORTG JM 4 t', '4 t', 5, { itemVolMultiplo: '1965321' }),
+      coluna('FORTG JM 4 t', '4 t', 8, { itemVolMultiplo: '1965321' }),
+    ]).get('1965321')!;
+    expect(q.ratio).toBe(2);
+    expect(q.completos).toBe(4); // 8 colunas dao 4 pares, e ha 5 bases
+    expect(q.basesSobrando).toBe(1);
+    expect(q.colunasSobrando).toBe(0);
+  });
+
+  it('ate 3,2 t e uma coluna por base', () => {
+    const q = contarElevadoresPorItem([
+      base('KREBS 2 t', '2 t', 3, { itemVolMultiplo: 'A' }),
+      coluna('KREBS 2 t', '2 t', 7, { itemVolMultiplo: 'A' }),
+    ]).get('A')!;
+    expect(q.completos).toBe(3);
+    expect(q.colunasSobrando).toBe(4);
+  });
+
+  it('componente fora do kit nao entra na conta', () => {
+    const q = contarElevadoresPorItem([
+      base('FORTG JM 4 t', '4 t', 2, { itemVolMultiplo: 'B' }),
+      comp({ itemVolMultiplo: 'B', toneladaFixa: '4 t', componenteBaseColuna: 'BOMBA', cd: 99 }),
+    ]).get('B')!;
+    expect(q.colunas).toBe(0);
+    expect(q.completos).toBe(0);
+    expect(q.basesSobrando).toBe(2);
+  });
+
+  it('so um lado no CD nao monta elevador', () => {
+    const q = contarElevadoresPorItem([
+      coluna('KREBS 2 t', '2 t', 6, { itemVolMultiplo: 'C' }),
+    ]).get('C')!;
+    expect(q.completos).toBe(0);
+    expect(q.colunasSobrando).toBe(6);
   });
 });
