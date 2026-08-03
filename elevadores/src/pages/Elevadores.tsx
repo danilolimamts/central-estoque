@@ -2,7 +2,7 @@
    Tela dos elevadores (itens pai): foto do produto, marca,
    tonelada, situacao do conjunto e da valoracao.
    ============================================================ */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { agruparConjuntos, contarElevadoresPorItem } from '../domain/equalizacao';
 import type { ContagemItem } from '../domain/equalizacao';
 import { auditarValoracao } from '../domain/valoracao';
@@ -36,6 +36,46 @@ function explicarQuantidade(q: ContagemItem): string {
     (sobra.length > 0 ? ` Sobram ${sobra.join(' e ')} sem par.` : '');
 }
 
+interface FotoAmpliada {
+  url: string;
+  item: string;
+  nome: string;
+  legenda: string;
+}
+
+/* Foto em tamanho grande sobre a tela. Fecha no Esc, no botao e ao
+   clicar fora, que sao os tres jeitos que a pessoa tenta. */
+function LupaFoto({ foto, aoFechar }: { foto: FotoAmpliada; aoFechar: () => void }) {
+  useEffect(() => {
+    function tecla(e: KeyboardEvent) {
+      if (e.key === 'Escape') aoFechar();
+    }
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [aoFechar]);
+
+  return (
+    <div className="eq-lupa-fundo" role="dialog" aria-modal="true" aria-label={foto.nome} onClick={aoFechar}>
+      <div className="eq-lupa" onClick={(e) => e.stopPropagation()}>
+        <div className="eq-lupa-imagem">
+          <img src={foto.url} alt={foto.nome} />
+        </div>
+        <div className="eq-lupa-rodape">
+          <div>
+            <h3>{foto.nome || foto.item}</h3>
+            <p>
+              <span className="mono">{foto.item}</span> · {foto.legenda}
+            </p>
+          </div>
+          <button className="eq-lupa-fechar" onClick={aoFechar} title="Fechar" aria-label="Fechar a foto" autoFocus>
+            ×
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Elevadores({
   componentes,
   fotos,
@@ -47,6 +87,7 @@ export function Elevadores({
 }) {
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('todos');
+  const [ampliada, setAmpliada] = useState<FotoAmpliada | null>(null);
 
   const elevadores = useMemo(() => {
     const conjuntos = new Map(agruparConjuntos(componentes).map((c) => [c.chave, c]));
@@ -123,6 +164,21 @@ export function Elevadores({
               <article key={e.item} className="eq-elev-card">
                 <div className="eq-elev-foto">
                   <FotoProduto url={foto} nome={e.nome} />
+                  {foto && (
+                    <button
+                      className="eq-elev-lupa"
+                      title="Clique para ver a foto ampliada"
+                      aria-label={`Ampliar a foto de ${e.nome || e.item}`}
+                      onClick={() =>
+                        setAmpliada({
+                          url: foto,
+                          item: e.item,
+                          nome: e.nome,
+                          legenda: explicarQuantidade(q),
+                        })
+                      }
+                    />
+                  )}
                   <span
                     className={`eq-elev-qtd${q.completos === 0 ? ' zero' : ''}`}
                     title={explicarQuantidade(q)}
@@ -153,6 +209,8 @@ export function Elevadores({
           })}
         </div>
       )}
+
+      {ampliada && <LupaFoto foto={ampliada} aoFechar={() => setAmpliada(null)} />}
     </Cartao>
   );
 }

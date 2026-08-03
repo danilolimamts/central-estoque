@@ -28,31 +28,27 @@ const pagina = await navegador.newPage({ viewport: { width: 1440, height: 1000 }
 
 const problemas = [];
 pagina.on('pageerror', (e) => problemas.push(`pageerror: ${e.message}`));
-/* O catalogo de fotos e bloqueado pela rede deste ambiente. O app ja trata
-   isso com o aviso no lugar da imagem, entao nao conta como problema. */
-const RUIDO = ['404', 'ERR_TUNNEL_CONNECTION_FAILED', 'lojadomecanico'];
+const RUIDO = ['404'];
 pagina.on('console', (m) => {
   const t = m.text();
   if (m.type() === 'error' && !RUIDO.some((r) => t.includes(r))) problemas.push(`console: ${t}`);
 });
 
+/* Foto retangular bem mais alta que a moldura: o pior caso do recorte.
+   O catalogo publico e bloqueado pela rede deste ambiente, entao a resposta
+   e substituida aqui para o app seguir o mesmo caminho de sempre. */
+const ALTA =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="900"><rect width="200" height="900" fill="#c62828"/></svg>';
+await pagina.route('**/*', (rota) => {
+  const url = rota.request().url();
+  if (url.startsWith('http://localhost:4179')) return rota.continue();
+  return rota.fulfill({ status: 200, contentType: 'image/svg+xml', body: ALTA });
+});
+
 await pagina.goto('http://localhost:4179/?exemplo', { waitUntil: 'networkidle' });
 await pagina.getByRole('button', { name: 'Elevadores' }).click();
 await pagina.waitForSelector('.eq-elev-card');
-
-/* Foto retangular bem mais alta que a moldura: o pior caso do recorte. */
-const alta = 'data:image/svg+xml;base64,' + Buffer.from(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="900"><rect width="200" height="900" fill="#c62828"/></svg>'
-).toString('base64');
-await pagina.evaluate((src) => {
-  for (const box of document.querySelectorAll('.eq-elev-foto')) {
-    box.querySelector('.eq-foto-erro')?.remove();
-    const img = document.createElement('img');
-    img.src = src;
-    box.prepend(img);
-  }
-}, alta);
-await pagina.waitForTimeout(400);
+await pagina.waitForTimeout(500);
 
 const medidas = await pagina.evaluate(() => {
   const cartao = document.querySelector('.eq-elev-card');
@@ -79,10 +75,29 @@ if (!/\d/.test(medidas.selo)) problemas.push('selo de quantidade sem numero');
 await pagina.screenshot({ path: join(SAIDA, 'elevadores-cartao.png'), fullPage: false });
 console.log(medidas);
 
+/* Clicar na foto abre a ampliacao, e o Esc fecha. */
+await pagina.locator('.eq-elev-lupa').first().click();
+await pagina.waitForSelector('.eq-lupa-fundo', { timeout: 3000 });
+const grande = await pagina.evaluate(() => {
+  const img = document.querySelector('.eq-lupa img').getBoundingClientRect();
+  const moldura = document.querySelector('.eq-elev-foto').getBoundingClientRect();
+  return { alturaAmpliada: Math.round(img.height), alturaNoCartao: Math.round(moldura.height) };
+});
+/* A imagem ampliada tem que passar bem da moldura do cartao, senao o
+   clique nao resolveu o problema de enxergar a foto. */
+if (grande.alturaAmpliada < grande.alturaNoCartao * 2) {
+  problemas.push(`a foto ampliada nao ficou maior: ${JSON.stringify(grande)}`);
+}
+await pagina.screenshot({ path: join(SAIDA, 'elevadores-lupa.png') });
+await pagina.keyboard.press('Escape');
+await pagina.waitForTimeout(300);
+if (await pagina.locator('.eq-lupa-fundo').count()) problemas.push('o Esc nao fechou a foto ampliada');
+console.log('ampliacao:', grande);
+
 await navegador.close();
 servidor.close();
 if (problemas.length > 0) {
   console.error('\nFALHOU:\n' + problemas.join('\n'));
   process.exit(1);
 }
-console.log('\nOK: foto recortada na moldura, nome abaixo dela e quantidade no selo.');
+console.log('\nOK: foto recortada na moldura, nome abaixo dela, quantidade no selo e clique que amplia.');
