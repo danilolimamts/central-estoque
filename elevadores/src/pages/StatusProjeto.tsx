@@ -5,7 +5,7 @@
    o score: as metricas sao sempre recalculadas sobre a lista ja
    filtrada.
    ============================================================ */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
 import type { Acao, MetricasProjeto } from '../domain/tipos';
 import {
@@ -18,6 +18,7 @@ import { MiniTabela, LinhaDica } from '../components/ui/MiniTabela';
 import { BarraFiltros, Botao, Busca, Cartao, Chips, Selecao, Selo, Tabela, Td, Th, Vazio } from '../components/ui';
 import { baixarPlanoProjeto } from '../export/exportExcel';
 import { CompartilharStatus } from '../components/CompartilharStatus';
+import { CLASSE_FORA } from '../export/boletimStatus';
 import { baixarApresentacao, RECORTES, type Recorte } from '../export/exportPptx';
 import { MATRIZ } from '../config/regras';
 
@@ -873,6 +874,8 @@ export function StatusProjeto({
   const [recorte, setRecorte] = useState<Recorte>('executivo');
   const [gerando, setGerando] = useState(false);
   const [compartilhando, setCompartilhando] = useState(false);
+  /* O painel que vira imagem no boletim. */
+  const painel = useRef<HTMLDivElement>(null);
   /* Filtro proprio da tabela detalhada, separado do filtro do topo:
      serve para achar rapido o que esta pendente sem mexer no recorte
      que os graficos estao mostrando. */
@@ -892,10 +895,11 @@ export function StatusProjeto({
 
 
   return (
-    <div className="flex flex-col" style={{ gap: 18 }}>
+    <div className="flex flex-col" style={{ gap: 18 }} ref={painel}>
       {/* Os filtros somem na apresentacao: a selecao ja foi feita antes
-          de projetar, e em reuniao eles so tiram espaco. */}
-      <div className="oculta-apresentacao">
+          de projetar, e em reuniao eles so tiram espaco. No boletim
+          tambem nao entram: quem recebe o e-mail nao filtra nada. */}
+      <div className={`oculta-apresentacao ${CLASSE_FORA}`}>
       <Cartao titulo="Filtros" descricao="todos os indicadores abaixo respeitam esta seleção">
         <div className="flex flex-wrap gap-2">
           <Busca valor={busca} aoMudar={setBusca} placeholder="Buscar ação…" />
@@ -914,15 +918,18 @@ export function StatusProjeto({
           titulo="Status do projeto"
           descricao="score, saúde e andamento da seleção acima"
           acoes={
-            /* O botao mora aqui porque a pagina de uma folha comeca
-               justamente pelo score e pela saude deste cartao. */
-            <Botao
-              variante="laranja"
-              aoClicar={() => setCompartilhando(true)}
-              titulo="Gera a página de status para colar no corpo do e-mail"
-            >
-              Status em uma página
-            </Botao>
+            /* O botao mora aqui porque o boletim comeca justamente pelo
+               score e pela saude deste cartao. Ele mesmo fica de fora da
+               imagem: botao em boletim nao serve para nada. */
+            <span className={CLASSE_FORA}>
+              <Botao
+                variante="laranja"
+                aoClicar={() => setCompartilhando(true)}
+                titulo="Gera a imagem do painel para enviar por e-mail"
+              >
+                Gerar boletim
+              </Botao>
+            </span>
           }
         >
           <Medidor pct={Math.round(m.pctConcluidas)} metricas={m} />
@@ -947,6 +954,10 @@ export function StatusProjeto({
 
       <BurnDown acoes={filtradas} hoje={hoje} />
 
+      {/* A tabela linha a linha fica fora do boletim: sao dezenas de
+          linhas que ninguem le no corpo do e-mail, e o PowerPoint e o
+          Excel ao lado dela ja atendem quem precisa do detalhe. */}
+      <div className={CLASSE_FORA}>
       <Cartao
         titulo="Plano de ação — projeto"
         descricao={
@@ -1076,9 +1087,11 @@ export function StatusProjeto({
           </Tabela>
         )}
       </Cartao>
+      </div>
 
       {compartilhando && (
         <CompartilharStatus
+          alvo={painel.current}
           acoes={filtradas}
           metricas={m}
           hoje={hoje}

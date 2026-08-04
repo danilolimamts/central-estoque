@@ -598,9 +598,39 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
   border:1px solid var(--line); background:var(--paper); color:var(--ink); resize:vertical;
   font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:11px; line-height:1.5; }
 
-/* Previa do status em uma pagina. A imagem e alta: o modal ganha altura
-   maxima e a previa rola por dentro, para os botoes ficarem sempre
-   visiveis no pe da caixa. */
+/* Faixa da marca e pe do boletim, que so existem na imagem capturada:
+   sao acrescentados ao clone do painel na hora de gerar o PNG. */
+.eq-boletim{ background:#F1F2F6; }
+.eq-boletim-topo{ display:flex; align-items:center; gap:16px; padding:18px 22px;
+  background:var(--blue); border-bottom:4px solid var(--orange); margin-bottom:18px; }
+.eq-boletim-topo img{ height:38px; width:auto; background:#fff; padding:7px 11px; border-radius:9px; }
+.eq-boletim-titulo{ display:flex; flex-direction:column; }
+.eq-boletim-titulo strong{ color:#fff; font-size:19px; font-weight:800; }
+.eq-boletim-titulo span{ color:#B9C0E6; font-size:12.5px; margin-top:2px; }
+.eq-boletim-selos{ margin-left:auto; display:flex; align-items:center; gap:12px; }
+.eq-boletim-score{ display:flex; align-items:baseline; gap:5px; background:rgba(255,255,255,.12);
+  padding:6px 13px; border-radius:8px; }
+.eq-boletim-score b{ color:#fff; font-size:22px; font-weight:800; line-height:1; }
+.eq-boletim-score span{ color:#B9C0E6; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
+.eq-boletim-saude{ color:#fff; font-size:12px; font-weight:800; padding:7px 14px; border-radius:100px;
+  text-transform:uppercase; letter-spacing:.04em; }
+.eq-boletim-selos time{ color:#fff; font-size:13px; font-weight:700; }
+.eq-boletim-pe{ padding:14px 22px 18px; font-size:11px; color:var(--ink-soft); }
+/* Rotulo de uma linha so, cortado com reticencias: na tela o navegador
+   deixa a letra passar da caixa, mas o html2canvas corta rente e come o
+   pe das letras. No boletim essas caixas ganham altura de linha, que
+   resolve sem mexer no corte horizontal. */
+.eq-boletim .eq-frente-nome,
+.eq-boletim .eq-gantt-grupo-nome,
+.eq-boletim .eq-semana-rotulo,
+.eq-boletim .eq-funil-rotulo > span,
+.eq-boletim .bi-hbar-label,
+.eq-boletim .bi-vbar-label,
+.eq-boletim .truncate{ line-height:1.9; }
+
+/* Previa do boletim. A imagem e alta: o modal ganha altura maxima e a
+   previa rola por dentro, para os botoes ficarem sempre visiveis no pe
+   da caixa. */
 .eq-modal-pagina{ max-width:780px; width:100%; max-height:calc(100vh - 40px);
   display:flex; flex-direction:column; }
 .eq-previa-pagina{ flex:1; min-height:0; overflow:auto; margin-top:12px;

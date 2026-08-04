@@ -1,6 +1,10 @@
-/* Confere o status em uma pagina de ponta a ponta: abre o app com
-   dados de exemplo, clica no botao, espera a previa desenhar e salva
-   o PNG exatamente como ele sai para o e-mail. */
+/* Confere o boletim do Status do Projeto de ponta a ponta: abre o app
+   com dados de exemplo, clica em Gerar boletim, espera a captura e
+   salva o PNG exatamente como ele sai para o e-mail.
+
+   O que importa aqui e que a imagem seja o painel de verdade: precisa
+   ter os graficos, a faixa da marca e nao pode conter os filtros, a
+   tabela detalhada nem o proprio modal. */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -35,45 +39,63 @@ pagina.on('console', (m) => {
 await pagina.goto('http://localhost:4181/?exemplo', { waitUntil: 'networkidle' });
 await pagina.getByRole('button', { name: 'Status do Projeto' }).click();
 await pagina.waitForSelector('.eq-linha-rosca');
+/* Os graficos sao canvas: sem esta pausa a captura pega a tela antes
+   de o Chart.js terminar de desenhar. */
+await pagina.waitForTimeout(1200);
 
-await pagina.getByRole('button', { name: 'Status em uma página' }).click();
-await pagina.waitForSelector('.eq-previa-pagina canvas', { timeout: 8000 });
-await pagina.waitForTimeout(600);
+await pagina.getByRole('button', { name: 'Gerar boletim' }).click();
+await pagina.waitForSelector('.eq-previa-pagina canvas', { timeout: 20000 });
+await pagina.waitForTimeout(800);
 
 const medidas = await pagina.evaluate(() => {
   const canvas = document.querySelector('.eq-previa-pagina canvas');
   const modal = document.querySelector('.eq-modal-pagina').getBoundingClientRect();
   const acoes = [...document.querySelectorAll('.eq-modal-pagina .eq-modal-acoes .btn')];
+  const ctx = canvas.getContext('2d');
+  const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  /* Amostra as cores: um boletim de verdade tem o navy da marca, e nao
+     pode ser uma chapa de fundo cinza. */
+  let pintados = 0;
+  let navy = 0;
+  for (let i = 0; i < d.length; i += 4 * 53) {
+    const [r, g, b] = [d[i], d[i + 1], d[i + 2]];
+    if (r !== 241 || g !== 242 || b !== 246) pintados++;
+    if (b > 90 && b - r > 60 && r < 90) navy++;
+  }
   return {
     largura: canvas.width,
     altura: canvas.height,
-    /* Pixels desenhados: um canvas em branco denuncia desenho quebrado. */
-    tinta: (() => {
-      const ctx = canvas.getContext('2d');
-      const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let pintados = 0;
-      for (let i = 0; i < d.length; i += 4 * 97) {
-        if (d[i] !== 255 || d[i + 1] !== 255 || d[i + 2] !== 255) pintados++;
-      }
-      return pintados;
-    })(),
+    pintados,
+    navy,
     modalCabe: modal.bottom <= window.innerHeight + 1 && modal.top >= -1,
     botoes: acoes.map((b) => b.textContent.trim()),
     png: canvas.toDataURL('image/png'),
   };
 });
 
-if (medidas.largura !== 1800) problemas.push(`largura inesperada do canvas: ${medidas.largura}`);
-if (medidas.altura < 800) problemas.push(`pagina curta demais: ${medidas.altura}`);
-if (medidas.tinta < 200) problemas.push(`a pagina saiu quase em branco: ${medidas.tinta} amostras pintadas`);
+if (medidas.altura < medidas.largura) {
+  problemas.push(`o boletim deveria ser mais alto que largo: ${medidas.largura}x${medidas.altura}`);
+}
+if (medidas.pintados < 500) problemas.push(`a imagem saiu quase vazia: ${medidas.pintados} amostras`);
+if (medidas.navy < 50) problemas.push(`sem o navy da marca na imagem: ${medidas.navy} amostras`);
 if (!medidas.modalCabe) problemas.push('o modal passou da altura da janela');
-for (const esperado of ['Copiar imagem', 'Baixar imagem', 'Copiar texto', 'Abrir no e-mail']) {
+for (const esperado of ['Copiar boletim', 'Baixar imagem', 'Copiar texto', 'Abrir no e-mail']) {
   if (!medidas.botoes.includes(esperado)) problemas.push(`botao ausente: ${esperado}`);
 }
 
-await writeFile(join(SAIDA, 'status-one-page.png'), Buffer.from(medidas.png.split(',')[1], 'base64'));
-await pagina.screenshot({ path: join(SAIDA, 'status-modal.png') });
+await writeFile(join(SAIDA, 'boletim-status.png'), Buffer.from(medidas.png.split(',')[1], 'base64'));
+await pagina.screenshot({ path: join(SAIDA, 'boletim-modal.png') });
 console.log({ ...medidas, png: `${medidas.png.length} bytes de data URL` });
+
+/* A pagina viva nao pode ter sido mexida pela captura. */
+const intacta = await pagina.evaluate(() => ({
+  filtros: document.querySelectorAll('.fora-do-boletim').length,
+  cartoes: document.querySelectorAll('.panel').length,
+  faixaVazou: document.querySelectorAll('.eq-boletim-topo').length,
+}));
+if (intacta.faixaVazou > 0) problemas.push('a faixa do boletim vazou para a pagina viva');
+if (intacta.filtros === 0) problemas.push('os blocos marcados sumiram da pagina viva');
+console.log('pagina apos a captura:', intacta);
 
 await pagina.keyboard.press('Escape');
 await pagina.waitForTimeout(300);
@@ -85,4 +107,4 @@ if (problemas.length > 0) {
   console.error('\nFALHOU:\n' + problemas.join('\n'));
   process.exit(1);
 }
-console.log('\nOK: pagina desenhada, modal dentro da janela e as quatro acoes de envio no lugar.');
+console.log('\nOK: boletim capturado do painel, com a marca, e a pagina viva intacta.');

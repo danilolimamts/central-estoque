@@ -1,30 +1,33 @@
 /* ============================================================
-   Compartilhar o status do projeto em uma pagina.
+   Boletim do Status do Projeto, para enviar por e-mail.
 
-   Mostra a previa da imagem, deixa copiar para colar direto no corpo
-   do e-mail e abre o programa de e-mail com o resumo em texto. A
-   imagem tambem pode ser baixada, para quem prefere anexar.
+   A imagem e o proprio painel: mostra a previa do que foi capturado,
+   deixa copiar para colar no corpo da mensagem e abre o programa de
+   e-mail com o resumo em texto.
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Acao, MetricasProjeto } from '../domain/tipos';
 import {
-  baixarOnePage,
-  copiarOnePage,
-  desenharOnePage,
-  montarOnePage,
-  textoStatus,
-  type Medidor,
-} from '../export/imagemStatus';
+  baixarBoletim,
+  copiarBoletim,
+  dadosDoBoletim,
+  gerarBoletim,
+  textoBoletim,
+  CLASSE_FORA,
+} from '../export/boletimStatus';
 import { Botao } from './ui';
 
 const LIMITE_MAILTO = 1800;
 
 export function CompartilharStatus({
+  alvo,
   acoes,
   metricas,
   hoje,
   aoFechar,
 }: {
+  /* O painel que vira imagem. Vem por ref da propria pagina. */
+  alvo: HTMLElement | null;
   acoes: Acao[];
   metricas: MetricasProjeto;
   hoje: Date;
@@ -33,17 +36,10 @@ export function CompartilharStatus({
   const previa = useRef<HTMLDivElement>(null);
   const [aviso, setAviso] = useState('');
   const [ocupado, setOcupado] = useState('');
+  const [erro, setErro] = useState('');
 
-  const pagina = useMemo(() => {
-    const medida = document.createElement('canvas').getContext('2d')!;
-    const medir: Medidor = (texto, fonte) => {
-      medida.font = fonte;
-      return medida.measureText(texto).width;
-    };
-    return montarOnePage(acoes, metricas, medir, { data: hoje });
-  }, [acoes, metricas, hoje]);
-
-  const mensagem = useMemo(() => textoStatus(metricas, pagina, hoje), [metricas, pagina, hoje]);
+  const dados = useMemo(() => dadosDoBoletim(metricas, hoje), [metricas, hoje]);
+  const mensagem = useMemo(() => textoBoletim(acoes, metricas, hoje), [acoes, metricas, hoje]);
 
   useEffect(() => {
     function tecla(e: KeyboardEvent) {
@@ -53,35 +49,41 @@ export function CompartilharStatus({
     return () => window.removeEventListener('keydown', tecla);
   }, [aoFechar]);
 
-  /* A previa e o mesmo desenho que sai no arquivo, so que reduzido
-     pela largura do modal: o que a pessoa ve e o que ela envia. */
+  /* A previa e a mesma captura que vai para o arquivo: o que a pessoa
+     confere aqui e exatamente o que ela envia. */
   useEffect(() => {
+    if (!alvo) return;
     let vivo = true;
     void (async () => {
-      const canvas = await desenharOnePage(pagina);
-      if (!vivo || !previa.current) return;
-      canvas.style.width = '100%';
-      canvas.style.height = 'auto';
-      canvas.style.display = 'block';
-      previa.current.replaceChildren(canvas);
+      try {
+        const canvas = await gerarBoletim(alvo, dados, { escala: 1.5 });
+        if (!vivo || !previa.current) return;
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
+        canvas.style.display = 'block';
+        previa.current.replaceChildren(canvas);
+      } catch {
+        if (vivo) setErro('Não consegui montar a prévia. Os botões abaixo ainda funcionam.');
+      }
     })();
     return () => {
       vivo = false;
     };
-  }, [pagina]);
+  }, [alvo, dados]);
 
   function avisar(texto: string) {
     setAviso(texto);
-    setTimeout(() => setAviso(''), 3000);
+    setTimeout(() => setAviso(''), 3500);
   }
 
   async function copiarImagem() {
+    if (!alvo) return;
     setOcupado('imagem');
     try {
-      const copiou = await copiarOnePage(acoes, metricas, { data: hoje });
-      if (copiou) avisar('Imagem copiada. Cole no corpo do e-mail com Ctrl+V.');
+      const copiou = await copiarBoletim(alvo, dados);
+      if (copiou) avisar('Boletim copiado. Cole no corpo do e-mail com Ctrl+V.');
       else {
-        await baixarOnePage(acoes, metricas, { data: hoje });
+        await baixarBoletim(alvo, dados, hoje);
         avisar('Seu navegador não deixa copiar imagem: o arquivo foi baixado.');
       }
     } finally {
@@ -90,9 +92,11 @@ export function CompartilharStatus({
   }
 
   async function baixar() {
+    if (!alvo) return;
     setOcupado('baixar');
     try {
-      await baixarOnePage(acoes, metricas, { data: hoje });
+      await baixarBoletim(alvo, dados, hoje);
+      avisar('Boletim baixado. Anexe no e-mail.');
     } finally {
       setOcupado('');
     }
@@ -107,45 +111,51 @@ export function CompartilharStatus({
     }
   }
 
-  /* O e-mail leva o resumo em texto; a imagem entra colada ou anexada,
-     porque mailto nao carrega arquivo. */
+  /* O mailto nao carrega arquivo: o e-mail abre com o resumo e a
+     imagem entra colada ou anexada. */
   function abrirEmail() {
-    const assunto = `Equalização de Elevadores — status em ${hoje.toLocaleDateString('pt-BR')}`;
+    const assunto = `Equalização de Elevadores — status em ${dados.data}`;
     const corpo =
-      mensagem.length > LIMITE_MAILTO ? `${mensagem.slice(0, LIMITE_MAILTO)}\n\n[continua na imagem]` : mensagem;
+      mensagem.length > LIMITE_MAILTO ? `${mensagem.slice(0, LIMITE_MAILTO)}\n\n[continua no boletim]` : mensagem;
     window.location.href = `mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
   }
 
   return (
     <div
-      className="eq-modal-fundo"
+      /* O modal fica dentro do painel que ele captura, entao precisa se
+         excluir da imagem: senao ele aparece por cima do proprio
+         boletim que esta gerando. */
+      className={`eq-modal-fundo ${CLASSE_FORA}`}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="tituloStatusPagina"
+      aria-labelledby="tituloBoletim"
       onClick={aoFechar}
     >
       <div className="eq-modal eq-modal-pagina" onClick={(e) => e.stopPropagation()}>
-        <h3 id="tituloStatusPagina">Status em uma página</h3>
+        <h3 id="tituloBoletim">Boletim para enviar por e-mail</h3>
         <p>
-          A página abaixo é o que vai no e-mail. O caminho mais curto é copiar a imagem e colar no
-          corpo da mensagem; o resumo em texto ajuda quem abrir pelo celular.
+          É o próprio painel virado imagem, com os filtros que você aplicou. O caminho mais curto é
+          copiar e colar no corpo da mensagem; o resumo em texto ajuda quem abrir pelo celular.
         </p>
 
-        <div className="eq-previa-pagina" ref={previa} aria-label="Prévia da página de status" />
+        <div className="eq-previa-pagina" ref={previa} aria-label="Prévia do boletim">
+          {!erro && <p style={{ padding: 16 }}>Montando o boletim…</p>}
+        </div>
 
+        {erro && <p className="eq-previa-aviso">{erro}</p>}
         {aviso && <p className="eq-previa-aviso">{aviso}</p>}
 
         <div className="eq-modal-acoes" style={{ marginTop: 8 }}>
           <Botao
             variante="laranja"
-            desabilitado={ocupado !== ''}
+            desabilitado={ocupado !== '' || !alvo}
             aoClicar={copiarImagem}
-            titulo="Copia a imagem para colar direto no corpo do e-mail"
+            titulo="Copia o boletim para colar direto no corpo do e-mail"
           >
-            {ocupado === 'imagem' ? 'Copiando...' : 'Copiar imagem'}
+            {ocupado === 'imagem' ? 'Copiando…' : 'Copiar boletim'}
           </Botao>
-          <Botao desabilitado={ocupado !== ''} aoClicar={baixar} titulo="Salva o PNG para anexar">
-            {ocupado === 'baixar' ? 'Gerando...' : 'Baixar imagem'}
+          <Botao desabilitado={ocupado !== '' || !alvo} aoClicar={baixar} titulo="Salva o PNG para anexar">
+            {ocupado === 'baixar' ? 'Gerando…' : 'Baixar imagem'}
           </Botao>
           <Botao aoClicar={copiarTexto} titulo="Resumo em texto puro">
             Copiar texto
