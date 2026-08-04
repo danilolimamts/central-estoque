@@ -17,6 +17,7 @@ import { Grafico } from '../components/charts/Grafico';
 import { MiniTabela, LinhaDica } from '../components/ui/MiniTabela';
 import { BarraFiltros, Botao, Busca, Cartao, Chips, Selecao, Selo, Tabela, Td, Th, Vazio } from '../components/ui';
 import { baixarPlanoProjeto } from '../export/exportExcel';
+import { CompartilharStatus } from '../components/CompartilharStatus';
 import { baixarApresentacao, RECORTES, type Recorte } from '../export/exportPptx';
 import { MATRIZ } from '../config/regras';
 
@@ -871,6 +872,7 @@ export function StatusProjeto({
   const m = useMemo(() => calcularMetricas(filtradas), [filtradas]);
   const [recorte, setRecorte] = useState<Recorte>('executivo');
   const [gerando, setGerando] = useState(false);
+  const [compartilhando, setCompartilhando] = useState(false);
   /* Filtro proprio da tabela detalhada, separado do filtro do topo:
      serve para achar rapido o que esta pendente sem mexer no recorte
      que os graficos estao mostrando. */
@@ -908,7 +910,21 @@ export function StatusProjeto({
       </div>
 
       <div className="eq-linha-rosca">
-        <Cartao>
+        <Cartao
+          titulo="Status do projeto"
+          descricao="score, saúde e andamento da seleção acima"
+          acoes={
+            /* O botao mora aqui porque a pagina de uma folha comeca
+               justamente pelo score e pela saude deste cartao. */
+            <Botao
+              variante="laranja"
+              aoClicar={() => setCompartilhando(true)}
+              titulo="Gera a página de status para colar no corpo do e-mail"
+            >
+              Status em uma página
+            </Botao>
+          }
+        >
           <Medidor pct={Math.round(m.pctConcluidas)} metricas={m} />
         </Cartao>
         <AvancoPorFrente acoes={filtradas} />
@@ -1060,6 +1076,15 @@ export function StatusProjeto({
           </Tabela>
         )}
       </Cartao>
+
+      {compartilhando && (
+        <CompartilharStatus
+          acoes={filtradas}
+          metricas={m}
+          hoje={hoje}
+          aoFechar={() => setCompartilhando(false)}
+        />
+      )}
     </div>
   );
 }
