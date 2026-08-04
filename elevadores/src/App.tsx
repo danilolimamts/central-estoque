@@ -220,6 +220,8 @@ export default function App() {
             className="sidebar-toggle"
             onClick={() => setRecolhido((v) => !v)}
             title={recolhido ? 'Expandir menu' : 'Recolher menu'}
+            aria-label={recolhido ? 'Expandir menu' : 'Recolher menu'}
+            aria-expanded={!recolhido}
           >
             <Icone nome="menu" />
           </button>
@@ -251,7 +253,9 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="theme-toggle" onClick={alternarTema}>
+          {/* Com o menu recolhido sobra so o icone: o title e o que diz
+              para que serve o botao. */}
+          <button className="theme-toggle" onClick={alternarTema} title="Alternar tema">
             <Icone nome="tema" />
             <span>Alternar tema</span>
           </button>
