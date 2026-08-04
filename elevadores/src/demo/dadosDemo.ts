@@ -8,6 +8,7 @@
    importacao.
    ============================================================ */
 import type { Componente, Acao } from '../domain/tipos';
+import type { Marco } from '../domain/historico';
 import { FOTOS_PAIS } from '../dados/fotosPais';
 
 /* Usa codigos reais de elevador que possuem foto, para a demonstracao
@@ -165,4 +166,35 @@ export function acoesDemo(): Acao[] {
   saida.push({ ...saida[0] });
 
   return saida;
+}
+
+/* Historico de exemplo: o recurso so aparece com mais de uma medicao, e
+   a demonstracao nao tem como esperar semanas para acumular. Sao marcos
+   sinteticos, marcados como demonstracao, que nunca se misturam com o
+   historico da planilha de verdade. */
+export function historicoDemo(hoje = new Date()): Marco[] {
+  const evolucao = [
+    { semanas: 8, concluidas: 6, atrasadas: 18, score: 41, saude: 'critico' as const },
+    { semanas: 6, concluidas: 10, atrasadas: 17, score: 48, saude: 'critico' as const },
+    { semanas: 4, concluidas: 14, atrasadas: 15, score: 55, saude: 'critico' as const },
+    { semanas: 2, concluidas: 17, atrasadas: 13, score: 59, saude: 'critico' as const },
+  ];
+  const total = 32;
+  return evolucao.map((e) => {
+    const em = new Date(hoje.getTime() - e.semanas * 7 * 86400000);
+    const emAndamento = Math.min(5, total - e.concluidas);
+    return {
+      em: em.toISOString(),
+      arquivo: 'dados de exemplo',
+      demonstracao: true,
+      total,
+      concluidas: e.concluidas,
+      emAndamento,
+      pendentes: total - e.concluidas - emAndamento,
+      atrasadas: e.atrasadas,
+      pctConcluidas: (e.concluidas / total) * 100,
+      score: e.score,
+      saude: e.saude,
+    };
+  });
 }

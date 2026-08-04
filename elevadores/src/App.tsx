@@ -115,7 +115,7 @@ function Icone({ nome }: { nome: Pagina | 'tema' | 'menu' }) {
 }
 
 export default function App() {
-  const { dados, carregando, erro, importar, carregarDemo, limpar } = useDados();
+  const { dados, historico, carregando, erro, importar, carregarDemo, limpar } = useDados();
   const [pagina, setPagina] = useState<Pagina>('chaves');
   const [recolhido, setRecolhido] = useState(false);
   const [tema, setTema] = useState<'claro' | 'escuro' | null>(null);
@@ -324,7 +324,7 @@ export default function App() {
           ) : paginaAtual === 'geral' ? (
             <DashboardGeral componentes={dados.componentes} fotos={fotos} busca={busca} />
           ) : paginaAtual === 'projeto' ? (
-            <StatusProjeto acoes={acoes} hoje={hoje} busca={busca} />
+            <StatusProjeto acoes={acoes} hoje={hoje} busca={busca} historico={historico} demonstracao={!!dados?.demonstracao} />
           ) : (
             <Elevadores componentes={dados.componentes} fotos={fotos} busca={busca} />
           )}

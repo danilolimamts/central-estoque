@@ -19,6 +19,10 @@ import { BarraFiltros, Botao, Busca, Cartao, Chips, Selecao, Selo, Tabela, Td, T
 import { baixarPlanoProjeto } from '../export/exportExcel';
 import { CompartilharStatus } from '../components/CompartilharStatus';
 import { CLASSE_FORA } from '../export/boletimStatus';
+import { compararComAnterior, explicarVariacao, marcoDe, serieDoHistorico } from '../domain/historico';
+import type { Marco } from '../domain/historico';
+import { explicarProjecao, projetarTermino, ritmoNecessario } from '../domain/projecao';
+import type { Projecao } from '../domain/projecao';
 import { baixarApresentacao, RECORTES, type Recorte } from '../export/exportPptx';
 import { MATRIZ } from '../config/regras';
 
@@ -163,6 +167,139 @@ function AvancoPorFrente({ acoes }: { acoes: Acao[] }) {
         ))}
       </div>
       <Legenda />
+    </Cartao>
+  );
+}
+
+/* Projecao de termino: a pergunta que decide a reuniao. Vem em cores
+   pela situacao, porque o numero sozinho nao diz se e bom ou ruim. */
+function Projecao({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
+  const p: Projecao = useMemo(() => projetarTermino(acoes, hoje), [acoes, hoje]);
+  const precisa = useMemo(() => ritmoNecessario(p, hoje), [p, hoje]);
+
+  const tom =
+    p.situacao === 'atrasado' || p.situacao === 'parado'
+      ? cores.laranja.base
+      : p.situacao === 'no_prazo' || p.situacao === 'concluido'
+        ? cores.semantico.verde
+        : cores.semantico.ambar;
+
+  const titulo =
+    p.situacao === 'concluido' ? 'Plano concluído'
+    : p.situacao === 'parado' ? 'Sem ritmo para projetar'
+    : p.dataProjetada
+      ? p.dataProjetada.toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+      : '—';
+
+  return (
+    <Cartao titulo="Projeção de término" descricao="no ritmo das últimas 8 semanas">
+      <div className="eq-projecao">
+        <div className="eq-projecao-data" style={{ color: tom }}>
+          <strong>{titulo}</strong>
+          {p.situacao === 'atrasado' && p.desvioDias != null && (
+            <span>{p.desvioDias} dia(s) depois do prazo</span>
+          )}
+          {p.situacao === 'no_prazo' && p.desvioDias != null && (
+            <span>{Math.abs(p.desvioDias)} dia(s) de folga</span>
+          )}
+        </div>
+        <div className="eq-projecao-numeros">
+          <div>
+            <b>{p.ritmo}</b>
+            <span>ações por semana</span>
+          </div>
+          <div>
+            <b>{p.abertas}</b>
+            <span>em aberto</span>
+          </div>
+          {precisa != null && (
+            <div title="Ritmo necessário para bater o prazo combinado">
+              <b style={{ color: cores.laranja.base }}>{precisa}</b>
+              <span>preciso por semana</span>
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="eq-projecao-frase">{explicarProjecao(p)}</p>
+    </Cartao>
+  );
+}
+
+/* Evolucao entre importacoes: e o que responde "melhorou desde a
+   ultima reuniao?". Sem duas medicoes nao ha o que mostrar. */
+function Evolucao({ serie }: { serie: ReturnType<typeof serieDoHistorico> }) {
+  const config: ChartConfiguration | null = useMemo(() => {
+    if (serie.length < 2) return null;
+    return {
+      type: 'line',
+      data: {
+        labels: serie.map((p) => p.rotulo),
+        datasets: [
+          {
+            label: 'Score',
+            data: serie.map((p) => p.score),
+            borderColor: cores.navy.base,
+            backgroundColor: 'rgba(0,26,114,.08)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+            yAxisID: 'y',
+          },
+          {
+            label: '% concluído',
+            data: serie.map((p) => p.pctConcluidas),
+            borderColor: cores.laranja.base,
+            borderDash: [5, 4],
+            fill: false,
+            tension: 0.3,
+            pointRadius: 3,
+            yAxisID: 'y',
+          },
+          {
+            label: 'Em atraso',
+            data: serie.map((p) => p.atrasadas),
+            borderColor: cores.semantico.cinza,
+            fill: false,
+            tension: 0.3,
+            pointRadius: 3,
+            yAxisID: 'y1',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { datalabels: { display: false }, legend: { position: 'bottom' } },
+        scales: {
+          y: { beginAtZero: true, max: 100, title: { display: true, text: 'Score e % concluído' } },
+          y1: {
+            beginAtZero: true, position: 'right', grid: { drawOnChartArea: false },
+            title: { display: true, text: 'Em atraso' },
+          },
+        },
+      },
+    };
+  }, [serie]);
+
+  return (
+    <Cartao
+      titulo="Evolução do projeto"
+      descricao="uma medição por importação da planilha"
+    >
+      {config ? (
+        <Grafico
+          config={config}
+          altura={260}
+          rotulo="Evolução do score, do percentual concluído e das ações em atraso a cada importação da planilha"
+        />
+      ) : (
+        <Vazio icone="📈">
+          {serie.length === 0
+            ? 'Ainda não há medições. Cada importação da planilha grava um ponto aqui.'
+            : 'Só há uma medição até agora. Na próxima importação a evolução aparece.'}
+        </Vazio>
+      )}
     </Cartao>
   );
 }
@@ -835,11 +972,16 @@ export function StatusProjeto({
   acoes,
   hoje,
   busca: buscaGlobal = '',
+  historico = [],
+  demonstracao = false,
 }: {
   acoes: Acao[];
   hoje: Date;
   /* Texto da busca da barra de topo, que vale para todas as telas. */
   busca?: string;
+  /* Medicoes das importacoes anteriores. */
+  historico?: Marco[];
+  demonstracao?: boolean;
 }) {
   const [responsavel, setResponsavel] = useState('');
   const [proposta, setProposta] = useState('');
@@ -876,6 +1018,15 @@ export function StatusProjeto({
   const [compartilhando, setCompartilhando] = useState(false);
   /* O painel que vira imagem no boletim. */
   const painel = useRef<HTMLDivElement>(null);
+
+  const serie = useMemo(() => serieDoHistorico(historico, demonstracao), [historico, demonstracao]);
+  /* A variacao compara a medicao inteira, sem filtro: os marcos foram
+     gravados com o plano completo, entao filtrar so um responsavel
+     compararia coisas diferentes. */
+  const variacao = useMemo(() => {
+    const agora = marcoDe(calcularMetricas(semRepetidas.lista), 'agora', hoje, demonstracao);
+    return compararComAnterior(agora, historico);
+  }, [semRepetidas, hoje, historico, demonstracao]);
   /* Filtro proprio da tabela detalhada, separado do filtro do topo:
      serve para achar rapido o que esta pendente sem mexer no recorte
      que os graficos estao mostrando. */
@@ -933,8 +1084,21 @@ export function StatusProjeto({
           }
         >
           <Medidor pct={Math.round(m.pctConcluidas)} metricas={m} />
+          {/* Variacao contra a medicao anterior: sem ela o score sozinho
+              nao diz se o projeto melhorou ou piorou. */}
+          <p className={`eq-variacao${variacao && variacao.score < 0 ? ' pior' : ''}`}>
+            {variacao && variacao.score !== 0 && (
+              <b>{variacao.score > 0 ? '▲' : '▼'} {Math.abs(variacao.score)} no score</b>
+            )}
+            {explicarVariacao(variacao)}
+          </p>
         </Cartao>
         <AvancoPorFrente acoes={filtradas} />
+      </div>
+
+      <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
+        <Projecao acoes={filtradas} hoje={hoje} />
+        <Evolucao serie={serie} />
       </div>
 
       <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>

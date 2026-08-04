@@ -9,7 +9,9 @@ import type { Componente, Acao } from '../domain/tipos';
 import { lerArquivo, lerArquivoFotos } from '../parsers/planilha';
 import { agruparConjuntos, resumirEqualizacao } from '../domain/equalizacao';
 import { auditarValoracao, resumirValoracao } from '../domain/valoracao';
-import { derivarAcoes } from '../domain/projeto';
+import { calcularMetricas, derivarAcoes } from '../domain/projeto';
+import { marcoDe, registrarMarco } from '../domain/historico';
+import type { Marco } from '../domain/historico';
 
 const store = localforage.createInstance({
   name: 'equalizacao_elevadores',
@@ -17,6 +19,9 @@ const store = localforage.createInstance({
 });
 
 const CHAVE_DADOS = 'importacao';
+/* O historico fica em chave propria: trocar a planilha em uso nao pode
+   apagar o que ja foi medido nas importacoes anteriores. */
+const CHAVE_HISTORICO = 'historico';
 
 export interface Importacao {
   componentes: Componente[];
@@ -44,13 +49,33 @@ function reidratarAcoes(acoes: Acao[]): Acao[] {
   });
 }
 
+/* Grava o retrato do plano no historico. Falhar aqui nunca pode
+   impedir a importacao: o historico e um extra, os dados sao o
+   principal. */
+async function guardarMarco(acoes: Acao[], arquivo: string, hoje: Date): Promise<Marco[]> {
+  try {
+    const metricas = calcularMetricas(derivarAcoes(acoes, hoje));
+    const anterior = (await store.getItem<Marco[]>(CHAVE_HISTORICO)) ?? [];
+    const atualizado = registrarMarco(anterior, marcoDe(metricas, arquivo, hoje));
+    await store.setItem(CHAVE_HISTORICO, atualizado);
+    return atualizado;
+  } catch {
+    return [];
+  }
+}
+
 export function useDados() {
   const [dados, setDados] = useState<Importacao | null>(null);
+  const [historico, setHistorico] = useState<Marco[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
+    void store
+      .getItem<Marco[]>(CHAVE_HISTORICO)
+      .then((h) => vivo && setHistorico(h ?? []))
+      .catch(() => undefined);
     store
       .getItem<Importacao>(CHAVE_DADOS)
       .then((salvo) => {
@@ -98,6 +123,11 @@ export function useDados() {
         novo.semPersistencia = true;
       }
 
+      /* Cada importacao vira um ponto na evolucao do projeto. E o unico
+         momento em que da para registrar o que se sabia: reagendamento
+         reescreve o prazo e apaga o atraso que existia antes. */
+      setHistorico(await guardarMarco(acoes, arquivo.name, new Date()));
+
       setDados(novo);
       return novo;
     } catch (e) {
@@ -111,8 +141,11 @@ export function useDados() {
      Fica so na memoria: nao grava no IndexedDB, para nunca ser confundido
      com uma importacao de verdade. */
   const carregarDemo = useCallback(async () => {
-    const { componentesDemo, acoesDemo } = await import('../demo/dadosDemo');
+    const { componentesDemo, acoesDemo, historicoDemo } = await import('../demo/dadosDemo');
     setErro(null);
+    /* Marcos sinteticos, so na memoria: a evolucao precisa de mais de
+       uma medicao para aparecer, e o exemplo nao tem como esperar. */
+    setHistorico(historicoDemo());
     setDados({
       componentes: componentesDemo(),
       acoes: acoesDemo(),
@@ -132,7 +165,7 @@ export function useDados() {
     setDados(null);
   }, []);
 
-  return { dados, carregando, erro, importar, carregarDemo, limpar };
+  return { dados, historico, carregando, erro, importar, carregarDemo, limpar };
 }
 
 /* Derivados de equalizacao e valoracao a partir dos componentes. */
