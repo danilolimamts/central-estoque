@@ -927,3 +927,14 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
   font-size:12px; font-weight:800; }
 .eq-funil-pct{ font-family:'SFMono-Regular',Consolas,monospace; font-size:11.5px;
   font-weight:800; text-align:right; color:var(--ink-soft); }
+
+/* Inversoes de base apontadas pelo SAC. */
+.eq-sac-numeros{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+.eq-sac-numero{ flex:1; min-width:130px; display:flex; flex-direction:column; gap:2px;
+  padding:12px 14px; border:1px solid var(--line); border-radius:var(--radius-lg);
+  background:var(--paper); }
+.eq-sac-rotulo{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+.eq-sac-numero b{ font-size:28px; font-weight:800; color:var(--ink); line-height:1.1; }
+.eq-sac-valor{ font-size:12px; font-weight:600; color:var(--ink-soft); }
+.eq-sac-titulo{ margin:20px 0 10px; font-size:12.5px; font-weight:800; color:var(--ink);
+  text-transform:uppercase; letter-spacing:.04em; }

@@ -8,14 +8,21 @@ import * as XLSX from 'xlsx-js-style';
 import type { Componente, Acao } from '../domain/tipos';
 import { lerMultiplos } from './lerMultiplos';
 import { lerProjeto } from './lerProjeto';
+import { lerDivergencias } from './lerDivergencias';
+import type { DivergenciaSAC } from '../domain/divergencias';
 import { normalizarCabecalho, paraTexto } from './utilData';
 import { montarObjetos, criarSeletor } from './utilData';
 
-export const ABAS_UTEIS = ['Multiplos', 'Projeto'] as const;
+/* A aba de divergencias entra na lista porque o XLSX.read so abre o
+   que esta aqui: sem isso ela seria ignorada como EstoqueAtual. Os
+   nomes alternativos cobrem a exportacao avulsa da tabela, que sai na
+   aba Export. */
+export const ABAS_UTEIS = ['Multiplos', 'Projeto', 'Divergencias SAC', 'Divergências SAC'] as const;
 
 export interface DadosPlanilha {
   componentes: Componente[];
   acoes: Acao[];
+  divergencias: DivergenciaSAC[];
 }
 
 function acharAba(wb: XLSX.WorkBook, nome: string): XLSX.WorkSheet | null {
@@ -37,7 +44,12 @@ function abaParaMatriz(ws: XLSX.WorkSheet | null): unknown[][] {
 export function lerWorkbook(wb: XLSX.WorkBook): DadosPlanilha {
   const componentes = lerMultiplos(abaParaMatriz(acharAba(wb, 'Multiplos')));
   const acoes = lerProjeto(abaParaMatriz(acharAba(wb, 'Projeto')));
-  return { componentes, acoes };
+  /* A tabela de divergencias pode chegar na planilha inteira ou
+     exportada sozinha, que sai na aba Export. */
+  const abaDivergencias =
+    acharAba(wb, 'Divergencias SAC') ?? acharAba(wb, 'Divergências SAC') ?? acharAba(wb, 'Export');
+  const divergencias = lerDivergencias(abaParaMatriz(abaDivergencias));
+  return { componentes, acoes, divergencias };
 }
 
 export function lerArquivo(data: ArrayBuffer | Uint8Array): DadosPlanilha {

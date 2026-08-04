@@ -6,6 +6,8 @@
 import { useMemo, useState } from 'react';
 import { FotoAoPassar } from '../components/ui/FotoAoPassar';
 import { ItensPorFornecedor } from '../components/ItensPorFornecedor';
+import { InversoesSAC } from '../components/InversoesSAC';
+import type { DivergenciaSAC } from '../domain/divergencias';
 import type { ChartConfiguration } from 'chart.js';
 import type { Componente, Conjunto, Valoracao } from '../domain/tipos';
 import { agruparConjuntos, resumirEqualizacao } from '../domain/equalizacao';
@@ -288,11 +290,14 @@ export function DashboardGeral({
   componentes,
   fotos,
   busca: buscaGlobal = '',
+  divergencias = [],
 }: {
   componentes: Componente[];
   fotos: Map<string, string>;
   /* Texto da busca da barra de topo, que vale para todas as telas. */
   busca?: string;
+  /* Devolucoes registradas pelo SAC (aba Divergencias SAC). */
+  divergencias?: DivergenciaSAC[];
 }) {
   const conjuntos = useMemo(() => agruparConjuntos(componentes), [componentes]);
   const resumo = useMemo(() => resumirEqualizacao(conjuntos), [conjuntos]);
@@ -394,6 +399,8 @@ export function DashboardGeral({
       </Cartao>
 
       <ItensPorFornecedor componentes={componentes} fotos={fotos} busca={buscaGlobal} />
+
+      <InversoesSAC divergencias={divergencias} />
 
       <PlanoDeAcao conjuntos={conjuntos} buscaGlobal={buscaGlobal} />
       <AuditoriaValoracao valoracoes={valoracoes} fotos={fotos} />

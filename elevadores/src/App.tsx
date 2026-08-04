@@ -322,7 +322,7 @@ export default function App() {
           ) : paginaAtual === 'chaves' ? (
             <TabelaChaves componentes={dados.componentes} busca={busca} />
           ) : paginaAtual === 'geral' ? (
-            <DashboardGeral componentes={dados.componentes} fotos={fotos} busca={busca} />
+            <DashboardGeral componentes={dados.componentes} fotos={fotos} busca={busca} divergencias={dados.divergencias} />
           ) : paginaAtual === 'projeto' ? (
             <StatusProjeto acoes={acoes} hoje={hoje} busca={busca} historico={historico} demonstracao={!!dados?.demonstracao} />
           ) : (

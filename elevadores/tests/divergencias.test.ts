@@ -1,0 +1,257 @@
+/* ============================================================
+   Testes das divergencias do SAC.
+
+   A classificacao de inversao de base e deduzida de texto livre, entao
+   e o que mais precisa de teste: e a unica regra do painel que nao vem
+   pronta de uma coluna da planilha.
+   ============================================================ */
+import { describe, it, expect } from 'vitest';
+import {
+  ehInversaoDeBase,
+  inversoesDeBase,
+  origemDaFilial,
+  totalizar,
+  porMes,
+  porTransportadora,
+  doAno,
+  anosDisponiveis,
+  variacaoMensal,
+} from '../src/domain/divergencias';
+import type { DivergenciaSAC } from '../src/domain/divergencias';
+import { lerDivergencias, separarProduto } from '../src/parsers/lerDivergencias';
+
+function div(p: Partial<DivergenciaSAC> = {}): DivergenciaSAC {
+  const filial = p.filial ?? 'CD_CAJAMAR';
+  return {
+    pedido: '1', filial, origem: origemDaFilial(filial), itemProduto: '4484433',
+    produto: 'BASE PARA ELEVADOR', motivo: 'Diferente do comprado',
+    submotivo: 'Divergência operacional CD', comentario: 'Cliente recebeu a base no tamanho incorreto.',
+    transportadora: 'TERMACO', estado: 'São Paulo', canal: 'TELEVENDAS',
+    valor: 1000, data: new Date(Date.UTC(2026, 4, 4)),
+    ...p,
+  };
+}
+
+describe('origem: CD e um indicador, o resto e loja', () => {
+  it('reconhece os CDs pelo prefixo', () => {
+    expect(origemDaFilial('CD_CAJAMAR')).toBe('CD');
+    expect(origemDaFilial('CD_RECIFE')).toBe('CD');
+  });
+
+  it('toda filial que nao e CD conta como loja', () => {
+    expect(origemDaFilial('LOJA_OSASCO_1')).toBe('LOJA');
+    expect(origemDaFilial('LOJA_RP_2')).toBe('LOJA');
+    expect(origemDaFilial('')).toBe('LOJA');
+  });
+});
+
+describe('classificacao de inversao de base', () => {
+  it('arrependimento nunca conta, mesmo falando de base trocada', () => {
+    expect(
+      ehInversaoDeBase(div({ motivo: 'Arrependimento', comentario: 'base invertida' }))
+    ).toBe(false);
+  });
+
+  it('"Comprou Errado" e erro do cliente e cai junto com o arrependimento', () => {
+    expect(
+      ehInversaoDeBase(div({ motivo: 'Arrependimento', submotivo: 'Comprou Errado - Modelo' }))
+    ).toBe(false);
+  });
+
+  it('pega a divergencia operacional do CD', () => {
+    expect(ehInversaoDeBase(div())).toBe(true);
+  });
+
+  it('pega base com furacao errada', () => {
+    expect(
+      ehInversaoDeBase(
+        div({ motivo: 'Defeito', submotivo: 'Defeito após uso', comentario: 'a furação da base está errada' })
+      )
+    ).toBe(true);
+  });
+
+  it('falta de volume nao e inversao: a base nao chegou, nao veio trocada', () => {
+    expect(
+      ehInversaoDeBase(
+        div({ motivo: 'Falta volume/item', submotivo: 'Faltou volume', comentario: 'Cliente recebeu o elevador sem a base.' })
+      )
+    ).toBe(false);
+    expect(
+      ehInversaoDeBase(
+        div({ motivo: 'Falta volume/item', submotivo: 'Faltou peça/acessório', comentario: 'faltou a base do elevador' })
+      )
+    ).toBe(false);
+  });
+
+  it('avaria e defeito de uso, sem base trocada, ficam de fora', () => {
+    expect(
+      ehInversaoDeBase(div({ motivo: 'Avaria', submotivo: 'Produto avariado na Transportadora', comentario: 'Caixa do motor quebrada' }))
+    ).toBe(false);
+    expect(
+      ehInversaoDeBase(div({ motivo: 'Defeito', submotivo: 'Defeito após uso', comentario: 'o braço do elevador não levanta' }))
+    ).toBe(false);
+  });
+
+  it('acento e caixa nao mudam a classificacao', () => {
+    expect(ehInversaoDeBase(div({ comentario: 'BASE INVERTIDA', submotivo: '' }))).toBe(true);
+    expect(ehInversaoDeBase(div({ comentario: 'inversão de base', submotivo: '' }))).toBe(true);
+  });
+});
+
+describe('totais separando CD de loja', () => {
+  const lista = [
+    div({ valor: 1000 }),
+    div({ valor: 500, filial: 'CD_RECIFE' }),
+    div({ valor: 300, filial: 'LOJA_OSASCO_1' }),
+  ];
+
+  it('CD e lojas nunca sao somados no mesmo numero', () => {
+    const t = totalizar(lista);
+    expect(t.cd.quantidade).toBe(2);
+    expect(t.cd.valor).toBe(1500);
+    expect(t.lojas.quantidade).toBe(1);
+    expect(t.lojas.valor).toBe(300);
+  });
+
+  it('o total confere com a soma dos dois cortes', () => {
+    const t = totalizar(lista);
+    expect(t.total.quantidade).toBe(t.cd.quantidade + t.lojas.quantidade);
+    expect(t.total.valor).toBe(t.cd.valor + t.lojas.valor);
+  });
+
+  it('lista vazia nao quebra', () => {
+    const t = totalizar([]);
+    expect(t.total).toEqual({ quantidade: 0, valor: 0 });
+  });
+});
+
+describe('corte por mes, pela Data Emissao Pedido', () => {
+  const lista = [
+    div({ data: new Date(Date.UTC(2026, 0, 15)), valor: 100 }),
+    div({ data: new Date(Date.UTC(2026, 0, 20)), valor: 200, filial: 'LOJA_RP_2' }),
+    div({ data: new Date(Date.UTC(2026, 5, 1)), valor: 300 }),
+    div({ data: new Date(Date.UTC(2025, 5, 1)), valor: 999 }),
+  ];
+
+  it('devolve os doze meses, inclusive os vazios', () => {
+    const meses = porMes(lista, 2026);
+    expect(meses).toHaveLength(12);
+    expect(meses[0].rotulo).toBe('jan');
+    expect(meses[11].rotulo).toBe('dez');
+  });
+
+  it('separa CD e loja dentro do mes', () => {
+    const jan = porMes(lista, 2026)[0];
+    expect(jan.cd.quantidade).toBe(1);
+    expect(jan.lojas.quantidade).toBe(1);
+    expect(jan.total.valor).toBe(300);
+  });
+
+  it('nao mistura anos', () => {
+    expect(doAno(lista, 2026)).toHaveLength(3);
+    expect(doAno(lista, 2025)).toHaveLength(1);
+    expect(porMes(lista, 2026)[5].total.quantidade).toBe(1);
+  });
+
+  it('lista os anos com dado, do mais novo para o mais velho', () => {
+    expect(anosDisponiveis(lista)).toEqual([2026, 2025]);
+  });
+
+  it('linha sem data nao entra em nenhum mes', () => {
+    expect(doAno([...lista, div({ data: null })], 2026)).toHaveLength(3);
+  });
+});
+
+describe('variacao mes a mes', () => {
+  it('mede a diferenca contra o mes anterior', () => {
+    const meses = porMes(
+      [
+        div({ data: new Date(Date.UTC(2026, 0, 5)) }),
+        div({ data: new Date(Date.UTC(2026, 0, 6)) }),
+        div({ data: new Date(Date.UTC(2026, 1, 5)) }),
+        div({ data: new Date(Date.UTC(2026, 1, 6)) }),
+        div({ data: new Date(Date.UTC(2026, 1, 7)) }),
+      ],
+      2026
+    );
+    expect(variacaoMensal(meses, 1)).toBeCloseTo(50, 5); // 2 -> 3
+  });
+
+  it('janeiro nao tem mes anterior', () => {
+    expect(variacaoMensal(porMes([], 2026), 0)).toBeNull();
+  });
+
+  it('sair de zero nao vira porcentagem infinita', () => {
+    const meses = porMes([div({ data: new Date(Date.UTC(2026, 1, 5)) })], 2026);
+    expect(variacaoMensal(meses, 1)).toBeNull();
+  });
+});
+
+describe('indice por transportadora', () => {
+  const lista = [
+    div({ transportadora: 'TERMACO', valor: 100 }),
+    div({ transportadora: 'TERMACO', valor: 200 }),
+    div({ transportadora: 'MANDALA', valor: 50 }),
+    div({ transportadora: 'RETIRA', valor: 900 }),
+    div({ transportadora: 'Não localizado', valor: 900 }),
+  ];
+
+  it('ordena pelo volume de ocorrencias', () => {
+    const r = porTransportadora(lista);
+    expect(r[0].transportadora).toBe('TERMACO');
+    expect(r[0].quantidade).toBe(2);
+    expect(r[0].valor).toBe(300);
+  });
+
+  it('RETIRA e cadastro em branco nao sao transportadora e ficam fora', () => {
+    const nomes = porTransportadora(lista).map((r) => r.transportadora);
+    expect(nomes).not.toContain('RETIRA');
+    expect(nomes).not.toContain('Não localizado');
+  });
+
+  it('a participacao soma 100% entre as transportadoras de verdade', () => {
+    const soma = porTransportadora(lista).reduce((s, r) => s + r.pct, 0);
+    expect(soma).toBeCloseTo(100, 5);
+  });
+
+  it('lista vazia devolve ranking vazio', () => {
+    expect(porTransportadora([])).toEqual([]);
+  });
+});
+
+describe('leitura da aba', () => {
+  const cabecalho = [
+    'Pedido', 'Filial Envio', 'Produto', 'Motivo', 'Submotivo', 'Comentário',
+    'Transportadora', 'Estado', 'Valor Devolução', 'Data Emissão Pedido', 'Canal_Agrupado',
+  ];
+
+  it('separa o codigo do item da descricao do produto', () => {
+    expect(separarProduto('4484433 - BASE PARA ELEVADOR 4000KG')).toEqual({
+      item: '4484433', descricao: 'BASE PARA ELEVADOR 4000KG',
+    });
+    expect(separarProduto('SEM CODIGO')).toEqual({ item: '', descricao: 'SEM CODIGO' });
+  });
+
+  it('le a linha e traz o valor positivo, como custo da divergencia', () => {
+    const lidas = lerDivergencias([
+      cabecalho,
+      ['260710-1', 'CD_CAJAMAR', '4484433 - BASE 4T', 'Diferente do comprado',
+       'Divergência operacional CD', 'base no tamanho incorreto', 'TERMACO', 'SP',
+       -15866.58, new Date(Date.UTC(2026, 4, 4)), 'TELEVENDAS'],
+    ]);
+    expect(lidas).toHaveLength(1);
+    expect(lidas[0].valor).toBeCloseTo(15866.58, 2);
+    expect(lidas[0].origem).toBe('CD');
+    expect(lidas[0].itemProduto).toBe('4484433');
+    expect(lidas[0].data?.toISOString().slice(0, 10)).toBe('2026-05-04');
+    expect(inversoesDeBase(lidas)).toHaveLength(1);
+  });
+
+  it('linha em branco da tabela nao vira registro', () => {
+    expect(lerDivergencias([cabecalho, [null, null, null, null, null, null, null, null, null, null, null]])).toHaveLength(0);
+  });
+
+  it('aba ausente devolve lista vazia, sem quebrar a importacao', () => {
+    expect(lerDivergencias([])).toEqual([]);
+  });
+});

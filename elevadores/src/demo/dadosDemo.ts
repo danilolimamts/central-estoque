@@ -9,6 +9,8 @@
    ============================================================ */
 import type { Componente, Acao } from '../domain/tipos';
 import type { Marco } from '../domain/historico';
+import type { DivergenciaSAC } from '../domain/divergencias';
+import { origemDaFilial } from '../domain/divergencias';
 import { FOTOS_PAIS } from '../dados/fotosPais';
 
 /* Usa codigos reais de elevador que possuem foto, para a demonstracao
@@ -197,4 +199,42 @@ export function historicoDemo(hoje = new Date()): Marco[] {
       saude: e.saude,
     };
   });
+}
+
+/* Divergencias do SAC de exemplo, no formato da f_divergenciasSAC.
+   Reproduz a mistura real: a maioria e arrependimento, que fica fora
+   da conta, e poucos casos de base trocada. */
+export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
+  const ano = hoje.getUTCFullYear();
+  const bruto: [number, number, string, string, string, string, string, number][] = [
+    // mes, dia, filial, motivo, submotivo, comentario, transportadora, valor
+    [0, 14, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'Cliente recebeu a base no tamanho incorreto.', 'TERMACO', 15866],
+    [1, 8, 'CD_CAJAMAR', 'Defeito', 'Defeito após uso', 'a furação da base está errada', 'MANDALA', 9603],
+    [1, 22, 'LOJA_OSASCO_1', 'Diferente do comprado', 'Divergência operacional CD', 'base invertida, não encaixa na coluna', 'RODOWEB', 12152],
+    [3, 5, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'Cliente recebeu a base no tamanho incorreto.', 'TERMACO', 13490],
+    [4, 11, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'trocaram a base do elevador', 'ACEVIILE', 22874],
+    [4, 27, 'LOJA_GUARULHOS_1', 'Defeito', 'Defeito após uso', 'furação da base errada', 'GENEROSO', 10572],
+    [5, 3, 'CD_RECIFE', 'Diferente do comprado', 'Divergência operacional CD', 'base incorreta para o modelo', 'CARVALIMA', 10699],
+    [6, 19, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'inversão de base', 'TERMACO', 21716],
+    // Fora da conta: arrependimento e falta de volume
+    [2, 10, 'CD_CAJAMAR', 'Arrependimento', 'Desistiu da compra', 'Cliente desistiu da compra', 'RETIRA', 63],
+    [3, 20, 'CD_CAJAMAR', 'Arrependimento', 'Comprou Errado - Modelo', 'comprou o modelo errado', 'MANDALA', 10500],
+    [5, 14, 'CD_CAJAMAR', 'Falta volume/item', 'Faltou volume', 'Cliente recebeu o elevador sem a base.', 'TERMACO', 11414],
+    [6, 2, 'CD_CAJAMAR', 'Avaria', 'Produto avariado na Transportadora', 'Caixa do motor quebrada', 'AMAZON', 10000],
+  ];
+  return bruto.map(([mes, dia, filial, motivo, submotivo, comentario, transportadora, valor], i) => ({
+    pedido: `2607${10 + i}-00${100 + i}`,
+    filial,
+    origem: origemDaFilial(filial),
+    itemProduto: '4484433',
+    produto: 'BASE PARA ELEVADOR AUTOMOTIVO HIDRAULICO DE 4000KG',
+    motivo,
+    submotivo,
+    comentario,
+    transportadora,
+    estado: 'São Paulo',
+    canal: 'TELEVENDAS',
+    valor,
+    data: new Date(Date.UTC(ano, mes, dia)),
+  }));
 }

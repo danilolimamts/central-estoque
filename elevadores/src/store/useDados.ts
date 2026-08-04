@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import localforage from 'localforage';
 import type { Componente, Acao } from '../domain/tipos';
+import type { DivergenciaSAC } from '../domain/divergencias';
 import { lerArquivo, lerArquivoFotos } from '../parsers/planilha';
 import { agruparConjuntos, resumirEqualizacao } from '../domain/equalizacao';
 import { auditarValoracao, resumirValoracao } from '../domain/valoracao';
@@ -26,6 +27,7 @@ const CHAVE_HISTORICO = 'historico';
 export interface Importacao {
   componentes: Componente[];
   acoes: Acao[];
+  divergencias: DivergenciaSAC[];
   fotos: [string, string][]; // Map serializado
   arquivo: string;
   importadoEm: string; // ISO
@@ -47,6 +49,15 @@ function reidratarAcoes(acoes: Acao[]): Acao[] {
     }
     return copia as unknown as Acao;
   });
+}
+
+/* A Data Emissao Pedido tambem vira string no IndexedDB. Importacao
+   antiga, gravada antes da aba de divergencias existir, volta sem o
+   campo: por isso o valor padrao. */
+function reidratarDivergencias(lista: DivergenciaSAC[] | undefined): DivergenciaSAC[] {
+  return (lista ?? []).map((d) =>
+    typeof d.data === 'string' ? { ...d, data: new Date(d.data) } : d
+  );
 }
 
 /* Grava o retrato do plano no historico. Falhar aqui nunca pode
@@ -80,7 +91,13 @@ export function useDados() {
       .getItem<Importacao>(CHAVE_DADOS)
       .then((salvo) => {
         if (!vivo) return;
-        if (salvo) setDados({ ...salvo, acoes: reidratarAcoes(salvo.acoes) });
+        if (salvo) {
+          setDados({
+            ...salvo,
+            acoes: reidratarAcoes(salvo.acoes),
+            divergencias: reidratarDivergencias(salvo.divergencias),
+          });
+        }
       })
       .catch(() => undefined)
       .finally(() => vivo && setCarregando(false));
@@ -93,7 +110,7 @@ export function useDados() {
     setErro(null);
     try {
       const buffer = new Uint8Array(await arquivo.arrayBuffer());
-      const { componentes, acoes } = lerArquivo(buffer);
+      const { componentes, acoes, divergencias } = lerArquivo(buffer);
       if (componentes.length === 0 && acoes.length === 0) {
         throw new Error(
           'Nao encontrei as abas Multiplos e Projeto nesta planilha. Confira se e o arquivo de equalizacao.'
@@ -109,6 +126,7 @@ export function useDados() {
       const novo: Importacao = {
         componentes,
         acoes,
+        divergencias,
         fotos,
         arquivo: arquivo.name,
         importadoEm: new Date().toISOString(),
@@ -141,7 +159,7 @@ export function useDados() {
      Fica so na memoria: nao grava no IndexedDB, para nunca ser confundido
      com uma importacao de verdade. */
   const carregarDemo = useCallback(async () => {
-    const { componentesDemo, acoesDemo, historicoDemo } = await import('../demo/dadosDemo');
+    const { componentesDemo, acoesDemo, historicoDemo, divergenciasDemo } = await import('../demo/dadosDemo');
     setErro(null);
     /* Marcos sinteticos, so na memoria: a evolucao precisa de mais de
        uma medicao para aparecer, e o exemplo nao tem como esperar. */
@@ -149,6 +167,7 @@ export function useDados() {
     setDados({
       componentes: componentesDemo(),
       acoes: acoesDemo(),
+      divergencias: divergenciasDemo(),
       fotos: [],
       arquivo: 'dados de exemplo',
       importadoEm: new Date().toISOString(),
