@@ -179,21 +179,21 @@ export function Elevadores({
                       }
                     />
                   )}
-                  <span
+                </div>
+                <div className="eq-elev-corpo">
+                  {/* Ordem fixa do cartao: foto, nome e quantidade. Nada
+                      escrito por cima da imagem. */}
+                  <div className="eq-elev-nome" title={e.nome}>
+                    {e.nome || '—'}
+                  </div>
+                  <div
                     className={`eq-elev-qtd${q.completos === 0 ? ' zero' : ''}`}
                     title={explicarQuantidade(q)}
                   >
                     <b>{q.completos}</b>
-                    <span>{q.completos === 1 ? 'elevador' : 'elevadores'}</span>
-                  </span>
-                </div>
-                <div className="eq-elev-corpo">
-                  <div className="eq-elev-nome" title={e.nome}>
-                    {e.nome || '—'}
+                    <span>{q.completos === 1 ? 'Elevador' : 'Elevadores'}</span>
                   </div>
-                  <div className="mono" style={{ fontWeight: 700, fontSize: 12.5 }}>
-                    {e.item}
-                  </div>
+                  <div className="mono eq-elev-cod">{e.item}</div>
                   <div className="eq-elev-pecas" title={explicarQuantidade(q)}>
                     {q.bases} base(s) · {q.colunas} coluna(s) no CD
                   </div>

@@ -453,8 +453,9 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-foto-cod{ display:block; text-align:center; font-size:9.5px; color:var(--ink-soft); margin-top:4px; }
 
 /* Grade de cartoes da tela de elevadores.
-   A moldura da foto tem altura fixa e recorta o que passar dela, para a
-   imagem nunca invadir o nome do item logo abaixo. */
+   O cartao empilha foto, nome e quantidade nessa ordem. A moldura da foto
+   tem altura fixa e recorta o que passar dela, e nenhum texto e escrito
+   por cima da imagem. */
 .eq-elev-grade{ display:grid; grid-template-columns:repeat(auto-fill, minmax(222px, 1fr)); gap:12px; }
 .eq-elev-card{ display:flex; flex-direction:column; overflow:hidden;
   border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--surface); }
@@ -463,18 +464,18 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-elev-foto img{ position:absolute; inset:0; width:100%; height:100%;
   object-fit:contain; padding:8px; }
 .eq-elev-foto .eq-foto-erro{ position:absolute; inset:0; height:auto; }
-/* Selo da quantidade, no canto da foto. */
-.eq-elev-qtd{ position:absolute; right:7px; bottom:7px; z-index:2; pointer-events:none;
-  display:inline-flex;
-  align-items:baseline; gap:4px; padding:3px 8px; border-radius:999px; color:#fff;
-  background:var(--blue); box-shadow:0 6px 14px -8px rgba(20,24,40,.8); }
-.eq-elev-qtd b{ font-size:13px; font-weight:800; line-height:1; }
-.eq-elev-qtd span{ font-size:9px; text-transform:uppercase; letter-spacing:.04em; opacity:.82; }
-.eq-elev-qtd.zero{ background:var(--gray-500); }
+/* Quantidade do modelo: linha propria abaixo do nome, fora da moldura da
+   foto. Nada de texto por cima da imagem. */
+.eq-elev-qtd{ display:flex; align-items:baseline; gap:5px; color:var(--blue); }
+.eq-elev-qtd b{ font-size:17px; font-weight:800; line-height:1; letter-spacing:-.01em; }
+.eq-elev-qtd span{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+.eq-elev-qtd.zero{ color:var(--gray-500); }
 .eq-elev-corpo{ display:flex; flex-direction:column; gap:5px; padding:9px 11px; }
 /* Nome em duas linhas no maximo, o resto sai nas reticencias. */
-.eq-elev-nome{ font-size:11px; font-weight:600; line-height:1.3; color:var(--ink);
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.eq-elev-nome{ font-size:12.5px; font-weight:700; line-height:1.3; color:var(--ink);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  min-height:2.6em; }
+.eq-elev-cod{ font-size:12.5px; font-weight:700; color:var(--ink-soft); }
 .eq-elev-pecas{ font-size:10px; color:var(--ink-soft); }
 .eq-elev-tags{ display:flex; gap:5px; flex-wrap:wrap; margin-top:2px; }
 /* A foto e clicavel: abre ampliada. */
