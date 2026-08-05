@@ -209,11 +209,11 @@ export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
   const bruto: [number, number, string, string, string, string, string, number][] = [
     // mes, dia, filial, motivo, submotivo, comentario, transportadora, valor
     [0, 14, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'Cliente recebeu a base no tamanho incorreto.', 'TERMACO', 15866],
-    [1, 8, 'CD_CAJAMAR', 'Defeito', 'Defeito após uso', 'a furação da base está errada', 'MANDALA', 9603],
+    [1, 8, 'CD_CAJAMAR', 'Diferente do comprado', 'Inversão de etiqueta', 'etiqueta trocada na expedição', 'MANDALA', 9603],
     [1, 22, 'LOJA_OSASCO_1', 'Diferente do comprado', 'Divergência operacional CD', 'base invertida, não encaixa na coluna', 'RODOWEB', 12152],
     [3, 5, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'Cliente recebeu a base no tamanho incorreto.', 'TERMACO', 13490],
     [4, 11, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'trocaram a base do elevador', 'ACEVIILE', 22874],
-    [4, 27, 'LOJA_GUARULHOS_1', 'Defeito', 'Defeito após uso', 'furação da base errada', 'GENEROSO', 10572],
+    [4, 27, 'LOJA_GUARULHOS_1', 'Falta volume/item', 'Faltou volume', 'faltou a base do elevador', 'GENEROSO', 10572],
     [5, 3, 'CD_RECIFE', 'Diferente do comprado', 'Divergência operacional CD', 'base incorreta para o modelo', 'CARVALIMA', 10699],
     [6, 19, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'inversão de base', 'TERMACO', 21716],
     // Fora da conta: arrependimento e falta de volume
@@ -226,6 +226,7 @@ export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
   ];
   return bruto.map(([mes, dia, filial, motivo, submotivo, comentario, transportadora, valor], i) => ({
     pedido: `2607${10 + i}-00${100 + i}`,
+    entrega: i % 4 === 0 ? '' : `${1990000 + i}`,
     filial,
     origem: origemDaFilial(filial),
     itemProduto: i === 12 ? '4655675' : '4484433',

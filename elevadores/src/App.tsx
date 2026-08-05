@@ -9,18 +9,13 @@ import { Importar } from './pages/Importar';
 import { DashboardGeral } from './pages/DashboardGeral';
 import { StatusProjeto } from './pages/StatusProjeto';
 import { Elevadores } from './pages/Elevadores';
-import { TabelaChaves } from './pages/TabelaChaves';
 import { FOTOS_PAIS } from './dados/fotosPais';
 import { LOGO_HORIZONTAL } from './dados/logo';
 import { Botao, Vazio } from './components/ui';
 
-type Pagina = 'chaves' | 'geral' | 'projeto' | 'elevadores' | 'importacao';
+type Pagina = 'geral' | 'projeto' | 'elevadores' | 'importacao';
 
 const PAGINAS: Record<Pagina, { titulo: string; subtitulo: string }> = {
-  chaves: {
-    titulo: 'Conjuntos por chave',
-    subtitulo: 'A tabela do reporte: uma linha por conjunto, com a ação de compra.',
-  },
   geral: {
     titulo: 'Dashboard Geral',
     subtitulo: 'O que comprar de base e de coluna, por conjunto.',
@@ -48,17 +43,6 @@ function Icone({ nome }: { nome: Pagina | 'tema' | 'menu' }) {
     stroke: 'currentColor',
     strokeWidth: 2,
   } as const;
-  if (nome === 'chaves')
-    return (
-      <svg {...comum}>
-        <line x1="3" y1="6" x2="21" y2="6" />
-        <line x1="3" y1="12" x2="21" y2="12" />
-        <line x1="3" y1="18" x2="21" y2="18" />
-        <circle cx="7" cy="6" r="0.6" fill="currentColor" />
-        <circle cx="7" cy="12" r="0.6" fill="currentColor" />
-        <circle cx="7" cy="18" r="0.6" fill="currentColor" />
-      </svg>
-    );
   if (nome === 'geral')
     return (
       <svg {...comum}>
@@ -116,7 +100,7 @@ function Icone({ nome }: { nome: Pagina | 'tema' | 'menu' }) {
 
 export default function App() {
   const { dados, historico, carregando, erro, importar, carregarDemo, limpar } = useDados();
-  const [pagina, setPagina] = useState<Pagina>('chaves');
+  const [pagina, setPagina] = useState<Pagina>('geral');
   const [recolhido, setRecolhido] = useState(false);
   const [tema, setTema] = useState<'claro' | 'escuro' | null>(null);
   const [busca, setBusca] = useState('');
@@ -197,13 +181,12 @@ export default function App() {
 
   function trocarPlanilha() {
     setConfirmarTroca(false);
-    setPagina('chaves');
+    setPagina('geral');
     void limpar();
   }
 
   const itens: { id: Pagina; rotulo: string; secao?: string }[] = [
-    { id: 'chaves', rotulo: 'Conjuntos por chave', secao: 'Visão geral' },
-    { id: 'geral', rotulo: 'Dashboard Geral' },
+    { id: 'geral', rotulo: 'Dashboard Geral', secao: 'Visão geral' },
     { id: 'projeto', rotulo: 'Status do Projeto' },
     { id: 'elevadores', rotulo: 'Elevadores', secao: 'Operação' },
     { id: 'importacao', rotulo: 'Importação', secao: 'Sistema' },
@@ -325,8 +308,6 @@ export default function App() {
             <Vazio icone="⏳">Carregando dados salvos…</Vazio>
           ) : !dados ? (
             <Importar aoImportar={importar} aoVerExemplo={carregarDemo} erro={erro} />
-          ) : paginaAtual === 'chaves' ? (
-            <TabelaChaves componentes={dados.componentes} busca={busca} />
           ) : paginaAtual === 'geral' ? (
             <DashboardGeral componentes={dados.componentes} fotos={fotos} busca={busca} divergencias={dados.divergencias} />
           ) : paginaAtual === 'projeto' ? (

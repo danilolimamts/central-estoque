@@ -7,7 +7,9 @@
    ============================================================ */
 import { describe, it, expect } from 'vitest';
 import {
-  ehInversaoDeBase,
+  ehCulpaDoCD,
+  causaDe,
+  porCausa,
   ehProdutoDeElevador,
   tipoDoProduto,
   inversoesDeBase,
@@ -25,7 +27,7 @@ import { lerDivergencias, separarProduto } from '../src/parsers/lerDivergencias'
 function div(p: Partial<DivergenciaSAC> = {}): DivergenciaSAC {
   const filial = p.filial ?? 'CD_CAJAMAR';
   return {
-    pedido: '1', filial, origem: origemDaFilial(filial), itemProduto: '4484433',
+    pedido: '1', entrega: 'E1', filial, origem: origemDaFilial(filial), itemProduto: '4484433',
     produto: 'BASE PARA ELEVADOR', motivo: 'Diferente do comprado',
     submotivo: 'Divergência operacional CD', comentario: 'Cliente recebeu a base no tamanho incorreto.',
     transportadora: 'TERMACO', estado: 'São Paulo', canal: 'TELEVENDAS',
@@ -50,36 +52,50 @@ describe('origem: CD e um indicador, o resto e loja', () => {
 describe('classificacao de inversao de base', () => {
   it('arrependimento nunca conta, mesmo falando de base trocada', () => {
     expect(
-      ehInversaoDeBase(div({ motivo: 'Arrependimento', comentario: 'base invertida' }))
+      ehCulpaDoCD(div({ motivo: 'Arrependimento', comentario: 'base invertida' }))
     ).toBe(false);
   });
 
   it('"Comprou Errado" e erro do cliente e cai junto com o arrependimento', () => {
     expect(
-      ehInversaoDeBase(div({ motivo: 'Arrependimento', submotivo: 'Comprou Errado - Modelo' }))
+      ehCulpaDoCD(div({ motivo: 'Arrependimento', submotivo: 'Comprou Errado - Modelo' }))
     ).toBe(false);
   });
 
   it('pega a divergencia operacional do CD', () => {
-    expect(ehInversaoDeBase(div())).toBe(true);
+    expect(ehCulpaDoCD(div())).toBe(true);
   });
 
-  it('pega base com furacao errada', () => {
+  it('defeito apos uso nao e culpa do CD, mesmo falando da base', () => {
+    /* O produto falhou depois de entregue: e problema da marca, nao de
+       quem separou. */
     expect(
-      ehInversaoDeBase(
+      ehCulpaDoCD(
         div({ motivo: 'Defeito', submotivo: 'Defeito após uso', comentario: 'a furação da base está errada' })
       )
+    ).toBe(false);
+  });
+
+  it('avaria e da transportadora, nao do CD', () => {
+    expect(
+      ehCulpaDoCD(div({ motivo: 'Avaria', submotivo: 'Produto avariado na Transportadora', comentario: 'base trocada' }))
+    ).toBe(false);
+  });
+
+  it('inversao de etiqueta e erro de separacao', () => {
+    expect(
+      ehCulpaDoCD(div({ motivo: 'Diferente do comprado', submotivo: 'Inversão de etiqueta', comentario: '-' }))
     ).toBe(true);
   });
 
-  it('base que nao chegou tambem e divergencia de base', () => {
+  it('base que nao chegou conta como peca faltando', () => {
     expect(
-      ehInversaoDeBase(
+      ehCulpaDoCD(
         div({ produto: 'ELEVADOR AUTO ELETRO HIDRAULICO 2.6 TON', motivo: 'Falta volume/item', submotivo: 'Faltou volume', comentario: 'Cliente recebeu o elevador sem a base.' })
       )
     ).toBe(true);
     expect(
-      ehInversaoDeBase(
+      ehCulpaDoCD(
         div({ produto: 'ELEVADOR AUTO ELETRO HIDRAULICO 2.6 TON', motivo: 'Falta volume/item', submotivo: 'Faltou peça/acessório', comentario: 'faltou a base do elevador' })
       )
     ).toBe(true);
@@ -89,30 +105,30 @@ describe('classificacao de inversao de base', () => {
     /* "BORRACHA PARA SAPATA U PARA ELEVADOR" cita elevador, mas e
        borracha: nao tem base para inverter. */
     expect(
-      ehInversaoDeBase(
+      ehCulpaDoCD(
         div({ produto: 'BORRACHA PARA SAPATA U PARA ELEVADOR 4000KG', comentario: 'base incorreta' })
       )
     ).toBe(false);
     expect(
-      ehInversaoDeBase(div({ produto: 'RAMPA PARA ALINHAMENTO ELETRICA 5000KG', comentario: 'base errada' }))
+      ehCulpaDoCD(div({ produto: 'RAMPA PARA ALINHAMENTO ELETRICA 5000KG', comentario: 'base errada' }))
     ).toBe(false);
     expect(
-      ehInversaoDeBase(div({ produto: 'JOGO DE SAPATAS U COM BORRACHA PARA ELEVADOR', comentario: 'base trocada' }))
+      ehCulpaDoCD(div({ produto: 'JOGO DE SAPATAS U COM BORRACHA PARA ELEVADOR', comentario: 'base trocada' }))
     ).toBe(false);
   });
 
-  it('avaria e defeito de uso, sem base trocada, ficam de fora', () => {
+  it('avaria e defeito de uso ficam de fora', () => {
     expect(
-      ehInversaoDeBase(div({ motivo: 'Avaria', submotivo: 'Produto avariado na Transportadora', comentario: 'Caixa do motor quebrada' }))
+      ehCulpaDoCD(div({ motivo: 'Avaria', submotivo: 'Produto avariado na Transportadora', comentario: 'Caixa do motor quebrada' }))
     ).toBe(false);
     expect(
-      ehInversaoDeBase(div({ motivo: 'Defeito', submotivo: 'Defeito após uso', comentario: 'o braço do elevador não levanta' }))
+      ehCulpaDoCD(div({ motivo: 'Defeito', submotivo: 'Defeito após uso', comentario: 'o braço do elevador não levanta' }))
     ).toBe(false);
   });
 
   it('acento e caixa nao mudam a classificacao', () => {
-    expect(ehInversaoDeBase(div({ comentario: 'BASE INVERTIDA', submotivo: '' }))).toBe(true);
-    expect(ehInversaoDeBase(div({ comentario: 'inversão de base', submotivo: '' }))).toBe(true);
+    expect(ehCulpaDoCD(div({ comentario: 'BASE INVERTIDA', submotivo: '' }))).toBe(true);
+    expect(ehCulpaDoCD(div({ comentario: 'inversão de base', submotivo: '' }))).toBe(true);
   });
 });
 
@@ -296,5 +312,38 @@ describe('tipo do produto: o que entra no painel', () => {
   it('descricao vazia cai em OUTRO e fica de fora', () => {
     expect(tipoDoProduto('')).toBe('OUTRO');
     expect(ehProdutoDeElevador(div({ produto: '' }))).toBe(false);
+  });
+});
+
+describe('causa do erro do CD', () => {
+  it('item trocado e inversao', () => {
+    expect(causaDe(div({ comentario: 'base no tamanho incorreto' }))).toBe('INVERSAO');
+    expect(causaDe(div({ submotivo: 'Inversão de etiqueta', comentario: '-' }))).toBe('INVERSAO');
+  });
+
+  it('item que nao foi junto e peca faltando', () => {
+    expect(
+      causaDe(div({ produto: 'ELEVADOR AUTO', motivo: 'Falta volume/item', submotivo: 'Faltou volume', comentario: 'sem a base' }))
+    ).toBe('FALTA');
+  });
+
+  it('caso de terceiro nao tem causa do CD', () => {
+    expect(causaDe(div({ motivo: 'Defeito', submotivo: 'Defeito após uso' }))).toBeNull();
+    expect(causaDe(div({ motivo: 'Arrependimento', submotivo: 'Desistiu da compra' }))).toBeNull();
+  });
+
+  it('a quebra por causa cobre os dois tipos e soma o total', () => {
+    const lista = [
+      div({ valor: 100 }),
+      div({ valor: 200 }),
+      div({ produto: 'ELEVADOR AUTO', motivo: 'Falta volume/item', submotivo: 'Faltou volume', comentario: 'sem a base', valor: 50 }),
+    ];
+    const c = porCausa(lista);
+    expect(c.map((x) => x.causa)).toEqual(['INVERSAO', 'FALTA']);
+    expect(c[0].quantidade).toBe(2);
+    expect(c[0].valor).toBe(300);
+    expect(c[1].quantidade).toBe(1);
+    expect(c[1].valor).toBe(50);
+    expect(c[0].quantidade + c[1].quantidade).toBe(lista.length);
   });
 });

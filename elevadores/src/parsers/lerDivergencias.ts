@@ -36,6 +36,7 @@ export function lerDivergencias(aoa: unknown[][]): DivergenciaSAC[] {
 
     saida.push({
       pedido,
+      entrega: paraTexto(s('Id Entrega', 'Id_Entrega', 'Entrega')),
       filial,
       origem: origemDaFilial(filial),
       itemProduto: item,

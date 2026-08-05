@@ -63,8 +63,11 @@ async function abrir(largura, altura) {
 /* ---- Tela larga: expandido -> recolhido -> expandido ---- */
 const larga = await abrir(1440, 900);
 const expandido = await medir(larga);
-if (expandido.rotulosVisiveis !== 5) {
-  problemas.push(`menu aberto deveria mostrar os 5 rotulos, mostrou ${expandido.rotulosVisiveis}`);
+/* Quantas telas o menu tem hoje. Se mudar, e para o teste avisar: o
+   numero errado aqui costuma ser item perdido, nao teste desatualizado. */
+const TELAS = 4;
+if (expandido.rotulosVisiveis !== TELAS) {
+  problemas.push(`menu aberto deveria mostrar ${TELAS} rotulos, mostrou ${expandido.rotulosVisiveis}`);
 }
 
 await larga.locator('.sidebar-toggle').click();

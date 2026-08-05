@@ -2,20 +2,23 @@
    Divergencias do SAC (tabela f_divergenciasSAC).
 
    A tabela traz toda devolucao de elevador registrada pelo SAC. O
-   painel so quer um recorte dela: os casos de inversao de base, em que
-   a operacao mandou base trocada, de medida errada ou incompativel com
-   a coluna.
+   painel so quer o que foi erro do CD: item trocado (inversao) ou item
+   que nao foi junto (peca faltando). O que e do cliente, da marca ou
+   do transporte fica de fora.
 
-   ATENCAO - a inversao nao e um campo da planilha. Motivo e Submotivo
-   nao tem essa opcao, entao ela e deduzida do texto. As regras estao
-   todas em INVERSAO e FORA logo abaixo, de proposito: e o unico lugar
-   a mexer quando a classificacao precisar mudar.
+   ATENCAO - a causa nao e um campo da planilha. Motivo e Submotivo nao
+   tem essa opcao, entao ela e deduzida do texto. As regras estao todas
+   em MOTIVOS_FORA, TERMOS_INVERSAO e TERMOS_FALTA logo abaixo, de
+   proposito: e o unico lugar a mexer quando a classificacao mudar.
    ============================================================ */
 
 export type Origem = 'CD' | 'LOJA';
 
 export interface DivergenciaSAC {
   pedido: string;
+  /* Id Entrega. Nem toda devolucao chegou a virar entrega, entao a
+     tela cai no numero do pedido quando ele esta vazio. */
+  entrega: string;
   /* Filial que despachou. E o que separa CD de loja. */
   filial: string;
   origem: Origem;
@@ -33,27 +36,45 @@ export interface DivergenciaSAC {
   data: Date | null;
 }
 
-/* Arrependimento e erro do cliente, nao da operacao: fica de fora por
-   regra do projeto, e leva junto o "Comprou Errado", que e o cliente
-   escolhendo o modelo errado. */
-export const MOTIVO_FORA = 'ARREPENDIMENTO';
+/* Motivos que nao sao responsabilidade do CD:
+   - Arrependimento: o cliente desistiu ou comprou errado;
+   - Defeito: o produto falhou depois de entregue, e problema da marca;
+   - Avaria: quebrou no transporte, e problema da transportadora.
+   O CD responde por separar e expedir, nao pelo que acontece depois. */
+export const MOTIVOS_FORA = ['arrependimento', 'defeito', 'avaria'];
 
-/* Termos do Comentario e do Submotivo que dizem que o problema foi na
-   base do elevador: base trocada, de medida errada ou que nao chegou. */
-const BASE_ENVOLVIDA = [
+/* Duas causas que sao do CD, e a diferenca entre elas importa: uma se
+   corrige com conferencia na expedicao, a outra com etiqueta e
+   endereco. */
+export type CausaCD = 'INVERSAO' | 'FALTA';
+
+export const ROTULO_CAUSA: Record<CausaCD, string> = {
+  INVERSAO: 'Inversão',
+  FALTA: 'Peça faltando',
+};
+
+/* Item trocado: base, coluna ou etiqueta que nao correspondem ao
+   pedido. E o erro classico de separacao. */
+const TERMOS_INVERSAO = [
   'invertid', 'invers', 'base trocada', 'coluna trocada', 'trocaram a base',
+  'etiqueta trocada', 'etiqueta errada',
   'base no tamanho incorreto', 'base incorreta', 'base errada',
   'furacao da base', 'furacao errada', 'tamanho incorreto',
   'medida errada', 'nao encaixa', 'incompativel',
   'divergencia operacional cd',
-  /* Base que nao chegou tambem e divergencia de base. */
+];
+
+/* Item que nao foi junto: falta volume ou peca no que foi expedido. */
+const TERMOS_FALTA = [
   'faltou a base', 'sem a base', 'falta a base',
+  'faltou peca', 'faltou volume', 'falta de volume', 'faltou item',
+  'falta peca', 'falta volume',
 ];
 
 export function semAcento(v: unknown): string {
   return String(v ?? '')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
 }
@@ -80,22 +101,44 @@ export function ehProdutoDeElevador(d: DivergenciaSAC): boolean {
   return tipoDoProduto(d.produto) !== 'OUTRO';
 }
 
-/* O caso entra na conta?
+/* A causa da divergencia, quando ela e do CD.
 
    Tres condicoes, na ordem em que foram pedidas:
-   1. nao pode ser arrependimento, que e erro do cliente;
-   2. o Comentario tem que apontar problema na base do elevador;
-   3. o Produto tem que ser elevador ou base, nao acessorio. */
-export function ehInversaoDeBase(d: DivergenciaSAC): boolean {
-  if (semAcento(d.motivo).includes(semAcento(MOTIVO_FORA))) return false;
-  if (!ehProdutoDeElevador(d)) return false;
+   1. o Motivo nao pode ser de terceiro (cliente, marca ou transporte);
+   2. o Produto tem que ser elevador ou base, nao acessorio;
+   3. o texto tem que apontar item trocado ou item faltando.
+
+   Devolve nulo quando o caso nao e do CD. */
+export function causaDe(d: DivergenciaSAC): CausaCD | null {
+  const motivo = semAcento(d.motivo);
+  if (MOTIVOS_FORA.some((m) => motivo.includes(m))) return null;
+  if (!ehProdutoDeElevador(d)) return null;
 
   const texto = `${semAcento(d.submotivo)} ${semAcento(d.comentario)}`;
-  return BASE_ENVOLVIDA.some((t) => texto.includes(t));
+  if (TERMOS_INVERSAO.some((t) => texto.includes(t))) return 'INVERSAO';
+  if (TERMOS_FALTA.some((t) => texto.includes(t))) return 'FALTA';
+  return null;
+}
+
+export function ehCulpaDoCD(d: DivergenciaSAC): boolean {
+  return causaDe(d) !== null;
 }
 
 export function inversoesDeBase(lista: DivergenciaSAC[]): DivergenciaSAC[] {
-  return lista.filter(ehInversaoDeBase);
+  return lista.filter(ehCulpaDoCD);
+}
+
+/* Quebra por causa, para a tela mostrar onde o CD esta errando. */
+export function porCausa(lista: DivergenciaSAC[]): { causa: CausaCD; rotulo: string; quantidade: number; valor: number }[] {
+  return (['INVERSAO', 'FALTA'] as const).map((causa) => {
+    const doTipo = lista.filter((d) => causaDe(d) === causa);
+    return {
+      causa,
+      rotulo: ROTULO_CAUSA[causa],
+      quantidade: doTipo.length,
+      valor: doTipo.reduce((s, d) => s + d.valor, 0),
+    };
+  });
 }
 
 /* CD e um indicador; toda filial que nao e CD conta como loja. */
@@ -167,7 +210,7 @@ export interface LinhaTransportadora {
   transportadora: string;
   quantidade: number;
   valor: number;
-  /* Participacao sobre o total de inversoes do periodo. */
+  /* Participacao sobre o total de casos do periodo. */
   pct: number;
 }
 
