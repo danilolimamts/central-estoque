@@ -929,13 +929,20 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
   font-weight:800; text-align:right; color:var(--ink-soft); }
 
 /* Inversoes de base apontadas pelo SAC. */
-.eq-sac-numeros{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
-.eq-sac-numero{ flex:1; min-width:130px; display:flex; flex-direction:column; gap:2px;
-  padding:12px 14px; border:1px solid var(--line); border-radius:var(--radius-lg);
-  background:var(--paper); }
-.eq-sac-rotulo{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
-.eq-sac-numero b{ font-size:28px; font-weight:800; color:var(--ink); line-height:1.1; }
-.eq-sac-valor{ font-size:12px; font-weight:600; color:var(--ink-soft); }
+.eq-sac-numeros{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:20px; }
+.eq-sac-numero{ position:relative; flex:1; min-width:170px; display:flex; flex-direction:column;
+  padding:18px 18px 16px; border:1px solid var(--line); border-radius:var(--radius-lg);
+  background:var(--surface); overflow:hidden;
+  box-shadow:0 1px 3px rgba(20,24,40,.06); }
+.eq-sac-numero.destaque{ background:var(--paper); border-color:var(--ink-soft); }
+.eq-sac-tira{ position:absolute; inset:0 0 auto 0; height:4px; }
+.eq-sac-rotulo{ font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.07em;
+  color:var(--ink-soft); }
+.eq-sac-numero b{ font-size:44px; font-weight:800; line-height:1; margin-top:8px;
+  letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.eq-sac-unidade{ font-size:11px; color:var(--ink-soft); margin-top:3px; }
+.eq-sac-valor{ font-size:16px; font-weight:800; color:var(--ink); margin-top:10px;
+  padding-top:9px; border-top:1px solid var(--line); font-variant-numeric:tabular-nums; }
 .eq-sac-titulo{ margin:20px 0 10px; font-size:12.5px; font-weight:800; color:var(--ink);
   text-transform:uppercase; letter-spacing:.04em; }
 

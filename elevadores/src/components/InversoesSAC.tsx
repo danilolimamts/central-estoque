@@ -35,18 +35,22 @@ function Numero({
   quantidade,
   valor,
   cor,
+  destaque,
 }: {
   rotulo: string;
   quantidade: number;
   valor: number;
   cor: string;
+  destaque?: boolean;
 }) {
   return (
-    <div className="eq-sac-numero">
-      <span className="eq-sac-rotulo" style={{ color: cor }}>
-        {rotulo}
-      </span>
-      <b>{quantidade}</b>
+    <div className={`eq-sac-numero${destaque ? ' destaque' : ''}`}>
+      {/* Tira colorida no topo: identifica a origem de longe, que e
+          como o painel e lido quando projetado em reuniao. */}
+      <span className="eq-sac-tira" style={{ background: cor }} />
+      <span className="eq-sac-rotulo">{rotulo}</span>
+      <b style={{ color: cor }}>{quantidade}</b>
+      <span className="eq-sac-unidade">{quantidade === 1 ? 'elevador' : 'elevadores'}</span>
       <span className="eq-sac-valor">{formatarReal(valor)}</span>
     </div>
   );
@@ -63,50 +67,67 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
   const meses = useMemo(() => porMes(inversoes, anoAtivo), [inversoes, anoAtivo]);
   const transportadoras = useMemo(() => porTransportadora(doAnoEscolhido), [doAnoEscolhido]);
 
-  /* Barras por mes, CD e lojas lado a lado. A linha e o valor, no eixo
-     da direita: quantidade e dinheiro nao dividem escala. */
+  /* Barras por mes, CD e lojas lado a lado, com o numero em cima de
+     cada uma: o painel e projetado em reuniao, onde ninguem passa o
+     cursor para descobrir o valor.
+
+     O valor em reais desce para o eixo, embaixo do nome do mes. Como
+     linha ele disputava espaco com o rotulo das barras e os dois se
+     sobrepunham justamente nos meses que importam. */
   const configMes: ChartConfiguration = useMemo(
     () => ({
       type: 'bar',
       data: {
         labels: meses.map((m) => m.rotulo),
         datasets: [
-          { label: 'CD', data: meses.map((m) => m.cd.quantidade), backgroundColor: COR_CD, yAxisID: 'y' },
-          { label: 'Lojas', data: meses.map((m) => m.lojas.quantidade), backgroundColor: COR_LOJA, yAxisID: 'y' },
-          {
-            type: 'line',
-            label: 'Valor (R$)',
-            data: meses.map((m) => m.total.valor),
-            borderColor: cores.semantico.cinza,
-            backgroundColor: 'transparent',
-            borderDash: [5, 4],
-            pointRadius: 3,
-            yAxisID: 'y1',
-          },
+          { label: 'CD', data: meses.map((m) => m.cd.quantidade), backgroundColor: COR_CD, borderRadius: 4 },
+          { label: 'Lojas', data: meses.map((m) => m.lojas.quantidade), backgroundColor: COR_LOJA, borderRadius: 4 },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        layout: { padding: { top: 20 } },
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          datalabels: { display: false },
-          legend: { position: 'bottom' },
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } },
+          datalabels: {
+            /* Zero nao vira rotulo: onze zeros na tela cansam a leitura
+               e escondem os meses que importam. */
+            display: (c) => Number(c.dataset.data[c.dataIndex] ?? 0) > 0,
+            anchor: 'end',
+            align: 'end',
+            offset: 1,
+            font: { weight: 700, size: 15 },
+            color: (c) => (c.datasetIndex === 0 ? COR_CD : COR_LOJA),
+          },
           tooltip: {
             callbacks: {
-              label: (c) =>
-                c.dataset.label === 'Valor (R$)'
-                  ? `Valor: ${formatarReal(Number(c.raw))}`
-                  : `${c.dataset.label}: ${c.raw}`,
+              footer: (itens) => {
+                const m = meses[itens[0]?.dataIndex ?? 0];
+                return m ? `Valor devolvido: ${formatarReal(m.total.valor)}` : '';
+              },
             },
           },
         },
         scales: {
-          y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Elevadores' } },
-          y1: {
-            beginAtZero: true, position: 'right', grid: { drawOnChartArea: false },
-            title: { display: true, text: 'Valor' },
-            ticks: { callback: (v) => formatarReal(Number(v)) },
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0, font: { size: 12 } },
+            title: { display: true, text: 'Elevadores', font: { size: 12 } },
+            grace: '30%',
+          },
+          x: {
+            grid: { display: false },
+            ticks: {
+              font: { size: 12 },
+              /* Duas linhas: o mes e, embaixo, quanto custou. */
+              callback(_v, i) {
+                const m = meses[i];
+                if (!m) return '';
+                return m.total.quantidade > 0 ? [m.rotulo, formatarReal(m.total.valor)] : m.rotulo;
+              },
+            },
           },
         },
       },
@@ -155,6 +176,7 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
               quantidade={totais.total.quantidade}
               valor={totais.total.valor}
               cor={cores.dark.base}
+              destaque
             />
           </div>
 
