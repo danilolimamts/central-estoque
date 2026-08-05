@@ -259,6 +259,12 @@ export default function App() {
             <Icone nome="tema" />
             <span>Alternar tema</span>
           </button>
+          {/* Carimbo do build: e por ele que se sabe, sem abrir o
+              inspetor, se o navegador esta servindo a versao nova ou
+              uma guardada em cache. */}
+          <div className="eq-versao" title={`Versão publicada: ${__VERSAO__}`}>
+            {__VERSAO__}
+          </div>
         </div>
       </aside>
 

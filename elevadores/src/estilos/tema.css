@@ -938,3 +938,9 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-sac-valor{ font-size:12px; font-weight:600; color:var(--ink-soft); }
 .eq-sac-titulo{ margin:20px 0 10px; font-size:12.5px; font-weight:800; color:var(--ink);
   text-transform:uppercase; letter-spacing:.04em; }
+
+/* Carimbo do build no pe do menu. Fica discreto, mas sempre visivel:
+   e o que responde "estou vendo a versao nova?" sem abrir o inspetor. */
+.eq-versao{ margin-top:8px; text-align:center; font-size:9.5px; letter-spacing:.02em;
+  color:rgba(255,255,255,.45); font-family:'SFMono-Regular',Consolas,monospace; }
+.sidebar.collapsed .eq-versao{ display:none; }
