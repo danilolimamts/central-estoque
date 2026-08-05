@@ -38,19 +38,17 @@ export interface DivergenciaSAC {
    escolhendo o modelo errado. */
 export const MOTIVO_FORA = 'ARREPENDIMENTO';
 
-/* Termos que caracterizam base ou coluna trocada. Ficam no Submotivo
-   ou no Comentario. */
-const INVERSAO = [
+/* Termos do Comentario e do Submotivo que dizem que o problema foi na
+   base do elevador: base trocada, de medida errada ou que nao chegou. */
+const BASE_ENVOLVIDA = [
   'invertid', 'invers', 'base trocada', 'coluna trocada', 'trocaram a base',
   'base no tamanho incorreto', 'base incorreta', 'base errada',
   'furacao da base', 'furacao errada', 'tamanho incorreto',
   'medida errada', 'nao encaixa', 'incompativel',
   'divergencia operacional cd',
+  /* Base que nao chegou tambem e divergencia de base. */
+  'faltou a base', 'sem a base', 'falta a base',
 ];
-
-/* Termos que parecem inversao mas nao sao: falta de volume e o item
-   que nao chegou, nao o item trocado. */
-const FORA = ['faltou a base', 'sem a base', 'falta de volume', 'faltou volume'];
 
 export function semAcento(v: unknown): string {
   return String(v ?? '')
@@ -60,16 +58,40 @@ export function semAcento(v: unknown): string {
     .trim();
 }
 
-/* O caso e inversao de base?
+export type TipoProduto = 'ELEVADOR' | 'BASE' | 'COLUNA' | 'OUTRO';
 
-   Duas condicoes: nao pode ser arrependimento (erro do cliente), e o
-   texto precisa apontar base ou coluna trocada. */
+/* A descricao do produto comeca pelo tipo: "ELEVADOR AUTOMOTIVO...",
+   "BASE PARA ELEVADOR...", "RAMPA PARA ALINHAMENTO...".
+
+   Olhar so o inicio e o que separa o produto do acessorio: "BORRACHA
+   PARA SAPATA U PARA ELEVADOR" cita elevador, mas e borracha. Procurar
+   a palavra em qualquer posicao traria o acessorio junto. */
+export function tipoDoProduto(descricao: string): TipoProduto {
+  const t = semAcento(descricao);
+  if (t.startsWith('elevador')) return 'ELEVADOR';
+  if (t.startsWith('base')) return 'BASE';
+  if (t.startsWith('coluna')) return 'COLUNA';
+  return 'OUTRO';
+}
+
+/* Entra no painel so o que e elevador, base ou coluna: rampa, sapata e
+   borracha sao acessorios e nao tem base para inverter. */
+export function ehProdutoDeElevador(d: DivergenciaSAC): boolean {
+  return tipoDoProduto(d.produto) !== 'OUTRO';
+}
+
+/* O caso entra na conta?
+
+   Tres condicoes, na ordem em que foram pedidas:
+   1. nao pode ser arrependimento, que e erro do cliente;
+   2. o Comentario tem que apontar problema na base do elevador;
+   3. o Produto tem que ser elevador ou base, nao acessorio. */
 export function ehInversaoDeBase(d: DivergenciaSAC): boolean {
   if (semAcento(d.motivo).includes(semAcento(MOTIVO_FORA))) return false;
+  if (!ehProdutoDeElevador(d)) return false;
 
   const texto = `${semAcento(d.submotivo)} ${semAcento(d.comentario)}`;
-  if (FORA.some((t) => texto.includes(t))) return false;
-  return INVERSAO.some((t) => texto.includes(t));
+  return BASE_ENVOLVIDA.some((t) => texto.includes(t));
 }
 
 export function inversoesDeBase(lista: DivergenciaSAC[]): DivergenciaSAC[] {

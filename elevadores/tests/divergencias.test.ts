@@ -8,6 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   ehInversaoDeBase,
+  ehProdutoDeElevador,
+  tipoDoProduto,
   inversoesDeBase,
   origemDaFilial,
   totalizar,
@@ -70,16 +72,32 @@ describe('classificacao de inversao de base', () => {
     ).toBe(true);
   });
 
-  it('falta de volume nao e inversao: a base nao chegou, nao veio trocada', () => {
+  it('base que nao chegou tambem e divergencia de base', () => {
     expect(
       ehInversaoDeBase(
-        div({ motivo: 'Falta volume/item', submotivo: 'Faltou volume', comentario: 'Cliente recebeu o elevador sem a base.' })
+        div({ produto: 'ELEVADOR AUTO ELETRO HIDRAULICO 2.6 TON', motivo: 'Falta volume/item', submotivo: 'Faltou volume', comentario: 'Cliente recebeu o elevador sem a base.' })
+      )
+    ).toBe(true);
+    expect(
+      ehInversaoDeBase(
+        div({ produto: 'ELEVADOR AUTO ELETRO HIDRAULICO 2.6 TON', motivo: 'Falta volume/item', submotivo: 'Faltou peça/acessório', comentario: 'faltou a base do elevador' })
+      )
+    ).toBe(true);
+  });
+
+  it('acessorio nao entra, mesmo citando elevador no nome', () => {
+    /* "BORRACHA PARA SAPATA U PARA ELEVADOR" cita elevador, mas e
+       borracha: nao tem base para inverter. */
+    expect(
+      ehInversaoDeBase(
+        div({ produto: 'BORRACHA PARA SAPATA U PARA ELEVADOR 4000KG', comentario: 'base incorreta' })
       )
     ).toBe(false);
     expect(
-      ehInversaoDeBase(
-        div({ motivo: 'Falta volume/item', submotivo: 'Faltou peça/acessório', comentario: 'faltou a base do elevador' })
-      )
+      ehInversaoDeBase(div({ produto: 'RAMPA PARA ALINHAMENTO ELETRICA 5000KG', comentario: 'base errada' }))
+    ).toBe(false);
+    expect(
+      ehInversaoDeBase(div({ produto: 'JOGO DE SAPATAS U COM BORRACHA PARA ELEVADOR', comentario: 'base trocada' }))
     ).toBe(false);
   });
 
@@ -253,5 +271,30 @@ describe('leitura da aba', () => {
 
   it('aba ausente devolve lista vazia, sem quebrar a importacao', () => {
     expect(lerDivergencias([])).toEqual([]);
+  });
+});
+
+describe('tipo do produto: o que entra no painel', () => {
+  it('classifica pelo inicio da descricao, que e onde vem o tipo', () => {
+    expect(tipoDoProduto('ELEVADOR AUTOMOTIVO MECANICO 2500KG')).toBe('ELEVADOR');
+    expect(tipoDoProduto('BASE PARA ELEVADOR AUTOMOTIVO 4000KG')).toBe('BASE');
+    expect(tipoDoProduto('COLUNAS_ELEV HIDRAULICO 4T')).toBe('COLUNA');
+  });
+
+  it('acessorio que cita elevador no meio do nome nao vira elevador', () => {
+    expect(tipoDoProduto('BORRACHA PARA SAPATA U PARA ELEVADOR 4000KG')).toBe('OUTRO');
+    expect(tipoDoProduto('JOGO DE SAPATAS U COM BORRACHA PARA ELEVADOR')).toBe('OUTRO');
+    expect(tipoDoProduto('RAMPA PARA ALINHAMENTO ELETRICA 5000KG')).toBe('OUTRO');
+    expect(tipoDoProduto('RAMPA PNEUM P/ALINHAMENTO VERMELHA 4T')).toBe('OUTRO');
+  });
+
+  it('acento e caixa nao mudam o tipo', () => {
+    expect(tipoDoProduto('elevador automotivo')).toBe('ELEVADOR');
+    expect(tipoDoProduto('  BASE para elevador ')).toBe('BASE');
+  });
+
+  it('descricao vazia cai em OUTRO e fica de fora', () => {
+    expect(tipoDoProduto('')).toBe('OUTRO');
+    expect(ehProdutoDeElevador(div({ produto: '' }))).toBe(false);
   });
 });

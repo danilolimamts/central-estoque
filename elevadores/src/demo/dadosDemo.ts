@@ -221,13 +221,20 @@ export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
     [3, 20, 'CD_CAJAMAR', 'Arrependimento', 'Comprou Errado - Modelo', 'comprou o modelo errado', 'MANDALA', 10500],
     [5, 14, 'CD_CAJAMAR', 'Falta volume/item', 'Faltou volume', 'Cliente recebeu o elevador sem a base.', 'TERMACO', 11414],
     [6, 2, 'CD_CAJAMAR', 'Avaria', 'Produto avariado na Transportadora', 'Caixa do motor quebrada', 'AMAZON', 10000],
+    // Acessorio: cita base no comentario, mas nao e elevador nem base.
+    [5, 20, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'base incorreta para a sapata', 'RODOWEB', 480],
   ];
   return bruto.map(([mes, dia, filial, motivo, submotivo, comentario, transportadora, valor], i) => ({
     pedido: `2607${10 + i}-00${100 + i}`,
     filial,
     origem: origemDaFilial(filial),
-    itemProduto: '4484433',
-    produto: 'BASE PARA ELEVADOR AUTOMOTIVO HIDRAULICO DE 4000KG',
+    itemProduto: i === 12 ? '4655675' : '4484433',
+    produto:
+      i === 12
+        ? 'BORRACHA PARA SAPATA U PARA ELEVADOR 4000KG REH004'
+        : i % 3 === 0
+          ? 'ELEVADOR AUTO ELETRO HIDRAULICO 2.6 TON PRETO C/BASE'
+          : 'BASE PARA ELEVADOR AUTOMOTIVO HIDRAULICO DE 4000KG',
     motivo,
     submotivo,
     comentario,

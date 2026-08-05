@@ -1,7 +1,8 @@
 /* ============================================================
    Inversoes de base apontadas pelo SAC.
 
-   Mostra quantos elevadores sairam com a base trocada no ano, mes a
+   Conta as divergencias em que o problema foi a base do elevador: no
+   ano, mes a
    mes, com CD e lojas sempre separados, em quantidade e em valor, e o
    indice por transportadora.
 
@@ -18,6 +19,7 @@ import {
   inversoesDeBase,
   porMes,
   porTransportadora,
+  tipoDoProduto,
   totalizar,
 } from '../domain/divergencias';
 import type { DivergenciaSAC } from '../domain/divergencias';
@@ -129,7 +131,7 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
   return (
     <Cartao
       titulo="Inversões de base apontadas pelo SAC"
-      descricao={`${inversoes.length} caso(s) de base trocada em ${divergencias.length} devolução(ões) registradas · arrependimento não entra na conta`}
+      descricao={`${inversoes.length} caso(s) em ${divergencias.length} devolução(ões) registradas · conta só elevador e base, sem arrependimento`}
       acoes={
         anos.length > 1 ? (
           <Selecao
@@ -197,6 +199,7 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
                 <Th>Data</Th>
                 <Th>Origem</Th>
                 <Th>Pedido</Th>
+                <Th>Produto</Th>
                 <Th>Motivo · submotivo</Th>
                 <Th>Transportadora</Th>
                 <Th alinha="right">Valor</Th>
@@ -219,6 +222,10 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
                     </span>
                   </Td>
                   <Td><span className="mono">{d.pedido}</span></Td>
+                  <Td>
+                    <span className="tag tag-muted">{tipoDoProduto(d.produto)}</span>{' '}
+                    <span title={d.produto}>{d.produto.slice(0, 34)}…</span>
+                  </Td>
                   <Td>
                     <span title={d.comentario}>
                       {d.motivo} · {d.submotivo}
