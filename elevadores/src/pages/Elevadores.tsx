@@ -22,7 +22,7 @@ function FotoProduto({ url, nome }: { url?: string; nome: string }) {
 }
 
 const VAZIO: ContagemItem = {
-  bases: 0, colunas: 0, ratio: 1, completos: 0, basesSobrando: 0, colunasSobrando: 0,
+  bases: 0, colunas: 0, ratio: 1, completos: 0, alvo: 0, basesSobrando: 0, colunasSobrando: 0,
 };
 
 /* Frase que explica de onde saiu a quantidade, no titulo do selo. */

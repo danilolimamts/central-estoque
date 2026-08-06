@@ -10,6 +10,8 @@
 import type { Componente } from './tipos';
 import { tipoComponente } from './equalizacao';
 import { ratioDaTonelada } from '../config/regras';
+import { montarKit, faltamDoTipo, porKitDe } from './kit';
+import type { MontagemDoKit } from './kit';
 
 export type SituacaoItem = 'CASADO' | 'DESCASADO' | 'SEM ESTOQUE';
 
@@ -23,6 +25,10 @@ export interface LinhaComponente {
   tipo: string;
   /* Campo "in interface": o S deve ficar na coluna. */
   sn: string;
+  /* Quantas unidades deste componente cada kit consome. */
+  porKit: number;
+  /* Quanto falta dele para o item fechar o alvo de kits. */
+  faltam: number;
   cd: number;
   reversa: number;
   /* Quantos itens pai usam este mesmo componente. Acima de 1 o saldo do
@@ -49,6 +55,10 @@ export interface ItemFornecedor {
   colunasNecessarias: number;
   deficit: number; // positivo falta coluna, negativo sobra coluna
   completos: number;
+  /* Kits que dariam se o componente escasso fosse reposto. */
+  alvo: number;
+  /* A montagem completa, com o que falta de cada componente. */
+  montagem: MontagemDoKit;
 
   situacao: SituacaoItem;
   comprarColuna: number;
@@ -104,6 +114,8 @@ function fecharItem(item: ItemFornecedor): ItemFornecedor {
       nome: `Sem ${tipo.toLowerCase()} cadastrada neste kit`,
       tipo,
       sn: '',
+      porKit: 1,
+      faltam: 0,
       cd: 0,
       reversa: 0,
       paisQueUsam: 0,
@@ -116,26 +128,34 @@ function fecharItem(item: ItemFornecedor): ItemFornecedor {
       a.codigo.localeCompare(b.codigo)
   );
   item.semSaldo = item.componentes.filter((c) => c.cd === 0).length;
-  item.colunasNecessarias = item.bases * item.ratio;
-  item.deficit = item.colunasNecessarias - item.colunas;
-  item.completos = Math.max(0, Math.min(item.bases, Math.floor(item.colunas / item.ratio)));
 
-  if (item.bases === 0 && item.colunas === 0) {
-    item.situacao = 'SEM ESTOQUE';
-  } else if (item.deficit === 0) {
-    item.situacao = 'CASADO';
-  } else {
-    item.situacao = 'DESCASADO';
+  /* O casamento sai da composicao do kit, componente a componente, e
+     nao da tonelada. Duas colunas diferentes no mesmo kit sao pecas
+     distintas, e um produto de 4 t pode levar uma coluna so. */
+  const doKit = item.componentes.filter((c) => c.tipo === 'BASE' || c.tipo === 'COLUNA');
+  const montagem = montarKit(
+    doKit.map((c) => ({ codigo: c.codigo, nome: c.nome, tipo: c.tipo, porKit: c.porKit, saldo: c.cd }))
+  );
+  item.montagem = montagem;
+  item.completos = montagem.kits;
+  item.alvo = montagem.alvo;
+
+  /* Devolve o que falta para a propria linha do componente, para a
+     tela poder dizer QUAL peca falta em vez de "1 coluna". */
+  for (const c of doKit) {
+    c.faltam = montagem.componentes.find((m) => m.codigo === c.codigo)?.faltam ?? 0;
   }
 
-  if (item.deficit > 0) {
-    // Faltam colunas para as bases que ja estao no CD.
-    item.comprarColuna = item.deficit;
-  } else if (item.deficit < 0) {
-    // Sobram colunas sem base. Compra base e completa o ultimo conjunto.
-    const sobra = -item.deficit;
-    item.comprarBase = Math.ceil(sobra / item.ratio);
-    item.comprarColuna = item.comprarBase * item.ratio - sobra;
+  item.comprarBase = faltamDoTipo(montagem, 'BASE');
+  item.comprarColuna = faltamDoTipo(montagem, 'COLUNA');
+  /* Mantido para as telas que ainda leem o deficit em colunas. */
+  item.colunasNecessarias = montagem.alvo;
+  item.deficit = item.comprarColuna - item.comprarBase;
+
+  if (montagem.semEstoque) {
+    item.situacao = 'SEM ESTOQUE';
+  } else {
+    item.situacao = montagem.casado ? 'CASADO' : 'DESCASADO';
   }
   return item;
 }
@@ -194,6 +214,8 @@ export function listarPorFornecedor(componentes: Componente[]): GrupoFornecedor[
         colunasNecessarias: 0,
         deficit: 0,
         completos: 0,
+        alvo: 0,
+        montagem: { kits: 0, alvo: 0, componentes: [], casado: false, semEstoque: true },
         situacao: 'SEM ESTOQUE',
         comprarColuna: 0,
         comprarBase: 0,
@@ -208,6 +230,8 @@ export function listarPorFornecedor(componentes: Componente[]): GrupoFornecedor[
       nome: c.nomeItemComponente,
       tipo,
       sn: String(c.inInterface ?? '').trim().toUpperCase(),
+      porKit: porKitDe(c),
+      faltam: 0,
       cd: c.cd,
       reversa: c.reversa,
       paisQueUsam: paisPorComponente.get(codigo)?.size ?? 1,

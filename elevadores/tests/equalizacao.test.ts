@@ -147,15 +147,39 @@ describe('tipoComponente e estrito', () => {
 });
 
 describe('quantidade de elevadores por item pai', () => {
-  it('conta o elevador montado pelo lado que falta, respeitando o ratio', () => {
+  it('kit que consome duas colunas por elevador divide o saldo por duas', () => {
     const q = contarElevadoresPorItem([
-      base('FORTG JM 4 t', '4 t', 5, { itemVolMultiplo: '1965321' }),
-      coluna('FORTG JM 4 t', '4 t', 8, { itemVolMultiplo: '1965321' }),
+      base('FORTG JM 4 t', '4 t', 5, { itemVolMultiplo: '1965321', quantidade: 1 }),
+      coluna('FORTG JM 4 t', '4 t', 8, { itemVolMultiplo: '1965321', quantidade: 2 }),
     ]).get('1965321')!;
-    expect(q.ratio).toBe(2);
-    expect(q.completos).toBe(4); // 8 colunas dao 4 pares, e ha 5 bases
+    expect(q.completos).toBe(4); // 8 colunas / 2 por kit
     expect(q.basesSobrando).toBe(1);
     expect(q.colunasSobrando).toBe(0);
+  });
+
+  it('produto de 4 t que leva uma coluna so nao e penalizado pela tonelada', () => {
+    /* Regressao da rampa 2031441: a tonelada 4000 fazia a conta exigir
+       duas colunas por base e acusar falta em um kit completo. */
+    const q = contarElevadoresPorItem([
+      base('RAMPA 4 t', '4 t', 2, { itemVolMultiplo: '2031441', quantidade: 1 }),
+      coluna('RAMPA 4 t', '4 t', 2, { itemVolMultiplo: '2031441', quantidade: 1 }),
+    ]).get('2031441')!;
+    expect(q.completos).toBe(2);
+    expect(q.basesSobrando).toBe(0);
+    expect(q.colunasSobrando).toBe(0);
+  });
+
+  it('duas colunas diferentes no kit sao pecas distintas, nao somaveis', () => {
+    /* Caso real 2031433: 1 base e 2 colunas diferentes, uma de cada.
+       Somar as colunas daria 63 e sugeriria 31 pares; a conta correta
+       olha cada componente e para no mais escasso. */
+    const q = contarElevadoresPorItem([
+      base('ENGECASS 4.1 t', '4 t', 32, { itemVolMultiplo: '2031433', itemComponente: '2032019', quantidade: 1 }),
+      coluna('ENGECASS 4.1 t', '4 t', 31, { itemVolMultiplo: '2031433', itemComponente: '2032020', quantidade: 1 }),
+      coluna('ENGECASS 4.1 t', '4 t', 32, { itemVolMultiplo: '2031433', itemComponente: '2032021', quantidade: 1 }),
+    ]).get('2031433')!;
+    expect(q.completos).toBe(31);
+    expect(q.alvo).toBe(32);
   });
 
   it('ate 3,2 t e uma coluna por base', () => {
@@ -173,7 +197,7 @@ describe('quantidade de elevadores por item pai', () => {
       comp({ itemVolMultiplo: 'B', toneladaFixa: '4 t', componenteBaseColuna: 'BOMBA', cd: 99 }),
     ]).get('B')!;
     expect(q.colunas).toBe(0);
-    expect(q.completos).toBe(0);
+    expect(q.completos).toBe(0); // sem coluna cadastrada nao monta
     expect(q.basesSobrando).toBe(2);
   });
 

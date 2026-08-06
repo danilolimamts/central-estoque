@@ -6,6 +6,7 @@
    ============================================================ */
 import type { Componente, Conjunto, StatusConjunto } from './tipos';
 import { ratioDaTonelada, TIPO_BASE, TIPO_COLUNA } from '../config/regras';
+import { montarKit, porKitDe } from './kit';
 
 /* Normaliza o tipo de componente para comparar de forma estrita.
    So BASE e COLUNA entram no kit (regressao 8.2: BOMBA, COMANDO e MOTOR
@@ -132,44 +133,77 @@ export function agruparConjuntos(componentes: Componente[]): Conjunto[] {
 
 /* Quantidade de elevadores de um item pai.
 
-   O item pai nao tem saldo proprio: o que existe no CD sao as bases e as
-   colunas dele. Elevador montado e o menor numero que fecha os dois lados,
-   respeitando o ratio da tonelada (4 t e 5 t pedem duas colunas por base).
-   E o mesmo criterio de kit usado no conjunto, so que por item. */
+   O item pai nao tem saldo proprio: o que existe no CD sao os
+   componentes dele. Elevador montado e quantos kits a composicao
+   sustenta - manda o componente mais escasso.
+
+   Antes esta conta somava as bases de um lado, as colunas do outro e
+   usava o ratio da tonelada. Isso tratava colunas diferentes do mesmo
+   kit como intercambiaveis e exigia duas colunas de todo produto de
+   4 t, mesmo dos que levam uma so. Agora sai da quantidade por kit de
+   cada componente, que ja vem na planilha. */
 export interface ContagemItem {
   bases: number;
   colunas: number;
   ratio: number;
   completos: number;
+  /* Kits que dariam se o componente escasso fosse reposto. */
+  alvo: number;
   /* Pecas soltas que nao formam elevador por falta do outro lado. */
   basesSobrando: number;
   colunasSobrando: number;
 }
 
 export function contarElevadoresPorItem(componentes: Componente[]): Map<string, ContagemItem> {
-  const contagem = new Map<string, ContagemItem>();
+  /* Junta os componentes de cada item pai antes de contar: a conta e
+     por composicao, nao por soma de tipo. */
+  const porItem = new Map<string, Componente[]>();
   for (const c of componentes) {
     const item = String(c.itemVolMultiplo ?? '').trim();
     if (!item) continue;
-    const tipo = tipoComponente(c);
-    if (tipo === 'OUTRO') continue;
-
-    let atual = contagem.get(item);
-    if (!atual) {
-      atual = {
-        bases: 0, colunas: 0, ratio: ratioDaTonelada(c.toneladaFixa),
-        completos: 0, basesSobrando: 0, colunasSobrando: 0,
-      };
-      contagem.set(item, atual);
-    }
-    if (tipo === 'BASE') atual.bases += c.cd;
-    else atual.colunas += c.cd;
+    if (tipoComponente(c) === 'OUTRO') continue;
+    const lista = porItem.get(item);
+    if (lista) lista.push(c);
+    else porItem.set(item, [c]);
   }
 
-  for (const v of contagem.values()) {
-    v.completos = Math.max(0, Math.min(v.bases, Math.floor(v.colunas / v.ratio)));
-    v.basesSobrando = Math.max(0, v.bases - v.completos);
-    v.colunasSobrando = Math.max(0, v.colunas - v.completos * v.ratio);
+  const contagem = new Map<string, ContagemItem>();
+  for (const [item, lista] of porItem) {
+    /* Elevador precisa dos dois lados. Kit com so um deles cadastrado
+       nao monta nada: e cadastro incompleto, nao estoque disponivel.
+       Sem esta trava, um item com 6 colunas e nenhuma base cadastrada
+       apareceria como 6 elevadores prontos. */
+    const temBase = lista.some((c) => tipoComponente(c) === 'BASE');
+    const temColuna = lista.some((c) => tipoComponente(c) === 'COLUNA');
+
+    const montagem = montarKit(
+      lista.map((c) => ({
+        codigo: String(c.itemComponente ?? '').trim(),
+        nome: c.nomeItemComponente,
+        tipo: tipoComponente(c),
+        porKit: porKitDe(c),
+        saldo: c.cd,
+      }))
+    );
+
+    const bases = lista.filter((c) => tipoComponente(c) === 'BASE').reduce((s, c) => s + c.cd, 0);
+    const colunas = lista.filter((c) => tipoComponente(c) === 'COLUNA').reduce((s, c) => s + c.cd, 0);
+    const completos = temBase && temColuna ? montagem.kits : 0;
+
+    contagem.set(item, {
+      bases,
+      colunas,
+      ratio: ratioDaTonelada(lista[0].toneladaFixa),
+      completos,
+      alvo: temBase && temColuna ? montagem.alvo : 0,
+      /* Sobra e o saldo que os kits montados nao consumiram. */
+      basesSobrando: montagem.componentes
+        .filter((m) => m.tipo === 'BASE')
+        .reduce((s, m) => s + Math.max(0, m.saldo - completos * m.porKit), 0),
+      colunasSobrando: montagem.componentes
+        .filter((m) => m.tipo === 'COLUNA')
+        .reduce((s, m) => s + Math.max(0, m.saldo - completos * m.porKit), 0),
+    });
   }
   return contagem;
 }

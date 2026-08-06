@@ -18,9 +18,10 @@ function comp(p: Partial<Componente>): Componente {
   };
 }
 
-/* Reproduz o recorte que o comprador olha: um item de 4 t com uma base
-   e uma coluna (descasado, porque 4 t pede duas colunas) e outro item
-   do mesmo fornecedor ja fechado. */
+/* Reproduz o recorte que o comprador olha. O item de 4 t leva tres
+   componentes - uma base e DUAS colunas diferentes, uma de cada por
+   kit - e uma delas esta zerada. Quem decide o casamento e a
+   composicao, componente a componente, nao a tonelada. */
 const MAQUINAS: Componente[] = [
   comp({ itemVolMultiplo: '865413', nomeItemVolMultiplo: 'ELEVADOR A', itemComponente: '965799', inInterface: 'S', componenteBaseColuna: 'BASE', cd: 1, fabricante: 'MAQUINAS RIBEIRO', marca: 'FORTG', toneladaFixa: '4 t' }),
   comp({ itemVolMultiplo: '865413', nomeItemVolMultiplo: 'ELEVADOR A', itemComponente: '965800', inInterface: 'N', componenteBaseColuna: 'COLUNA', cd: 1, fabricante: 'MAQUINAS RIBEIRO', marca: 'FORTG', toneladaFixa: '4 t' }),
@@ -49,18 +50,26 @@ describe('agrupamento por fornecedor', () => {
     expect(item.componentes[0].sn).toBe('S');
   });
 
-  it('aponta o descasado e quantas colunas faltam comprar', () => {
+  it('aponta o descasado e QUAL componente falta', () => {
+    /* O kit tem 1 base e 2 colunas distintas; a 965801 esta zerada.
+       Da para montar 0 elevadores, e o alvo e 1. O numero bate com o
+       calculo antigo por coincidencia: la ele vinha de "4 t pede duas
+       colunas", aqui vem da coluna que nao tem saldo. */
     const mr = grupos.find((g) => g.fornecedor === 'MAQUINAS RIBEIRO')!;
     const quatro = mr.toneladas.find((t) => t.tonelada === '4 t')!;
     const item = quatro.itens[0];
     expect(item.bases).toBe(1);
     expect(item.colunas).toBe(1);
-    expect(item.colunasNecessarias).toBe(2); // ratio 1:2
-    expect(item.deficit).toBe(1);
     expect(item.situacao).toBe('DESCASADO');
-    expect(item.comprarColuna).toBe(1);
     expect(item.completos).toBe(0);
+    expect(item.alvo).toBe(1);
+    expect(item.comprarColuna).toBe(1);
+    expect(item.comprarBase).toBe(0);
     expect(quatro.descasados).toBe(1);
+
+    /* O que falta e a 965801, nao "uma coluna" qualquer. */
+    const faltando = item.componentes.filter((c) => c.faltam > 0);
+    expect(faltando.map((c) => c.codigo)).toEqual(['965801']);
   });
 
   it('item com base e coluna na medida fica casado', () => {
@@ -144,8 +153,10 @@ describe('kit sem um dos lados cadastrado', () => {
     expect(item.bases).toBe(0);
     expect(item.colunas).toBe(1);
     expect(item.situacao).toBe('DESCASADO');
+    /* Ha 1 coluna e nenhuma base: falta a base para formar o par.
+       Comprar outra coluna nao ajudaria em nada. */
     expect(item.comprarBase).toBe(1);
-    expect(item.comprarColuna).toBe(1); // 1 base pede 2 colunas, ja ha 1
+    expect(item.comprarColuna).toBe(0);
   });
 
   it('kit so com base ganha a linha da coluna', () => {
