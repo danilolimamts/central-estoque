@@ -303,40 +303,6 @@ export function DashboardGeral({
   const resumo = useMemo(() => resumirEqualizacao(conjuntos), [conjuntos]);
   const valoracoes = useMemo(() => auditarValoracao(componentes), [componentes]);
 
-  const gapPorFabricante = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const c of conjuntos) {
-      if (c.comprarColuna > 0) m.set(c.fabricante || '—', (m.get(c.fabricante || '—') ?? 0) + c.comprarColuna);
-    }
-    return [...m.entries()].map(([nome, valor]) => ({ nome, valor })).sort((a, b) => b.valor - a.valor).slice(0, 8);
-  }, [conjuntos]);
-
-  const configSituacao: ChartConfiguration = useMemo(() => {
-    const contagem = { CASADO: 0, REVERSA: 0, DESCASADO: 0, 'SEM ESTOQUE': 0 };
-    for (const c of conjuntos) contagem[c.status]++;
-    const chaves = Object.keys(contagem) as (keyof typeof contagem)[];
-    return {
-      type: 'doughnut',
-      data: {
-        labels: chaves,
-        datasets: [
-          {
-            data: chaves.map((k) => contagem[k]),
-            backgroundColor: chaves.map((k) => coresStatus[k]),
-            borderWidth: 0,
-          },
-        ],
-      },
-      options: {
-        cutout: '62%',
-        plugins: {
-          legend: { display: true, position: 'right', labels: { boxWidth: 12, font: { size: 12 } } },
-          datalabels: { color: '#fff', formatter: (v: number) => (v > 0 ? v : '') },
-        },
-      },
-    };
-  }, [conjuntos]);
-
   const configCompras: ChartConfiguration = useMemo(() => {
     const top = [...conjuntos]
       .filter((c) => c.comprarColuna + c.comprarBase > 0)
@@ -378,21 +344,6 @@ export function DashboardGeral({
       </div>
 
       <MapaDeCalor conjuntos={conjuntos} />
-
-      <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
-        <Cartao titulo="Ranking de gap por fabricante" descricao="colunas em falta">
-          {gapPorFabricante.length === 0 ? (
-            <Vazio>Nenhum gap de coluna.</Vazio>
-          ) : (
-            gapPorFabricante.map((g) => (
-              <Barra key={g.nome} nome={g.nome} valor={g.valor} maximo={gapPorFabricante[0].valor} cor={cores.laranja.base} />
-            ))
-          )}
-        </Cartao>
-        <Cartao titulo="Situação dos conjuntos" descricao={`${conjuntos.length} conjuntos`}>
-          <Grafico config={configSituacao} altura={220} rotulo="Situação dos conjuntos" />
-        </Cartao>
-      </div>
 
       <Cartao titulo="Colunas × bases a comprar" descricao="maiores necessidades de compra">
         <Grafico config={configCompras} altura={280} rotulo="Colunas e bases a comprar por conjunto" />

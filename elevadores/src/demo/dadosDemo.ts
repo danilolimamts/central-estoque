@@ -223,6 +223,10 @@ export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
     [6, 2, 'CD_CAJAMAR', 'Avaria', 'Produto avariado na Transportadora', 'Caixa do motor quebrada', 'AMAZON', 10000],
     // Acessorio: cita base no comentario, mas nao e elevador nem base.
     [5, 20, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'base incorreta para a sapata', 'RODOWEB', 480],
+    // Do fornecedor: o produto ja saiu errado de fabrica.
+    [2, 12, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência do fabricante', 'base invertida: veio de fábrica com a furação errada', 'TERMACO', 14263],
+    // Sem apuracao: o SAC abriu o caso sem detalhe.
+    [3, 8, 'CD_CAJAMAR', 'Falta volume/item', 'Faltou volume', '-', 'JOMINI', 10290],
   ];
   return bruto.map(([mes, dia, filial, motivo, submotivo, comentario, transportadora, valor], i) => ({
     pedido: `2607${10 + i}-00${100 + i}`,

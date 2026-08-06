@@ -1,14 +1,14 @@
 /* ============================================================
-   Erros do CD apontados pelo SAC.
+   Inversoes e faltas apontadas pelo SAC.
 
-   Conta so o que foi erro de separacao ou expedicao: item trocado
-   (inversao) ou item que nao foi junto (peca faltando). No ano, mes a
-   mes, com CD e lojas sempre separados, em quantidade e em valor, e o
-   indice por transportadora.
+   Duas leituras, porque sao perguntas diferentes: O QUE aconteceu
+   (item trocado ou peca faltando) e DE QUEM foi (operacao do CD,
+   fornecedor ou cliente). So a segunda diz quem age.
 
-   A tabela do fim lista caso a caso de proposito: a inversao nao e um
-   campo da planilha, e deduzida do texto, entao quem le precisa poder
-   conferir o que entrou na conta.
+   A tabela do fim lista caso a caso de proposito: as duas leituras
+   saem do texto do Comentario, nao de uma coluna da planilha, entao
+   quem le precisa poder conferir - e o title de cada selo mostra o
+   comentario que gerou a classificacao.
    ============================================================ */
 import { useMemo, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
@@ -21,7 +21,10 @@ import {
   porCausa,
   porTransportadora,
   causaDe,
+  responsavelDe,
+  porResponsavel,
   ROTULO_CAUSA,
+  ROTULO_RESPONSAVEL,
   tipoDoProduto,
   totalizar,
 } from '../domain/divergencias';
@@ -70,6 +73,12 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
   const meses = useMemo(() => porMes(inversoes, anoAtivo), [inversoes, anoAtivo]);
   const transportadoras = useMemo(() => porTransportadora(doAnoEscolhido), [doAnoEscolhido]);
   const causas = useMemo(() => porCausa(doAnoEscolhido), [doAnoEscolhido]);
+  const responsaveis = useMemo(() => porResponsavel(doAnoEscolhido), [doAnoEscolhido]);
+  /* O numero que a operacao e cobrada: so o que sobrou para o CD. */
+  const soDoCD = useMemo(
+    () => doAnoEscolhido.filter((d) => responsavelDe(d) === 'CD'),
+    [doAnoEscolhido]
+  );
 
   /* Barras por mes, CD e lojas lado a lado, com o numero em cima de
      cada uma: o painel e projetado em reuniao, onde ninguem passa o
@@ -142,8 +151,8 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
   if (divergencias.length === 0) {
     return (
       <Cartao
-        titulo="Erros do CD apontados pelo SAC"
-        descricao="elevadores devolvidos por inversão ou peça faltando"
+        titulo="Inversões e faltas apontadas pelo SAC"
+        descricao="elevadores devolvidos por item trocado ou peça faltando"
       >
         <Vazio icone="📦">
           A planilha importada não trouxe a aba <b>Divergencias SAC</b>. Inclua a tabela
@@ -155,8 +164,8 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
 
   return (
     <Cartao
-      titulo="Erros do CD apontados pelo SAC"
-      descricao={`${inversoes.length} caso(s) em ${divergencias.length} devolução(ões) · só inversão e peça faltando; arrependimento, defeito e avaria não entram`}
+      titulo="Inversões e faltas apontadas pelo SAC"
+      descricao={`${inversoes.length} caso(s) de inversão ou peça faltando em ${divergencias.length} devolução(ões) · ${soDoCD.length} apurado(s) como erro da operação`}
       acoes={
         anos.length > 1 ? (
           <Selecao
@@ -169,7 +178,7 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
       }
     >
       {doAnoEscolhido.length === 0 ? (
-        <Vazio icone="🔎">Nenhum erro do CD em {anoAtivo}.</Vazio>
+        <Vazio icone="🔎">Nenhuma inversão ou falta em {anoAtivo}.</Vazio>
       ) : (
         <>
           <div className="eq-sac-numeros">
@@ -184,8 +193,24 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
             />
           </div>
 
-          {/* Onde o CD esta errando: a inversao se corrige na
-              conferencia, a falta na expedicao. Sao acoes diferentes. */}
+          {/* De quem foi. Vem antes da causa porque muda o dono da
+              acao: conferencia no CD, tratativa com a marca ou
+              orientacao na venda. */}
+          <h4 className="eq-sac-titulo">Responsável apurado pelo SAC</h4>
+          <div className="eq-sac-resp">
+            {responsaveis.map((r) => (
+              <div
+                key={r.responsavel}
+                className={`eq-sac-resp-item r-${r.responsavel.toLowerCase()}${r.quantidade === 0 ? ' vazio' : ''}`}
+              >
+                <span className="eq-sac-resp-rot">{r.rotulo}</span>
+                <b>{r.quantidade}</b>
+                <span className="eq-sac-resp-pct">{r.pct.toFixed(0)}% · {formatarReal(r.valor)}</span>
+              </div>
+            ))}
+          </div>
+
+          <h4 className="eq-sac-titulo">O que aconteceu</h4>
           <div className="eq-sac-causas">
             {causas.map((c) => (
               <div key={c.causa} className="eq-sac-causa">
@@ -240,6 +265,7 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
                 <Th>Origem</Th>
                 <Th>Entrega</Th>
                 <Th>Causa</Th>
+                <Th>Responsável</Th>
                 <Th>Produto</Th>
                 <Th>Motivo · submotivo</Th>
                 <Th>Transportadora</Th>
@@ -272,6 +298,14 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
                   <Td>
                     <span className={`eq-sac-selo ${causaDe(d) === 'INVERSAO' ? 'inv' : 'falta'}`}>
                       {causaDe(d) ? ROTULO_CAUSA[causaDe(d)!] : '—'}
+                    </span>
+                  </Td>
+                  <Td>
+                    <span
+                      className={`eq-sac-selo r-${responsavelDe(d).toLowerCase()}`}
+                      title={d.comentario || 'sem comentário do SAC'}
+                    >
+                      {ROTULO_RESPONSAVEL[responsavelDe(d)]}
                     </span>
                   </Td>
                   <Td>

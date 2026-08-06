@@ -124,6 +124,92 @@ export function ehCulpaDoCD(d: DivergenciaSAC): boolean {
   return causaDe(d) !== null;
 }
 
+/* ============================================================
+   De quem foi.
+
+   Inversao e falta descrevem O QUE aconteceu; nao dizem DE QUEM foi.
+   O mesmo "veio a peca errada" pode ser separacao no CD, produto que
+   saiu errado de fabrica ou cliente que montou o pedido errado - e a
+   acao para cada um e outra: conferencia, tratativa com a marca ou
+   orientacao na venda.
+
+   A leitura sai do Comentario, que e onde o SAC escreve o que apurou.
+   ============================================================ */
+export type Responsavel = 'CD' | 'FORNECEDOR' | 'CLIENTE' | 'APURAR';
+
+export const ROTULO_RESPONSAVEL: Record<Responsavel, string> = {
+  CD: 'Operação CD',
+  FORNECEDOR: 'Fornecedor',
+  CLIENTE: 'Cliente',
+  APURAR: 'A apurar',
+};
+
+/* O produto ja saiu errado da fabrica: o CD expediu o que recebeu. */
+const TERMOS_FORNECEDOR = [
+  'fabricante', 'de fabrica', 'da fabrica', 'veio de fabrica', 'saiu de fabrica',
+  'fabricacao', 'lubrificacao', 'marca propria', 'fornecedor', 'montagem de fabrica',
+  'divergencia de anuncio', 'anuncio', 'ficha tecnica', 'manual do fabricante',
+  'epna', 'engenharia', 'nao conformidade de fabrica',
+];
+
+/* O pedido foi montado ou recebido errado do lado do cliente. */
+const TERMOS_CLIENTE = [
+  'comprou errado', 'desistiu', 'arrepend', 'endereco errado', 'endereco incorreto',
+  'nao retirou', 'cliente montou', 'montado pelo cliente', 'instalacao pelo cliente',
+  'uso indevido', 'nao quer mais', 'pedido em duplicidade',
+];
+
+/* Comentario que nao apurou nada. O SAC usa "-" quando abriu o caso
+   sem detalhe. */
+function comentarioVazio(texto: string): boolean {
+  const t = texto.replace(/[-\s.]/g, '');
+  return t.length === 0;
+}
+
+/* De quem foi a divergencia.
+
+   O CD e o padrao porque a inversao e a falta acontecem no processo
+   dele; fornecedor e cliente sao excecoes que o Comentario precisa
+   dizer. Quando o Comentario nao apurou nada, o caso vai para "a
+   apurar" em vez de sobrar para o CD: indicador que culpa por omissao
+   perde a confianca de quem e cobrado por ele. */
+export function responsavelDe(d: DivergenciaSAC): Responsavel {
+  const texto = `${semAcento(d.submotivo)} ${semAcento(d.comentario)}`;
+
+  /* "Divergencia operacional CD" e o SAC dizendo, com todas as letras,
+     que apurou e foi o CD. Vale mais que qualquer palavra solta. */
+  if (texto.includes('operacional cd')) return 'CD';
+
+  if (TERMOS_FORNECEDOR.some((t) => texto.includes(t))) return 'FORNECEDOR';
+  if (TERMOS_CLIENTE.some((t) => texto.includes(t))) return 'CLIENTE';
+  if (comentarioVazio(semAcento(d.comentario))) return 'APURAR';
+  return 'CD';
+}
+
+export interface CorteResponsavel {
+  responsavel: Responsavel;
+  rotulo: string;
+  quantidade: number;
+  valor: number;
+  pct: number;
+}
+
+/* Sempre os quatro, inclusive os zerados: "fornecedor: 0" e a
+   informacao de que nenhum caso foi da marca neste periodo. */
+export function porResponsavel(lista: DivergenciaSAC[]): CorteResponsavel[] {
+  const total = lista.length;
+  return (['CD', 'FORNECEDOR', 'CLIENTE', 'APURAR'] as const).map((responsavel) => {
+    const doTipo = lista.filter((d) => responsavelDe(d) === responsavel);
+    return {
+      responsavel,
+      rotulo: ROTULO_RESPONSAVEL[responsavel],
+      quantidade: doTipo.length,
+      valor: doTipo.reduce((s, d) => s + d.valor, 0),
+      pct: total > 0 ? (doTipo.length / total) * 100 : 0,
+    };
+  });
+}
+
 export function inversoesDeBase(lista: DivergenciaSAC[]): DivergenciaSAC[] {
   return lista.filter(ehCulpaDoCD);
 }

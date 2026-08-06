@@ -10,6 +10,8 @@ import {
   ehCulpaDoCD,
   causaDe,
   porCausa,
+  responsavelDe,
+  porResponsavel,
   ehProdutoDeElevador,
   tipoDoProduto,
   inversoesDeBase,
@@ -345,5 +347,73 @@ describe('causa do erro do CD', () => {
     expect(c[1].quantidade).toBe(1);
     expect(c[1].valor).toBe(50);
     expect(c[0].quantidade + c[1].quantidade).toBe(lista.length);
+  });
+});
+
+describe('de quem foi a divergencia', () => {
+  it('"Divergencia operacional CD" e o SAC dizendo que apurou e foi o CD', () => {
+    expect(responsavelDe(div({ submotivo: 'Divergência operacional CD' }))).toBe('CD');
+  });
+
+  it('o apurado do SAC vence palavra solta no comentario', () => {
+    /* O comentario cita fabricante, mas o submotivo diz que a apuracao
+       fechou como operacional. O apurado manda. */
+    expect(
+      responsavelDe(div({ submotivo: 'Divergência operacional CD', comentario: 'cliente falou com o fabricante' }))
+    ).toBe('CD');
+  });
+
+  it('produto que saiu errado de fabrica e do fornecedor', () => {
+    expect(
+      responsavelDe(div({ submotivo: 'Divergência do fabricante', comentario: 'recebeu com lubrificação a graxa' }))
+    ).toBe('FORNECEDOR');
+    expect(responsavelDe(div({ submotivo: '', comentario: 'peça veio de fábrica trocada' }))).toBe('FORNECEDOR');
+    expect(responsavelDe(div({ submotivo: 'Divergência de anuncio', comentario: 'anúncio errado' }))).toBe('FORNECEDOR');
+  });
+
+  it('pedido montado errado do lado do cliente e do cliente', () => {
+    expect(responsavelDe(div({ submotivo: 'Comprou Errado - Modelo', comentario: 'x' }))).toBe('CLIENTE');
+    expect(responsavelDe(div({ submotivo: '', comentario: 'entregue no endereço errado' }))).toBe('CLIENTE');
+    expect(responsavelDe(div({ submotivo: '', comentario: 'cliente desistiu' }))).toBe('CLIENTE');
+  });
+
+  it('comentario sem apuracao vai para "a apurar", nao sobra para o CD', () => {
+    /* Culpar por omissao infla o indicador e queima a confianca de
+       quem e cobrado por ele. */
+    expect(responsavelDe(div({ submotivo: 'Faltou volume', comentario: '-' }))).toBe('APURAR');
+    expect(responsavelDe(div({ submotivo: 'Faltou volume', comentario: '' }))).toBe('APURAR');
+    expect(responsavelDe(div({ submotivo: 'Faltou volume', comentario: '  --  ' }))).toBe('APURAR');
+  });
+
+  it('comentario que descreve o erro sem apontar terceiro fica no CD', () => {
+    expect(
+      responsavelDe(div({ submotivo: 'Faltou volume', comentario: 'Cliente recebeu o elevador sem a base.' }))
+    ).toBe('CD');
+  });
+
+  it('acento e caixa nao mudam o responsavel', () => {
+    expect(responsavelDe(div({ submotivo: '', comentario: 'DIVERGÊNCIA DO FABRICANTE' }))).toBe('FORNECEDOR');
+  });
+
+  it('a quebra traz os quatro, inclusive zerados, e fecha 100%', () => {
+    const lista = [
+      div({ submotivo: 'Divergência operacional CD', valor: 100 }),
+      div({ submotivo: 'Divergência operacional CD', valor: 200 }),
+      div({ submotivo: 'Divergência do fabricante', comentario: 'veio de fábrica', valor: 50 }),
+      div({ submotivo: 'Faltou volume', comentario: '-', valor: 30 }),
+    ];
+    const r = porResponsavel(lista);
+    expect(r.map((x) => x.responsavel)).toEqual(['CD', 'FORNECEDOR', 'CLIENTE', 'APURAR']);
+    expect(r[0].quantidade).toBe(2);
+    expect(r[0].valor).toBe(300);
+    expect(r[1].quantidade).toBe(1);
+    expect(r[2].quantidade).toBe(0); // zerado aparece mesmo assim
+    expect(r[3].quantidade).toBe(1);
+    expect(r.reduce((s, x) => s + x.pct, 0)).toBeCloseTo(100, 5);
+    expect(r.reduce((s, x) => s + x.quantidade, 0)).toBe(lista.length);
+  });
+
+  it('lista vazia nao divide por zero', () => {
+    expect(porResponsavel([]).every((r) => r.quantidade === 0 && r.pct === 0)).toBe(true);
   });
 });
