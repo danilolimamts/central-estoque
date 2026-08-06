@@ -102,7 +102,10 @@ export default function App() {
   const { dados, historico, carregando, erro, importar, carregarDemo, limpar } = useDados();
   const [pagina, setPagina] = useState<Pagina>('geral');
   const [recolhido, setRecolhido] = useState(false);
-  const [tema, setTema] = useState<'claro' | 'escuro' | null>(null);
+  /* Abre no claro. O escuro entra so quando a pessoa clica: seguir a
+     preferencia do sistema fazia o painel abrir escuro em maquina
+     configurada assim, sem ninguem ter pedido. */
+  const [tema, setTema] = useState<'claro' | 'escuro'>('claro');
   const [busca, setBusca] = useState('');
   const [confirmarTroca, setConfirmarTroca] = useState(false);
   const [apresentando, setApresentando] = useState(false);
@@ -123,7 +126,7 @@ export default function App() {
   }, [dados]);
 
   useEffect(() => {
-    if (tema) document.documentElement.setAttribute('data-theme', tema === 'escuro' ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', tema === 'escuro' ? 'dark' : 'light');
   }, [tema]);
 
   /* O app abre na importacao quando ainda nao ha dados. Os dados de
@@ -159,9 +162,7 @@ export default function App() {
   }, [apresentando]);
 
   function alternarTema() {
-    const escuroAgora =
-      tema === null ? window.matchMedia('(prefers-color-scheme: dark)').matches : tema === 'escuro';
-    setTema(escuroAgora ? 'claro' : 'escuro');
+    setTema(tema === 'escuro' ? 'claro' : 'escuro');
   }
 
   const semDados = !dados;

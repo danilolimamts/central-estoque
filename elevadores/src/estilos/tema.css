@@ -989,3 +989,19 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-forn-limite{ display:inline-block; margin-left:6px; padding:2px 8px; border-radius:100px;
   font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
   background:#FBF3DC; color:#8A6508; white-space:nowrap; }
+
+/* Saude do estoque por fornecedor. */
+.eq-saude-topo{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+.eq-saude-num{ flex:1; min-width:150px; display:flex; flex-direction:column; gap:2px;
+  padding:14px 16px; border:1px solid var(--line); border-radius:var(--radius-lg);
+  background:var(--paper); }
+.eq-saude-rot{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--ink-soft); }
+.eq-saude-num b{ font-size:32px; font-weight:800; line-height:1.05; color:var(--ink);
+  font-variant-numeric:tabular-nums; }
+.eq-saude-det{ font-size:11px; color:var(--ink-soft); }
+.eq-saude-barra{ height:8px; min-width:90px; border-radius:100px; background:#F0552E;
+  overflow:hidden; }
+.eq-saude-barra span{ display:block; height:100%; border-radius:100px; }
+.eq-saude-skus{ display:block; font-size:10px; color:var(--ink-soft); margin-top:2px; }
+.eq-saude-total td{ background:var(--surface2); }

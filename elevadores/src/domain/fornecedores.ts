@@ -368,3 +368,101 @@ export function textoCompra(i: {
   if (i.comprarBase > 0) partes.push(`${i.comprarBase} base(s)`);
   return partes.length > 0 ? `comprar ${partes.join(' e ')}` : 'equalizado';
 }
+
+
+/* ============================================================
+   Saude do estoque por fornecedor.
+
+   Responde "quanto do que esta parado vira elevador vendavel". A conta
+   e por unidade, nao por SKU: um fornecedor com 100 elevadores
+   possiveis e 10 travados esta 90% OK.
+
+   Usa so o saldo do CD. Reversa fica de fora de proposito: peca em
+   reversa nao esta disponivel para montar nem para vender.
+   ============================================================ */
+export interface SaudeFornecedor {
+  fornecedor: string;
+  /* SKUs de elevador deste fornecedor. */
+  itens: number;
+  itensDescasados: number;
+  /* Elevadores que dao para montar hoje. */
+  completos: number;
+  /* Elevadores que dariam se o estoque estivesse equalizado. */
+  potencial: number;
+  /* Diferenca entre os dois: elevador que nao fecha por falta de peca. */
+  descasados: number;
+  pctCompleto: number;
+  pctDescasado: number;
+  /* Pecas em estoque que nao formam elevador nenhum: o que esta parado
+     sem virar venda. */
+  pecasParadas: number;
+}
+
+function saudeDoItem(i: ItemFornecedor): { completos: number; potencial: number; paradas: number } {
+  const completos = i.montagem.kits;
+  /* Peca que sobrou depois de montar tudo que dava: nao vira venda
+     enquanto o par nao chegar. */
+  const paradas = i.montagem.componentes.reduce(
+    (s, c) => s + Math.max(0, c.saldo - completos * c.porKit),
+    0
+  );
+  return { completos, potencial: i.montagem.alvo, paradas };
+}
+
+export function saudePorFornecedor(grupos: GrupoFornecedor[]): SaudeFornecedor[] {
+  const saida: SaudeFornecedor[] = grupos.map((g) => {
+    const itens = g.toneladas.flatMap((t) => t.itens);
+    let completos = 0;
+    let potencial = 0;
+    let pecasParadas = 0;
+    for (const i of itens) {
+      const s = saudeDoItem(i);
+      completos += s.completos;
+      potencial += s.potencial;
+      pecasParadas += s.paradas;
+    }
+    const descasados = Math.max(0, potencial - completos);
+    return {
+      fornecedor: g.fornecedor,
+      itens: itens.length,
+      itensDescasados: itens.filter((i) => i.situacao === 'DESCASADO').length,
+      completos,
+      potencial,
+      descasados,
+      /* Sem potencial nenhum nao ha percentual: 0 de 0 nao e 0% nem
+         100%, e ausencia de estoque. */
+      pctCompleto: potencial > 0 ? (completos / potencial) * 100 : 0,
+      pctDescasado: potencial > 0 ? (descasados / potencial) * 100 : 0,
+      pecasParadas,
+    };
+  });
+  /* Quem tem mais elevador travado aparece primeiro: e onde a compra
+     destrava mais venda. */
+  return saida.sort((a, z) => z.descasados - a.descasados || z.potencial - a.potencial);
+}
+
+export interface SaudeTotal {
+  itens: number;
+  completos: number;
+  potencial: number;
+  descasados: number;
+  pctCompleto: number;
+  pctDescasado: number;
+  pecasParadas: number;
+}
+
+export function totalizarSaude(linhas: SaudeFornecedor[]): SaudeTotal {
+  const soma = (f: (l: SaudeFornecedor) => number) => linhas.reduce((s, l) => s + f(l), 0);
+  const completos = soma((l) => l.completos);
+  const potencial = soma((l) => l.potencial);
+  const descasados = Math.max(0, potencial - completos);
+  return {
+    itens: soma((l) => l.itens),
+    completos,
+    potencial,
+    descasados,
+    pctCompleto: potencial > 0 ? (completos / potencial) * 100 : 0,
+    pctDescasado: potencial > 0 ? (descasados / potencial) * 100 : 0,
+    pecasParadas: soma((l) => l.pecasParadas),
+  };
+}

@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import { FotoAoPassar } from '../components/ui/FotoAoPassar';
 import { ItensPorFornecedor } from '../components/ItensPorFornecedor';
 import { InversoesSAC } from '../components/InversoesSAC';
+import { SaudeDoEstoque } from '../components/SaudeDoEstoque';
 import type { DivergenciaSAC } from '../domain/divergencias';
 import type { ChartConfiguration } from 'chart.js';
 import type { Componente, Conjunto, Valoracao } from '../domain/tipos';
@@ -348,6 +349,8 @@ export function DashboardGeral({
       <Cartao titulo="Colunas × bases a comprar" descricao="maiores necessidades de compra">
         <Grafico config={configCompras} altura={280} rotulo="Colunas e bases a comprar por conjunto" />
       </Cartao>
+
+      <SaudeDoEstoque componentes={componentes} />
 
       <ItensPorFornecedor componentes={componentes} fotos={fotos} busca={buscaGlobal} />
 
