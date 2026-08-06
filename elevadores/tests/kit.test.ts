@@ -5,7 +5,7 @@
    mostraram o erro do calculo por tonelada.
    ============================================================ */
 import { describe, it, expect } from 'vitest';
-import { montarKit, faltamDoTipo, explicarCompra, porKitDe } from '../src/domain/kit';
+import { montarKit, faltamDoTipo, explicarCompra, explicarLimite, porKitDe } from '../src/domain/kit';
 
 const c = (codigo: string, tipo: string, porKit: number, saldo: number) => ({
   codigo, nome: codigo, tipo, porKit, saldo,
@@ -122,5 +122,67 @@ describe('bordas', () => {
     const kit = montarKit([c('B', 'BASE', 1, 5), c('C', 'COLUNA', 2, 6)]);
     expect(kit.componentes.find((x) => x.codigo === 'B')!.kitsQueSustenta).toBe(5);
     expect(kit.componentes.find((x) => x.codigo === 'C')!.kitsQueSustenta).toBe(3);
+  });
+});
+
+describe('kit inteiro entra na conta, mas o foco e o par base x coluna', () => {
+  it('bomba zerada nao descasa o par, mas impede a expedicao', () => {
+    const kit = montarKit([
+      c('B', 'BASE', 1, 5),
+      c('C', 'COLUNA', 1, 5),
+      c('BM', 'BOMBA', 1, 0),
+    ]);
+    /* O par esta equalizado: 5 bases e 5 colunas. */
+    expect(kit.kits).toBe(5);
+    expect(kit.casado).toBe(true);
+    /* Mas sem bomba nao sai nenhum produto completo. */
+    expect(kit.kitsCompletos).toBe(0);
+    expect(kit.limitantes.map((x) => x.codigo)).toEqual(['BM']);
+    expect(explicarLimite(kit)).toContain('só dá para expedir 0');
+  });
+
+  it('componente fora do par com saldo de sobra nao vira limitante', () => {
+    const kit = montarKit([
+      c('B', 'BASE', 1, 3),
+      c('C', 'COLUNA', 1, 3),
+      c('BM', 'BOMBA', 1, 99),
+    ]);
+    expect(kit.kits).toBe(3);
+    expect(kit.kitsCompletos).toBe(3);
+    expect(kit.limitantes).toEqual([]);
+    expect(explicarLimite(kit)).toBeNull();
+  });
+
+  it('a compra continua olhando so base e coluna', () => {
+    const kit = montarKit([
+      c('B', 'BASE', 1, 9),
+      c('C', 'COLUNA', 1, 4),
+      c('BM', 'BOMBA', 1, 0),
+    ]);
+    expect(faltamDoTipo(kit, 'COLUNA')).toBe(5);
+    /* A bomba tem falta calculada, mas nao entra na frase de compra:
+       o comprador do projeto compra base e coluna. */
+    expect(kit.componentes.find((x) => x.codigo === 'BM')!.faltam).toBe(9);
+    expect(explicarCompra(kit)).toContain('C');
+    expect(explicarCompra(kit)).not.toContain('BM');
+  });
+
+  it('a rampa com os quatro componentes segue casada e expedivel', () => {
+    const kit = montarKit([
+      c('2032070', 'BASE', 1, 2),
+      c('2032074', 'COLUNA', 1, 2),
+      c('2032080', 'OUTROS', 1, 2),
+      c('4101860', 'OUTROS', 1, 2),
+    ]);
+    expect(kit.casado).toBe(true);
+    expect(kit.kits).toBe(2);
+    expect(kit.kitsCompletos).toBe(2);
+    expect(kit.limitantes).toEqual([]);
+  });
+
+  it('kit sem base nem coluna cai para os componentes que tiver', () => {
+    const kit = montarKit([c('X', 'OUTROS', 1, 4)]);
+    expect(kit.kits).toBe(4);
+    expect(kit.kitsCompletos).toBe(4);
   });
 });

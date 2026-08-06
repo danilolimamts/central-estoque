@@ -57,6 +57,9 @@ export interface ItemFornecedor {
   completos: number;
   /* Kits que dariam se o componente escasso fosse reposto. */
   alvo: number;
+  /* Kits que dao para expedir com o produto inteiro, contando bomba,
+     comando e o que mais compoe o kit. */
+  expedivel: number;
   /* A montagem completa, com o que falta de cada componente. */
   montagem: MontagemDoKit;
 
@@ -131,13 +134,18 @@ function fecharItem(item: ItemFornecedor): ItemFornecedor {
 
   /* O casamento sai da composicao do kit, componente a componente, e
      nao da tonelada. Duas colunas diferentes no mesmo kit sao pecas
-     distintas, e um produto de 4 t pode levar uma coluna so. */
-  const doKit = item.componentes.filter((c) => c.tipo === 'BASE' || c.tipo === 'COLUNA');
+     distintas, e um produto de 4 t pode levar uma coluna so.
+
+     Entra o kit inteiro, inclusive bomba e comando: eles nao mandam no
+     casamento, que e do par base x coluna, mas limitam quantos kits
+     dao para expedir de verdade. */
+  const doKit = item.componentes;
   const montagem = montarKit(
     doKit.map((c) => ({ codigo: c.codigo, nome: c.nome, tipo: c.tipo, porKit: c.porKit, saldo: c.cd }))
   );
   item.montagem = montagem;
   item.completos = montagem.kits;
+  item.expedivel = montagem.kitsCompletos;
   item.alvo = montagem.alvo;
 
   /* Devolve o que falta para a propria linha do componente, para a
@@ -214,8 +222,12 @@ export function listarPorFornecedor(componentes: Componente[]): GrupoFornecedor[
         colunasNecessarias: 0,
         deficit: 0,
         completos: 0,
+        expedivel: 0,
         alvo: 0,
-        montagem: { kits: 0, alvo: 0, componentes: [], casado: false, semEstoque: true },
+        montagem: {
+          kits: 0, kitsCompletos: 0, alvo: 0, componentes: [],
+          limitantes: [], casado: false, semEstoque: true,
+        },
         situacao: 'SEM ESTOQUE',
         comprarColuna: 0,
         comprarBase: 0,

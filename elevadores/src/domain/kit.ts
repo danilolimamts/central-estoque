@@ -37,8 +37,14 @@ export interface ComponenteDoKit {
 }
 
 export interface MontagemDoKit {
-  /* Kits completos possiveis: manda o componente mais escasso. */
+  /* Kits pelo par base x coluna, que e o foco da equalizacao. */
   kits: number;
+  /* Kits com o kit inteiro: entra bomba, comando e o que mais compoe
+     o produto. E quantos dao para expedir de verdade. */
+  kitsCompletos: number;
+  /* Componentes fora do par que seguram o kit abaixo do que o par
+     permite. Sao eles que impedem a expedicao. */
+  limitantes: ComponenteDoKit[];
   /* Kits que dariam se o componente escasso fosse reposto. E o alvo
      da compra: equalizar por cima, nao por baixo. */
   alvo: number;
@@ -65,13 +71,13 @@ export function montarKit(
   componentes: { codigo: string; nome: string; tipo: string; porKit: number; saldo: number }[]
 ): MontagemDoKit {
   if (componentes.length === 0) {
-    return { kits: 0, alvo: 0, componentes: [], casado: false, semEstoque: true };
+    return {
+      kits: 0, kitsCompletos: 0, alvo: 0, componentes: [],
+      limitantes: [], casado: false, semEstoque: true,
+    };
   }
 
   const sustentam = componentes.map((c) => Math.floor(c.saldo / c.porKit));
-  const kits = Math.min(...sustentam);
-  const alvo = Math.max(...sustentam);
-
   const detalhados: ComponenteDoKit[] = componentes.map((c, i) => ({
     codigo: c.codigo,
     nome: c.nome,
@@ -79,14 +85,34 @@ export function montarKit(
     porKit: c.porKit,
     saldo: c.saldo,
     kitsQueSustenta: sustentam[i],
-    faltam: Math.max(0, alvo * c.porKit - c.saldo),
+    faltam: 0,
   }));
+
+  /* O par base x coluna e o foco da equalizacao: e dele que saem o
+     casamento, o alvo e a compra. Os demais componentes entram como
+     limite de expedicao, sem mandar na conta do par - senao uma bomba
+     zerada faria o projeto inteiro parecer descasado. */
+  const doPar = detalhados.filter((c) => c.tipo === 'BASE' || c.tipo === 'COLUNA');
+  const base = doPar.length > 0 ? doPar : detalhados;
+
+  const kits = Math.min(...base.map((c) => c.kitsQueSustenta));
+  const alvo = Math.max(...base.map((c) => c.kitsQueSustenta));
+  for (const c of detalhados) {
+    c.faltam = Math.max(0, alvo * c.porKit - c.saldo);
+  }
+
+  const kitsCompletos = Math.min(...detalhados.map((c) => c.kitsQueSustenta));
+  const limitantes = detalhados.filter(
+    (c) => c.tipo !== 'BASE' && c.tipo !== 'COLUNA' && c.kitsQueSustenta < kits
+  );
 
   return {
     kits,
+    kitsCompletos,
     alvo,
     componentes: detalhados,
-    /* Casado e todo mundo sustentando o mesmo tanto. Sobra de peca em
+    limitantes,
+    /* Casado e todo o par sustentando o mesmo tanto. Sobra de peca em
        um componente ja e descasamento, mesmo que o kit feche. */
     casado: kits === alvo,
     semEstoque: componentes.every((c) => c.saldo === 0),
@@ -101,9 +127,21 @@ export function faltamDoTipo(m: MontagemDoKit, tipo: string): number {
 /* Frase da acao de compra, item a item. Nomeia o componente porque
    "comprar 1 coluna" nao diz qual das duas colunas do kit falta. */
 export function explicarCompra(m: MontagemDoKit): string {
-  const faltando = m.componentes.filter((c) => c.faltam > 0);
+  const faltando = m.componentes.filter(
+    (c) => c.faltam > 0 && (c.tipo === 'BASE' || c.tipo === 'COLUNA')
+  );
   if (m.semEstoque) return 'Sem estoque de nenhum componente';
   if (faltando.length === 0) return `Equalizado: ${m.kits} kit(s) completo(s)`;
   const partes = faltando.map((c) => `${c.faltam} de ${c.codigo || c.tipo}`);
   return `Comprar ${partes.join(' e ')} para fechar ${m.alvo} kit(s)`;
+}
+
+/* Aviso do componente fora do par que impede a expedicao. O par pode
+   estar casado e o produto seguir sem poder sair. */
+export function explicarLimite(m: MontagemDoKit): string | null {
+  if (m.limitantes.length === 0) return null;
+  const nomes = m.limitantes
+    .map((c) => `${c.tipo}${c.codigo ? ` ${c.codigo}` : ''} (${c.saldo})`)
+    .join(', ');
+  return `O par fecha ${m.kits}, mas só dá para expedir ${m.kitsCompletos}: ${nomes}`;
 }

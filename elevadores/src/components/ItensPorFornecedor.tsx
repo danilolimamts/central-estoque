@@ -10,6 +10,7 @@ import { Fragment, useMemo, useState } from 'react';
 import type { Componente } from '../domain/tipos';
 import { listarPorFornecedor, textoCompra, mensagemDeCompra } from '../domain/fornecedores';
 import type { ItemFornecedor } from '../domain/fornecedores';
+import { explicarLimite } from '../domain/kit';
 import { FotoAoPassar } from './ui/FotoAoPassar';
 import { CompartilharCompra } from './CompartilharCompra';
 import {
@@ -29,6 +30,19 @@ function SeloSituacao({ situacao }: { situacao: ItemFornecedor['situacao'] }) {
   const tom =
     situacao === 'CASADO' ? 'tag-good' : situacao === 'DESCASADO' ? 'tag-bad' : 'tag-muted';
   return <span className={`tag ${tom}`}>{situacao}</span>;
+}
+
+/* O par pode estar casado e o produto seguir sem poder sair, porque
+   falta bomba, comando ou outra peca do kit. O aviso fica ao lado da
+   situacao para nao passar despercebido. */
+function AvisoDeExpedicao({ item }: { item: ItemFornecedor }) {
+  const frase = explicarLimite(item.montagem);
+  if (!frase) return null;
+  return (
+    <span className="eq-forn-limite" title={frase}>
+      expedir {item.expedivel}
+    </span>
+  );
 }
 
 export function ItensPorFornecedor({
@@ -283,6 +297,7 @@ export function ItensPorFornecedor({
                             <>
                               <td className="eq-forn-sit" rowSpan={i.componentes.length}>
                                 <SeloSituacao situacao={i.situacao} />
+                                <AvisoDeExpedicao item={i} />
                               </td>
                               <td
                                 className={`eq-forn-compra${i.comprarBase + i.comprarColuna > 0 ? ' falta' : ''}`}
