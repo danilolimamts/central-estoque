@@ -108,24 +108,10 @@ function ordemTipo(t: string): number {
 }
 
 function fecharItem(item: ItemFornecedor): ItemFornecedor {
-  /* O kit sem um dos lados cadastrados ganha a linha com saldo zero: o
-     comprador precisa ver que ha 1 coluna e nenhuma base. */
-  for (const tipo of ['BASE', 'COLUNA'] as const) {
-    if (item.componentes.some((c) => c.tipo === tipo)) continue;
-    item.componentes.push({
-      codigo: '',
-      nome: `Sem ${tipo.toLowerCase()} cadastrada neste kit`,
-      tipo,
-      sn: '',
-      porKit: 1,
-      faltam: 0,
-      cd: 0,
-      reversa: 0,
-      paisQueUsam: 0,
-      ausente: true,
-    });
-  }
-
+  /* O kit e o que a estrutura do item diz que ele e. Nada de linha
+     inventada: o 4570344 leva coluna e bomba, sem base nenhuma, e
+     criar uma "base ausente" fazia a tela acusar descasamento e mandar
+     comprar uma peca que o produto nao usa. */
   item.componentes.sort(
     (a, b) => ordemTipo(a.tipo) - ordemTipo(b.tipo) || a.tipo.localeCompare(b.tipo) ||
       a.codigo.localeCompare(b.codigo)

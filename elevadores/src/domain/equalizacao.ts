@@ -169,13 +169,6 @@ export function contarElevadoresPorItem(componentes: Componente[]): Map<string, 
 
   const contagem = new Map<string, ContagemItem>();
   for (const [item, lista] of porItem) {
-    /* Elevador precisa dos dois lados. Kit com so um deles cadastrado
-       nao monta nada: e cadastro incompleto, nao estoque disponivel.
-       Sem esta trava, um item com 6 colunas e nenhuma base cadastrada
-       apareceria como 6 elevadores prontos. */
-    const temBase = lista.some((c) => tipoComponente(c) === 'BASE');
-    const temColuna = lista.some((c) => tipoComponente(c) === 'COLUNA');
-
     const montagem = montarKit(
       lista.map((c) => ({
         codigo: String(c.itemComponente ?? '').trim(),
@@ -188,14 +181,18 @@ export function contarElevadoresPorItem(componentes: Componente[]): Map<string, 
 
     const bases = lista.filter((c) => tipoComponente(c) === 'BASE').reduce((s, c) => s + c.cd, 0);
     const colunas = lista.filter((c) => tipoComponente(c) === 'COLUNA').reduce((s, c) => s + c.cd, 0);
-    const completos = temBase && temColuna ? montagem.kits : 0;
+    /* Quantos kits a composicao sustenta. Kit sem base cadastrada nao
+       precisa de base: quem define o que o produto leva e a estrutura
+       do item, nao a expectativa de que todo elevador tenha as duas
+       pecas. */
+    const completos = montagem.kits;
 
     contagem.set(item, {
       bases,
       colunas,
       ratio: ratioDaTonelada(lista[0].toneladaFixa),
       completos,
-      alvo: temBase && temColuna ? montagem.alvo : 0,
+      alvo: montagem.alvo,
       /* Sobra e o saldo que os kits montados nao consumiram. */
       basesSobrando: montagem.componentes
         .filter((m) => m.tipo === 'BASE')

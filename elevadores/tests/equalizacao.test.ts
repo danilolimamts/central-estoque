@@ -191,21 +191,24 @@ describe('quantidade de elevadores por item pai', () => {
     expect(q.colunasSobrando).toBe(4);
   });
 
-  it('componente fora do kit nao entra na conta', () => {
+  it('kit sem coluna na estrutura monta pelo que ele tem', () => {
+    /* Nao ha coluna cadastrada neste item: o produto nao leva uma.
+       Inventar a peca faltante faria a conta acusar zero elevador em
+       um kit que esta completo. */
     const q = contarElevadoresPorItem([
       base('FORTG JM 4 t', '4 t', 2, { itemVolMultiplo: 'B' }),
-      comp({ itemVolMultiplo: 'B', toneladaFixa: '4 t', componenteBaseColuna: 'BOMBA', cd: 99 }),
     ]).get('B')!;
     expect(q.colunas).toBe(0);
-    expect(q.completos).toBe(0); // sem coluna cadastrada nao monta
-    expect(q.basesSobrando).toBe(2);
+    expect(q.completos).toBe(2);
+    expect(q.basesSobrando).toBe(0);
   });
 
-  it('so um lado no CD nao monta elevador', () => {
+  it('kit sem base na estrutura monta pelo que ele tem', () => {
+    /* Caso real 4570344, que leva coluna e bomba e nenhuma base. */
     const q = contarElevadoresPorItem([
       coluna('KREBS 2 t', '2 t', 6, { itemVolMultiplo: 'C' }),
     ]).get('C')!;
-    expect(q.completos).toBe(0);
-    expect(q.colunasSobrando).toBe(6);
+    expect(q.completos).toBe(6);
+    expect(q.colunasSobrando).toBe(0);
   });
 });

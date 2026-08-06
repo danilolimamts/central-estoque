@@ -133,40 +133,40 @@ describe('agrupamento por fornecedor', () => {
   });
 });
 
-describe('kit sem um dos lados cadastrado', () => {
-  /* O caso do 4570344: so existe a linha da coluna. O comprador precisa
-     ver a base com saldo zero, senao parece que o kit esta completo. */
-  const soColuna = listarPorFornecedor([
-    comp({ itemVolMultiplo: '4570344', nomeItemVolMultiplo: 'ELEVADOR DOUBLE LOCK', itemComponente: '4570497', inInterface: 'S', componenteBaseColuna: 'COLUNA', cd: 1, fabricante: 'MAQUINAS RIBEIRO', toneladaFixa: '4 t' }),
-  ]);
-  const item = soColuna[0].toneladas[0].itens[0];
+describe('kit que nao tem base na estrutura', () => {
+  /* Caso real 4570344: a estrutura do item traz coluna e bomba, e mais
+     nada. O produto nao leva base, entao nao ha base para cobrar. */
+  const item = listarPorFornecedor([
+    comp({
+      itemVolMultiplo: '4570344', nomeItemVolMultiplo: 'ELEVADOR DOUBLE LOCK 4000KG',
+      itemComponente: '4570497', nomeItemComponente: 'COLUNAS_ELEV HIDRAULICO 4T',
+      componenteBaseColuna: 'COLUNA', inInterface: 'S', quantidade: 1, cd: 1,
+      fabricante: 'MAQUINAS RIBEIRO', marca: 'FORTG', toneladaFixa: '4 t',
+    }),
+    comp({
+      itemVolMultiplo: '4570344', nomeItemVolMultiplo: 'ELEVADOR DOUBLE LOCK 4000KG',
+      itemComponente: '4570498', nomeItemComponente: 'BOMBA_ELEV HIDRAULICO 4T',
+      componenteBaseColuna: 'BOMBA', inInterface: 'N', quantidade: 1, cd: 1,
+      fabricante: 'MAQUINAS RIBEIRO', marca: 'FORTG', toneladaFixa: '4 t',
+    }),
+  ])[0].toneladas[0].itens[0];
 
-  it('cria a linha da base com saldo zero', () => {
-    const base = item.componentes.find((c) => c.tipo === 'BASE')!;
-    expect(base.cd).toBe(0);
-    expect(base.ausente).toBe(true);
-    expect(base.codigo).toBe('');
-    expect(base.nome).toMatch(/sem base cadastrada/i);
+  it('nao inventa linha de base que a estrutura nao tem', () => {
+    expect(item.componentes.map((c) => c.codigo)).toEqual(['4570497', '4570498']);
+    expect(item.componentes.some((c) => c.ausente)).toBe(false);
+    expect(item.componentes.some((c) => c.tipo === 'BASE')).toBe(false);
   });
 
-  it('a linha criada nao inventa saldo nem muda a conta', () => {
-    expect(item.bases).toBe(0);
-    expect(item.colunas).toBe(1);
-    expect(item.situacao).toBe('DESCASADO');
-    /* Ha 1 coluna e nenhuma base: falta a base para formar o par.
-       Comprar outra coluna nao ajudaria em nada. */
-    expect(item.comprarBase).toBe(1);
+  it('nao manda comprar base para um produto que nao usa base', () => {
+    expect(item.comprarBase).toBe(0);
     expect(item.comprarColuna).toBe(0);
+    expect(textoCompra(item)).toBe('equalizado');
   });
 
-  it('kit so com base ganha a linha da coluna', () => {
-    const soBase = listarPorFornecedor([
-      comp({ itemVolMultiplo: 'X1', itemComponente: 'B1', componenteBaseColuna: 'BASE', cd: 2, fabricante: 'JM', toneladaFixa: '2 t' }),
-    ])[0].toneladas[0].itens[0];
-    const coluna = soBase.componentes.find((c) => c.tipo === 'COLUNA')!;
-    expect(coluna.ausente).toBe(true);
-    expect(coluna.cd).toBe(0);
-    expect(soBase.comprarColuna).toBe(2);
+  it('fica casado: uma coluna e uma bomba montam uma unidade', () => {
+    expect(item.situacao).toBe('CASADO');
+    expect(item.completos).toBe(1);
+    expect(item.expedivel).toBe(1);
   });
 });
 
