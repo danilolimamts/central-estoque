@@ -1,5 +1,9 @@
 <!doctype html>
-<html lang="pt-BR">
+<!-- data-theme no HTML, nao no React: o CSS tem um bloco
+     prefers-color-scheme que pinta escuro enquanto o atributo nao
+     existe, e o useEffect so roda depois da primeira pintura. Sem
+     isto a pagina nasce escura em maquina configurada no escuro. -->
+<html lang="pt-BR" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
