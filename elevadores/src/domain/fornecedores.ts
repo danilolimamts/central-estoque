@@ -441,6 +441,13 @@ export function saudePorFornecedor(grupos: GrupoFornecedor[]): SaudeFornecedor[]
   return saida.sort((a, z) => z.descasados - a.descasados || z.potencial - a.potencial);
 }
 
+/* Fornecedor sem nada no CD: nenhum elevador possivel e nenhuma peca
+   parada. A linha dele so tem zero e traco, nao responde a pergunta do
+   cartao e ainda empurra para baixo quem tem estoque de verdade. */
+export function semNadaNoEstoque(l: SaudeFornecedor): boolean {
+  return l.potencial === 0 && l.pecasParadas === 0;
+}
+
 export interface SaudeTotal {
   itens: number;
   completos: number;

@@ -18,6 +18,15 @@ import { LOGO_HORIZONTAL } from '../dados/logo';
 /* Marque com esta classe o que deve ficar de fora do boletim. */
 export const CLASSE_FORA = 'fora-do-boletim';
 
+/* O contrario: bloco que existe so no boletim. Fica escondido na tela
+   e aparece na captura, quando a classe e retirada do clone.
+
+   Serve para o que faz sentido no relatorio mas nao na pagina - a
+   saude do estoque, por exemplo, mora no Dashboard Geral e nao teria
+   por que ser repetida na tela do projeto, mas quem recebe o e-mail
+   precisa dela junto do andamento. */
+export const CLASSE_SO_BOLETIM = 'so-no-boletim';
+
 const FUNDO = '#F1F2F6';
 
 const ROTULO_SAUDE = {
@@ -103,6 +112,8 @@ export async function gerarBoletim(
     windowWidth: largura,
     onclone: (doc: Document, clone: HTMLElement) => {
       clone.querySelectorAll(`.${CLASSE_FORA}`).forEach((e) => e.remove());
+      /* Tirar a classe basta: o display:none vem dela. */
+      clone.querySelectorAll(`.${CLASSE_SO_BOLETIM}`).forEach((e) => e.classList.remove(CLASSE_SO_BOLETIM));
       clone.classList.add('eq-boletim');
       clone.style.width = `${largura}px`;
       clone.style.padding = '0';

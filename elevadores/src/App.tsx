@@ -312,7 +312,14 @@ export default function App() {
           ) : paginaAtual === 'geral' ? (
             <DashboardGeral componentes={dados.componentes} fotos={fotos} busca={busca} divergencias={dados.divergencias} />
           ) : paginaAtual === 'projeto' ? (
-            <StatusProjeto acoes={acoes} hoje={hoje} busca={busca} historico={historico} demonstracao={!!dados?.demonstracao} />
+            <StatusProjeto
+              acoes={acoes}
+              hoje={hoje}
+              busca={busca}
+              historico={historico}
+              demonstracao={!!dados?.demonstracao}
+              componentes={dados.componentes}
+            />
           ) : (
             <Elevadores componentes={dados.componentes} fotos={fotos} busca={busca} />
           )}

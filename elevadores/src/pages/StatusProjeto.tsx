@@ -7,7 +7,8 @@
    ============================================================ */
 import { useMemo, useRef, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
-import type { Acao, MetricasProjeto } from '../domain/tipos';
+import type { Acao, Componente, MetricasProjeto } from '../domain/tipos';
+import { SaudeDoEstoque } from '../components/SaudeDoEstoque';
 import {
   calcularMetricas, montarMatriz, planoPorAcao, totalDoPlano, situacaoDe, acoesUnicas,
   resumirGanhos, ganhosDaAcao, GANHOS,
@@ -18,7 +19,7 @@ import { MiniTabela, LinhaDica } from '../components/ui/MiniTabela';
 import { BarraFiltros, Botao, Busca, Cartao, Chips, Selecao, Selo, Tabela, Td, Th, Vazio } from '../components/ui';
 import { baixarPlanoProjeto } from '../export/exportExcel';
 import { CompartilharStatus } from '../components/CompartilharStatus';
-import { CLASSE_FORA } from '../export/boletimStatus';
+import { CLASSE_FORA, CLASSE_SO_BOLETIM } from '../export/boletimStatus';
 import { compararComAnterior, explicarVariacao, marcoDe } from '../domain/historico';
 import type { Marco } from '../domain/historico';
 import { baixarApresentacao, RECORTES, type Recorte } from '../export/exportPptx';
@@ -851,6 +852,7 @@ export function StatusProjeto({
   busca: buscaGlobal = '',
   historico = [],
   demonstracao = false,
+  componentes = [],
 }: {
   acoes: Acao[];
   hoje: Date;
@@ -859,6 +861,9 @@ export function StatusProjeto({
   /* Medicoes das importacoes anteriores. */
   historico?: Marco[];
   demonstracao?: boolean;
+  /* Base do estoque. Nao aparece nesta tela: serve so para a saude do
+     estoque entrar no boletim, junto do andamento do projeto. */
+  componentes?: Componente[];
 }) {
   const [responsavel, setResponsavel] = useState('');
   const [proposta, setProposta] = useState('');
@@ -985,6 +990,16 @@ export function StatusProjeto({
       <Gantt acoes={filtradas} hoje={hoje} />
 
       <BurnDown acoes={filtradas} hoje={hoje} />
+
+      {/* Fecha o boletim com o resultado da operacao ao lado do
+          andamento do projeto: o plano existe para destravar estoque,
+          entao quem le o relatorio precisa dos dois no mesmo lugar.
+          Na tela nao aparece - o Dashboard Geral ja mostra. */}
+      {componentes.length > 0 && (
+        <div className={CLASSE_SO_BOLETIM}>
+          <SaudeDoEstoque componentes={componentes} />
+        </div>
+      )}
 
       {/* A tabela linha a linha fica fora do boletim: sao dezenas de
           linhas que ninguem le no corpo do e-mail, e o PowerPoint e o

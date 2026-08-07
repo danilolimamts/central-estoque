@@ -2,7 +2,9 @@
    Testes da saude do estoque por fornecedor.
    ============================================================ */
 import { describe, it, expect } from 'vitest';
-import { listarPorFornecedor, saudePorFornecedor, totalizarSaude } from '../src/domain/fornecedores';
+import {
+  listarPorFornecedor, saudePorFornecedor, semNadaNoEstoque, totalizarSaude,
+} from '../src/domain/fornecedores';
 import type { Componente } from '../src/domain/tipos';
 
 function comp(p: Partial<Componente>): Componente {
@@ -97,6 +99,32 @@ describe('ordem e total', () => {
     expect(t.descasados).toBe(9);
     expect(t.pctCompleto).toBeCloseTo(55, 5);
     expect(t.pecasParadas).toBe(9);
+  });
+
+  it('fornecedor sem nada no CD e marcado para sair da tabela', () => {
+    /* Linha so com zero e traco nao responde a pergunta do cartao. */
+    const vazio = saudePorFornecedor(
+      listarPorFornecedor([
+        comp({ itemVolMultiplo: 'V', itemComponente: 'V1', componenteBaseColuna: 'BASE', cd: 0, fabricante: 'LOJA DO MECANICO' }),
+        comp({ itemVolMultiplo: 'V', itemComponente: 'V2', componenteBaseColuna: 'COLUNA', cd: 0, fabricante: 'LOJA DO MECANICO' }),
+      ])
+    )[0];
+    expect(semNadaNoEstoque(vazio)).toBe(true);
+  });
+
+  it('quem tem peca parada continua na tabela, mesmo sem elevador possivel', () => {
+    /* Uma coluna sozinha, sem base que a acompanhe: nao monta elevador
+       nenhum, mas e exatamente o estoque travado que o cartao existe
+       para mostrar. */
+    const so = saudePorFornecedor(
+      listarPorFornecedor([
+        comp({ itemVolMultiplo: 'S', itemComponente: 'S1', componenteBaseColuna: 'BASE', cd: 0, fabricante: 'ACME' }),
+        comp({ itemVolMultiplo: 'S', itemComponente: 'S2', componenteBaseColuna: 'COLUNA', cd: 4, fabricante: 'ACME' }),
+      ])
+    )[0];
+    expect(so.completos).toBe(0);
+    expect(so.pecasParadas).toBe(4);
+    expect(semNadaNoEstoque(so)).toBe(false);
   });
 
   it('sem estoque nenhum nao vira 0% nem 100%', () => {

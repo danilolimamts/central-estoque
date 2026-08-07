@@ -12,6 +12,7 @@ import type { DivergenciaSAC } from '../domain/divergencias';
 import type { ChartConfiguration } from 'chart.js';
 import type { Componente, Conjunto, Valoracao } from '../domain/tipos';
 import { agruparConjuntos, resumirEqualizacao } from '../domain/equalizacao';
+import { listarPorFornecedor } from '../domain/fornecedores';
 import { auditarValoracao, resumirValoracao } from '../domain/valoracao';
 import { cores, coresStatus } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
@@ -20,6 +21,10 @@ import {
   SeloValoracao, Tabela, Td, Th, Vazio,
 } from '../components/ui';
 import { baixarPlanoEqualizacao, baixarBaseCompleta, baixarCorrecoesValoracao } from '../export/exportExcel';
+
+/* Quantas barras cabem no grafico de compras sem virar parede de
+   texto. O resto continua no detalhe por fornecedor, logo abaixo. */
+const LINHAS_DO_GRAFICO = 12;
 
 function PlanoDeAcao({
   conjuntos,
@@ -195,18 +200,48 @@ export function DashboardGeral({
   const resumo = useMemo(() => resumirEqualizacao(conjuntos), [conjuntos]);
   const valoracoes = useMemo(() => auditarValoracao(componentes), [componentes]);
 
-  const configCompras: ChartConfiguration = useMemo(() => {
-    const top = [...conjuntos]
-      .filter((c) => c.comprarColuna + c.comprarBase > 0)
-      .sort((a, b) => b.comprarColuna + b.comprarBase - (a.comprarColuna + a.comprarBase))
-      .slice(0, 8);
+  /* O grafico de compras sai da mesma fonte da tabela de saude logo
+     acima: fornecedor -> tonelada, montado pela composicao de cada
+     item pai.
+
+     Antes ele vinha do agrupamento por Chave, que e outro caminho e
+     por isso podia discordar da tabela. Duas divergencias possiveis,
+     as duas silenciosas: linha com a coluna Chave em branco nunca
+     entra em conjunto nenhum, e o corte dos maiores empurrava para
+     fora quem precisa de pouco. Fornecedor descasado na tabela e
+     ausente no grafico logo acima dela e a pior forma de perder a
+     confianca do numero. */
+  const compras = useMemo(() => {
+    const linhas = listarPorFornecedor(componentes).flatMap((g) =>
+      g.toneladas.map((t) => ({
+        rotulo: `${g.fornecedor} · ${t.tonelada}`,
+        colunas: t.comprarColuna,
+        bases: t.comprarBase,
+      }))
+    );
+    const comFalta = linhas.filter((l) => l.colunas + l.bases > 0);
+    /* Desempate pelo nome: sem ele a ordem entre iguais mudava a cada
+       importacao e um fornecedor sumia sem motivo aparente. */
+    const ordenadas = [...comFalta].sort(
+      (a, b) => b.colunas + b.bases - (a.colunas + a.bases) || a.rotulo.localeCompare(b.rotulo, 'pt-BR')
+    );
+    const top = ordenadas.slice(0, LINHAS_DO_GRAFICO);
     return {
+      top,
+      total: ordenadas.length,
+      colunas: comFalta.reduce((s, l) => s + l.colunas, 0),
+      bases: comFalta.reduce((s, l) => s + l.bases, 0),
+    };
+  }, [componentes]);
+
+  const configCompras: ChartConfiguration = useMemo(
+    () => ({
       type: 'bar',
       data: {
-        labels: top.map((c) => c.chave),
+        labels: compras.top.map((l) => l.rotulo),
         datasets: [
-          { label: 'Colunas', data: top.map((c) => c.comprarColuna), backgroundColor: cores.laranja.base, borderRadius: 4 },
-          { label: 'Bases', data: top.map((c) => c.comprarBase), backgroundColor: cores.navy.base, borderRadius: 4 },
+          { label: 'Colunas', data: compras.top.map((l) => l.colunas), backgroundColor: cores.laranja.base, borderRadius: 4 },
+          { label: 'Bases', data: compras.top.map((l) => l.bases), backgroundColor: cores.navy.base, borderRadius: 4 },
         ],
       },
       options: {
@@ -217,8 +252,9 @@ export function DashboardGeral({
           datalabels: { display: (c) => (c.dataset.data[c.dataIndex] as number) > 0, anchor: 'center', align: 'center', color: '#fff' },
         },
       },
-    };
-  }, [conjuntos]);
+    }),
+    [compras]
+  );
 
   return (
     <div className="flex flex-col gap-4.5" style={{ gap: 18 }}>
@@ -241,8 +277,26 @@ export function DashboardGeral({
         />
       </div>
 
-      <Cartao titulo="Colunas × bases a comprar" descricao="maiores necessidades de compra">
-        <Grafico config={configCompras} altura={280} rotulo="Colunas e bases a comprar por conjunto" />
+      <Cartao
+        titulo="Colunas × bases a comprar"
+        descricao={
+          compras.total === 0
+            ? 'nada a comprar: todos os conjuntos estão equalizados'
+            : `${compras.top.length} de ${compras.total} grupos com compra pendente · ` +
+              `${compras.colunas} coluna(s) e ${compras.bases} base(s) no total`
+        }
+      >
+        {compras.top.length === 0 ? (
+          <Vazio>Nenhuma compra pendente.</Vazio>
+        ) : (
+          <Grafico
+            config={configCompras}
+            /* A altura acompanha o numero de barras: com altura fixa,
+               as ultimas ficavam espremidas e ilegiveis. */
+            altura={Math.max(240, 34 * compras.top.length + 70)}
+            rotulo="Colunas e bases a comprar por fornecedor e tonelada"
+          />
+        )}
       </Cartao>
 
       <ItensPorFornecedor componentes={componentes} fotos={fotos} busca={buscaGlobal} />

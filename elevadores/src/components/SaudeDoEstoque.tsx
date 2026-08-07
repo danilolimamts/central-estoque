@@ -10,7 +10,9 @@
    ============================================================ */
 import { useMemo } from 'react';
 import type { Componente } from '../domain/tipos';
-import { listarPorFornecedor, saudePorFornecedor, totalizarSaude } from '../domain/fornecedores';
+import {
+  listarPorFornecedor, saudePorFornecedor, semNadaNoEstoque, totalizarSaude,
+} from '../domain/fornecedores';
 import { cores } from '../config/tokens';
 import { Cartao, Tabela, Td, Th, Vazio } from './ui';
 
@@ -41,11 +43,15 @@ function Pct({ pct, potencial }: { pct: number; potencial: number }) {
 }
 
 export function SaudeDoEstoque({ componentes }: { componentes: Componente[] }) {
-  const linhas = useMemo(
+  const todas = useMemo(
     () => saudePorFornecedor(listarPorFornecedor(componentes)),
     [componentes]
   );
-  const total = useMemo(() => totalizarSaude(linhas), [linhas]);
+  /* O total sai da lista inteira: quem foi escondido soma zero, entao
+     esconder nao muda numero nenhum - so tira ruido da leitura. */
+  const total = useMemo(() => totalizarSaude(todas), [todas]);
+  const linhas = useMemo(() => todas.filter((l) => !semNadaNoEstoque(l)), [todas]);
+  const escondidas = todas.length - linhas.length;
 
   if (linhas.length === 0) {
     return (
@@ -58,7 +64,12 @@ export function SaudeDoEstoque({ componentes }: { componentes: Componente[] }) {
   return (
     <Cartao
       titulo="Saúde do estoque por fornecedor"
-      descricao="quanto do estoque vira elevador vendável · só saldo do CD, sem reversa"
+      descricao={
+        'quanto do estoque vira elevador vendável · só saldo do CD, sem reversa' +
+        /* Dizer quantos sairam evita a pergunta "cade o fornecedor
+           tal": ele nao sumiu, e nao tem nada no CD. */
+        (escondidas > 0 ? ` · ${escondidas} fornecedor(es) sem saldo ficaram de fora` : '')
+      }
     >
       <div className="eq-saude-topo">
         <div className="eq-saude-num">

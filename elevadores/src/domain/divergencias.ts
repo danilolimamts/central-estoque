@@ -135,12 +135,13 @@ export function ehCulpaDoCD(d: DivergenciaSAC): boolean {
 
    A leitura sai do Comentario, que e onde o SAC escreve o que apurou.
    ============================================================ */
-export type Responsavel = 'CD' | 'FORNECEDOR' | 'CLIENTE' | 'APURAR';
+export type Responsavel = 'CD' | 'FORNECEDOR' | 'CLIENTE' | 'ANUNCIO' | 'APURAR';
 
 export const ROTULO_RESPONSAVEL: Record<Responsavel, string> = {
   CD: 'Operação CD',
   FORNECEDOR: 'Fornecedor',
   CLIENTE: 'Cliente',
+  ANUNCIO: 'Anúncio / cadastro',
   APURAR: 'A apurar',
 };
 
@@ -148,8 +149,21 @@ export const ROTULO_RESPONSAVEL: Record<Responsavel, string> = {
 const TERMOS_FORNECEDOR = [
   'fabricante', 'de fabrica', 'da fabrica', 'veio de fabrica', 'saiu de fabrica',
   'fabricacao', 'lubrificacao', 'marca propria', 'fornecedor', 'montagem de fabrica',
-  'divergencia de anuncio', 'anuncio', 'ficha tecnica', 'manual do fabricante',
-  'epna', 'engenharia', 'nao conformidade de fabrica',
+  'manual do fabricante', 'epna', 'engenharia', 'nao conformidade de fabrica',
+];
+
+/* Divergencia de anuncio: o produto entregue e o que foi pedido, mas
+   nao e o que a pagina prometia.
+
+   Antes isso caia em FORNECEDOR, por escolha minha, sem base. O
+   anuncio nao e da fabrica nem do CD: quem escreve a descricao, a
+   ficha tecnica e a foto e o cadastro. Enquanto nao houver criterio
+   para dividir esses casos, eles ficam visiveis em uma gaveta propria
+   em vez de inflar o numero de outra area - misturar aqui e criar uma
+   cobranca em cima de quem nao errou. */
+const TERMOS_ANUNCIO = [
+  'divergencia de anuncio', 'divergencia no anuncio', 'anuncio',
+  'ficha tecnica', 'descricao do produto', 'foto do produto', 'cadastro do produto',
 ];
 
 /* O pedido foi montado ou recebido errado do lado do cliente. */
@@ -180,7 +194,12 @@ export function responsavelDe(d: DivergenciaSAC): Responsavel {
      que apurou e foi o CD. Vale mais que qualquer palavra solta. */
   if (texto.includes('operacional cd')) return 'CD';
 
+  /* Fabrica antes de anuncio: "veio de fabrica diferente do anuncio"
+     e uma apuracao que chegou na origem: o produto saiu errado. So
+     "divergencia de anuncio", sem mencao a fabrica, e a pagina que
+     prometeu outra coisa. */
   if (TERMOS_FORNECEDOR.some((t) => texto.includes(t))) return 'FORNECEDOR';
+  if (TERMOS_ANUNCIO.some((t) => texto.includes(t))) return 'ANUNCIO';
   if (TERMOS_CLIENTE.some((t) => texto.includes(t))) return 'CLIENTE';
   if (comentarioVazio(semAcento(d.comentario))) return 'APURAR';
   return 'CD';
@@ -194,11 +213,11 @@ export interface CorteResponsavel {
   pct: number;
 }
 
-/* Sempre os quatro, inclusive os zerados: "fornecedor: 0" e a
-   informacao de que nenhum caso foi da marca neste periodo. */
+/* Sempre todos, inclusive os zerados: "fornecedor: 0" e a informacao
+   de que nenhum caso foi da marca neste periodo. */
 export function porResponsavel(lista: DivergenciaSAC[]): CorteResponsavel[] {
   const total = lista.length;
-  return (['CD', 'FORNECEDOR', 'CLIENTE', 'APURAR'] as const).map((responsavel) => {
+  return (['CD', 'FORNECEDOR', 'ANUNCIO', 'CLIENTE', 'APURAR'] as const).map((responsavel) => {
     const doTipo = lista.filter((d) => responsavelDe(d) === responsavel);
     return {
       responsavel,

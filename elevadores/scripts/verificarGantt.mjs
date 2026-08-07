@@ -140,6 +140,38 @@ const primeiro = await pagina.locator('.panel h3').first().innerText();
 if (!/sa[uú]de do estoque/i.test(primeiro)) {
   problemas.push(`o primeiro cartao da pagina deveria ser a saude do estoque, veio "${primeiro}"`);
 }
+/* Nenhum fornecedor pode aparecer descasado na tabela de saude e
+   sumir do grafico de compras logo acima dela. */
+const saude = pagina.locator('.panel', { hasText: 'Saúde do estoque' }).first();
+const comFalta = await saude.evaluate((el) =>
+  [...el.querySelectorAll('tbody tr')]
+    .filter((tr) => !tr.classList.contains('eq-saude-total'))
+    .map((tr) => {
+      const td = [...tr.querySelectorAll('td')];
+      return { nome: td[0]?.textContent.split('\n')[0].trim(), descasados: td[3]?.textContent.trim() };
+    })
+    .filter((l) => l.descasados && l.descasados !== '—')
+);
+const grafico = pagina.locator('.panel', { hasText: 'Colunas × bases a comprar' }).first();
+const rotulos = await grafico.locator('canvas').getAttribute('aria-label');
+if (!/fornecedor e tonelada/i.test(rotulos ?? '')) {
+  problemas.push('o grafico de compras nao veio da mesma fonte da tabela de saude');
+}
+const legenda = await grafico.locator('.panel-sub').first().innerText();
+if (!/de \d+ grupos com compra pendente|equalizados/i.test(legenda)) {
+  problemas.push(`o grafico nao diz quantos grupos ficaram de fora: "${legenda}"`);
+}
+/* Nenhuma linha zerada sobrando na tabela. */
+const zeradas = await saude.evaluate((el) =>
+  [...el.querySelectorAll('tbody tr')]
+    .filter((tr) => !tr.classList.contains('eq-saude-total'))
+    .map((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent.trim()))
+    .filter((td) => td[1] === '0' && td[2] === '0' && td[6] === '—')
+);
+if (zeradas.length > 0) {
+  problemas.push(`fornecedor sem nada no CD continua na tabela: ${zeradas.length} linha(s)`);
+}
+console.log('fornecedores descasados na tabela:', comFalta.length, '|', legenda);
 await pagina.screenshot({ path: join(SAIDA, 'dashboard-topo.png') });
 
 await navegador.close();

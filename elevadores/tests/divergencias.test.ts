@@ -368,7 +368,30 @@ describe('de quem foi a divergencia', () => {
       responsavelDe(div({ submotivo: 'Divergência do fabricante', comentario: 'recebeu com lubrificação a graxa' }))
     ).toBe('FORNECEDOR');
     expect(responsavelDe(div({ submotivo: '', comentario: 'peça veio de fábrica trocada' }))).toBe('FORNECEDOR');
-    expect(responsavelDe(div({ submotivo: 'Divergência de anuncio', comentario: 'anúncio errado' }))).toBe('FORNECEDOR');
+  });
+
+  it('divergencia de anuncio tem gaveta propria, nao entra no fornecedor', () => {
+    /* O produto entregue e o que foi pedido; quem prometeu outra coisa
+       foi a pagina. Jogar no fornecedor era escolha sem base e criava
+       cobranca em cima de quem nao errou. */
+    expect(responsavelDe(div({ submotivo: 'Divergência de anuncio', comentario: 'anúncio errado' }))).toBe('ANUNCIO');
+    expect(responsavelDe(div({ submotivo: '', comentario: 'ficha técnica não bate com o recebido' }))).toBe('ANUNCIO');
+    expect(responsavelDe(div({ submotivo: '', comentario: 'a foto do produto mostra outro modelo' }))).toBe('ANUNCIO');
+  });
+
+  it('apuracao que chegou na fabrica vence a mencao ao anuncio', () => {
+    /* "Veio de fabrica diferente do anuncio" e uma apuracao que achou
+       a origem: o produto saiu errado. So "divergencia de anuncio",
+       sem mencao a fabrica, e a pagina. */
+    expect(
+      responsavelDe(div({ submotivo: 'Divergência de anuncio', comentario: 'veio de fábrica diferente do anúncio' }))
+    ).toBe('FORNECEDOR');
+  });
+
+  it('o SAC dizendo que foi o CD vence ate a mencao ao anuncio', () => {
+    expect(
+      responsavelDe(div({ submotivo: 'Divergência operacional CD', comentario: 'divergência de anúncio' }))
+    ).toBe('CD');
   });
 
   it('pedido montado errado do lado do cliente e do cliente', () => {
@@ -395,20 +418,23 @@ describe('de quem foi a divergencia', () => {
     expect(responsavelDe(div({ submotivo: '', comentario: 'DIVERGÊNCIA DO FABRICANTE' }))).toBe('FORNECEDOR');
   });
 
-  it('a quebra traz os quatro, inclusive zerados, e fecha 100%', () => {
+  it('a quebra traz todos, inclusive zerados, e fecha 100%', () => {
     const lista = [
       div({ submotivo: 'Divergência operacional CD', valor: 100 }),
       div({ submotivo: 'Divergência operacional CD', valor: 200 }),
       div({ submotivo: 'Divergência do fabricante', comentario: 'veio de fábrica', valor: 50 }),
+      div({ submotivo: 'Divergência de anuncio', comentario: 'anúncio com outro modelo', valor: 70 }),
       div({ submotivo: 'Faltou volume', comentario: '-', valor: 30 }),
     ];
     const r = porResponsavel(lista);
-    expect(r.map((x) => x.responsavel)).toEqual(['CD', 'FORNECEDOR', 'CLIENTE', 'APURAR']);
+    expect(r.map((x) => x.responsavel)).toEqual(['CD', 'FORNECEDOR', 'ANUNCIO', 'CLIENTE', 'APURAR']);
     expect(r[0].quantidade).toBe(2);
     expect(r[0].valor).toBe(300);
     expect(r[1].quantidade).toBe(1);
-    expect(r[2].quantidade).toBe(0); // zerado aparece mesmo assim
-    expect(r[3].quantidade).toBe(1);
+    expect(r[2].quantidade).toBe(1); // anuncio nao some dentro do fornecedor
+    expect(r[2].valor).toBe(70);
+    expect(r[3].quantidade).toBe(0); // zerado aparece mesmo assim
+    expect(r[4].quantidade).toBe(1);
     expect(r.reduce((s, x) => s + x.pct, 0)).toBeCloseTo(100, 5);
     expect(r.reduce((s, x) => s + x.quantidade, 0)).toBe(lista.length);
   });

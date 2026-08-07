@@ -43,6 +43,16 @@ await pagina.waitForSelector('.eq-linha-rosca');
    de o Chart.js terminar de desenhar. */
 await pagina.waitForTimeout(1200);
 
+/* A saude do estoque mora no Dashboard Geral, mas entra no boletim:
+   quem recebe o e-mail precisa do resultado da operacao junto do
+   andamento do projeto. Na tela ela nao pode aparecer. */
+const saudeNaTela = await pagina.locator('.panel', { hasText: 'Saúde do estoque' }).count();
+const saudeEscondida = await pagina.locator(`.so-no-boletim .panel`).count();
+if (saudeNaTela > 0 && saudeEscondida === 0) {
+  problemas.push('a saude do estoque vazou para a tela do projeto');
+}
+if (saudeEscondida === 0) problemas.push('a saude do estoque nao foi preparada para o boletim');
+
 await pagina.getByRole('button', { name: 'Gerar boletim' }).click();
 await pagina.waitForSelector('.eq-previa-pagina canvas', { timeout: 20000 });
 await pagina.waitForTimeout(800);

@@ -581,6 +581,10 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 /* Faixa da marca e pe do boletim, que so existem na imagem capturada:
    sao acrescentados ao clone do painel na hora de gerar o PNG. */
 .eq-boletim{ background:#F1F2F6; }
+/* Bloco que so existe no boletim: escondido na tela, revelado na
+   captura quando a classe sai do clone. */
+.so-no-boletim{ display:none; }
+
 .eq-boletim-topo{ display:flex; align-items:center; gap:16px; padding:18px 22px;
   background:var(--blue); border-bottom:4px solid var(--orange); margin-bottom:18px; }
 .eq-boletim-topo img{ height:38px; width:auto; background:#fff; padding:7px 11px; border-radius:9px; }
@@ -936,6 +940,11 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-sac-selo.r-cd{ background:#FFEDE7; color:var(--orange); }
 .eq-sac-selo.r-fornecedor{ background:var(--blue-light); color:var(--blue); }
 .eq-sac-selo.r-cliente{ background:var(--surface2); color:var(--ink-soft); }
+/* Anuncio tem selo proprio: nao e o CD, nao e a fabrica, e enquanto
+   nao houver criterio para dividir esses casos eles precisam ser
+   distinguiveis na tabela. */
+.eq-sac-selo.r-anuncio{ background:#EDE7FA; color:#5B3FA8; }
+:root[data-theme="dark"] .eq-sac-selo.r-anuncio{ background:#2A2340; color:#C4B3F0; }
 .eq-sac-selo.r-apurar{ background:#FBF3DC; color:#8A6508; }
 :root[data-theme="dark"] .eq-sac-selo.r-fornecedor{ color:#AEBBEA; }
 
