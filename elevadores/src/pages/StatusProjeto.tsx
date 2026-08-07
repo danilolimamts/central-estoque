@@ -308,65 +308,6 @@ function GanhosDoProjeto({ acoes }: { acoes: Acao[] }) {
 }
 
 
-/* Funil do plano: de tudo que foi planejado, quanto saiu do papel,
-   quanto fechou e quanto fechou dentro do prazo. Cada degrau perde
-   o que ficou para tras, que e onde o plano trava. */
-function Funil({ acoes }: { acoes: Acao[] }) {
-  const etapas = useMemo(() => {
-    const total = acoes.length;
-    const iniciadas = acoes.filter((a) => situacaoDe(a) !== 'pendente').length;
-    const concluidas = acoes.filter((a) => situacaoDe(a) === 'concluida').length;
-    const noPrazo = acoes.filter(
-      (a) =>
-        situacaoDe(a) === 'concluida' &&
-        a.dataConclusao != null &&
-        a.prazoValido != null &&
-        a.dataConclusao <= a.prazoValido
-    ).length;
-    return [
-      { rotulo: 'Planejadas', qtd: total, cor: '#001A72' },
-      { rotulo: 'Iniciadas', qtd: iniciadas, cor: '#2C4593' },
-      { rotulo: 'Concluídas', qtd: concluidas, cor: '#5E70B6' },
-      { rotulo: 'Concluídas no prazo', qtd: noPrazo, cor: '#9BA5CE' },
-    ];
-  }, [acoes]);
-
-  const total = etapas[0].qtd;
-  if (total === 0) return null;
-
-  return (
-    <Cartao titulo="Funil do plano" descricao="onde as ações param entre o planejado e o entregue no prazo">
-      <div className="eq-funil">
-        {etapas.map((e, i) => {
-          const pct = Math.round((e.qtd / total) * 100);
-          const anterior = i > 0 ? etapas[i - 1].qtd : e.qtd;
-          const perdidas = anterior - e.qtd;
-          return (
-            <div key={e.rotulo} className="eq-funil-etapa">
-              <div className="eq-funil-rotulo">
-                <span>{e.rotulo}</span>
-                {i > 0 && perdidas > 0 && (
-                  <span className="eq-funil-perda">−{perdidas}</span>
-                )}
-              </div>
-              <div className="eq-funil-faixa">
-                <div
-                  className="eq-funil-barra"
-                  style={{ width: `${Math.max(6, pct)}%`, background: e.cor }}
-                  title={`${e.qtd} de ${total} (${pct}%)`}
-                >
-                  <span>{e.qtd}</span>
-                </div>
-              </div>
-              <div className="eq-funil-pct">{pct}%</div>
-            </div>
-          );
-        })}
-      </div>
-    </Cartao>
-  );
-}
-
 function Matriz({ acoes }: { acoes: Acao[] }) {
   const pontos = useMemo(() => montarMatriz(acoes), [acoes]);
   /* O andamento de cada frente decide a cor do ponto, entao a matriz
@@ -524,14 +465,39 @@ function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
       data: {
         labels: semanas.map((s) => s.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
         datasets: [
-          { label: 'Ideal', data: ideal, borderColor: cores.semantico.cinza, borderDash: [5, 5], pointRadius: 0, borderWidth: 1.5 },
+          /* O ideal e a referencia de leitura do grafico inteiro, entao
+             precisa se sustentar ao lado das duas areas preenchidas.
+             Fino e claro demais, ele sumia contra a grade. */
+          { label: 'Ideal (plano)', data: ideal, borderColor: cores.navy.suave, borderDash: [7, 5], pointRadius: 0, borderWidth: 2.5 },
           { label: 'Ainda faltam (BurnDown)', data: real, borderColor: cores.laranja.base, backgroundColor: 'rgba(250,70,22,.12)', fill: true, tension: 0.25, pointRadius: 3, spanGaps: false },
           { label: 'Já entregue (BurnUp)', data: entregue, borderColor: cores.navy.base, backgroundColor: 'rgba(0,26,114,.10)', fill: true, tension: 0.25, pointRadius: 3, spanGaps: false },
         ],
       },
       options: {
+        /* O cursor pega a semana inteira, e nao o ponto exato. Com o
+           padrao era preciso acertar o marcador para ver qualquer
+           numero, e na pratica nao aparecia nada. */
+        interaction: { mode: 'index', intersect: false },
         scales: { y: { beginAtZero: true, title: { display: true, text: 'Ações', color: 'var(--ink-soft)' } } },
-        plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 12 } }, datalabels: { display: false } },
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { boxWidth: 12 } },
+          datalabels: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const v = ctx.parsed.y;
+                if (v == null) return '';
+                return `${ctx.dataset.label}: ${v} de ${total}`;
+              },
+              /* A frase que a reuniao quer ouvir, ja pronta. */
+              afterBody: (itens) => {
+                const falta = itens.find((i) => i.datasetIndex === 1)?.parsed.y;
+                if (falta == null) return '';
+                return `\n${total - falta} de ${total} ações concluídas · faltam ${falta}`;
+              },
+            },
+          },
+        },
       },
     };
     return { config, total };
@@ -1007,14 +973,11 @@ export function StatusProjeto({
       </div>
 
       <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
-        <Funil acoes={filtradas} />
         <GanhosDoProjeto acoes={filtradas} />
+        <EntregasPorSemana acoes={filtradas} />
       </div>
 
-      <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
-        <EntregasPorSemana acoes={filtradas} />
-        <Matriz acoes={filtradas} />
-      </div>
+      <Matriz acoes={filtradas} />
 
       {/* A tabela vem antes dos graficos: e por ela que a reuniao
           comeca, e o resto detalha o que ela mostra. */}

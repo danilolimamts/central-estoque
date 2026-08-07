@@ -41,63 +41,165 @@ describe('7.2 ratio pela tonelada', () => {
   });
 });
 
-function conj(baseCD: number, colCD: number, ton = '4 t', reversa = 0) {
+/* Monta um conjunto do jeito que a planilha entrega: linhas de
+   componente com o item pai a que pertencem. Os saldos somados sao
+   derivados delas, e nao inventados, para o teste exercitar o mesmo
+   caminho da tela. */
+function conjDe(linhas: Componente[], ton = '4 t', reversa = 0) {
+  let baseCD = 0;
+  let colCD = 0;
+  for (const c of linhas) {
+    const t = tipoComponente(c);
+    baseCD += t === 'BASE' ? c.cd : 0;
+    colCD += t === 'COLUNA' ? c.cd : 0;
+  }
   return calcularConjunto({
     chave: 'X', marca: 'M', fabricante: 'F', toneladaFixa: ton,
-    baseCD, colCD, reversa, ds: 0, outros: 0, componentes: [],
+    baseCD, colCD, reversa, ds: 0, outros: 0, componentes: linhas,
   });
 }
 
-describe('7.3 status e compras do conjunto', () => {
-  it('faltam colunas (deficit > 0): comprar colunas', () => {
-    const c = conj(10, 5); // ratio 2, necess 20
-    expect(c.deficit).toBe(15);
-    expect(c.comprarColuna).toBe(15);
-    expect(c.comprarBase).toBe(0);
-    expect(c.status).toBe('DESCASADO');
-    expect(c.kits).toBe(2); // min(10, floor(5/2))
-  });
+/* Um item pai com uma base e uma coluna, uma de cada por kit. */
+function par(pai: string, baseCd: number, colCd: number, porColuna = 1): Componente[] {
+  return [
+    base('X', '4 t', baseCd, { itemVolMultiplo: pai, itemComponente: `${pai}-B`, quantidade: 1 }),
+    coluna('X', '4 t', colCd, { itemVolMultiplo: pai, itemComponente: `${pai}-C`, quantidade: porColuna }),
+  ];
+}
 
-  it('casado quando deficit zero e sem reversa', () => {
-    const c = conj(10, 20);
+describe('7.3 status e compras do conjunto', () => {
+  it('rampa de 4 t com uma coluna por base fica casada', () => {
+    /* Regressao do caso relatado: o conjunto "ENGECASS 4 t RAMPA"
+       aparecia descasado pedindo 5 colunas. A tonelada 4 t fazia a
+       regra antiga exigir duas colunas por base; a rampa leva uma so,
+       e a quantidade por kit ja diz isso na planilha. */
+    const c = conjDe(par('2031441', 5, 5));
+    expect(c.comprarColuna).toBe(0);
+    expect(c.comprarBase).toBe(0);
     expect(c.deficit).toBe(0);
     expect(c.status).toBe('CASADO');
-    expect(c.comprarBase).toBe(0);
-    expect(c.comprarColuna).toBe(0);
+    expect(c.kits).toBe(5);
   });
 
-  it('casado mas com reversa vira REVERSA', () => {
-    const c = conj(10, 20, '4 t', 5);
+  it('quem realmente leva duas colunas por base continua exigindo duas', () => {
+    /* A correcao nao afrouxa a regra: quem consome duas colunas por
+       kit segue precisando delas - a diferenca e que agora quem manda
+       e a composicao, nao a tonelada. */
+    const casado = conjDe(par('DUPLA', 10, 20, 2));
+    expect(casado.status).toBe('CASADO');
+    expect(casado.kits).toBe(10);
+
+    const faltando = conjDe(par('DUPLA', 10, 14, 2));
+    expect(faltando.comprarColuna).toBe(6); // 10 kits x 2 = 20, tem 14
+    expect(faltando.status).toBe('DESCASADO');
+    expect(faltando.kits).toBe(7);
+  });
+
+  it('faltam colunas: comprar colunas para chegar ao alvo', () => {
+    const c = conjDe(par('A', 10, 5));
+    expect(c.comprarColuna).toBe(5);
+    expect(c.comprarBase).toBe(0);
+    expect(c.deficit).toBe(5);
+    expect(c.status).toBe('DESCASADO');
+    expect(c.kits).toBe(5);
+  });
+
+  it('sobram colunas sem base: comprar base', () => {
+    const c = conjDe(par('A', 1, 5));
+    expect(c.comprarBase).toBe(4);
+    expect(c.comprarColuna).toBe(0);
+    expect(c.deficit).toBe(-4);
+    expect(c.status).toBe('DESCASADO');
+    expect(c.kits).toBe(1);
+  });
+
+  it('duas colunas diferentes no kit sao pecas distintas', () => {
+    /* Caso real 2031433 no nivel do conjunto: somar as duas colunas
+       daria 63 e sugeriria que fecha 32. Falta 1 unidade de uma
+       coluna especifica. */
+    const c = conjDe([
+      base('X', '4 t', 32, { itemVolMultiplo: '2031433', itemComponente: '2032019', quantidade: 1 }),
+      coluna('X', '4 t', 31, { itemVolMultiplo: '2031433', itemComponente: '2032020', quantidade: 1 }),
+      coluna('X', '4 t', 32, { itemVolMultiplo: '2031433', itemComponente: '2032021', quantidade: 1 }),
+    ]);
+    expect(c.kits).toBe(31);
+    expect(c.comprarColuna).toBe(1);
+    expect(c.status).toBe('DESCASADO');
+  });
+
+  it('itens pai diferentes no mesmo conjunto nao emprestam peca um ao outro', () => {
+    /* Um item precisa de coluna e o outro de base. O deficit liquido
+       se anula, mas falta peca nos dois - o status nao pode dizer que
+       o conjunto esta casado. */
+    const c = conjDe([...par('A', 4, 2), ...par('B', 2, 4)]);
+    expect(c.comprarColuna).toBe(2);
+    expect(c.comprarBase).toBe(2);
     expect(c.deficit).toBe(0);
+    expect(c.status).toBe('DESCASADO');
+    expect(c.kits).toBe(4); // 2 de cada item
+  });
+
+  it('casado com saldo na reversa vira REVERSA', () => {
+    const c = conjDe(par('A', 5, 5), '4 t', 5);
     expect(c.status).toBe('REVERSA');
   });
 
-  it('sobram colunas (deficit < 0): comprar bases e completar o kit', () => {
-    const c = conj(1, 5); // ratio 2, necess 2, deficit -3, sobra 3
-    expect(c.deficit).toBe(-3);
-    expect(c.comprarBase).toBe(2); // ceil(3/2)
-    expect(c.comprarColuna).toBe(1); // 2*2 - 3
-    expect(c.status).toBe('DESCASADO');
-  });
-
   it('sem estoque quando base e coluna zeradas', () => {
-    const c = conj(0, 0);
+    const c = conjDe(par('A', 0, 0));
     expect(c.status).toBe('SEM ESTOQUE');
     expect(c.comprarBase).toBe(0);
     expect(c.comprarColuna).toBe(0);
   });
+
+  it('kit sem base cadastrada nao passa a pedir base', () => {
+    /* Caso real 4570344: o produto leva coluna e bomba, nenhuma base.
+       Cobrar uma base seria mandar comprar peca que ele nao usa. */
+    const c = conjDe([
+      coluna('X', '2 t', 6, { itemVolMultiplo: '4570344', itemComponente: '4570497', quantidade: 1 }),
+    ], '2 t');
+    expect(c.comprarBase).toBe(0);
+    expect(c.status).toBe('CASADO');
+    expect(c.kits).toBe(6);
+  });
 });
 
-describe('9 teste de fechamento: apos as compras o deficit zera', () => {
+describe('9 teste de fechamento: apos as compras o conjunto fecha', () => {
   const casos = [
-    conj(10, 5), conj(1, 5), conj(3, 10, '2 t'), conj(1, 4), conj(7, 3),
-    conj(10, 20), conj(0, 0), conj(2, 9, '5 t'),
+    conjDe(par('A', 10, 5)),
+    conjDe(par('A', 1, 5)),
+    conjDe(par('A', 3, 10), '2 t'),
+    conjDe(par('A', 7, 3)),
+    conjDe(par('A', 5, 5)),
+    conjDe(par('A', 0, 0)),
+    conjDe(par('DUPLA', 10, 14, 2)),
+    conjDe([...par('A', 4, 2), ...par('B', 2, 4)]),
+    conjDe([
+      base('X', '4 t', 32, { itemVolMultiplo: '2031433', itemComponente: '2032019', quantidade: 1 }),
+      coluna('X', '4 t', 31, { itemVolMultiplo: '2031433', itemComponente: '2032020', quantidade: 1 }),
+      coluna('X', '4 t', 32, { itemVolMultiplo: '2031433', itemComponente: '2032021', quantidade: 1 }),
+    ]),
   ];
-  it.each(casos.map((c, i) => [i, c] as const))('caso %i fecha em deficit 0', (_i, c) => {
+  it.each(casos.map((c, i) => [i, c] as const))('caso %i fecha sem sobra nem falta', (_i, c) => {
     const depois = aplicarCompras(c);
-    expect(depois.deficit).toBe(0);
     expect(depois.comprarBase).toBe(0);
     expect(depois.comprarColuna).toBe(0);
+    expect(depois.deficit).toBe(0);
+  });
+
+  it('a compra vai para o componente que faltava, e nao para o saldo somado', () => {
+    /* Com duas colunas diferentes, "comprar 1 coluna" nao diz nada: o
+       fechamento so vale se a unidade entrar no codigo certo. */
+    const c = conjDe([
+      base('X', '4 t', 32, { itemVolMultiplo: '2031433', itemComponente: '2032019', quantidade: 1 }),
+      coluna('X', '4 t', 31, { itemVolMultiplo: '2031433', itemComponente: '2032020', quantidade: 1 }),
+      coluna('X', '4 t', 32, { itemVolMultiplo: '2031433', itemComponente: '2032021', quantidade: 1 }),
+    ]);
+    const depois = aplicarCompras(c);
+    expect(depois.kits).toBe(32);
+    const escasso = depois.componentes.find((x) => x.itemComponente === '2032020')!;
+    expect(escasso.cd).toBe(32);
+    const cheio = depois.componentes.find((x) => x.itemComponente === '2032021')!;
+    expect(cheio.cd).toBe(32); // nao ganhou unidade que nao faltava
   });
 });
 
@@ -129,11 +231,16 @@ describe('7.1 agrupamento por Chave e exclusao de OUTRO', () => {
 
 describe('resumo da equalizacao', () => {
   it('soma compras, casados e reversa', () => {
-    const conjuntos = [conj(10, 5), conj(10, 20), conj(10, 20, '4 t', 5), conj(0, 0)];
+    const conjuntos = [
+      conjDe(par('A', 10, 5)),          // faltam 5 colunas
+      conjDe(par('B', 10, 10)),         // casado
+      conjDe(par('C', 10, 10), '4 t', 5), // casado com reversa
+      conjDe(par('D', 0, 0)),           // sem estoque
+    ];
     const r = resumirEqualizacao(conjuntos);
     expect(r.comConjuntoNoCD).toBe(3);
     expect(r.casados).toBe(1);
-    expect(r.totalComprarColuna).toBe(15);
+    expect(r.totalComprarColuna).toBe(5);
     expect(r.totalReversa).toBe(5);
   });
 });

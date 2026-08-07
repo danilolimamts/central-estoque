@@ -63,24 +63,28 @@ if (antes.linhas !== antes.descasadas) {
 console.log('grupos:', antes.fornecedores.slice(0, 4), '| toneladas:', antes.toneladas.slice(0, 3));
 console.log('linhas de componente:', antes.linhas, '|', antes.resumo);
 
-/* Kit cadastrado so com um lado: a linha do par entra com saldo zero. */
-await pagina.fill('input[placeholder^="Buscar item"]', '4570344');
+/* O kit e o que a estrutura do item diz que ele e.
+
+   Este trecho cobrava o contrario: exigia que um kit cadastrado so com
+   coluna ganhasse uma linha de base "nao cadastrada". Essa invencao foi
+   removida - ela acusava descasamento e mandava comprar peca que o
+   produto nao usa (caso 4570344). O que se confere agora e que ela nao
+   voltou. */
+await pagina.getByRole('button', { name: 'Todos os itens' }).click();
 await pagina.waitForTimeout(400);
-const semPar = await pagina.evaluate(() => {
+const inventadas = await pagina.evaluate(() => {
   const cartao = document.querySelector('.eq-forn-cab').closest('.panel');
-  const linhas = [...cartao.querySelectorAll('tbody tr:not(.eq-forn-cab):not(.eq-forn-ton)')];
-  return linhas.map((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent.trim()));
+  return [...cartao.querySelectorAll('tbody tr')]
+    .map((tr) => tr.textContent)
+    .filter((t) => /n[ãa]o cadastrad/i.test(t));
 });
-const linhaBase = semPar.find((l) => l.includes('BASE'));
-if (!linhaBase) problemas.push('o kit so com coluna nao ganhou a linha da base');
-else if (!linhaBase.some((c) => /não cadastrado/i.test(c))) {
-  problemas.push(`a linha da base ausente nao foi marcada: ${JSON.stringify(linhaBase)}`);
+if (inventadas.length > 0) {
+  problemas.push(`voltou a inventar componente que o kit nao tem: ${inventadas.length} linha(s)`);
 }
 await pagina.locator('.eq-forn-cab').first().scrollIntoViewIfNeeded();
 await pagina.waitForTimeout(200);
 await pagina.screenshot({ path: join(SAIDA, 'sem-par.png') });
-console.log('kit sem base:', JSON.stringify(semPar));
-await pagina.fill('input[placeholder^="Buscar item"]', '');
+await pagina.getByRole('button', { name: 'Só descasados' }).click();
 await pagina.waitForTimeout(400);
 
 /* Foto ao passar o cursor no codigo do elevador. */

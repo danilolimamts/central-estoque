@@ -431,22 +431,9 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 /* ============================================================
    Complementos da Central de Equalizacao de Elevadores.
    Seguem o mesmo sistema do Inventario Rotativo, cobrindo o que
-   e proprio deste app: mapa de calor com rotulo, cartao de foto
-   do produto, matriz Impacto x Esforco e Gantt.
+   e proprio deste app: cartao de foto do produto, matriz
+   Impacto x Esforco e Gantt.
    ============================================================ */
-
-/* Mapa de calor Fornecedor x Tonelada: celula com numero legivel,
-   diferente do heatmap quadrado do Inventario Rotativo. */
-.eq-heat{ border-collapse:separate; border-spacing:5px; }
-.eq-heat th{ background:none; color:var(--ink-soft); font-size:10px; text-transform:uppercase;
-  letter-spacing:.04em; padding:2px 6px; text-align:center; white-space:nowrap; cursor:default; }
-.eq-heat th.eq-heat-row{ text-align:right; color:var(--ink); font-weight:700; font-size:11px; }
-.eq-heat td{ padding:0; border:none; }
-.eq-cell{ min-width:74px; border-radius:7px; padding:7px 6px; text-align:center; color:#fff; line-height:1.25;
-  box-shadow:0 6px 12px -8px rgba(20,24,40,.5), inset 0 1px 0 rgba(255,255,255,.16); }
-.eq-cell b{ display:block; font-family:'SFMono-Regular',Consolas,monospace; font-size:12.5px; font-weight:800; }
-.eq-cell span{ font-size:9px; opacity:.85; }
-.eq-cell.vazia{ background:transparent; box-shadow:none; }
 
 /* Cartao com a foto do produto ao passar o mouse sobre o codigo. */
 .eq-foto-alvo{ position:relative; display:inline-block; }
@@ -574,15 +561,6 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-fornec-sigla{ display:inline-flex; align-items:center; justify-content:center; min-width:30px;
   height:19px; border-radius:4px; color:#fff; font-size:9.5px; font-weight:800; letter-spacing:.02em; padding:0 4px; }
 
-/* Celulas vazias do mapa de calor nao levam a linha divisoria da tabela. */
-.eq-heat td{ border-bottom:none; }
-.eq-heat tbody tr:hover td{ background:transparent; }
-
-/* Legenda de situacao abaixo do mapa de calor. */
-.legenda-status{ display:flex; flex-wrap:wrap; gap:14px; margin-top:12px; font-size:11.5px; color:var(--ink-soft); }
-.legenda-status span{ display:inline-flex; align-items:center; gap:6px; }
-.legenda-status i{ width:11px; height:11px; border-radius:3px; display:inline-block; }
-
 /* A busca da barra de topo fica na mesma linha do selo de contexto. */
 .global-search{ width:auto; flex:1 1 220px; max-width:420px; }
 
@@ -625,7 +603,6 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-boletim .eq-frente-nome,
 .eq-boletim .eq-gantt-grupo-nome,
 .eq-boletim .eq-semana-rotulo,
-.eq-boletim .eq-funil-rotulo > span,
 .eq-boletim .bi-hbar-label,
 .eq-boletim .bi-vbar-label,
 .eq-boletim .truncate{ line-height:1.9; }
@@ -903,19 +880,7 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
   border-bottom:1px dashed var(--line); }
 .eq-dica-item:last-child{ border-bottom:none; }
 
-/* Funil do plano. */
-.eq-funil{ display:flex; flex-direction:column; gap:11px; }
-.eq-funil-etapa{ display:grid; grid-template-columns:150px 1fr 46px; align-items:center; gap:11px; }
-.eq-funil-rotulo{ display:flex; flex-direction:column; gap:1px; }
-.eq-funil-rotulo > span:first-child{ font-size:11.5px; font-weight:600; color:var(--ink); }
-.eq-funil-perda{ font-size:10px; font-weight:700; color:var(--danger); }
-.eq-funil-faixa{ background:var(--surface2); border-radius:6px; height:26px; }
-.eq-funil-barra{ height:100%; border-radius:6px; display:flex; align-items:center;
-  justify-content:flex-end; padding-right:9px; transition:width .2s; }
-.eq-funil-barra span{ color:#fff; font-family:'SFMono-Regular',Consolas,monospace;
-  font-size:12px; font-weight:800; }
-.eq-funil-pct{ font-family:'SFMono-Regular',Consolas,monospace; font-size:11.5px;
-  font-weight:800; text-align:right; color:var(--ink-soft); }
+
 
 /* Inversoes de base apontadas pelo SAC. */
 .eq-sac-numeros{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:20px; }
@@ -992,5 +957,9 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-saude-barra{ height:8px; min-width:90px; border-radius:100px; background:#F0552E;
   overflow:hidden; }
 .eq-saude-barra span{ display:block; height:100%; border-radius:100px; }
+/* Sem elevador possivel nao ha proporcao para mostrar: a barra fica
+   neutra, em vez de laranja cheia acusando um descasamento que nao
+   existe. */
+.eq-saude-barra.vazia{ background:var(--line); }
 .eq-saude-skus{ display:block; font-size:10px; color:var(--ink-soft); margin-top:2px; }
 .eq-saude-total td{ background:var(--surface2); }

@@ -18,13 +18,26 @@ const COR_OK = cores.semantico.verde;
 const COR_TRAVADO = cores.laranja.base;
 
 /* Barra de proporcao: verde do que monta, laranja do que trava. Le-se
-   de longe, sem precisar do numero. */
-function Proporcao({ pct }: { pct: number }) {
+   de longe, sem precisar do numero.
+
+   Fornecedor sem nenhum elevador possivel nao tem proporcao: 0 de 0
+   nao e 0% nem 100%. A barra cheia de laranja dizia "tudo descasado"
+   sobre quem simplesmente nao tem estoque. */
+function Proporcao({ pct, potencial }: { pct: number; potencial: number }) {
+  if (potencial === 0) {
+    return <div className="eq-saude-barra vazia" title="Sem elevador possível neste fornecedor" />;
+  }
   return (
     <div className="eq-saude-barra" title={`${pct.toFixed(0)}% dos elevadores possíveis montam hoje`}>
       <span style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: COR_OK }} />
     </div>
   );
+}
+
+/* Percentual so existe quando ha o que medir. */
+function Pct({ pct, potencial }: { pct: number; potencial: number }) {
+  if (potencial === 0) return <span style={{ color: 'var(--ink-soft)' }}>—</span>;
+  return <>{pct.toFixed(0)}%</>;
 }
 
 export function SaudeDoEstoque({ componentes }: { componentes: Componente[] }) {
@@ -94,8 +107,8 @@ export function SaudeDoEstoque({ componentes }: { componentes: Componente[] }) {
               <Td alinha="right" numerico>
                 {l.descasados > 0 ? <b style={{ color: COR_TRAVADO }}>{l.descasados}</b> : '—'}
               </Td>
-              <Td><Proporcao pct={l.pctCompleto} /></Td>
-              <Td alinha="right" numerico>{l.pctCompleto.toFixed(0)}%</Td>
+              <Td><Proporcao pct={l.pctCompleto} potencial={l.potencial} /></Td>
+              <Td alinha="right" numerico><Pct pct={l.pctCompleto} potencial={l.potencial} /></Td>
               <Td alinha="right" numerico>{l.pecasParadas || '—'}</Td>
             </tr>
           ))}
@@ -104,8 +117,10 @@ export function SaudeDoEstoque({ componentes }: { componentes: Componente[] }) {
             <Td alinha="right" numerico><b>{total.potencial}</b></Td>
             <Td alinha="right" numerico><b>{total.completos}</b></Td>
             <Td alinha="right" numerico><b>{total.descasados}</b></Td>
-            <Td><Proporcao pct={total.pctCompleto} /></Td>
-            <Td alinha="right" numerico><b>{total.pctCompleto.toFixed(0)}%</b></Td>
+            <Td><Proporcao pct={total.pctCompleto} potencial={total.potencial} /></Td>
+            <Td alinha="right" numerico>
+              <b><Pct pct={total.pctCompleto} potencial={total.potencial} /></b>
+            </Td>
             <Td alinha="right" numerico><b>{total.pecasParadas}</b></Td>
           </tr>
         </tbody>

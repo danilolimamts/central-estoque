@@ -41,7 +41,7 @@ await pagina.getByRole('button', { name: /status/i }).first().click();
 await pagina.waitForTimeout(600);
 
 /* ---- 3. cartoes que sairam ---- */
-for (const titulo of ['Evolução do projeto', 'Projeção de término']) {
+for (const titulo of ['Evolução do projeto', 'Projeção de término', 'Funil do plano']) {
   if (await pagina.getByText(titulo, { exact: true }).count()) {
     problemas.push(`o cartao "${titulo}" deveria ter saido da tela`);
   }
@@ -105,9 +105,42 @@ if ((await dica.count()) === 0) {
   await pagina.screenshot({ path: join(SAIDA, 'gantt-dica.png') });
 }
 
+/* ---- 4. o ritmo mostra os valores ao passar o cursor ---- */
 await ritmo.scrollIntoViewIfNeeded();
 await pagina.waitForTimeout(400);
+
+const tela = await ritmo.locator('canvas').boundingBox();
+/* Um ponto qualquer no meio do grafico, longe dos marcadores: o
+   cursor tem que pegar a semana inteira, e nao so o ponto exato. */
+await pagina.mouse.move(tela.x + tela.width * 0.45, tela.y + tela.height * 0.6);
+await pagina.waitForTimeout(350);
+
+/* O tooltip do Chart.js e desenhado dentro do canvas, entao nao da
+   para le-lo pelo DOM. A prova fica na imagem: a captura sai com o
+   cursor parado no meio do grafico. */
 await ritmo.screenshot({ path: join(SAIDA, 'ritmo-entrega.png') });
+
+/* ---- 5. dashboard geral: sem mapa de calor, saude na frente ---- */
+await pagina.getByRole('button', { name: /dashboard/i }).first().click();
+await pagina.waitForTimeout(700);
+/* A troca de tela mantem a rolagem da anterior, e quem rola nao e a
+   janela: e o painel de conteudo ao lado do menu. */
+await pagina.evaluate(() => {
+  for (const el of document.querySelectorAll('*')) {
+    if (el.scrollTop > 0) el.scrollTop = 0;
+  }
+  window.scrollTo(0, 0);
+});
+await pagina.waitForTimeout(400);
+
+if (await pagina.getByText('Mapa de calor', { exact: false }).count()) {
+  problemas.push('o mapa de calor deveria ter saido da tela');
+}
+const primeiro = await pagina.locator('.panel h3').first().innerText();
+if (!/sa[uú]de do estoque/i.test(primeiro)) {
+  problemas.push(`o primeiro cartao da pagina deveria ser a saude do estoque, veio "${primeiro}"`);
+}
+await pagina.screenshot({ path: join(SAIDA, 'dashboard-topo.png') });
 
 await navegador.close();
 servidor.close();

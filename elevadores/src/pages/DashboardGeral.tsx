@@ -1,7 +1,7 @@
 /* ============================================================
    Pagina 1: Dashboard Geral (secao 11 do brief).
-   KPIs de direcionamento, mapa de calor Fornecedor x Tonelada,
-   graficos, plano de acao e auditoria de valoracao.
+   Saude do estoque, KPIs de direcionamento, graficos, plano de
+   acao e auditoria de valoracao.
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { FotoAoPassar } from '../components/ui/FotoAoPassar';
@@ -20,115 +20,6 @@ import {
   SeloValoracao, Tabela, Td, Th, Vazio,
 } from '../components/ui';
 import { baixarPlanoEqualizacao, baixarBaseCompleta, baixarCorrecoesValoracao } from '../export/exportExcel';
-
-/* Ordena as toneladas de forma numerica (2 t, 3 t, 3,2 t, 4 t...). */
-function ordenarToneladas(tons: string[]): string[] {
-  return [...tons].sort((a, b) => {
-    const n = (s: string) => parseFloat(s.replace(',', '.')) || 0;
-    return n(a) - n(b) || a.localeCompare(b);
-  });
-}
-
-/* Situacao consolidada de uma celula do mapa de calor: o pior status manda. */
-const SEVERIDADE = { DESCASADO: 3, REVERSA: 2, CASADO: 1, 'SEM ESTOQUE': 0 } as const;
-
-function MapaDeCalor({ conjuntos }: { conjuntos: Conjunto[] }) {
-  const [modo, setModo] = useState<'marca' | 'fabricante'>('marca');
-
-  const { linhas, tons, celulas } = useMemo(() => {
-    const chaveLinha = (c: Conjunto) => (modo === 'marca' ? c.marca : c.fabricante) || '—';
-    const linhas = [...new Set(conjuntos.map(chaveLinha))].sort((a, b) => a.localeCompare(b));
-    const tons = ordenarToneladas([...new Set(conjuntos.map((c) => c.toneladaFixa || '—'))]);
-    const celulas = new Map<string, { base: number; col: number; status: Conjunto['status'] }>();
-    for (const c of conjuntos) {
-      const k = `${chaveLinha(c)}||${c.toneladaFixa || '—'}`;
-      const atual = celulas.get(k) ?? { base: 0, col: 0, status: 'SEM ESTOQUE' as Conjunto['status'] };
-      atual.base += c.baseCD;
-      atual.col += c.colCD;
-      if (SEVERIDADE[c.status] > SEVERIDADE[atual.status]) atual.status = c.status;
-      celulas.set(k, atual);
-    }
-    return { linhas, tons, celulas };
-  }, [conjuntos, modo]);
-
-  const alternador = (
-    <div
-      className="flex gap-0.5 rounded-lg p-0.5"
-      role="group"
-      aria-label="Agrupamento do mapa"
-      style={{ background: 'var(--surface-2)', border: '1px solid var(--line)' }}
-    >
-      {(['marca', 'fabricante'] as const).map((m) => (
-        <button
-          key={m}
-          onClick={() => setModo(m)}
-          aria-pressed={modo === m}
-          className="rounded-md px-2.5 py-1 text-xs font-medium capitalize"
-          style={{
-            background: modo === m ? cores.navy.base : 'transparent',
-            color: modo === m ? '#fff' : 'var(--ink-soft)',
-          }}
-        >
-          Por {m}
-        </button>
-      ))}
-    </div>
-  );
-
-  return (
-    <Cartao
-      titulo="Mapa de calor — Fornecedor × Tonelada"
-      descricao="saldo base / coluna por célula"
-      acoes={alternador}
-    >
-      <div style={{ overflowX: 'auto' }}>
-        <table className="eq-heat">
-          <thead>
-            <tr>
-              <th />
-              {tons.map((t) => (
-                <th key={t}>{t}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {linhas.map((l) => (
-              <tr key={l}>
-                <th className="eq-heat-row">{l}</th>
-                {tons.map((t) => {
-                  const c = celulas.get(`${l}||${t}`);
-                  if (!c) return <td key={t} />;
-                  return (
-                    <td key={t}>
-                      <div
-                        className="eq-cell"
-                        style={{ background: coresStatus[c.status] }}
-                        title={`${l} · ${t} — ${c.status}`}
-                      >
-                        <b>
-                          {c.base} / {c.col}
-                        </b>
-                        <span>B / C</span>
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="legenda-status">
-        {(Object.keys(coresStatus) as (keyof typeof coresStatus)[]).map((k) => (
-          <span key={k}>
-            <i style={{ background: coresStatus[k] }} />
-            {k}
-          </span>
-        ))}
-      </div>
-    </Cartao>
-  );
-}
 
 function PlanoDeAcao({
   conjuntos,
@@ -331,6 +222,12 @@ export function DashboardGeral({
 
   return (
     <div className="flex flex-col gap-4.5" style={{ gap: 18 }}>
+      {/* A saude do estoque abre a pagina: e a leitura que responde
+          "quanto do que esta parado vira venda", que e por onde a
+          reuniao comeca. Os totais de compra e o detalhe por conjunto
+          vem depois, para quem quer saber o que fazer a respeito. */}
+      <SaudeDoEstoque componentes={componentes} />
+
       <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         <Kpi rotulo="Colunas a comprar" valor={resumo.totalComprarColuna} dica="para casar as bases existentes" cor={cores.laranja.base} />
         <Kpi rotulo="Bases a comprar" valor={resumo.totalComprarBase} dica="onde sobram colunas sem base" cor={cores.navy.base} />
@@ -344,13 +241,9 @@ export function DashboardGeral({
         />
       </div>
 
-      <MapaDeCalor conjuntos={conjuntos} />
-
       <Cartao titulo="Colunas × bases a comprar" descricao="maiores necessidades de compra">
         <Grafico config={configCompras} altura={280} rotulo="Colunas e bases a comprar por conjunto" />
       </Cartao>
-
-      <SaudeDoEstoque componentes={componentes} />
 
       <ItensPorFornecedor componentes={componentes} fotos={fotos} busca={buscaGlobal} />
 

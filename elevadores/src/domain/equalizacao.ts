@@ -6,7 +6,8 @@
    ============================================================ */
 import type { Componente, Conjunto, StatusConjunto } from './tipos';
 import { ratioDaTonelada, TIPO_BASE, TIPO_COLUNA } from '../config/regras';
-import { montarKit, porKitDe } from './kit';
+import { montarKit, faltamDoTipo, porKitDe } from './kit';
+import type { MontagemDoKit } from './kit';
 
 /* Normaliza o tipo de componente para comparar de forma estrita.
    So BASE e COLUNA entram no kit (regressao 8.2: BOMBA, COMANDO e MOTOR
@@ -18,7 +19,48 @@ export function tipoComponente(c: Componente): 'BASE' | 'COLUNA' | 'OUTRO' {
   return 'OUTRO';
 }
 
-/* 7.3 Calculo de um conjunto a partir dos saldos ja somados. */
+/* Componentes do par, separados pelo item pai a que pertencem.
+
+   O conjunto (Chave) reune varios itens pai. Cada um tem a sua propria
+   composicao, entao a conta so pode ser feita item a item: somar as
+   bases de todos e as colunas de todos antes de comparar trata peca de
+   um elevador como se servisse em outro. */
+function paresPorItemPai(componentes: Componente[]): Map<string, Componente[]> {
+  const porItem = new Map<string, Componente[]>();
+  for (const c of componentes) {
+    if (tipoComponente(c) === 'OUTRO') continue;
+    const pai = String(c.itemVolMultiplo ?? '').trim();
+    if (!pai) continue;
+    const lista = porItem.get(pai);
+    if (lista) lista.push(c);
+    else porItem.set(pai, [c]);
+  }
+  return porItem;
+}
+
+function montarDoPai(lista: Componente[]): MontagemDoKit {
+  return montarKit(
+    lista.map((c) => ({
+      codigo: String(c.itemComponente ?? '').trim(),
+      nome: c.nomeItemComponente,
+      tipo: tipoComponente(c),
+      porKit: porKitDe(c),
+      saldo: c.cd,
+    }))
+  );
+}
+
+/* 7.3 Calculo de um conjunto.
+
+   A compra e o casamento saem da composicao de cada item pai, e nao do
+   ratio da tonelada. O ratio dizia que todo produto de 4 t leva duas
+   colunas por base; a rampa de 4 t leva uma so. Com 5 bases e 5 colunas
+   casadas, a regra antiga pedia 10 colunas, acusava falta de 5 e
+   marcava o conjunto como descasado. A quantidade por kit ja vem na
+   planilha, componente a componente - e dela que sai a conta.
+
+   O ratio continua no retorno porque as telas ainda o exibem como
+   referencia da tonelada, mas nao manda mais em nada. */
 export function calcularConjunto(params: {
   chave: string;
   marca: string;
@@ -34,33 +76,37 @@ export function calcularConjunto(params: {
   const { chave, marca, fabricante, toneladaFixa, baseCD, colCD, reversa, ds, outros, componentes } = params;
   const ratio = ratioDaTonelada(toneladaFixa);
 
-  const colunasNecessarias = baseCD * ratio;
-  const deficit = colunasNecessarias - colCD;
-  const kits = Math.min(baseCD, Math.floor(colCD / ratio));
+  let comprarBase = 0;
+  let comprarColuna = 0;
+  let kits = 0;
+  for (const lista of paresPorItemPai(componentes).values()) {
+    const montagem = montarDoPai(lista);
+    comprarBase += faltamDoTipo(montagem, 'BASE');
+    comprarColuna += faltamDoTipo(montagem, 'COLUNA');
+    kits += montagem.kits;
+  }
+
+  /* Quantas colunas o conjunto precisaria ter para fechar o alvo: o
+     que ja esta no CD mais o que falta comprar. */
+  const colunasNecessarias = colCD + comprarColuna;
+  /* Positivo falta coluna, negativo sobra coluna - a mesma leitura de
+     antes, agora vinda da composicao. */
+  const deficit = comprarColuna - comprarBase;
+  /* Um conjunto pode precisar de base em um item e de coluna em outro.
+     Nesse caso o deficit se anula, e so a soma diz que falta peca. */
+  const faltaPeca = comprarBase + comprarColuna > 0;
 
   let status: StatusConjunto;
   if (baseCD === 0 && colCD === 0) {
     status = 'SEM ESTOQUE';
-  } else if (deficit === 0 && reversa > 0) {
+  } else if (!faltaPeca && reversa > 0) {
     // Casado, mas ha saldo na reversa: nao da para afirmar que esta
     // equalizado ate validar o que esta la (secao 7.3).
     status = 'REVERSA';
-  } else if (deficit === 0) {
+  } else if (!faltaPeca) {
     status = 'CASADO';
   } else {
     status = 'DESCASADO';
-  }
-
-  let comprarBase = 0;
-  let comprarColuna = 0;
-  if (deficit > 0) {
-    // Faltam colunas para casar com as bases existentes.
-    comprarColuna = deficit;
-  } else if (deficit < 0) {
-    // Sobram colunas sem base. Compra bases e completa o ultimo kit.
-    const sobra = -deficit;
-    comprarBase = Math.ceil(sobra / ratio);
-    comprarColuna = comprarBase * ratio - sobra;
   }
 
   return {
@@ -238,18 +284,46 @@ export function resumirEqualizacao(conjuntos: Conjunto[]): ResumoEqualizacao {
 }
 
 /* Teste de fechamento (secao 9): aplica as compras sugeridas e confere
-   que o deficit de cada conjunto zera. */
+   que o conjunto fecha.
+
+   A compra entra no componente que estava faltando, e nao no saldo
+   somado do conjunto. E assim que ela acontece de verdade - o
+   comprador pede um codigo, nao "uma coluna" - e so assim o teste
+   prova que a lista de compra resolve o descasamento. */
 export function aplicarCompras(conjunto: Conjunto): Conjunto {
+  const abastecidos: Componente[] = [];
+  for (const lista of paresPorItemPai(conjunto.componentes).values()) {
+    const montagem = montarDoPai(lista);
+    for (const c of lista) {
+      const codigo = String(c.itemComponente ?? '').trim();
+      const falta = montagem.componentes.find((m) => m.codigo === codigo)?.faltam ?? 0;
+      abastecidos.push(falta > 0 ? { ...c, cd: c.cd + falta } : c);
+    }
+  }
+  /* O que nao entra no par volta intacto: a compra nao mexe nele. */
+  const fora = conjunto.componentes.filter(
+    (c) => tipoComponente(c) === 'OUTRO' || !String(c.itemVolMultiplo ?? '').trim()
+  );
+  const todos = [...abastecidos, ...fora];
+
+  let baseCD = 0;
+  let colCD = 0;
+  for (const c of todos) {
+    const tipo = tipoComponente(c);
+    baseCD += tipo === 'BASE' ? c.cd : 0;
+    colCD += tipo === 'COLUNA' ? c.cd : 0;
+  }
+
   return calcularConjunto({
     chave: conjunto.chave,
     marca: conjunto.marca,
     fabricante: conjunto.fabricante,
     toneladaFixa: conjunto.toneladaFixa,
-    baseCD: conjunto.baseCD + conjunto.comprarBase,
-    colCD: conjunto.colCD + conjunto.comprarColuna,
+    baseCD,
+    colCD,
     reversa: conjunto.reversa,
     ds: conjunto.ds,
     outros: conjunto.outros,
-    componentes: conjunto.componentes,
+    componentes: todos,
   });
 }
