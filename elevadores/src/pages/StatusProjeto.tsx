@@ -19,10 +19,8 @@ import { BarraFiltros, Botao, Busca, Cartao, Chips, Selecao, Selo, Tabela, Td, T
 import { baixarPlanoProjeto } from '../export/exportExcel';
 import { CompartilharStatus } from '../components/CompartilharStatus';
 import { CLASSE_FORA } from '../export/boletimStatus';
-import { compararComAnterior, explicarVariacao, marcoDe, serieDoHistorico } from '../domain/historico';
+import { compararComAnterior, explicarVariacao, marcoDe } from '../domain/historico';
 import type { Marco } from '../domain/historico';
-import { explicarProjecao, projetarTermino, ritmoNecessario } from '../domain/projecao';
-import type { Projecao } from '../domain/projecao';
 import { baixarApresentacao, RECORTES, type Recorte } from '../export/exportPptx';
 import { MATRIZ } from '../config/regras';
 
@@ -167,139 +165,6 @@ function AvancoPorFrente({ acoes }: { acoes: Acao[] }) {
         ))}
       </div>
       <Legenda />
-    </Cartao>
-  );
-}
-
-/* Projecao de termino: a pergunta que decide a reuniao. Vem em cores
-   pela situacao, porque o numero sozinho nao diz se e bom ou ruim. */
-function Projecao({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
-  const p: Projecao = useMemo(() => projetarTermino(acoes, hoje), [acoes, hoje]);
-  const precisa = useMemo(() => ritmoNecessario(p, hoje), [p, hoje]);
-
-  const tom =
-    p.situacao === 'atrasado' || p.situacao === 'parado'
-      ? cores.laranja.base
-      : p.situacao === 'no_prazo' || p.situacao === 'concluido'
-        ? cores.semantico.verde
-        : cores.semantico.ambar;
-
-  const titulo =
-    p.situacao === 'concluido' ? 'Plano concluído'
-    : p.situacao === 'parado' ? 'Sem ritmo para projetar'
-    : p.dataProjetada
-      ? p.dataProjetada.toLocaleDateString('pt-BR', { timeZone: 'UTC' })
-      : '—';
-
-  return (
-    <Cartao titulo="Projeção de término" descricao="no ritmo das últimas 8 semanas">
-      <div className="eq-projecao">
-        <div className="eq-projecao-data" style={{ color: tom }}>
-          <strong>{titulo}</strong>
-          {p.situacao === 'atrasado' && p.desvioDias != null && (
-            <span>{p.desvioDias} dia(s) depois do prazo</span>
-          )}
-          {p.situacao === 'no_prazo' && p.desvioDias != null && (
-            <span>{Math.abs(p.desvioDias)} dia(s) de folga</span>
-          )}
-        </div>
-        <div className="eq-projecao-numeros">
-          <div>
-            <b>{p.ritmo}</b>
-            <span>ações por semana</span>
-          </div>
-          <div>
-            <b>{p.abertas}</b>
-            <span>em aberto</span>
-          </div>
-          {precisa != null && (
-            <div title="Ritmo necessário para bater o prazo combinado">
-              <b style={{ color: cores.laranja.base }}>{precisa}</b>
-              <span>preciso por semana</span>
-            </div>
-          )}
-        </div>
-      </div>
-      <p className="eq-projecao-frase">{explicarProjecao(p)}</p>
-    </Cartao>
-  );
-}
-
-/* Evolucao entre importacoes: e o que responde "melhorou desde a
-   ultima reuniao?". Sem duas medicoes nao ha o que mostrar. */
-function Evolucao({ serie }: { serie: ReturnType<typeof serieDoHistorico> }) {
-  const config: ChartConfiguration | null = useMemo(() => {
-    if (serie.length < 2) return null;
-    return {
-      type: 'line',
-      data: {
-        labels: serie.map((p) => p.rotulo),
-        datasets: [
-          {
-            label: 'Score',
-            data: serie.map((p) => p.score),
-            borderColor: cores.navy.base,
-            backgroundColor: 'rgba(0,26,114,.08)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 3,
-            yAxisID: 'y',
-          },
-          {
-            label: '% concluído',
-            data: serie.map((p) => p.pctConcluidas),
-            borderColor: cores.laranja.base,
-            borderDash: [5, 4],
-            fill: false,
-            tension: 0.3,
-            pointRadius: 3,
-            yAxisID: 'y',
-          },
-          {
-            label: 'Em atraso',
-            data: serie.map((p) => p.atrasadas),
-            borderColor: cores.semantico.cinza,
-            fill: false,
-            tension: 0.3,
-            pointRadius: 3,
-            yAxisID: 'y1',
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: { datalabels: { display: false }, legend: { position: 'bottom' } },
-        scales: {
-          y: { beginAtZero: true, max: 100, title: { display: true, text: 'Score e % concluído' } },
-          y1: {
-            beginAtZero: true, position: 'right', grid: { drawOnChartArea: false },
-            title: { display: true, text: 'Em atraso' },
-          },
-        },
-      },
-    };
-  }, [serie]);
-
-  return (
-    <Cartao
-      titulo="Evolução do projeto"
-      descricao="uma medição por importação da planilha"
-    >
-      {config ? (
-        <Grafico
-          config={config}
-          altura={260}
-          rotulo="Evolução do score, do percentual concluído e das ações em atraso a cada importação da planilha"
-        />
-      ) : (
-        <Vazio icone="📈">
-          {serie.length === 0
-            ? 'Ainda não há medições. Cada importação da planilha grava um ponto aqui.'
-            : 'Só há uma medição até agora. Na próxima importação a evolução aparece.'}
-        </Vazio>
-      )}
     </Cartao>
   );
 }
@@ -599,18 +464,38 @@ function Matriz({ acoes }: { acoes: Acao[] }) {
   );
 }
 
+/* Ritmo de entrega: BurnDown e BurnUp sobre o mesmo escopo.
+
+   A linha "Escopo total" saiu daqui de proposito. Ela era desenhada
+   como acoes.length repetido em toda semana, e as outras duas series
+   nascem desse mesmo numero: o que falta e total menos entregue, e o
+   entregue e total menos o que falta. Somadas, davam o total em todos
+   os pontos, sempre. Ou seja, a linha nunca poderia se mover, nem
+   quando o escopo realmente mudasse - que e a unica coisa que uma
+   linha de escopo existe para mostrar. Pior: ela afirmava que o
+   escopo de hoje valia desde maio, e uma planilha so conta o que ela
+   e agora. O topo da area do BurnUp ja marca o escopo, e o numero
+   exato foi para o subtitulo do cartao. */
 function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
-  const config: ChartConfiguration | null = useMemo(() => {
+  const { config, total } = useMemo(() => {
+    const total = acoes.length;
     const datas = acoes.flatMap((a) => [a.inicio, a.prazoValido].filter(Boolean) as Date[]);
-    if (datas.length === 0) return null;
+    if (datas.length === 0) return { config: null, total };
     const ini = new Date(Math.min(...datas.map((d) => d.getTime())));
     const fim = new Date(Math.max(...datas.map((d) => d.getTime()), hoje.getTime()));
 
     const semanas: Date[] = [];
     for (let t = ini.getTime(); t <= fim.getTime(); t += 7 * 86400000) semanas.push(new Date(t));
     if (semanas[semanas.length - 1] < fim) semanas.push(fim);
+    /* Hoje entra como ponto proprio. Sem isso o ultimo ponto com dado
+       caia na semana cheia anterior, e o grafico mostrava a posicao de
+       ate seis dias atras: apareciam mais pendencias do que a operacao
+       tinha de fato no dia da reuniao. */
+    if (!semanas.some((s) => Math.abs(s.getTime() - hoje.getTime()) < 86400000)) {
+      semanas.push(new Date(hoje.getTime()));
+      semanas.sort((a, z) => a.getTime() - z.getTime());
+    }
 
-    const total = acoes.length;
     const real = semanas.map((s) => {
       if (s > hoje) return null;
       /* Acao concluida sem data de conclusao ainda foi entregue. Para
@@ -623,21 +508,24 @@ function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
       }).length;
       return total - feitas;
     });
-    const ideal = semanas.map((_, i) => Math.round(total * (1 - i / (semanas.length - 1 || 1))));
-    /* BurnUp: o acumulado ja entregue contra a linha do escopo. O
-       BurnDown responde "quanto falta" e o BurnUp "quanto foi feito";
-       juntos mostram tambem se o escopo mexeu. */
+    /* O ideal cai com o tempo, nao com a posicao na lista. Como hoje
+       entrou fora do passo de sete dias, contar por indice inclinaria
+       a reta de leve no lugar errado. */
+    const vao = fim.getTime() - ini.getTime() || 1;
+    const ideal = semanas.map((s) =>
+      Math.round(total * (1 - (s.getTime() - ini.getTime()) / vao))
+    );
+    /* BurnUp: o acumulado ja entregue. O BurnDown responde "quanto
+       falta" e o BurnUp "quanto ja saiu". */
     const entregue = real.map((r) => (r == null ? null : total - r));
-    const escopo = semanas.map(() => total);
 
-    return {
+    const config: ChartConfiguration = {
       type: 'line',
       data: {
         labels: semanas.map((s) => s.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
         datasets: [
           { label: 'Ideal', data: ideal, borderColor: cores.semantico.cinza, borderDash: [5, 5], pointRadius: 0, borderWidth: 1.5 },
           { label: 'Ainda faltam (BurnDown)', data: real, borderColor: cores.laranja.base, backgroundColor: 'rgba(250,70,22,.12)', fill: true, tension: 0.25, pointRadius: 3, spanGaps: false },
-          { label: 'Escopo total', data: escopo, borderColor: cores.navy.suave, borderDash: [2, 3], pointRadius: 0, borderWidth: 1.5 },
           { label: 'Já entregue (BurnUp)', data: entregue, borderColor: cores.navy.base, backgroundColor: 'rgba(0,26,114,.10)', fill: true, tension: 0.25, pointRadius: 3, spanGaps: false },
         ],
       },
@@ -646,12 +534,13 @@ function BurnDown({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
         plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 12 } }, datalabels: { display: false } },
       },
     };
+    return { config, total };
   }, [acoes, hoje]);
 
   return (
     <Cartao
       titulo="Ritmo de entrega"
-      descricao="BurnDown: quanto ainda falta · BurnUp: quanto já foi entregue, contra o escopo"
+      descricao={`BurnDown: quanto ainda falta · BurnUp: quanto já foi entregue · escopo de ${total} ação(ões)`}
     >
       {config ? <Grafico config={config} altura={300} rotulo="Ritmo de entrega do projeto" /> : <Vazio>Sem datas suficientes.</Vazio>}
     </Cartao>
@@ -771,6 +660,48 @@ function PlanoDeAcao({ acoes }: { acoes: Acao[] }) {
 
 function dataBR(d: Date | null): string {
   return d ? d.toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-';
+}
+
+/* Ficha da atividade no Gantt. Fica em um lugar so porque aparece em
+   dois alvos da mesma linha: o nome, a esquerda, e a barra. Quem le o
+   Gantt aponta para a barra, que e onde o olho ja esta. */
+function FichaDaAtividade({ a }: { a: Acao }) {
+  const concluida = situacaoDe(a) === 'concluida';
+  return (
+    <>
+      <span className="eq-dica-titulo">{a.oQueFazer || a.proposta}</span>
+      <LinhaDica rotulo="Plan action" valor={a.proposta} />
+      <LinhaDica rotulo="Responsável" valor={a.responsavel || '—'} />
+      <LinhaDica rotulo="Início" valor={dataBR(a.inicio)} />
+      <LinhaDica rotulo="Término previsto" valor={dataBR(a.fim)} />
+      {/* O reagendamento aparece sempre, mesmo sem valor: a linha em
+          branco responde "essa atividade nao foi remarcada", que e
+          diferente de a informacao nao estar na ficha. */}
+      <LinhaDica
+        rotulo="Reagendamento"
+        valor={
+          a.reagendada ? (
+            <b style={{ color: cores.semantico.ambar }}>{dataBR(a.reagendamento)}</b>
+          ) : (
+            '—'
+          )
+        }
+      />
+      <LinhaDica
+        rotulo="Prazo válido"
+        valor={
+          <b style={{ color: a.atrasada ? cores.laranja.base : 'var(--ink)' }}>
+            {dataBR(a.prazoValido)}
+          </b>
+        }
+      />
+      <LinhaDica rotulo="Conclusão" valor={dataBR(a.dataConclusao)} />
+      <LinhaDica
+        rotulo="Situação"
+        valor={concluida ? 'Concluída' : a.atrasada ? 'Atrasada' : a.situacao || 'Em aberto'}
+      />
+    </>
+  );
 }
 
 function Gantt({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
@@ -902,54 +833,34 @@ function Gantt({ acoes, hoje }: { acoes: Acao[]; hoje: Date }) {
                   className="mb-1.5 grid items-center gap-2"
                   style={{ gridTemplateColumns: '230px 1fr 52px' }}
                 >
-                  <MiniTabela
-                    largura={320}
-                    conteudo={
-                      <>
-                        <span className="eq-dica-titulo">{a.oQueFazer || a.proposta}</span>
-                        <LinhaDica rotulo="Plan action" valor={a.proposta} />
-                        <LinhaDica rotulo="Responsável" valor={a.responsavel || '—'} />
-                        <LinhaDica rotulo="Início" valor={dataBR(a.inicio)} />
-                        <LinhaDica rotulo="Fim previsto" valor={dataBR(a.fim)} />
-                        {a.reagendada && <LinhaDica rotulo="Reagendado para" valor={dataBR(a.reagendamento)} />}
-                        <LinhaDica
-                          rotulo="Prazo válido"
-                          valor={
-                            <b style={{ color: a.atrasada ? cores.laranja.base : 'var(--ink)' }}>
-                              {dataBR(a.prazoValido)}
-                            </b>
-                          }
-                        />
-                        <LinhaDica rotulo="Conclusão" valor={dataBR(a.dataConclusao)} />
-                        <LinhaDica
-                          rotulo="Situação"
-                          valor={concluida ? 'Concluída' : a.atrasada ? 'Atrasada' : a.situacao || 'Em aberto'}
-                        />
-                      </>
-                    }
-                  >
+                  <MiniTabela largura={320} conteudo={<FichaDaAtividade a={a} />}>
                     <span className="block truncate pl-3 text-[11.5px]">{a.oQueFazer || a.proposta}</span>
                   </MiniTabela>
-                  <div className="relative h-4 rounded" style={{ background: 'var(--surface2)' }}>
-                    <div
-                      className="absolute inset-y-0 rounded"
-                      style={{
-                        left: `${inicio}%`,
-                        width: `${Math.max(1, fimOriginal - inicio)}%`,
-                        background: cor,
-                      }}
-                    />
-                    {a.reagendada && fimReal > fimOriginal && (
-                      <div
-                        className="absolute inset-y-0.5 rounded"
+                  {/* A mesma ficha na barra: e para ela que o cursor vai
+                      quando alguem quer saber de quem e a atividade e
+                      ate quando ela vale. */}
+                  <MiniTabela largura={320} conteudo={<FichaDaAtividade a={a} />}>
+                    <span className="relative block h-4 rounded" style={{ background: 'var(--surface2)' }}>
+                      <span
+                        className="absolute inset-y-0 block rounded"
                         style={{
-                          left: `${fimOriginal}%`,
-                          width: `${Math.max(1, fimReal - fimOriginal)}%`,
-                          border: `1.5px dashed ${cores.semantico.ambar}`,
+                          left: `${inicio}%`,
+                          width: `${Math.max(1, fimOriginal - inicio)}%`,
+                          background: cor,
                         }}
                       />
-                    )}
-                  </div>
+                      {a.reagendada && fimReal > fimOriginal && (
+                        <span
+                          className="absolute inset-y-0.5 block rounded"
+                          style={{
+                            left: `${fimOriginal}%`,
+                            width: `${Math.max(1, fimReal - fimOriginal)}%`,
+                            border: `1.5px dashed ${cores.semantico.ambar}`,
+                          }}
+                        />
+                      )}
+                    </span>
+                  </MiniTabela>
                   {/* Cada atividade so pode estar feita ou nao, entao a
                       porcentagem dela e 100 ou 0. */}
                   <div
@@ -1019,7 +930,6 @@ export function StatusProjeto({
   /* O painel que vira imagem no boletim. */
   const painel = useRef<HTMLDivElement>(null);
 
-  const serie = useMemo(() => serieDoHistorico(historico, demonstracao), [historico, demonstracao]);
   /* A variacao compara a medicao inteira, sem filtro: os marcos foram
      gravados com o plano completo, entao filtrar so um responsavel
      compararia coisas diferentes. */
@@ -1094,11 +1004,6 @@ export function StatusProjeto({
           </p>
         </Cartao>
         <AvancoPorFrente acoes={filtradas} />
-      </div>
-
-      <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
-        <Projecao acoes={filtradas} hoje={hoje} />
-        <Evolucao serie={serie} />
       </div>
 
       <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>

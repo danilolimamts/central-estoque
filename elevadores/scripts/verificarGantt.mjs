@@ -1,0 +1,119 @@
+/* Confere a tela de status do projeto depois dos ajustes pedidos:
+
+   1. passar o cursor na barra do Gantt (nao so no nome) abre a mini
+      tabela com responsavel, inicio, termino e reagendamento;
+   2. o cartao de ritmo de entrega nao tem mais a linha de escopo, que
+      por construcao nunca podia se mover;
+   3. os cartoes de evolucao do projeto e de projecao de termino
+      sairam da tela.
+*/
+import { chromium } from 'playwright';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { extname, join, resolve } from 'node:path';
+
+const DIST = resolve('dist');
+const SAIDA = process.argv[2] || '.';
+const TIPOS = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+
+const servidor = createServer(async (req, res) => {
+  try {
+    const bruto = req.url.split('?')[0];
+    const caminho = bruto === '/' ? '/index.html' : bruto;
+    const dados = await readFile(join(DIST, caminho));
+    res.writeHead(200, { 'Content-Type': TIPOS[extname(caminho)] ?? 'application/octet-stream' });
+    res.end(dados);
+  } catch {
+    res.writeHead(404).end('nao encontrado');
+  }
+});
+await new Promise((r) => servidor.listen(4183, r));
+
+const navegador = await chromium.launch({
+  executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+});
+const problemas = [];
+const pagina = await navegador.newPage({ viewport: { width: 1500, height: 1000 } });
+pagina.on('pageerror', (e) => problemas.push(`pageerror: ${e.message}`));
+
+await pagina.goto('http://localhost:4183/?exemplo', { waitUntil: 'networkidle' });
+await pagina.getByRole('button', { name: /status/i }).first().click();
+await pagina.waitForTimeout(600);
+
+/* ---- 3. cartoes que sairam ---- */
+for (const titulo of ['Evolução do projeto', 'Projeção de término']) {
+  if (await pagina.getByText(titulo, { exact: true }).count()) {
+    problemas.push(`o cartao "${titulo}" deveria ter saido da tela`);
+  }
+}
+
+/* ---- 2. a linha de escopo saiu da legenda do grafico ---- */
+const ritmo = pagina.locator('.panel', { hasText: 'Ritmo de entrega' }).first();
+const legendas = await ritmo.evaluate((el) => {
+  const grafico = el.querySelector('canvas');
+  return grafico ? (grafico.getAttribute('aria-label') ?? '') : 'sem canvas';
+});
+if (legendas === 'sem canvas') problemas.push('o grafico de ritmo de entrega nao renderizou');
+const descricao = await ritmo.locator('.panel-sub').first().innerText();
+if (!/escopo de \d+ a/i.test(descricao)) {
+  problemas.push(`o escopo deveria estar escrito no subtitulo do cartao, veio: "${descricao}"`);
+}
+
+/* ---- 1. mini tabela na barra do Gantt ---- */
+const gantt = pagina.locator('.panel', { hasText: 'Gantt' }).first();
+await gantt.scrollIntoViewIfNeeded();
+await pagina.waitForTimeout(300);
+
+/* A barra e o segundo alvo da linha: o primeiro e o nome, a esquerda. */
+const barras = gantt.locator('.eq-dica-alvo:has(> span[style*="--surface2"])');
+const quantas = await barras.count();
+if (quantas === 0) problemas.push('nenhuma barra do Gantt virou alvo de mini tabela');
+
+const alvo = barras.nth(Math.min(2, quantas - 1));
+await alvo.hover();
+await pagina.waitForTimeout(250);
+
+const dica = gantt.locator('.eq-dica').first();
+if ((await dica.count()) === 0) {
+  problemas.push('passar o cursor na barra do Gantt nao abriu a mini tabela');
+} else {
+  /* Os rotulos sobem para maiuscula no CSS, entao a comparacao ignora
+     a caixa: o que importa e a informacao estar la. */
+  const texto = (await dica.innerText()).toLowerCase();
+  for (const rotulo of ['responsável', 'início', 'término previsto', 'reagendamento']) {
+    if (!texto.includes(rotulo)) problemas.push(`a mini tabela nao mostra "${rotulo}"`);
+  }
+  /* A ficha so serve se vier preenchida: rotulo sem data e o mesmo que
+     nao ter a linha. */
+  if (!/\d{2}\/\d{2}\/\d{4}/.test(texto)) {
+    problemas.push('a mini tabela abriu sem nenhuma data preenchida');
+  }
+  const caixa = await dica.boundingBox();
+  const janela = pagina.viewportSize();
+  if (caixa && (caixa.y < 0 || caixa.y + caixa.height > janela.height)) {
+    problemas.push('a mini tabela abriu fora da area visivel');
+  }
+  /* Rotulo quebrado em duas linhas desalinha a data ao lado. */
+  const quebrados = await dica.evaluate((el) =>
+    [...el.querySelectorAll('.eq-dica-rotulo')]
+      .filter((r) => r.getBoundingClientRect().height > 20)
+      .map((r) => r.textContent)
+  );
+  if (quebrados.length > 0) {
+    problemas.push(`rotulo quebrado em duas linhas na mini tabela: ${quebrados.join(', ')}`);
+  }
+  await pagina.screenshot({ path: join(SAIDA, 'gantt-dica.png') });
+}
+
+await ritmo.scrollIntoViewIfNeeded();
+await pagina.waitForTimeout(400);
+await ritmo.screenshot({ path: join(SAIDA, 'ritmo-entrega.png') });
+
+await navegador.close();
+servidor.close();
+
+if (problemas.length > 0) {
+  console.error('PROBLEMAS:\n' + problemas.map((p) => ` - ${p}`).join('\n'));
+  process.exit(1);
+}
+console.log('Gantt, ritmo de entrega e cartoes removidos: tudo conforme o pedido.');
