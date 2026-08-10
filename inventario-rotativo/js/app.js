@@ -162,10 +162,12 @@ const IR_FILE_TYPES = [
   {key:'f278', label:'SIGEQ278', desc:'Preço de custo/compra por item', pattern:/278/i},
   {key:'f051', label:'ZBIQ0051', desc:'Item pai x componente (kits/múltiplos), S/N de valoração', pattern:/0051|zbiq/i}
 ];
-// Slots que aceitam vários arquivos por ciclo (concatenados e deduplicados no worker) —
-// úteis quando a extração de origem tem limite de período/linhas por consulta, ou quando
-// o dado é importado por período (ex: trimestre dividido em partes). Cada arquivo ocupa
-// um "período" numerado; reimportar no mesmo período troca o arquivo daquele período.
+// Slots que aceitam vários arquivos dentro do MESMO ciclo (concatenados e deduplicados
+// no worker) — úteis quando a extração de origem tem limite de linhas/tempo e precisa
+// ser feita em pedaços. Cada arquivo ocupa uma "parte" numerada; reimportar na mesma
+// parte troca o arquivo daquela parte. Isso NÃO tem relação com ciclo/ano — ciclos
+// diferentes (ex: 2026 e 2027) são sempre importados um de cada vez, trocando os campos
+// "Número do ciclo" e "Data de abertura" mais abaixo.
 const IR_MULTI_KEYS = new Set(['f843', 'fCong', 'f278', 'f051']);
 const IR_MULTI_DEFAULT_SLOTS = 4;
 function irRenderImportacao(){
@@ -179,10 +181,10 @@ function irRenderImportacao(){
         <div class="dz-icon">📄</div>
         <div class="dz-title">${t.label}</div>
         <div class="dz-desc">${t.desc}</div>
-        <p class="field-hint" style="margin:2px 0 8px;">Um arquivo por período do ciclo. Se um relatório mudar, reimporte no mesmo período pra substituir.</p>
+        <p class="field-hint" style="margin:2px 0 8px;">Se a extração não sai tudo de uma vez, divida em partes aqui — todas pertencem a este mesmo ciclo. Se um relatório mudar, reimporte na mesma parte pra substituir.</p>
         <div class="dz-period-list">
           ${slots.map((file,i)=>`<div class="dz-period-row ${file?'has-file':''}">
-            <span class="dz-period-label">Período ${i+1}</span>
+            <span class="dz-period-label">Parte ${i+1}</span>
             <input type="file" id="ir-file-${t.key}-${i}" accept=".xlsx,.xls" style="display:none" onchange="irSetSlotFile('${t.key}', ${i}, this.files[0])">
             ${file
               ? `<span class="dz-file mono">${irEsc(file.name)}</span>
@@ -191,7 +193,7 @@ function irRenderImportacao(){
               : `<button class="btn-link" onclick="document.getElementById('ir-file-${t.key}-${i}').click()">Selecionar</button>`}
           </div>`).join('')}
         </div>
-        <button class="btn-link" onclick="irAddSlot('${t.key}')">+ Adicionar período</button>
+        <button class="btn-link" onclick="irAddSlot('${t.key}')">+ Adicionar parte</button>
       </div>`;
     }
     const file = f[t.key];
@@ -207,9 +209,10 @@ function irRenderImportacao(){
   return `
     <div class="panel" ondragover="event.preventDefault()" ondrop="irOnDropMulti(event)">
       <h3>Importar planilhas</h3>
-      <p class="field-hint" style="margin-bottom:14px;">Arraste as planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo. QRY0843, Base Congelada, SIGEQ278 e ZBIQ0051 aceitam vários arquivos (para quando os dados vêm em pedaços por ciclo).</p>
+      <p class="field-hint" style="margin-bottom:14px;">Arraste as planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo. QRY0843, Base Congelada, SIGEQ278 e ZBIQ0051 aceitam várias partes (para quando os dados de um mesmo ciclo vêm em pedaços).</p>
       <div class="dz-grid">${IR_FILE_TYPES.map(dz).join('')}</div>
-      <div class="two-col" style="margin-top:16px;">
+      <p class="field-hint" style="margin-top:16px;"><strong>Ciclo e ano deste processamento</strong> — pra importar outro ciclo/ano (ex: 2027), volte aqui depois e processe de novo com os campos abaixo trocados; cada combinação número + data de abertura vira um ciclo separado no Histórico.</p>
+      <div class="two-col" style="margin-top:4px;">
         <div><label>Número do ciclo</label><input type="number" id="ir-inp-ciclo" min="1" value="${(()=>{
           if(IR.cicloAtivo) return IR.cicloAtivo.numero;
           const anoAtual = new Date().getFullYear();
@@ -251,8 +254,8 @@ function irClassifyFile(file){
 }
 function irOnFile(key, file){ if(!file) return; IR.files[key] = file; irRenderView(); }
 function irRemoveFile(key){ IR.files[key] = null; irRenderView(); }
-// Slots multi-arquivo: cada posição do array é um "período" — pode estar vazia (null)
-// até o usuário selecionar um arquivo pra ela. Reimportar na mesma posição substitui.
+// Slots multi-arquivo: cada posição do array é uma "parte" do mesmo ciclo — pode estar
+// vazia (null) até o usuário selecionar um arquivo pra ela. Reimportar na mesma posição substitui.
 function irSetSlotFile(key, index, file){
   if(!file) return;
   if(!IR.files[key]) IR.files[key] = [];
@@ -268,7 +271,7 @@ function irAddSlot(key){
   IR.files[key].push(null);
   irRenderView();
 }
-// Encaixa arquivos soltos nos primeiros períodos vazios; cria períodos novos se faltar espaço.
+// Encaixa arquivos soltos nas primeiras partes vazias; cria partes novas se faltar espaço.
 function irAssignFilesToSlots(key, files){
   if(!files.length) return;
   if(!IR.files[key]) IR.files[key] = [];
@@ -420,6 +423,7 @@ function irRenderDashboard(){
     <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
+    ${irRenderSaudeEstoquePanel(ind)}
     ${irRenderStatusInventarioPanel(ind)}
     ${irRenderPorRuaPanel(ind)}
     <div class="bi-grid-2">
@@ -634,6 +638,48 @@ function irBuildContadosPorDiaSvg(rows, meta, opts){
 /* Gráfico de rosca (donut) genérico — usado no "Status do Inventário" do
    Dashboard e no boletim. Cores em hex/var explícitos por parâmetro (não
    depende do tema) pra funcionar igual em qualquer contexto. */
+/* Velocímetro (meio-círculo) — usado no painel "Saúde do Estoque" do Dashboard. */
+function irGaugeSvg(pct, opts){
+  opts = opts||{};
+  const size = opts.size||220, stroke = opts.stroke||22;
+  const p = Math.max(0, Math.min(1, pct));
+  const cx = size/2, cy = size*0.56, r = (size-stroke)/2 - 4;
+  const color = opts.color||'var(--orange)', track = opts.track||'var(--surface2)', textColor = opts.textColor||'var(--ink)';
+  const angle = Math.PI - p*Math.PI;
+  const polar = ang=>({x:cx+r*Math.cos(ang), y:cy-r*Math.sin(ang)});
+  const startPt = polar(Math.PI), endPt = polar(0), valPt = polar(angle);
+  const bgArc = `M${startPt.x.toFixed(1)},${startPt.y.toFixed(1)} A${r},${r} 0 0 1 ${endPt.x.toFixed(1)},${endPt.y.toFixed(1)}`;
+  // O arco do velocímetro nunca passa de 180°, então o large-arc-flag é sempre 0
+  // (só seria 1 se o trecho desenhado pudesse ultrapassar meia volta).
+  const valArc = `M${startPt.x.toFixed(1)},${startPt.y.toFixed(1)} A${r},${r} 0 0 1 ${valPt.x.toFixed(1)},${valPt.y.toFixed(1)}`;
+  return `<svg viewBox="0 0 ${size} ${(size*0.62).toFixed(0)}" width="${size}" height="${(size*0.62).toFixed(0)}">
+    <path d="${bgArc}" fill="none" stroke="${track}" stroke-width="${stroke}" stroke-linecap="round"/>
+    ${p>0 ? `<path d="${valArc}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"/>` : ''}
+    <text x="${cx}" y="${cy-16}" text-anchor="middle" font-size="${Math.round(size*0.16)}" font-weight="800" fill="${textColor}">${irFmtPct(p)}</text>
+    ${opts.label ? `<text x="${cx}" y="${cy+6}" text-anchor="middle" font-size="${Math.round(size*0.058)}" font-weight="700" fill="${color}">${irEsc(opts.label)}</text>` : ''}
+  </svg>`;
+}
+// Saúde do Estoque = média das 3 acurácias já mostradas nos blocos (Peças/Local/Valor) —
+// visão rápida de 1 número só pra saber se o ciclo está indo bem.
+function irCalcSaudeEstoque(ind){ return (ind.acuraciaPecas + ind.acuraciaLocal + ind.acuraciaValor) / 3; }
+function irRenderSaudeEstoquePanel(ind){
+  const saude = irCalcSaudeEstoque(ind);
+  const critico = ind.meta - 0.10;
+  const cor = saude>=ind.meta ? 'var(--success)' : (saude>=critico ? 'var(--orange)' : 'var(--danger)');
+  const statusTxt = saude>=ind.meta ? 'Saudável' : (saude>=critico ? 'Atenção' : 'Crítico');
+  return `<div class="panel">
+    <h3>Saúde do Estoque</h3>
+    <p class="panel-sub">Média entre Acurácia Peças, Local e Valor — visão rápida da saúde geral do ciclo. Meta: ${irFmtPct(ind.meta)}.</p>
+    <div class="gauge-row">
+      ${irGaugeSvg(saude, {color:cor, label:statusTxt})}
+      <div class="gauge-legend">
+        <div class="gauge-legend-item"><span class="dot" style="background:var(--success);"></span>Saudável — a partir de ${irFmtPct(ind.meta)}</div>
+        <div class="gauge-legend-item"><span class="dot" style="background:var(--orange);"></span>Atenção — até 10 p.p. abaixo da meta</div>
+        <div class="gauge-legend-item"><span class="dot" style="background:var(--danger);"></span>Crítico — mais de 10 p.p. abaixo da meta</div>
+      </div>
+    </div>
+  </div>`;
+}
 function irDonutSvg(pct, opts){
   opts = opts||{};
   const size = opts.size||190, stroke = opts.stroke||28;
