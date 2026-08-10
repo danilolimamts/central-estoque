@@ -423,6 +423,7 @@ function irRenderDashboard(){
     <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
+    ${irRenderSaudeEstoquePanel(ind)}
     ${irRenderStatusInventarioPanel(ind)}
     ${irRenderPorRuaPanel(ind)}
     <div class="bi-grid-2">
@@ -637,6 +638,48 @@ function irBuildContadosPorDiaSvg(rows, meta, opts){
 /* Gráfico de rosca (donut) genérico — usado no "Status do Inventário" do
    Dashboard e no boletim. Cores em hex/var explícitos por parâmetro (não
    depende do tema) pra funcionar igual em qualquer contexto. */
+/* Velocímetro (meio-círculo) — usado no painel "Saúde do Estoque" do Dashboard. */
+function irGaugeSvg(pct, opts){
+  opts = opts||{};
+  const size = opts.size||220, stroke = opts.stroke||22;
+  const p = Math.max(0, Math.min(1, pct));
+  const cx = size/2, cy = size*0.56, r = (size-stroke)/2 - 4;
+  const color = opts.color||'var(--orange)', track = opts.track||'var(--surface2)', textColor = opts.textColor||'var(--ink)';
+  const angle = Math.PI - p*Math.PI;
+  const polar = ang=>({x:cx+r*Math.cos(ang), y:cy-r*Math.sin(ang)});
+  const startPt = polar(Math.PI), endPt = polar(0), valPt = polar(angle);
+  const bgArc = `M${startPt.x.toFixed(1)},${startPt.y.toFixed(1)} A${r},${r} 0 0 1 ${endPt.x.toFixed(1)},${endPt.y.toFixed(1)}`;
+  // O arco do velocímetro nunca passa de 180°, então o large-arc-flag é sempre 0
+  // (só seria 1 se o trecho desenhado pudesse ultrapassar meia volta).
+  const valArc = `M${startPt.x.toFixed(1)},${startPt.y.toFixed(1)} A${r},${r} 0 0 1 ${valPt.x.toFixed(1)},${valPt.y.toFixed(1)}`;
+  return `<svg viewBox="0 0 ${size} ${(size*0.62).toFixed(0)}" width="${size}" height="${(size*0.62).toFixed(0)}">
+    <path d="${bgArc}" fill="none" stroke="${track}" stroke-width="${stroke}" stroke-linecap="round"/>
+    ${p>0 ? `<path d="${valArc}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"/>` : ''}
+    <text x="${cx}" y="${cy-16}" text-anchor="middle" font-size="${Math.round(size*0.16)}" font-weight="800" fill="${textColor}">${irFmtPct(p)}</text>
+    ${opts.label ? `<text x="${cx}" y="${cy+6}" text-anchor="middle" font-size="${Math.round(size*0.058)}" font-weight="700" fill="${color}">${irEsc(opts.label)}</text>` : ''}
+  </svg>`;
+}
+// Saúde do Estoque = média das 3 acurácias já mostradas nos blocos (Peças/Local/Valor) —
+// visão rápida de 1 número só pra saber se o ciclo está indo bem.
+function irCalcSaudeEstoque(ind){ return (ind.acuraciaPecas + ind.acuraciaLocal + ind.acuraciaValor) / 3; }
+function irRenderSaudeEstoquePanel(ind){
+  const saude = irCalcSaudeEstoque(ind);
+  const critico = ind.meta - 0.10;
+  const cor = saude>=ind.meta ? 'var(--success)' : (saude>=critico ? 'var(--orange)' : 'var(--danger)');
+  const statusTxt = saude>=ind.meta ? 'Saudável' : (saude>=critico ? 'Atenção' : 'Crítico');
+  return `<div class="panel">
+    <h3>Saúde do Estoque</h3>
+    <p class="panel-sub">Média entre Acurácia Peças, Local e Valor — visão rápida da saúde geral do ciclo. Meta: ${irFmtPct(ind.meta)}.</p>
+    <div class="gauge-row">
+      ${irGaugeSvg(saude, {color:cor, label:statusTxt})}
+      <div class="gauge-legend">
+        <div class="gauge-legend-item"><span class="dot" style="background:var(--success);"></span>Saudável — a partir de ${irFmtPct(ind.meta)}</div>
+        <div class="gauge-legend-item"><span class="dot" style="background:var(--orange);"></span>Atenção — até 10 p.p. abaixo da meta</div>
+        <div class="gauge-legend-item"><span class="dot" style="background:var(--danger);"></span>Crítico — mais de 10 p.p. abaixo da meta</div>
+      </div>
+    </div>
+  </div>`;
+}
 function irDonutSvg(pct, opts){
   opts = opts||{};
   const size = opts.size||190, stroke = opts.stroke||28;
