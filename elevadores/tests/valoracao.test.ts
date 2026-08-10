@@ -71,3 +71,48 @@ describe('auditoria e resumo por marca', () => {
     expect(r.porMarca[0]).toEqual({ marca: 'AUTOP', corrigir: 2 });
   });
 });
+
+describe('quanto do catalogo ja valora na coluna', () => {
+  /* Um OK, um com o S na base, um com S nos dois lados e um sem S. */
+  const componentes: Componente[] = [
+    comp({ itemVolMultiplo: 'OK', componenteBaseColuna: 'BASE', inInterface: 'N' }),
+    comp({ itemVolMultiplo: 'OK', componenteBaseColuna: 'COLUNA', inInterface: 'S' }),
+    comp({ itemVolMultiplo: 'NA_BASE', componenteBaseColuna: 'BASE', inInterface: 'S' }),
+    comp({ itemVolMultiplo: 'NA_BASE', componenteBaseColuna: 'COLUNA', inInterface: 'N' }),
+    comp({ itemVolMultiplo: 'DOIS', componenteBaseColuna: 'BASE', inInterface: 'S' }),
+    comp({ itemVolMultiplo: 'DOIS', componenteBaseColuna: 'COLUNA', inInterface: 'S' }),
+    comp({ itemVolMultiplo: 'NENHUM', componenteBaseColuna: 'BASE', inInterface: 'N' }),
+    comp({ itemVolMultiplo: 'NENHUM', componenteBaseColuna: 'COLUNA', inInterface: 'N' }),
+  ];
+  const r = resumirValoracao(auditarValoracao(componentes));
+
+  it('de quatro modelos, um ja esta certo', () => {
+    expect(r.total).toBe(4);
+    expect(r.ok).toBe(1);
+    expect(r.pctAjustado).toBeCloseTo(25, 5);
+  });
+
+  it('falta ajuste em tudo que nao valora so na coluna', () => {
+    /* S na base, S nos dois e sem S nenhum: os tres precisam de mexida. */
+    expect(r.faltaAjuste).toBe(3);
+    expect(r.pctFalta).toBeCloseTo(75, 5);
+  });
+
+  it('separa quem tem o S preso na base de quem nao tem S', () => {
+    /* Tirar de um lado e por no outro e um trabalho; cadastrar do zero
+       e outro. O numero do meio precisa distinguir os dois. */
+    expect(r.comSNaBase).toBe(2); // CORRIGIR + DUPLICADO
+    expect(r.semS).toBe(1);
+  });
+
+  it('os dois lados fecham 100%', () => {
+    expect(r.pctAjustado + r.pctFalta).toBeCloseTo(100, 5);
+    expect(r.ok + r.faltaAjuste).toBe(r.total);
+  });
+
+  it('catalogo vazio nao vira 0% nem 100%', () => {
+    const vazio = resumirValoracao([]);
+    expect(vazio.pctAjustado).toBe(0);
+    expect(vazio.pctFalta).toBe(0);
+  });
+});

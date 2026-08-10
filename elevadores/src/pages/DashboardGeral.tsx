@@ -132,6 +132,29 @@ function AuditoriaValoracao({
         </Botao>
       }
     >
+      {/* Antes daqui so havia contagem, e contagem sozinha nao diz se
+          o trabalho esta no comeco ou no fim. A proporcao responde
+          "de quantos modelos, quantos ainda faltam". */}
+      <div className="eq-avanco">
+        <div className="eq-avanco-num">
+          <b style={{ color: cores.semantico.verde }}>{resumo.pctAjustado.toFixed(0)}%</b>
+          <span className="eq-avanco-rot">já valoram na coluna</span>
+          <span className="eq-avanco-det">
+            {resumo.ok} de {resumo.total} modelos
+          </span>
+        </div>
+        <div className="eq-avanco-num">
+          <b style={{ color: cores.laranja.base }}>{resumo.pctFalta.toFixed(0)}%</b>
+          <span className="eq-avanco-rot">ainda falta ajustar</span>
+          <span className="eq-avanco-det">
+            {resumo.faltaAjuste} modelo(s) · {resumo.comSNaBase} com o S preso na base
+          </span>
+        </div>
+        <div className="eq-avanco-barra" title={`${resumo.ok} de ${resumo.total} modelos já valoram na coluna`}>
+          <span style={{ width: `${resumo.pctAjustado}%`, background: cores.semantico.verde }} />
+        </div>
+      </div>
+
       <div className="mb-4 grid grid-cols-2 gap-3.5 md:grid-cols-4">
         <Kpi rotulo="Corretos" valor={resumo.ok} cor={cores.semantico.verde} />
         <Kpi rotulo="A corrigir" valor={resumo.corrigir} dica="S na base" cor={cores.laranja.base} />
@@ -267,12 +290,28 @@ export function DashboardGeral({
       <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         <Kpi rotulo="Colunas a comprar" valor={resumo.totalComprarColuna} dica="para casar as bases existentes" cor={cores.laranja.base} />
         <Kpi rotulo="Bases a comprar" valor={resumo.totalComprarBase} dica="onde sobram colunas sem base" cor={cores.navy.base} />
-        <Kpi rotulo="Travado na reversa" valor={resumo.totalReversa} sufixo="un" dica="sem lastro definido" cor={cores.semantico.ambar} />
+        <Kpi
+          rotulo="Travado na reversa"
+          valor={`${resumo.pctReversa.toFixed(0)}%`}
+          /* A porcentagem vem primeiro porque 53 unidades nao dizem
+             nada sem o estoque ao lado: 53 de 700 e outra conversa. */
+          dica={
+            <>
+              {resumo.totalReversa} un de {resumo.totalCD + resumo.totalReversa} no estoque
+              {resumo.travadosPelaReversa > 0 && (
+                <>
+                  {' · '}
+                  <b>{resumo.travadosPelaReversa}</b> conjunto(s) só esperam por ela
+                </>
+              )}
+            </>
+          }
+          cor={cores.semantico.ambar}
+        />
         <Kpi
           rotulo="Conjuntos casados"
-          valor={resumo.casados}
-          sufixo={`/ ${resumo.comConjuntoNoCD}`}
-          dica="meta: 100% casados"
+          valor={`${resumo.comConjuntoNoCD > 0 ? Math.round((resumo.casados / resumo.comConjuntoNoCD) * 100) : 0}%`}
+          dica={`${resumo.casados} de ${resumo.comConjuntoNoCD} conjuntos · meta: 100%`}
           cor={cores.semantico.verde}
         />
       </div>

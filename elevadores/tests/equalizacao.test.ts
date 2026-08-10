@@ -229,6 +229,44 @@ describe('7.1 agrupamento por Chave e exclusao de OUTRO', () => {
   });
 });
 
+describe('quanto a reversa esta travando', () => {
+  /* Um conjunto casado, um casado mas com saldo na reversa (e a
+     reversa que impede afirmar que fechou) e um descasado. */
+  const conjuntos = [
+    conjDe(par('CASADO', 10, 10)),
+    conjDe(par('COM_REVERSA', 5, 5), '4 t', 10),
+    conjDe(par('DESCASADO', 8, 3)),
+  ];
+  const r = resumirEqualizacao(conjuntos);
+
+  it('a reversa vira proporcao do estoque, e nao numero solto', () => {
+    /* 10 na reversa contra 41 no CD (20 + 10 + 11). */
+    expect(r.totalCD).toBe(41);
+    expect(r.totalReversa).toBe(10);
+    expect(r.pctReversa).toBeCloseTo((10 / 51) * 100, 5);
+  });
+
+  it('conta quantos conjuntos so esperam pela reversa', () => {
+    /* O par ja esta casado: se a reversa fosse resolvida, fechava. */
+    expect(r.travadosPelaReversa).toBe(1);
+    expect(r.conjuntosComReversa).toBe(1);
+    expect(r.pctTravadosPelaReversa).toBeCloseTo((1 / 3) * 100, 5);
+  });
+
+  it('conjunto descasado nao entra na conta da reversa', () => {
+    /* O que trava ele e falta de peca, nao saldo sem lastro. */
+    expect(r.casados).toBe(1);
+    expect(r.travadosPelaReversa).toBe(1);
+    expect(r.casados + r.travadosPelaReversa).toBeLessThan(r.comConjuntoNoCD + 1);
+  });
+
+  it('sem estoque nenhum nao vira 0% nem divisao por zero', () => {
+    const vazio = resumirEqualizacao([conjDe(par('Z', 0, 0))]);
+    expect(vazio.pctReversa).toBe(0);
+    expect(vazio.pctTravadosPelaReversa).toBe(0);
+  });
+});
+
 describe('resumo da equalizacao', () => {
   it('soma compras, casados e reversa', () => {
     const conjuntos = [

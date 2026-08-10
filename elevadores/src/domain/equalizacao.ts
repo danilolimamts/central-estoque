@@ -258,6 +258,18 @@ export interface ResumoEqualizacao {
   totalComprarBase: number;
   totalComprarColuna: number;
   totalReversa: number;
+  /* Unidades de base e coluna no CD, para a reversa poder ser lida
+     como proporcao e nao so como numero solto. */
+  totalCD: number;
+  /* Quanto do estoque esta na reversa: reversa sobre CD mais reversa. */
+  pctReversa: number;
+  /* Conjuntos com alguma unidade na reversa. */
+  conjuntosComReversa: number;
+  /* Conjuntos que fechariam se a reversa estivesse resolvida: o par ja
+     esta casado e so o saldo sem lastro impede afirmar que esta
+     equalizado. E o que a reversa esta efetivamente travando. */
+  travadosPelaReversa: number;
+  pctTravadosPelaReversa: number;
 }
 
 export function resumirEqualizacao(conjuntos: Conjunto[]): ResumoEqualizacao {
@@ -266,13 +278,20 @@ export function resumirEqualizacao(conjuntos: Conjunto[]): ResumoEqualizacao {
   let totalComprarBase = 0;
   let totalComprarColuna = 0;
   let totalReversa = 0;
+  let totalCD = 0;
+  let conjuntosComReversa = 0;
+  let travadosPelaReversa = 0;
   for (const c of conjuntos) {
     if (c.baseCD !== 0 || c.colCD !== 0) comConjuntoNoCD++;
     if (c.status === 'CASADO') casados++;
+    if (c.status === 'REVERSA') travadosPelaReversa++;
+    if (c.reversa > 0) conjuntosComReversa++;
     totalComprarBase += c.comprarBase;
     totalComprarColuna += c.comprarColuna;
     totalReversa += c.reversa;
+    totalCD += c.baseCD + c.colCD;
   }
+  const emEstoque = totalCD + totalReversa;
   return {
     conjuntos,
     comConjuntoNoCD,
@@ -280,6 +299,12 @@ export function resumirEqualizacao(conjuntos: Conjunto[]): ResumoEqualizacao {
     totalComprarBase,
     totalComprarColuna,
     totalReversa,
+    totalCD,
+    pctReversa: emEstoque > 0 ? (totalReversa / emEstoque) * 100 : 0,
+    conjuntosComReversa,
+    travadosPelaReversa,
+    pctTravadosPelaReversa:
+      comConjuntoNoCD > 0 ? (travadosPelaReversa / comConjuntoNoCD) * 100 : 0,
   };
 }
 

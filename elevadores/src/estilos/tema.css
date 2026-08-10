@@ -970,5 +970,19 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
    neutra, em vez de laranja cheia acusando um descasamento que nao
    existe. */
 .eq-saude-barra.vazia{ background:var(--line); }
+/* Bloco de avanco: duas porcentagens grandes e a barra que as liga.
+   Serve para o cartao responder "de quantos, quantos ja foram" sem
+   ninguem precisar dividir os numeros de cabeca. */
+.eq-avanco{ display:grid; grid-template-columns:1fr 1fr; gap:14px 22px; margin-bottom:16px; }
+.eq-avanco-num{ display:flex; flex-direction:column; gap:1px; }
+.eq-avanco-num b{ font-size:32px; font-weight:800; line-height:1.05;
+  font-variant-numeric:tabular-nums; }
+.eq-avanco-rot{ font-size:11.5px; font-weight:700; color:var(--ink); }
+.eq-avanco-det{ font-size:11px; color:var(--ink-soft); }
+.eq-avanco-barra{ grid-column:1 / -1; height:8px; border-radius:100px;
+  background:var(--orange); overflow:hidden; }
+.eq-avanco-barra span{ display:block; height:100%; border-radius:100px; }
+@media (max-width:640px){ .eq-avanco{ grid-template-columns:1fr; } }
+
 .eq-saude-skus{ display:block; font-size:10px; color:var(--ink-soft); margin-top:2px; }
 .eq-saude-total td{ background:var(--surface2); }

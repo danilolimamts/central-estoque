@@ -76,6 +76,17 @@ export interface ResumoValoracao {
   corrigir: number;
   duplicado: number;
   semS: number;
+  /* Modelos que ainda nao valoram na coluna, de qualquer jeito: o S
+     esta na base, esta nos dois lados ou nao esta em lugar nenhum. E o
+     numero que mede o tamanho do trabalho que falta. */
+  faltaAjuste: number;
+  /* Recorte de dentro do que falta: modelos com o S preso na base.
+     Sao os que exigem tirar de um lado e por no outro - diferente de
+     quem so nao tem S, que e um cadastro incompleto. */
+  comSNaBase: number;
+  /* Quanto do catalogo ja esta valorado na coluna, em porcentagem. */
+  pctAjustado: number;
+  pctFalta: number;
   /* Concentracao de problemas por marca (secao 9). */
   porMarca: { marca: string; corrigir: number }[];
 }
@@ -94,12 +105,19 @@ export function resumirValoracao(valoracoes: Valoracao[]): ResumoValoracao {
     } else if (v.diagnostico === 'DUPLICADO') duplicado++;
     else semS++;
   }
+  const total = valoracoes.length;
+  const faltaAjuste = total - ok;
   return {
-    total: valoracoes.length,
+    total,
     ok,
     corrigir,
     duplicado,
     semS,
+    faltaAjuste,
+    comSNaBase: corrigir + duplicado,
+    /* Sem modelo nenhum nao ha porcentagem: 0 de 0 nao e 0% nem 100%. */
+    pctAjustado: total > 0 ? (ok / total) * 100 : 0,
+    pctFalta: total > 0 ? (faltaAjuste / total) * 100 : 0,
     porMarca: [...porMarca.entries()]
       .map(([marca, c]) => ({ marca, corrigir: c }))
       .sort((a, b) => b.corrigir - a.corrigir),
