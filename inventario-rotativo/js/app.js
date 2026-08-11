@@ -642,11 +642,16 @@ function irRenderPorLogPanel(ind){
 function irBuildLogBarChartSvg(rows, opts){
   opts = opts||{};
   const colors = opts.colors || {pecas:'#0B2545', posicoes:'#C9A227', valor:'#7C8AA5', grid:'#E4E7EE', axis:'#6B7280'};
-  const W = Math.max(420, rows.length*110), H = 240;
-  const padL = 14, padR = 14, padT = 40, padB = 32;
+  // W fixo = largura real do conteúdo dentro de .rp-panel-pad no boletim (920 de
+  // .rp-page − 2×40 de padding do .rp-body − 2×20 de padding do .rp-panel-pad).
+  // Usando esse valor exato (em vez de escalar por aspect-ratio) o SVG desenha 1:1
+  // com o espaço disponível — sem sobrar espaço em branco e sem depender do
+  // navegador calcular "height:auto" corretamente antes da captura do html2canvas.
+  const W = 800, H = 280;
+  const padL = 14, padR = 14, padT = 46, padB = 34;
   const plotW = W-padL-padR, plotH = H-padT-padB;
   const n = rows.length, groupW = plotW/n;
-  const barW = Math.min(30, groupW/3*0.8), gap = 3;
+  const barW = Math.min(46, groupW/3*0.8), gap = 5;
   const series = [
     {key:'acuraciaPecas', color:colors.pecas},
     {key:'acuraciaPosicoes', color:colors.posicoes},
@@ -661,41 +666,42 @@ function irBuildLogBarChartSvg(rows, opts){
       const bx = groupX + si*(barW+gap);
       const by = padT+plotH-bh;
       bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${s.color}" rx="2"/>`;
-      labels += `<text x="${(bx+barW/2).toFixed(1)}" y="${(by-4).toFixed(1)}" font-size="7.5" text-anchor="middle" fill="${s.color}" font-weight="700">${Math.round(val*100)}%</text>`;
+      labels += `<text x="${(bx+barW/2).toFixed(1)}" y="${(by-6).toFixed(1)}" font-size="12" text-anchor="middle" fill="${s.color}" font-weight="700">${Math.round(val*100)}%</text>`;
     });
-    xLabels += `<text x="${(padL+i*groupW+groupW/2).toFixed(1)}" y="${H-10}" font-size="9.5" text-anchor="middle" fill="${colors.axis}">${irEsc(r.chave)}</text>`;
+    xLabels += `<text x="${(padL+i*groupW+groupW/2).toFixed(1)}" y="${H-12}" font-size="13" text-anchor="middle" fill="${colors.axis}" font-weight="600">${irEsc(r.chave)}</text>`;
   });
   const gridLines = [0,0.25,0.5,0.75,1].map(t=>{
     const y = padT+plotH-t*plotH;
     return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="${colors.grid}" stroke-width="1"/>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="auto" style="display:block;" preserveAspectRatio="xMidYMid meet">${gridLines}${bars}${labels}${xLabels}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${gridLines}${bars}${labels}${xLabels}</svg>`;
 }
 /* Gráfico de barras (Contados por Dia) pro boletim, com a mesma linha de
    meta tracejada do painel do Dashboard — SVG estático, cores fixas. */
 function irBuildContadosPorDiaSvg(rows, meta, opts){
   opts = opts||{};
   const colors = opts.colors || {bar:'#FA4616', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A', meta:'#001A72'};
-  const W = Math.max(420, rows.length*54), H = 220;
-  const padL = 14, padR = 14, padT = 32, padB = 30;
+  // W fixo = mesma largura útil do painel do boletim (ver comentário em irBuildLogBarChartSvg).
+  const W = 800, H = 260;
+  const padL = 14, padR = 14, padT = 36, padB = 32;
   const plotW = W-padL-padR, plotH = H-padT-padB;
   const n = rows.length;
   const max = Math.max(1, meta, ...rows.map(r=>r.total));
-  const barW = Math.min(40, plotW/n*0.7);
+  const barW = Math.min(50, plotW/n*0.7);
   let bars = '', labels = '', xLabels = '';
   rows.forEach((r,i)=>{
     const cx = padL + (i+0.5)*(plotW/n);
     const bh = (r.total/max)*plotH;
     const bx = cx-barW/2, by = padT+plotH-bh;
     bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${colors.bar}" rx="2"/>`;
-    labels += `<text x="${cx.toFixed(1)}" y="${(by-4).toFixed(1)}" font-size="8" text-anchor="middle" fill="${colors.label}" font-weight="700">${irFmtInt(r.total)}</text>`;
+    labels += `<text x="${cx.toFixed(1)}" y="${(by-6).toFixed(1)}" font-size="11" text-anchor="middle" fill="${colors.label}" font-weight="700">${irFmtInt(r.total)}</text>`;
     const dia = new Date(r.dia+'T00:00:00');
-    xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="9" text-anchor="middle" fill="${colors.axis}">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</text>`;
+    xLabels += `<text x="${cx.toFixed(1)}" y="${H-12}" font-size="11.5" text-anchor="middle" fill="${colors.axis}" font-weight="600">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</text>`;
   });
   const metaY = padT+plotH-(meta/max)*plotH;
   const metaLine = `<line x1="${padL}" y1="${metaY.toFixed(1)}" x2="${W-padR}" y2="${metaY.toFixed(1)}" stroke="${colors.meta}" stroke-width="1.5" stroke-dasharray="5 4"/>
-    <text x="${W-padR}" y="${(metaY-5).toFixed(1)}" font-size="9" text-anchor="end" fill="${colors.meta}" font-weight="700">Meta ${irFmtInt(meta)}</text>`;
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="auto" style="display:block;" preserveAspectRatio="xMidYMid meet">${bars}${labels}${xLabels}${metaLine}</svg>`;
+    <text x="${W-padR}" y="${(metaY-6).toFixed(1)}" font-size="11.5" text-anchor="end" fill="${colors.meta}" font-weight="700">Meta ${irFmtInt(meta)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${bars}${labels}${xLabels}${metaLine}</svg>`;
 }
 /* Gráfico de rosca (donut) genérico — usado no "Status do Inventário" do
    Dashboard e no boletim. Cores em hex/var explícitos por parâmetro (não
@@ -898,21 +904,32 @@ function irRenderTopItensPanel(ind){
 /* ============================================================
    RELATÓRIO PARA E-MAIL (impressão / salvar como PDF)
    ============================================================ */
+// Helpers de markup do boletim (imagem gerada por html2canvas) — compartilhados entre
+// o boletim geral (irGerarRelatorioEmail) e outros exports de imagem (ex.: produtividade).
+const rpTile = (icon, val, label, cls, hint)=>`<div class="rp-tile">
+  <div class="rp-tile-num ${cls||''}">${val}</div>
+  <div class="rp-tile-label">${label}</div>
+  ${hint?`<div class="rp-tile-hint">${hint}</div>`:''}
+</div>`;
+const rpBlock = (theme, icon, title, tilesHtml)=>`<div class="rp-block theme-${theme}">
+  <div class="rp-block-header"><span class="rp-bh-icon">${icon}</span><span class="rp-bh-title">${title}</span></div>
+  <div class="rp-block-body">${tilesHtml}</div>
+</div>`;
+const rpSectionTitle = (icon, texto, nota)=>`<div class="rp-section-title"><span class="rp-st-icon">${icon}</span><span class="rp-st-text">${texto}</span>${nota?`<span class="rp-st-note">${nota}</span>`:''}</div>`;
 function irGerarRelatorioEmail(){
   const ind = IR.indicadores, c = IR.cicloAtivo;
   if(!ind || !c){ irShowToast('Sem dados de ciclo pra gerar relatório.', true); return; }
   const agora = new Date().toLocaleString('pt-BR');
   const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
-  const rpTile = (icon, val, label, cls, hint)=>`<div class="rp-tile">
-    <div class="rp-tile-num ${cls||''}">${val}</div>
-    <div class="rp-tile-label">${label}</div>
-    ${hint?`<div class="rp-tile-hint">${hint}</div>`:''}
-  </div>`;
-  const rpBlock = (theme, icon, title, tilesHtml)=>`<div class="rp-block theme-${theme}">
-    <div class="rp-block-header"><span class="rp-bh-icon">${icon}</span><span class="rp-bh-title">${title}</span></div>
-    <div class="rp-block-body">${tilesHtml}</div>
-  </div>`;
-  const sectionTitle = (icon, texto, nota)=>`<div class="rp-section-title"><span class="rp-st-icon">${icon}</span><span class="rp-st-text">${texto}</span>${nota?`<span class="rp-st-note">${nota}</span>`:''}</div>`;
+  const sectionTitle = rpSectionTitle;
+  // Cor da célula de acurácia: amarelo bem em cima da meta, vermelho abaixo,
+  // verde acima — pedido explícito do usuário (ex.: meta 97% → 97% = amarelo).
+  const rpAcColor = (val, meta)=>{
+    const diff = val - meta;
+    if(Math.abs(diff) < 0.0015) return '#C9A227';
+    return diff > 0 ? '#1F8A52' : '#C0392B';
+  };
+  const rpAcTd = (val, meta)=>`<td style="color:${rpAcColor(val, meta)};font-weight:700;">${irFmtPct(val)}</td>`;
 
   const blocoPecas = rpBlock('orange','📦','Peças',
     rpTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint) +
@@ -1011,13 +1028,16 @@ function irGerarRelatorioEmail(){
 
     ${sectionTitle('🛣️','Ruas mais divergentes','todas as ruas, por peças divergentes')}
     <div class="rp-panel"><table class="rp-table">
-      <thead><tr><th>Rua</th><th>Peças divergentes</th><th>Locais divergentes</th><th>Valor divergente</th></tr></thead>
+      <thead><tr><th>Rua</th><th>Peças divergentes</th><th>Locais divergentes</th><th>Valor divergente</th><th>Acurácia Peças</th><th>Acurácia Locais</th><th>Acurácia Valor</th></tr></thead>
       <tbody>${rua.map(r=>`<tr>
         <td>${irEsc(r.chave)}</td>
         <td>${irFmtInt(r.pecasDivergentes)}</td>
         <td>${irFmtInt(r.locaisDivergentes)}</td>
         <td>${irFmtMoney(r.valorDivergenteAbsoluto)}</td>
-      </tr>`).join('') || '<tr><td colspan="4">Sem divergências registradas.</td></tr>'}</tbody>
+        ${rpAcTd(r.acuraciaPecas, ind.meta)}
+        ${rpAcTd(r.acuraciaPosicoes, ind.meta)}
+        ${rpAcTd(r.acuraciaValor, ind.meta)}
+      </tr>`).join('') || '<tr><td colspan="7">Sem divergências registradas.</td></tr>'}</tbody>
     </table></div>
 
     ${sectionTitle('⚖️','Maiores saldos por item','sobra x falta')}
@@ -1049,6 +1069,13 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
   // metade na imagem capturada pelo html2canvas.
   area.style.cssText = 'display:flex; justify-content:center; align-items:flex-start; position:fixed; inset:0; z-index:9999; overflow:auto; background:#F6F7FA;';
   irShowToast('Gerando boletim...');
+  // O zoom da tela (document.body.style.zoom, o controle no canto inferior) é uma
+  // propriedade CSS não padrão que o html2canvas não sabe medir — com ele diferente
+  // de 100% a métrica de texto do canvas saía errada e as palavras vinham coladas,
+  // sem espaço, na imagem capturada. Zera o zoom só durante a captura e restaura
+  // (mesmo em caso de erro) logo depois.
+  const zoomOriginal = document.body.style.zoom;
+  document.body.style.zoom = 1;
   try{
     await new Promise(r=>setTimeout(r, 60)); // deixa o layout assentar antes de capturar
     const alvo = area.querySelector('.rp-page');
@@ -1094,6 +1121,7 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
   }catch(err){
     irShowToast('Erro ao gerar o boletim: '+err.message, true);
   }finally{
+    document.body.style.zoom = zoomOriginal;
     area.style.cssText = '';
     area.innerHTML = '';
   }
@@ -1343,6 +1371,7 @@ function irRenderProdutividade(){
         <input type="checkbox" style="width:auto;" ${IR.prodFilters.incluirAbertura?'checked':''} onchange="irProdToggleAbertura()">
         Incluir contagem de abertura (rodada 1) — exemplo de visualização
       </label>
+      <button class="btn btn-secondary" style="margin-left:auto;" onclick="irCompartilharProdutividade()">📤 Compartilhar produtividade da equipe</button>
     </div>
     ${IR.prodFilters.incluirAbertura ? `<p class="field-hint" style="color:var(--orange);margin:-8px 0 12px;">A rodada 1 (abertura do inventário) está incluída só para pré-visualizar o design — por padrão ela não conta como produtividade real de conferência.</p>` : ''}
     <div class="kpi-grid">
@@ -1370,6 +1399,74 @@ function irRenderProdutividade(){
       </div>`).join('') || '<p class="field-hint">Sem contagens registradas.</p>'}</div>
     </div>
   `;
+}
+/* Tabela da matriz colaborador x hora no formato de imagem (rp-table), pro botão
+   "Compartilhar produtividade" — mesma matriz de irRenderProdMatriz, mas com o
+   markup usado nos exports de imagem (boletim). */
+function irBuildProdMatrizRpTable(p){
+  if(!p.matrizColaboradorHora.length) return '<p style="padding:16px;color:#6B7280;">Nenhuma contagem no período selecionado.</p>';
+  const horaLabel = h => String(h).padStart(2,'0')+'h';
+  const totalPorHora = p.horasOrdenadas.map((h,i)=>p.matrizColaboradorHora.reduce((s,r)=>s+r.porHora[i],0));
+  return `<table class="rp-table rp-table-dense">
+    <thead><tr><th>Colaborador</th>${p.horasOrdenadas.map(h=>`<th>${horaLabel(h)}</th>`).join('')}<th>Locais</th><th>Peças</th></tr></thead>
+    <tbody>
+      ${p.matrizColaboradorHora.map(r=>`<tr>
+        <td>${irEsc(r.usuario.replace(/^MECA_/,''))}</td>
+        ${r.porHora.map(v=>`<td>${v>0?irFmtInt(v):'—'}</td>`).join('')}
+        <td style="font-weight:700;">${irFmtInt(r.total)}</td>
+        <td>${irFmtInt(r.pecas)}</td>
+      </tr>`).join('')}
+      <tr>
+        <td style="font-weight:700;">Total</td>
+        ${totalPorHora.map(v=>`<td style="font-weight:700;">${irFmtInt(v)}</td>`).join('')}
+        <td style="font-weight:700;">${irFmtInt(p.totalLocais)}</td>
+        <td style="font-weight:700;">${irFmtInt(p.totalPecas)}</td>
+      </tr>
+    </tbody>
+  </table>`;
+}
+/* Gera e baixa uma imagem só com a produtividade da equipe (fora do boletim
+   principal) — respeita o mesmo filtro de data/abertura da aba Produtividade. */
+function irCompartilharProdutividade(){
+  const c = IR.cicloAtivo;
+  if(!c){ irShowToast('Sem ciclo ativo.', true); return; }
+  const contagens = irProdContagensFiltradas();
+  const p = irCalcProdutividade(contagens);
+  if(!p.ranking.length){ irShowToast('Sem contagens no período selecionado.', true); return; }
+  const agora = new Date().toLocaleString('pt-BR');
+  const periodoTxt = (IR.prodFilters.de||IR.prodFilters.ate)
+    ? `Período: ${IR.prodFilters.de?irFmtDate(IR.prodFilters.de):'início'} a ${IR.prodFilters.ate?irFmtDate(IR.prodFilters.ate):'hoje'}`
+    : 'Ciclo inteiro';
+  const html = `<div class="rp-page">
+    <div class="rp-hero">
+      <div class="rp-hero-top">
+        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <div class="rp-hero-status">${irEsc(periodoTxt)}</div>
+      </div>
+      <div class="rp-hero-badge">Produtividade da Equipe</div>
+      <h1>${irEsc(irCicloLabel(c))}</h1>
+      <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
+      <div class="rp-hero-meta"><span>Gerado em ${agora}</span></div>
+    </div>
+    <div class="rp-body">
+      <div class="rp-blocks">
+        ${rpBlock('orange','👥','Equipe',
+          rpTile('🧑‍🔧', irFmtInt(p.ranking.length), 'Colaboradores ativos', '', '') +
+          rpTile('📍', irFmtInt(p.totalLocais), 'Locais contados', '', '') +
+          rpTile('📦', irFmtInt(p.totalPecas), 'Peças contadas', '', '')
+        )}
+        ${rpBlock('blue','⚡','Ritmo',
+          rpTile('🔢', irFmtInt(p.totalItens), 'Itens contados', '', '') +
+          rpTile('⏱️', irFmtNum(p.itensPorHomemHora,1), 'Itens / Homem-Hora', '', '') +
+          rpTile('⏱️', irFmtNum(p.pecasPorHomemHora,1), 'Peças / Homem-Hora', '', '')
+        )}
+      </div>
+      ${rpSectionTitle('⏰','Locais por colaborador, hora a hora','janela 06h–22h de expediente')}
+      <div class="rp-panel">${irBuildProdMatrizRpTable(p)}</div>
+      <p class="rp-footer">Gerado automaticamente pelo módulo Inventário Rotativo.</p>
+    </div>
+  </div>`;
+  irBaixarBoletimImagem(html, `Produtividade_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
 }
 
 /* ============================================================
