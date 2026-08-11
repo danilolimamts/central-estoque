@@ -136,7 +136,7 @@ const IR_410_LEGENDA = [
   {id:'ADE', legenda:'Auditorias', considerarNet:true},
   {id:'AIC', legenda:'Inventário de Curvas', considerarNet:true},
   {id:'AIT', legenda:'Inventario de Transitorios', considerarNet:true},
-  {id:'AII', legenda:'Inventário de Insumos', considerarNet:true}
+  {id:'AII', legenda:'Inventário de Insumos', considerarNet:false}
 ];
 // Extrai o código do início de "Observacao WMS" (formato usual "AIR - AJUSTE...", mas
 // nem sempre tem o traço) e casa com a legenda. Sem código (célula vazia) ou código
@@ -569,63 +569,6 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const porRua = agruparPor('x1', '(sem rua)', congeladosSemAir);
   const porLog = agruparPor('grupoClasse', '(sem log)');
 
-  // Detalhe por combinação Log (Grupo Classe) x Rua (X1) x Tipo (Classe Local) — tabela
-  // "NET" pedida pelo usuário, no mesmo formato do relatório de referência dele.
-  const localDatas = new Map(); // idLocal -> {ini, fim} (rodadas físicas, exclui abertura)
-  for(const c of contagens){
-    if(c.idConferencia<=1 || !c.local) continue;
-    const ini = c.dataInicioContagem, fim = c.dataFimContagem || c.dataSituacao;
-    let g = localDatas.get(c.local);
-    if(!g){ g = {ini:null, fim:null}; localDatas.set(c.local, g); }
-    if(ini && (!g.ini || ini<g.ini)) g.ini = ini;
-    if(fim && (!g.fim || fim>g.fim)) g.fim = fim;
-  }
-  function agruparPorLogRuaTipo(){
-    const grupos = new Map();
-    for(const l of congelados){
-      const rua = l.x1 || '(sem rua)', log = l.grupoClasse || '(sem log)', tipo = l.classeLocal || '(sem tipo)';
-      const chave = `${rua} ${log}-${tipo}`;
-      if(!grupos.has(chave)) grupos.set(chave, {rua, log, tipo, chave, locais:[]});
-      grupos.get(chave).locais.push(l);
-    }
-    const hoje = new Date();
-    const prazo = dataPrevistaTermino ? new Date(dataPrevistaTermino) : null;
-    return Array.from(grupos.values()).map(g=>{
-      const locaisDoGrupo = g.locais;
-      const idsGrupo = new Set(locaisDoGrupo.map(l=>l.idLocal));
-      const locaisOrcados = locaisDoGrupo.length;
-      const locaisTotalContados = locaisDoGrupo.filter(l=>locaisContadosSet.has(l.idLocal)).length;
-      const locaisPendentes = locaisOrcados - locaisTotalContados;
-      const pctContado = locaisOrcados>0 ? locaisTotalContados/locaisOrcados : 0;
-      const divsGrupo = divergencias.filter(d=>idsGrupo.has(d.local));
-      const acc = calcAcuraciasSubset(divsGrupo, locaisDoGrupo, locaisTotalContados);
-      let dataInicio = null, dataFim = null;
-      for(const l of locaisDoGrupo){
-        const dd = localDatas.get(l.idLocal);
-        if(!dd) continue;
-        if(dd.ini && (!dataInicio || dd.ini<dataInicio)) dataInicio = dd.ini;
-        if(dd.fim && (!dataFim || dd.fim>dataFim)) dataFim = dd.fim;
-      }
-      let status;
-      if(pctContado>=1) status = (prazo && dataFim && new Date(dataFim)>prazo) ? 'Finalizado Atrasado' : 'Finalizado';
-      else if(locaisTotalContados===0) status = 'Não Iniciado';
-      else status = (prazo && hoje>prazo) ? 'Atrasado' : 'Em Andamento';
-      return {
-        log: g.log, rua: g.rua, tipo: g.tipo, chave: g.chave,
-        dataInicio, dataFim, locais: locaisOrcados,
-        vlTotalContado: acc.vlFisicoTotal, pecasTotalContadas: acc.pecasContadas,
-        locaisTotalContados, locaisPendentes, pctContado,
-        statusFim: status, statusFinal: status,
-        net: acc.valorDivergenteLiquido, netAbs: Math.abs(acc.valorDivergenteLiquido),
-        totalDivValor: acc.valorDivergenteAbsoluto,
-        netPecas: divsGrupo.reduce((s,d)=>s+d.diferenca,0), totalDivPecas: acc.pecasDivergentes,
-        locaisDiv: acc.locaisDivergentes,
-        acuraciaPecas: acc.acuraciaPecas, acuraciaLocais: acc.acuraciaPosicoes, acuraciaValor: acc.acuraciaValor
-      };
-    }).sort((a,b)=>a.chave.localeCompare(b.chave));
-  }
-  const porGrupoNet = agruparPorLogRuaTipo();
-
   // Locais distintos contados por dia. Cada local é contado UMA ÚNICA VEZ, no dia da
   // sua "Data Situação" na rodada final (maior Id Conferência) — esse é o campo que a
   // QRY0843 usa para marcar quando o status do local foi fechado, e é o mesmo critério
@@ -721,7 +664,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade, porRua, porLog, porGrupoNet, contadosPorDia, porDiaRua,
+    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua,
     topItensPositivos, topItensNegativos, topItensPositivosValor, topItensNegativosValor
   };
 }
@@ -743,7 +686,7 @@ async function runPipeline410({buf410}){
   post('progress', {stage:'Processando '+rows410.length+' linha(s) da QRY410...', pct:15});
   const porAno = new Map();
   function getAno(ano){
-    if(!porAno.has(ano)) porAno.set(ano, {porMes:new Map(), porObs:new Map(), porItem:new Map(), totalLinhas:0, linhasExcluidasDeposito21:0});
+    if(!porAno.has(ano)) porAno.set(ano, {porMes:new Map(), porObs:new Map(), porItem:new Map(), porItemMes:new Map(), totalLinhas:0, linhasExcluidasDeposito21:0});
     return porAno.get(ano);
   }
   let processadas = 0;
@@ -784,9 +727,16 @@ async function runPipeline410({buf410}){
     else if(sinal<0) gm.perdas += valor;
 
     const item = String(getVal(row, r410.item)||'').trim();
+    const nomeItem = String(getVal(row, r410.nomeItem)||'').trim();
     if(item){
-      if(!g.porItem.has(item)) g.porItem.set(item, {item, nome:String(getVal(row, r410.nomeItem)||'').trim(), saldoValor:0});
+      if(!g.porItem.has(item)) g.porItem.set(item, {item, nome:nomeItem, saldoValor:0});
       g.porItem.get(item).saldoValor += valor;
+
+      // Item x mês — pra responder "por que o NET desse mês está tão negativo".
+      if(!g.porItemMes.has(mes)) g.porItemMes.set(mes, new Map());
+      const itensDoMes = g.porItemMes.get(mes);
+      if(!itensDoMes.has(item)) itensDoMes.set(item, {item, nome:nomeItem, saldoValor:0});
+      itensDoMes.get(item).saldoValor += valor;
     }
   }
 
@@ -795,14 +745,19 @@ async function runPipeline410({buf410}){
   const resumos = {};
   for(const ano of anos){
     const g = porAno.get(ano);
-    const porMes = Array.from(g.porMes.values()).sort((a,b)=>a.mes.localeCompare(b.mes)).map(m=>({
-      ...m, net: m.ganhos+m.perdas, netAbs: Math.abs(m.ganhos+m.perdas)
-    }));
+    const porMes = Array.from(g.porMes.values()).sort((a,b)=>a.mes.localeCompare(b.mes)).map(m=>{
+      const itensDoMes = Array.from((g.porItemMes.get(m.mes)||new Map()).values());
+      return {
+        ...m, net: m.ganhos+m.perdas, netAbs: Math.abs(m.ganhos+m.perdas),
+        topItensPositivos: itensDoMes.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,20),
+        topItensNegativos: itensDoMes.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,20)
+      };
+    });
     const porObs = Array.from(g.porObs.values()).map(o=>({...o, totalGeral: o.saida+o.entrada}))
       .sort((a,b)=>Math.abs(b.totalGeral)-Math.abs(a.totalGeral));
     const itens = Array.from(g.porItem.values());
-    const topItensPositivos = itens.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,10);
-    const topItensNegativos = itens.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,10);
+    const topItensPositivos = itens.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,20);
+    const topItensNegativos = itens.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,20);
     const totalGanhos = porMes.reduce((s,m)=>s+m.ganhos,0);
     const totalPerdas = porMes.reduce((s,m)=>s+m.perdas,0);
     resumos[ano] = {

@@ -20,7 +20,7 @@ const IR = {
   novoCiclo:false,
   _porDiaRua:{},
   // Perdas e Ganhos (QRY410) — independente do ciclo, por ano.
-  net410Anos:[], net410AnoSel:null, net410Data:null, net410File:null,
+  net410Anos:[], net410AnoSel:null, net410MesSel:null, net410Data:null, net410File:null,
   net410Processing:false, net410Progress:{stage:'', pct:0}
 };
 
@@ -68,6 +68,7 @@ async function irInit(){
     if(IR.net410Anos.length){
       IR.net410AnoSel = IR.net410Anos[0];
       IR.net410Data = await irGetNet410(IR.net410AnoSel);
+      irSetNet410MesDefault();
     }
   }catch(e){ console.error('Falha ao iniciar', e); }
   irSwitchTab('dashboard');
@@ -262,6 +263,7 @@ function irRenderImportacao(){
       }
     </div>
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
+    ${irRenderNet410ImportPanel()}
   `;
 }
 function irRenderUltimoProcessamento(){
@@ -1173,8 +1175,16 @@ async function irSetNet410Ano(ano){
   ano = parseInt(ano, 10);
   IR.net410AnoSel = ano;
   IR.net410Data = await irGetNet410(ano);
+  irSetNet410MesDefault();
   irRenderView();
 }
+// Mês "atual" = o mês mais recente com movimento nos dados importados (não a data de
+// hoje — a QRY410 pode não ter sido atualizada até o mês corrente).
+function irSetNet410MesDefault(){
+  const rows = (IR.net410Data && IR.net410Data.porMes) || [];
+  IR.net410MesSel = rows.length ? rows[rows.length-1].mes : null;
+}
+function irSetNet410Mes(mes){ IR.net410MesSel = mes; irRenderView(); }
 function irProcessar410(){
   if(IR.net410Processing || !IR.net410File) return;
   IR.net410Processing = true; IR.net410Progress = {stage:'Lendo arquivo...', pct:0};
@@ -1195,6 +1205,7 @@ function irProcessar410(){
         IR.net410File = null;
         IR.net410AnoSel = msg.anos[0];
         IR.net410Data = await irGetNet410(IR.net410AnoSel);
+        irSetNet410MesDefault();
         irShowToast('✓ QRY410 processada: '+msg.anos.map(a=>a+'').join(', ')+'.');
         irRenderView();
       }
@@ -1205,9 +1216,10 @@ function irProcessar410(){
     IR.net410Processing=false; irShowToast('Erro ao ler arquivo: '+err.message, true); irRenderView();
   });
 }
-function irRenderNet410Panel(){
-  const d = IR.net410Data;
-  const anos = IR.net410Anos;
+/* Painel de importação da QRY410 — fica na aba Importação (não na NET) pra não mexer
+   no layout do Dashboard/NET com mais um dropzone. Processamento independente do
+   'PROCESSAR CICLO' (ver irProcessar410). */
+function irRenderNet410ImportPanel(){
   const dz = `<div class="dropzone ${IR.net410File?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropFile410(event)">
     <input type="file" id="ir-file-410" accept=".xlsx,.xls" style="display:none" onchange="irOnFile410(this.files[0])">
     <div class="dz-icon">📄</div>
@@ -1219,7 +1231,7 @@ function irRenderNet410Panel(){
   </div>`;
   return `<div class="panel">
     <h3>Perdas e Ganhos no CD (QRY410)</h3>
-    <p class="panel-sub">Independente do ciclo rotativo — organizado por ano, a partir da Data do Movimento. Inventário Rotativo (AIR) é só mais um dos motivos que compõem o NET, junto com auditorias, curvas etc.</p>
+    <p class="field-hint" style="margin-bottom:14px;">Independente do ciclo rotativo — organizado por ano, a partir da Data do Movimento. Não precisa esperar processar um ciclo: importe aqui quando quiser atualizar. O resultado aparece na aba NET.</p>
     <div class="dz-grid" style="grid-template-columns:1fr;max-width:340px;">${dz}</div>
     ${IR.net410Processing ? `
       <div class="progress-wrap">
@@ -1227,14 +1239,23 @@ function irRenderNet410Panel(){
         <div class="progress-track"><div class="progress-fill orange" style="width:${IR.net410Progress.pct}%"></div></div>
       </div>` : IR.net410File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessar410()">PROCESSAR QRY410</button></div>` : ''
     }
-    ${anos.length ? `<div class="two-col" style="margin-top:14px;max-width:340px;">
+    ${IR.net410Anos.length ? `<p class="field-hint" style="margin-top:12px;">Anos já processados: ${IR.net410Anos.join(', ')} — <a href="#" onclick="irSwitchTab('ciclo');return false;">ver na aba NET</a>.</p>` : ''}
+  </div>`;
+}
+function irRenderNet410Panel(){
+  const d = IR.net410Data;
+  const anos = IR.net410Anos;
+  return `<div class="panel">
+    <h3>Perdas e Ganhos no CD (QRY410)</h3>
+    <p class="panel-sub">Independente do ciclo rotativo — organizado por ano. Inventário Rotativo (AIR) é só mais um dos motivos que compõem o NET, junto com auditorias, curvas etc. Importe/atualize a QRY410 na aba Importação.</p>
+    ${anos.length ? `<div class="two-col" style="max-width:340px;">
       <div><label>Ano</label><select onchange="irSetNet410Ano(this.value)">
         ${anos.map(a=>`<option value="${a}" ${a===IR.net410AnoSel?'selected':''}>${a}</option>`).join('')}
       </select></div>
       <div></div>
-    </div>` : ''}
+    </div>` : `<p class="field-hint">Nenhuma QRY410 processada ainda — importe na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a>.</p>`}
   </div>
-  ${d ? irRenderNet410Resultado(d) : (anos.length ? '' : '<div class="panel"><p class="field-hint">Nenhuma QRY410 processada ainda.</p></div>')}`;
+  ${d ? irRenderNet410Resultado(d) : ''}`;
 }
 const IR_MES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 function irRenderNet410Resultado(d){
@@ -1276,27 +1297,50 @@ function irRenderNet410Resultado(d){
         </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);">Sem movimentos no ano</td></tr>'}</tbody>
       </table></div>
     </div>
+    <h3 style="margin:20px 0 -6px;">Itens que mais impactam no ano — ${d.ano}</h3>
     <div class="bi-grid-2">
-      ${irRenderNet410ItensPanel(d, false)}
-      ${irRenderNet410ItensPanel(d, true)}
+      ${irRenderNet410ItensPanel(d.topItensPositivos, false, 'Soma do valor no ano ('+d.ano+'), só motivos considerados pro NET.')}
+      ${irRenderNet410ItensPanel(d.topItensNegativos, true, 'Soma do valor no ano ('+d.ano+'), só motivos considerados pro NET.')}
     </div>
+    ${irRenderNet410ItensMesSection(d)}
   `;
 }
-function irRenderNet410ItensPanel(d, negativos){
-  const items = negativos ? (d.topItensNegativos||[]) : (d.topItensPositivos||[]);
+function irRenderNet410ItensPanel(items, negativos, subtitulo){
+  items = items||[];
   const titulo = negativos ? 'Itens que mais impactam negativamente' : 'Itens que mais impactam positivamente';
   const cls = negativos ? 'neg' : 'pos';
   if(!items.length) return `<div class="panel"><h3>${titulo}</h3><p class="field-hint">Nenhum.</p></div>`;
   const maxAbs = Math.max(1, ...items.map(i=>Math.abs(i.saldoValor)));
   return `<div class="panel">
     <h3>${titulo}</h3>
-    <p class="panel-sub">Soma do valor (${d.ano}), só motivos considerados pro NET.</p>
+    <p class="panel-sub">${irEsc(subtitulo)}</p>
     ${items.map(i=>`<div class="bi-hbar-row bi-hbar-row-money">
       <div class="bi-hbar-label" title="${irEsc(i.nome)}">${irEsc(i.nome||i.item)}</div>
       <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(Math.abs(i.saldoValor)/maxAbs*100)}%;"></div></div>
       <div class="bi-hbar-val">${i.saldoValor>0?'+':''}${irFmtMoney(i.saldoValor)}</div>
     </div>`).join('')}
   </div>`;
+}
+/* "Por que o NET do mês está tão negativo?" — mesmo ranking de itens, mas só do mês
+   selecionado (padrão: o mês mais recente com movimento nos dados importados). */
+function irRenderNet410ItensMesSection(d){
+  const meses = d.porMes||[];
+  if(!meses.length) return '';
+  const mesSel = IR.net410MesSel && meses.some(m=>m.mes===IR.net410MesSel) ? IR.net410MesSel : meses[meses.length-1].mes;
+  const m = meses.find(x=>x.mes===mesSel);
+  const mesLabel = IR_MES_NOMES[parseInt(mesSel.slice(5,7),10)-1]||mesSel;
+  return `
+    <div class="two-col" style="max-width:340px;margin:20px 0 4px;">
+      <div><label>Itens que mais impactam no mês</label><select onchange="irSetNet410Mes(this.value)">
+        ${meses.map(x=>`<option value="${x.mes}" ${x.mes===mesSel?'selected':''}>${irEsc(IR_MES_NOMES[parseInt(x.mes.slice(5,7),10)-1]||x.mes)} (Net: ${irFmtMoney(x.net)})</option>`).join('')}
+      </select></div>
+      <div></div>
+    </div>
+    <div class="bi-grid-2">
+      ${irRenderNet410ItensPanel(m.topItensPositivos, false, 'Soma do valor em '+mesLabel+', só motivos considerados pro NET.')}
+      ${irRenderNet410ItensPanel(m.topItensNegativos, true, 'Soma do valor em '+mesLabel+', só motivos considerados pro NET.')}
+    </div>
+  `;
 }
 /* ============================================================
    GESTÃO DO CICLO
@@ -1306,7 +1350,6 @@ function irRenderNet410ItensPanel(d, negativos){
    ainda serão ajustados conforme o usuário revisar. */
 function irRenderGestaoCiclo(){
   const c = IR.cicloAtivo, ind = IR.indicadores;
-  const grupos = (ind && ind.porGrupoNet) || [];
   const metaRows = ind ? [
     {label:'Acurácia Peças', meta: ind.meta, real: ind.acuraciaPecas},
     {label:'Acurácia Locais', meta: ind.meta, real: ind.acuraciaLocal},
@@ -1352,44 +1395,6 @@ function irRenderGestaoCiclo(){
         </tbody>
       </table></div>
     </div>` : ''}
-    <div class="panel">
-      <h3>NET por Log / Rua / Tipo (${grupos.length})</h3>
-      <p class="panel-sub">Detalhe por combinação de Log, Rua e Tipo de local — status, acurácias e saldo NET de cada grupo.</p>
-      <div class="table-wrap"><table class="table-wide">
-        <thead><tr>
-          <th>Log</th><th>Rua</th><th>Tipo</th><th>Chave</th><th>Data Início</th><th>Data Fim</th>
-          <th>Locais</th><th>Vl Total Contado</th><th>Peças Total Contadas</th><th>Locais Total Contados</th>
-          <th>Locais Pendentes</th><th>% Contado</th><th>Status Fim</th><th>Status Final</th>
-          <th>NET</th><th>NET ABS</th><th>Total Div Valor</th><th>NET Peças</th><th>Total Div Peças</th>
-          <th>Locais Div</th><th>Acurácia Peças</th><th>Acurácia Locais</th><th>Acurácia Valor</th>
-        </tr></thead>
-        <tbody>${grupos.map(g=>`<tr>
-          <td class="mono">${irEsc(g.log)}</td>
-          <td class="mono">${irEsc(g.rua)}</td>
-          <td class="mono">${irEsc(g.tipo)}</td>
-          <td class="mono">${irEsc(g.chave)}</td>
-          <td class="mono">${irFmtDate(g.dataInicio)}</td>
-          <td class="mono">${irFmtDate(g.dataFim)}</td>
-          <td class="mono">${irFmtInt(g.locais)}</td>
-          <td class="mono">${irFmtMoney(g.vlTotalContado)}</td>
-          <td class="mono">${irFmtInt(g.pecasTotalContadas)}</td>
-          <td class="mono">${irFmtInt(g.locaisTotalContados)}</td>
-          <td class="mono">${irFmtInt(g.locaisPendentes)}</td>
-          <td class="mono">${irFmtPct(g.pctContado)}</td>
-          <td><span class="tag">${irEsc(g.statusFim)}</span></td>
-          <td><span class="tag">${irEsc(g.statusFinal)}</span></td>
-          <td class="mono" style="color:${g.net>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtMoney(g.net)}</td>
-          <td class="mono">${irFmtMoney(g.netAbs)}</td>
-          <td class="mono">${irFmtMoney(g.totalDivValor)}</td>
-          <td class="mono" style="color:${g.netPecas>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtInt(g.netPecas)}</td>
-          <td class="mono">${irFmtInt(g.totalDivPecas)}</td>
-          <td class="mono">${irFmtInt(g.locaisDiv)}</td>
-          <td class="mono" style="${irHeatStyle(g.acuraciaPecas, ind ? ind.meta : 1)}">${irFmtPct(g.acuraciaPecas)}</td>
-          <td class="mono" style="${irHeatStyle(g.acuraciaLocais, ind ? ind.meta : 1)}">${irFmtPct(g.acuraciaLocais)}</td>
-          <td class="mono" style="${irHeatStyle(g.acuraciaValor, ind ? ind.meta : 1)}">${irFmtPct(g.acuraciaValor)}</td>
-        </tr>`).join('') || '<tr><td colspan="23" style="text-align:center;color:var(--ink-soft);">Nenhum grupo encontrado</td></tr>'}</tbody>
-      </table></div>
-    </div>
     ${irRenderNet410Panel()}
   `;
 }
