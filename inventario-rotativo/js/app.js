@@ -80,7 +80,17 @@ async function irLoadCicloData(cicloId){
   IR.locais = await irGetByCiclo(IR_STORES.locais, cicloId);
   IR.contagens = await irGetByCiclo(IR_STORES.contagens, cicloId);
 }
-function irToggleSidebar(){ document.getElementById('sidebar').classList.toggle('collapsed'); }
+const IR_MOBILE_QUERY = '(max-width:820px)';
+// No mobile o menu é um overlay (aberto/fechado); no desktop é o modo compacto de 56px.
+// Cada um usa sua própria classe pra não haver estado intermediário entre os dois.
+function irToggleSidebar(){
+  const el = document.getElementById('sidebar');
+  if(matchMedia(IR_MOBILE_QUERY).matches) el.classList.toggle('mobile-open');
+  else el.classList.toggle('collapsed');
+}
+function irCloseSidebarMobile(){
+  if(matchMedia(IR_MOBILE_QUERY).matches) document.getElementById('sidebar').classList.remove('mobile-open');
+}
 function irToggleTheme(){
   const cur = document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
   const next = cur==='dark' ? 'light' : 'dark';
@@ -137,6 +147,7 @@ function irSwitchTab(tab){
   document.getElementById('tabSubtitle').textContent = sub;
   irRenderCycleBadge();
   irRenderView();
+  irCloseSidebarMobile();
 }
 function irRenderCycleBadge(){
   const badge = document.getElementById('cycleBadge');
@@ -429,11 +440,11 @@ const IR_INDICADORES_VERSION = 7; // mantido em sincronia com worker.js
    a Produtividade responde a data — os demais KPIs/gráficos são do ciclo inteiro). */
 function irRenderDashFilterBar(){
   const ordenados = IR.ciclos.slice().sort((a,b)=>b.numero-a.numero);
-  const cicloSelect = IR.ciclos.length>1
-    ? `<select id="dashCicloSelect" onchange="irFiltrarCiclo(this.value)">
-        ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id?'selected':''}>${irEsc(irCicloLabel(c))} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
-      </select>`
-    : `<span class="dash-filter-static">${irEsc(irCicloLabel(IR.cicloAtivo))}</span>`;
+  // Sempre em dropdown, mesmo com um único ciclo — facilita quando novos ciclos forem
+  // processados (não precisa a lista "aparecer" de repente, já fica pronta).
+  const cicloSelect = `<select id="dashCicloSelect" onchange="irFiltrarCiclo(this.value)">
+    ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id?'selected':''}>${irEsc(irCicloLabel(c))} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
+  </select>`;
   return `<div class="panel dash-filter-bar">
     <div class="dash-filter-group">
       <label>Ciclo</label>
@@ -455,6 +466,7 @@ function irRenderDashFilterBar(){
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
+  const itemSaldo = irCalcItemSaldo(IR.divergencias);
   // Cada bloco tem sempre 3 bullets, no mesmo formato: ícone + acurácia (com meta),
   // + volume principal, + divergência/pendência. Os demais indicadores (itens
   // divergentes, recontagens, tempo médio etc.) continuam na aba Indicadores.
@@ -497,8 +509,8 @@ function irRenderDashboard(){
       ${irRenderContadosPorDiaPanel(ind)}
     </div>
     <div class="bi-grid-2">
-      ${irRenderTopItensPanel(ind, 'pecas')}
-      ${irRenderTopItensPanel(ind, 'valor')}
+      ${irRenderTopItensPanel(itemSaldo, 'pecas')}
+      ${irRenderTopItensPanel(itemSaldo, 'valor')}
     </div>
     ${irRenderLogTablePanel(ind)}
     ${irRenderCalendarioPanel(ind)}
@@ -902,10 +914,30 @@ function irRenderRuasMaisDivergentesPanel(ind){
     </table></div>
   </div>`;
 }
-function irRenderTopItensPanel(ind, kind){
+// Calcula o saldo líquido por item (peças e valor) direto das divergências carregadas
+// do ciclo ativo — não depende de campos cacheados nos indicadores, então funciona
+// mesmo em ciclos processados antes desses campos existirem (sem precisar reprocessar).
+function irCalcItemSaldo(divergencias){
+  const map = new Map();
+  for(const d of divergencias||[]){
+    if(d.diferenca===0) continue;
+    let g = map.get(d.item);
+    if(!g){ g = {item:d.item, descricao:d.itemNome, saldoQtd:0, saldoValor:0}; map.set(d.item, g); }
+    g.saldoQtd += d.diferenca;
+    g.saldoValor += d.vlDivergencia;
+  }
+  const itens = Array.from(map.values());
+  return {
+    topItensPositivos: itens.filter(i=>i.saldoQtd>0).sort((a,b)=>b.saldoQtd-a.saldoQtd).slice(0,10),
+    topItensNegativos: itens.filter(i=>i.saldoQtd<0).sort((a,b)=>a.saldoQtd-b.saldoQtd).slice(0,10),
+    topItensPositivosValor: itens.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,10),
+    topItensNegativosValor: itens.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,10)
+  };
+}
+function irRenderTopItensPanel(saldo, kind){
   const isValor = kind==='valor';
-  const pos = (isValor ? ind.topItensPositivosValor : ind.topItensPositivos) || [];
-  const neg = (isValor ? ind.topItensNegativosValor : ind.topItensNegativos) || [];
+  const pos = (isValor ? saldo.topItensPositivosValor : saldo.topItensPositivos) || [];
+  const neg = (isValor ? saldo.topItensNegativosValor : saldo.topItensNegativos) || [];
   const titulo = isValor ? 'Itens mais Divergentes (Valor)' : 'Itens mais Divergentes (Peças)';
   const fmt = isValor ? irFmtMoney : irFmtInt;
   const getVal = i => isValor ? i.saldoValor : i.saldoQtd;
@@ -977,10 +1009,11 @@ function irGerarRelatorioEmail(){
   );
 
   const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes);
-  const topPos = (ind.topItensPositivos||[]).slice(0,5);
-  const topNeg = (ind.topItensNegativos||[]).slice(0,5);
-  const topPosValor = (ind.topItensPositivosValor||[]).slice(0,5);
-  const topNegValor = (ind.topItensNegativosValor||[]).slice(0,5);
+  const itemSaldo = irCalcItemSaldo(IR.divergencias);
+  const topPos = itemSaldo.topItensPositivos.slice(0,5);
+  const topNeg = itemSaldo.topItensNegativos.slice(0,5);
+  const topPosValor = itemSaldo.topItensPositivosValor.slice(0,5);
+  const topNegValor = itemSaldo.topItensNegativosValor.slice(0,5);
   const rowsLog = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
   const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
