@@ -164,9 +164,13 @@ button{ font-family:inherit; cursor:pointer; }
 
 .mobile-menu-btn{ display:none; background:none; border:none; color:var(--ink); padding:6px; margin-right:2px; }
 .sidebar-backdrop{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:39; }
-@media(max-width:820px){
+/* Breakpoint baixo de propósito (celular, não "janela de desktop estreita") — uma
+   janela de desktop redimensionada continua com o menu normal (230px / 56px
+   recolhido, sempre visível), só telas de celular viram overlay 0/100%. Isso evita
+   o menu "sumir" quando alguém só redimensiona a janela no computador. */
+@media(max-width:640px){
   /* !important pra não depender de empate de especificidade com .sidebar.collapsed —
-     no mobile o menu é um overlay que fica ou 100% fechado (largura 0) ou 100% aberto,
+     no celular o menu é um overlay que fica ou 100% fechado (largura 0) ou 100% aberto,
      nunca no meio-termo de 56px do modo "collapsed" do desktop. */
   .sidebar{ position:fixed; z-index:40; height:100%; width:0 !important; box-shadow:0 0 0 rgba(0,0,0,0); transition:width .18s, box-shadow .18s; }
   .sidebar.mobile-open{ width:230px !important; box-shadow:4px 0 24px rgba(0,0,0,.25); }
