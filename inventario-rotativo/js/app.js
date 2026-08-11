@@ -80,7 +80,7 @@ async function irLoadCicloData(cicloId){
   IR.locais = await irGetByCiclo(IR_STORES.locais, cicloId);
   IR.contagens = await irGetByCiclo(IR_STORES.contagens, cicloId);
 }
-const IR_MOBILE_QUERY = '(max-width:820px)';
+const IR_MOBILE_QUERY = '(max-width:640px)'; // precisa bater com o breakpoint do CSS (theme.css)
 // No mobile o menu é um overlay (aberto/fechado); no desktop é o modo compacto de 56px.
 // Cada um usa sua própria classe pra não haver estado intermediário entre os dois.
 function irToggleSidebar(){
