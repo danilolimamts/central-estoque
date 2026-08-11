@@ -15,6 +15,7 @@ const IR = {
   divFilters:{search:'', local:''},
   auditFilters:{minPrioridade:0},
   prodFilters:{de:'', ate:''},
+  dashFilters:{applyProdDate:true},
   compararA:null, compararB:null,
   novoCiclo:false,
   _porDiaRua:{}
@@ -405,6 +406,34 @@ function irKpiBlock(theme, icon, title, tilesHtml){
   </div>`;
 }
 const IR_INDICADORES_VERSION = 5; // mantido em sincronia com worker.js
+/* Barra de filtros do Dashboard, no estilo Power BI: ciclo + período de data num só
+   lugar, com um chip pra escolher em quais painéis o filtro de data se aplica (hoje só
+   a Produtividade responde a data — os demais KPIs/gráficos são do ciclo inteiro). */
+function irRenderDashFilterBar(){
+  const ordenados = IR.ciclos.slice().sort((a,b)=>b.numero-a.numero);
+  const cicloSelect = IR.ciclos.length>1
+    ? `<select id="dashCicloSelect" onchange="irFiltrarCiclo(this.value)">
+        ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id?'selected':''}>${irEsc(irCicloLabel(c))} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
+      </select>`
+    : `<span class="dash-filter-static">${irEsc(irCicloLabel(IR.cicloAtivo))}</span>`;
+  return `<div class="panel dash-filter-bar">
+    <div class="dash-filter-group">
+      <label>Ciclo</label>
+      ${cicloSelect}
+    </div>
+    <div class="dash-filter-group">
+      <label>Período</label>
+      <input type="date" value="${irEsc(IR.prodFilters.de)}" onchange="irProdSetFilter('de', this.value)">
+      <span class="dash-filter-sep">–</span>
+      <input type="date" value="${irEsc(IR.prodFilters.ate)}" onchange="irProdSetFilter('ate', this.value)">
+      ${(IR.prodFilters.de||IR.prodFilters.ate) ? `<button class="btn-link" onclick="irProdSetFilter('de','');IR.prodFilters.ate='';irRenderView();">Limpar</button>` : ''}
+    </div>
+    <div class="dash-filter-group dash-filter-scope">
+      <label>Aplicar período em</label>
+      <button type="button" class="dash-filter-chip ${IR.dashFilters.applyProdDate?'active':''}" onclick="irToggleDashDateScope('applyProdDate')">Produtividade</button>
+    </div>
+  </div>`;
+}
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
@@ -433,6 +462,7 @@ function irRenderDashboard(){
     irKpiTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
   );
   return `
+    ${irRenderDashFilterBar()}
     <div class="form-actions" style="margin:0 0 12px;">
       <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>
@@ -583,15 +613,19 @@ function irRenderPorLogPanel(ind){
     <p class="panel-sub">Grupo Classe da base congelada · barras e percentuais: peças / posições / valores. Passe o mouse para ver os detalhes.</p>
     <div class="bi-vbars">
       ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
-        <div class="bi-vbar-pcts">
-          <span class="mono" style="color:var(--blue);">${irFmtPct(r.acuraciaPecas)}</span>
-          <span class="mono" style="color:var(--orange);">${irFmtPct(r.acuraciaPosicoes)}</span>
-          <span class="mono" style="color:var(--blue-soft);">${irFmtPct(r.acuraciaValor)}</span>
-        </div>
         <div class="bi-cluster" style="height:100px;">
-          <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}%;"></div>
-          <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}%;"></div>
-          <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}%;background:var(--blue-soft);"></div>
+          <div class="bi-cluster-bar">
+            <div class="bi-cluster-val mono" style="color:var(--blue);">${irFmtPct(r.acuraciaPecas)}</div>
+            <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}px;"></div>
+          </div>
+          <div class="bi-cluster-bar">
+            <div class="bi-cluster-val mono" style="color:var(--orange);">${irFmtPct(r.acuraciaPosicoes)}</div>
+            <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}px;"></div>
+          </div>
+          <div class="bi-cluster-bar">
+            <div class="bi-cluster-val mono" style="color:var(--blue-soft);">${irFmtPct(r.acuraciaValor)}</div>
+            <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}px;background:var(--blue-soft);"></div>
+          </div>
         </div>
         <div class="bi-vbar-label">${irEsc(r.chave)}</div>
       </div>`).join('')}
@@ -698,13 +732,8 @@ function irRenderSaudeEstoquePanel(ind){
   return `<div class="panel">
     <h3>Saúde do Estoque</h3>
     <p class="panel-sub">Média entre Acurácia Peças, Local e Valor — visão rápida da saúde geral do ciclo. Meta: ${irFmtPct(ind.meta)}.</p>
-    <div class="gauge-row">
-      ${irGaugeSvg(saude, {color:cor, label:statusTxt})}
-      <div class="gauge-legend">
-        <div class="gauge-legend-item"><span class="dot" style="background:var(--success);"></span>Saudável — a partir de ${irFmtPct(ind.meta)}</div>
-        <div class="gauge-legend-item"><span class="dot" style="background:var(--orange);"></span>Atenção — até 10 p.p. abaixo da meta</div>
-        <div class="gauge-legend-item"><span class="dot" style="background:var(--danger);"></span>Crítico — mais de 10 p.p. abaixo da meta</div>
-      </div>
+    <div class="gauge-row gauge-row-solo">
+      ${irGaugeSvg(saude, {color:cor, label:statusTxt, size:300})}
     </div>
   </div>`;
 }
@@ -1020,12 +1049,19 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
   // Cobre a tela inteira (em vez de posicionar fora da viewport, que causava o
   // html2canvas "vazar" pedaços do menu/sidebar na imagem capturada) — assim a
   // captura fica isolada, só com o conteúdo do boletim.
-  area.style.cssText = 'display:flex; justify-content:center; position:fixed; inset:0; z-index:9999; overflow:auto; background:#F6F7FA;';
+  // align-items:flex-start é essencial aqui: sem isso, o align-items:stretch padrão do
+  // flex esticava (e limitava) a altura do .rp-page à viewport, cortando o boletim pela
+  // metade na imagem capturada pelo html2canvas.
+  area.style.cssText = 'display:flex; justify-content:center; align-items:flex-start; position:fixed; inset:0; z-index:9999; overflow:auto; background:#F6F7FA;';
   irShowToast('Gerando boletim...');
   try{
     await new Promise(r=>setTimeout(r, 60)); // deixa o layout assentar antes de capturar
     const alvo = area.querySelector('.rp-page');
-    const canvas = await html2canvas(alvo, {backgroundColor:'#F6F7FA', scale:3, useCORS:true});
+    const canvas = await html2canvas(alvo, {
+      backgroundColor:'#F6F7FA', scale:3, useCORS:true,
+      width: alvo.scrollWidth, height: alvo.scrollHeight,
+      windowWidth: alvo.scrollWidth, windowHeight: alvo.scrollHeight
+    });
     const blob = await new Promise(resolve=>canvas.toBlob(resolve, 'image/png'));
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1142,21 +1178,14 @@ async function irEncerrarCiclo(){
    IR.prodFilters com a aba Produtividade completa), KPIs resumidos e top 5 do ranking —
    pensada pra caber numa tela só e servir de print rápido pro grupo. */
 function irRenderDashProdutividade(){
-  const contagens = irProdContagensFiltradas();
+  const contagens = irProdContagensBase(IR.dashFilters.applyProdDate);
   const p = irCalcProdutividade(contagens);
   const maxLocais = Math.max(1, ...p.ranking.map(r=>r.locais));
-  const top5 = p.ranking.slice(0,5);
+  const top8 = p.ranking.slice(0,8);
   return `<div class="panel">
     <h3>Produtividade</h3>
-    <p class="panel-sub">Resumo dos colaboradores no período — use o filtro pra fechar o report do dia.</p>
-    <div class="filter-bar" style="margin-bottom:12px;">
-      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">De</label>
-      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.de)}" onchange="irProdSetFilter('de', this.value)">
-      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">Até</label>
-      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.ate)}" onchange="irProdSetFilter('ate', this.value)">
-      ${(IR.prodFilters.de||IR.prodFilters.ate) ? `<button class="btn-link" onclick="irProdSetFilter('de','');IR.prodFilters.ate='';irRenderView();">Limpar</button>` : ''}
-      <button class="btn-link" onclick="irSwitchTab('produtividade')" style="margin-left:auto;">Ver produtividade completa →</button>
-    </div>
+    <p class="panel-sub">Resumo dos colaboradores${IR.dashFilters.applyProdDate ? ' no período selecionado acima' : ' (filtro de data desativado pra este painel)'}.</p>
+    <div class="form-actions" style="margin:-6px 0 12px;"><button class="btn-link" onclick="irSwitchTab('produtividade')">Ver produtividade completa →</button></div>
     <div class="kpi-grid" style="margin-bottom:14px;">
       <div class="kpi-card"><div class="num mono">${p.ranking.length}</div><div class="label">Colaboradores ativos</div></div>
       <div class="kpi-card orange"><div class="num mono">${irFmtInt(p.totalLocais)}</div><div class="label">Locais contados</div></div>
@@ -1164,13 +1193,13 @@ function irRenderDashProdutividade(){
       <div class="kpi-card"><div class="num mono">${irFmtInt(p.totalPecas)}</div><div class="label">Peças contadas</div></div>
       <div class="kpi-card"><div class="num mono">${irFmtNum(p.itensPorHomemHora,1)}</div><div class="label">Itens / Homem-Hora</div></div>
     </div>
-    <div class="rank-list">${top5.map((r,i)=>`<div class="rank-item">
-      <span class="rank-pos">${i+1}</span>
-      <div class="rank-bar-wrap">
-        <div class="rank-key"><span>${irEsc(r.usuario)}</span><span class="mono">${r.locais} locais · ${r.itens} itens</span></div>
-        <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${(r.locais/maxLocais*100).toFixed(0)}%;"></div></div>
-      </div>
-    </div>`).join('') || '<p class="field-hint">Sem contagens registradas no período.</p>'}</div>
+    ${top8.length ? `<div class="bi-vbars" style="height:130px;">
+      ${top8.map(r=>`<div class="bi-vbar-col" title="${irEsc(r.usuario)}: ${r.locais} locais, ${r.itens} itens">
+        <div class="bi-vbar-val mono">${irFmtInt(r.locais)}</div>
+        <div class="bi-vbar orange" style="height:${Math.round(r.locais/maxLocais*100)}%;"></div>
+        <div class="bi-vbar-label">${irEsc(r.usuario.replace(/^MECA_/,''))}</div>
+      </div>`).join('')}
+    </div>` : '<p class="field-hint">Sem contagens registradas no período.</p>'}
   </div>`;
 }
 /* ============================================================
@@ -1178,16 +1207,19 @@ function irRenderDashProdutividade(){
    ============================================================ */
 function irProdSetFilter(key, val){ IR.prodFilters[key] = val; irRenderView(); }
 function irProdToggleAbertura(){ IR.prodFilters.incluirAbertura = !IR.prodFilters.incluirAbertura; irRenderView(); }
-function irProdContagensFiltradas(){
+function irToggleDashDateScope(key){ IR.dashFilters[key] = !IR.dashFilters[key]; irRenderView(); }
+function irProdContagensBase(applyDate){
   const {de, ate, incluirAbertura} = IR.prodFilters;
   return IR.contagens.filter(c=>{
     if((incluirAbertura ? c.idConferencia<1 : c.idConferencia<=1) || !c.usuario || !c.dataInicioContagem) return false;
+    if(!applyDate) return true;
     const dia = c.dataInicioContagem.slice(0,10);
     if(de && dia<de) return false;
     if(ate && dia>ate) return false;
     return true;
   });
 }
+function irProdContagensFiltradas(){ return irProdContagensBase(true); }
 const IR_HORA_INICIO = 6;  // 06:00 — início do expediente de inventário
 const IR_HORA_FIM = 21;    // último bloco de hora do expediente (21:00–22:00)
 /* Calcula ranking, matriz colaborador x hora e homem-hora a partir de um conjunto de
