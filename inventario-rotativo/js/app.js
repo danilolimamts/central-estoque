@@ -197,7 +197,7 @@ const IR_FILE_TYPES = [
   // de indicador — não faz sentido travar o processamento do ciclo esperando por ela.
   {key:'f390', label:'QRY0390', desc:'Estoque por Local (opcional)', pattern:/0390/i, optional:true},
   {key:'f843', label:'QRY0843', desc:'Produtividade (peças, locais, itens e divergências)', pattern:/0843/i},
-  {key:'fCong', label:'Base Congelada', desc:'Locais congelados do ciclo (planilha manual)', pattern:/congelad/i},
+  {key:'fCong', label:'Base Congelada', desc:'Locais congelados do ciclo (planilha manual)', pattern:/congelad|espelho/i},
   {key:'f278', label:'SIGEQ278', desc:'Preço de custo/compra por item', pattern:/278/i},
   {key:'f051', label:'ZBIQ0051', desc:'Item pai x componente (kits/múltiplos), S/N de valoração', pattern:/0051|zbiq/i}
 ];
