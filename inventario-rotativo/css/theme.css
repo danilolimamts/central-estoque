@@ -538,5 +538,10 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .rp-table td{ padding:8px 12px; border-bottom:1px solid #EEF0F4; }
 .rp-table tr:last-child td{ border-bottom:none; }
 .rp-table td.good{ color:#1F8A52; font-weight:700; } .rp-table td.bad{ color:#C0392B; font-weight:700; }
+/* Tabela com muitas colunas (matriz de produtividade hora a hora) — células mais
+   estreitas pra caber as 16 colunas de hora dentro da largura fixa do boletim. */
+.rp-table-dense{ font-size:9.5px; }
+.rp-table-dense th, .rp-table-dense td{ padding:6px 5px; text-align:center; white-space:nowrap; }
+.rp-table-dense th:first-child, .rp-table-dense td:first-child{ text-align:left; }
 .rp-cols2{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 .rp-footer{ margin-top:28px; padding:14px 16px 0; border-top:1px solid #E4E7EE; font-size:9.5px; color:#9AA1B4; text-align:center; }
