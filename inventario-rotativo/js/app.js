@@ -48,6 +48,8 @@ function irEmptyState(title, desc, onclickFn, btnLabel){
 async function irInit(){
   const savedTheme = localStorage.getItem('ir-theme');
   if(savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+  const savedAppTheme = localStorage.getItem('ir-app-theme');
+  if(savedAppTheme && savedAppTheme!=='padrao') document.documentElement.setAttribute('data-app-theme', savedAppTheme);
   irUpdateThemeLabel();
   irApplyZoom(parseInt(localStorage.getItem('ir-zoom'), 10) || 100);
 
@@ -76,6 +78,18 @@ function irToggleTheme(){
   localStorage.setItem('ir-theme', next);
   irUpdateThemeLabel();
 }
+const IR_APP_THEMES = [
+  {key:'padrao', label:'Padrão (Loja do Mecânico)', swatch:'linear-gradient(90deg,#001A72,#FA4616)'},
+  {key:'aurora', label:'Aurora Glass', swatch:'linear-gradient(90deg,#4B3F9E,#12B4D6)'},
+  {key:'ember', label:'Ember Flow', swatch:'linear-gradient(90deg,#241209,#FF6A00)'},
+  {key:'carbon', label:'Carbon Red', swatch:'linear-gradient(90deg,#1A1A1C,#E0142C)'}
+];
+function irSetAppTheme(theme){
+  if(theme==='padrao') document.documentElement.removeAttribute('data-app-theme');
+  else document.documentElement.setAttribute('data-app-theme', theme);
+  localStorage.setItem('ir-app-theme', theme);
+  irRenderView();
+}
 function irUpdateThemeLabel(){
   const cur = document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
   const label = document.getElementById('themeToggleLabel');
@@ -96,6 +110,7 @@ const IR_TAB_LABELS = {
   dashboard:['Dashboard Executivo','Visão geral do ciclo ativo.'],
   ciclo:['Gestão do Ciclo','Locais congelados, andamento e encerramento do ciclo.'],
   produtividade:['Produtividade','Ranking e desempenho dos colaboradores.'],
+  setores:['Setores','Resumo por setor (rua) e ruas mais divergentes.'],
   divergencias:['Divergências','Itens com saldo final diferente do sistêmico.'],
   auditoria:['Auditoria Inteligente','Fila priorizada automaticamente para conferência.'],
   historico:['Histórico','Linha do tempo de todos os ciclos.'],
@@ -143,6 +158,7 @@ function irRenderView(){
   }
   const renderers = {
     dashboard: irRenderDashboard, ciclo: irRenderGestaoCiclo, produtividade: irRenderProdutividade,
+    setores: irRenderSetores,
     divergencias: irRenderDivergencias, auditoria: irRenderAuditoria, historico: irRenderHistorico,
     comparativo: irRenderComparativo, indicadores: irRenderIndicadores,
     importacao: irRenderImportacao, configuracoes: irRenderConfiguracoes
@@ -423,14 +439,15 @@ function irRenderDashboard(){
     <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
-    ${irRenderSaudeEstoquePanel(ind)}
-    ${irRenderStatusInventarioPanel(ind)}
-    ${irRenderPorRuaPanel(ind)}
+    <div class="bi-grid-2">
+      ${irRenderSaudeEstoquePanel(ind)}
+      ${irRenderStatusInventarioPanel(ind)}
+    </div>
+    ${irRenderDashProdutividade()}
     <div class="bi-grid-2">
       ${irRenderPorLogPanel(ind)}
       ${irRenderContadosPorDiaPanel(ind)}
     </div>
-    ${irRenderRuasMaisDivergentesPanel(ind)}
     ${irRenderTopItensPanel(ind)}
     ${irRenderLogTablePanel(ind)}
     ${irRenderCalendarioPanel(ind)}
@@ -518,6 +535,17 @@ function irHeatStyle(val, meta){
   const t = Math.max(0, Math.min(1, meta>0 ? val/meta : val));
   const r = Math.round(200 + (31-200)*t), g = Math.round(56 + (138-56)*t), b = Math.round(18 + (82-18)*t);
   return `background:rgba(${r},${g},${b},.14); color:rgb(${r},${g},${b});`;
+}
+/* ============================================================
+   SETORES (Resumo por Setor + Ruas mais divergentes)
+   ============================================================ */
+function irRenderSetores(){
+  const ind = IR.indicadores;
+  if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
+  return `
+    ${irRenderPorRuaPanel(ind)}
+    ${irRenderRuasMaisDivergentesPanel(ind)}
+  `;
 }
 function irRenderPorRuaPanel(ind){
   const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>a.chave.localeCompare(b.chave));
@@ -1110,6 +1138,41 @@ async function irEncerrarCiclo(){
   irRenderView();
 }
 
+/* Versão condensada da Produtividade pro Dashboard: mesmo filtro de data (compartilha
+   IR.prodFilters com a aba Produtividade completa), KPIs resumidos e top 5 do ranking —
+   pensada pra caber numa tela só e servir de print rápido pro grupo. */
+function irRenderDashProdutividade(){
+  const contagens = irProdContagensFiltradas();
+  const p = irCalcProdutividade(contagens);
+  const maxLocais = Math.max(1, ...p.ranking.map(r=>r.locais));
+  const top5 = p.ranking.slice(0,5);
+  return `<div class="panel">
+    <h3>Produtividade</h3>
+    <p class="panel-sub">Resumo dos colaboradores no período — use o filtro pra fechar o report do dia.</p>
+    <div class="filter-bar" style="margin-bottom:12px;">
+      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">De</label>
+      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.de)}" onchange="irProdSetFilter('de', this.value)">
+      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">Até</label>
+      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.ate)}" onchange="irProdSetFilter('ate', this.value)">
+      ${(IR.prodFilters.de||IR.prodFilters.ate) ? `<button class="btn-link" onclick="irProdSetFilter('de','');IR.prodFilters.ate='';irRenderView();">Limpar</button>` : ''}
+      <button class="btn-link" onclick="irSwitchTab('produtividade')" style="margin-left:auto;">Ver produtividade completa →</button>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:14px;">
+      <div class="kpi-card"><div class="num mono">${p.ranking.length}</div><div class="label">Colaboradores ativos</div></div>
+      <div class="kpi-card orange"><div class="num mono">${irFmtInt(p.totalLocais)}</div><div class="label">Locais contados</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(p.totalItens)}</div><div class="label">Itens contados</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(p.totalPecas)}</div><div class="label">Peças contadas</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(p.itensPorHomemHora,1)}</div><div class="label">Itens / Homem-Hora</div></div>
+    </div>
+    <div class="rank-list">${top5.map((r,i)=>`<div class="rank-item">
+      <span class="rank-pos">${i+1}</span>
+      <div class="rank-bar-wrap">
+        <div class="rank-key"><span>${irEsc(r.usuario)}</span><span class="mono">${r.locais} locais · ${r.itens} itens</span></div>
+        <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${(r.locais/maxLocais*100).toFixed(0)}%;"></div></div>
+      </div>
+    </div>`).join('') || '<p class="field-hint">Sem contagens registradas no período.</p>'}</div>
+  </div>`;
+}
 /* ============================================================
    PRODUTIVIDADE
    ============================================================ */
@@ -1491,7 +1554,20 @@ function irRenderIndicadores(){
 function irRenderConfiguracoes(){
   const p = IR.prioridadeConfig || {valor:0.5, quantidade:0.2, recontagens:0.15, reincidencia:0.15};
   const soma = p.valor+p.quantidade+p.recontagens+p.reincidencia;
-  return `<div class="panel">
+  const temaAtivo = localStorage.getItem('ir-app-theme') || 'padrao';
+  return `
+  <div class="panel">
+    <h3>Aparência — Tema visual</h3>
+    <p class="field-hint" style="margin-bottom:14px;">Experimente os temas e escolha o que preferir — o modo claro/escuro (botão no rodapé do menu) continua funcionando dentro de qualquer um deles.</p>
+    <div class="theme-picker-grid">
+      ${IR_APP_THEMES.map(t=>`<button type="button" class="theme-picker-card ${temaAtivo===t.key?'active':''}" onclick="irSetAppTheme('${t.key}')">
+        <span class="theme-picker-swatch" style="background:${t.swatch};"></span>
+        <span class="theme-picker-label">${irEsc(t.label)}</span>
+        ${temaAtivo===t.key ? '<span class="theme-picker-check">✓</span>' : ''}
+      </button>`).join('')}
+    </div>
+  </div>
+  <div class="panel">
     <h3>Índice de Prioridade de Auditoria — pesos</h3>
     <p class="field-hint" style="margin-bottom:12px;">A soma deve ficar em 100%. Ajuste e salve para recalcular a prioridade no próximo processamento.</p>
     <div class="two-col">
