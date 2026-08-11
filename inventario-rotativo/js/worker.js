@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 5;
+const IR_INDICADORES_VERSION = 6;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -471,7 +471,8 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
       itensContados: divs.length,
       locaisDivergentes: locaisComDivergencia.size,
       valorDivergenteLiquido: divs.reduce((s,d)=>s+d.vlDivergencia,0),
-      valorDivergenteAbsoluto: totalVlDivergenciaAbs
+      valorDivergenteAbsoluto: totalVlDivergenciaAbs,
+      vlFisicoTotal: totalVlFisico
     };
   }
   function agruparPor(campo, rotuloVazio, baseCongelados){
@@ -499,6 +500,63 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const congeladosSemAir = congelados.filter(l=>l.x1!=='AIR');
   const porRua = agruparPor('x1', '(sem rua)', congeladosSemAir);
   const porLog = agruparPor('grupoClasse', '(sem log)');
+
+  // Detalhe por combinação Log (Grupo Classe) x Rua (X1) x Tipo (Classe Local) — tabela
+  // "NET" pedida pelo usuário, no mesmo formato do relatório de referência dele.
+  const localDatas = new Map(); // idLocal -> {ini, fim} (rodadas físicas, exclui abertura)
+  for(const c of contagens){
+    if(c.idConferencia<=1 || !c.local) continue;
+    const ini = c.dataInicioContagem, fim = c.dataFimContagem || c.dataSituacao;
+    let g = localDatas.get(c.local);
+    if(!g){ g = {ini:null, fim:null}; localDatas.set(c.local, g); }
+    if(ini && (!g.ini || ini<g.ini)) g.ini = ini;
+    if(fim && (!g.fim || fim>g.fim)) g.fim = fim;
+  }
+  function agruparPorLogRuaTipo(){
+    const grupos = new Map();
+    for(const l of congelados){
+      const rua = l.x1 || '(sem rua)', log = l.grupoClasse || '(sem log)', tipo = l.classeLocal || '(sem tipo)';
+      const chave = `${rua} ${log}-${tipo}`;
+      if(!grupos.has(chave)) grupos.set(chave, {rua, log, tipo, chave, locais:[]});
+      grupos.get(chave).locais.push(l);
+    }
+    const hoje = new Date();
+    const prazo = dataPrevistaTermino ? new Date(dataPrevistaTermino) : null;
+    return Array.from(grupos.values()).map(g=>{
+      const locaisDoGrupo = g.locais;
+      const idsGrupo = new Set(locaisDoGrupo.map(l=>l.idLocal));
+      const locaisOrcados = locaisDoGrupo.length;
+      const locaisTotalContados = locaisDoGrupo.filter(l=>locaisContadosSet.has(l.idLocal)).length;
+      const locaisPendentes = locaisOrcados - locaisTotalContados;
+      const pctContado = locaisOrcados>0 ? locaisTotalContados/locaisOrcados : 0;
+      const divsGrupo = divergencias.filter(d=>idsGrupo.has(d.local));
+      const acc = calcAcuraciasSubset(divsGrupo, locaisDoGrupo, locaisTotalContados);
+      let dataInicio = null, dataFim = null;
+      for(const l of locaisDoGrupo){
+        const dd = localDatas.get(l.idLocal);
+        if(!dd) continue;
+        if(dd.ini && (!dataInicio || dd.ini<dataInicio)) dataInicio = dd.ini;
+        if(dd.fim && (!dataFim || dd.fim>dataFim)) dataFim = dd.fim;
+      }
+      let status;
+      if(pctContado>=1) status = (prazo && dataFim && new Date(dataFim)>prazo) ? 'Finalizado Atrasado' : 'Finalizado';
+      else if(locaisTotalContados===0) status = 'Não Iniciado';
+      else status = (prazo && hoje>prazo) ? 'Atrasado' : 'Em Andamento';
+      return {
+        log: g.log, rua: g.rua, tipo: g.tipo, chave: g.chave,
+        dataInicio, dataFim, locais: locaisOrcados,
+        vlTotalContado: acc.vlFisicoTotal, pecasTotalContadas: acc.pecasContadas,
+        locaisTotalContados, locaisPendentes, pctContado,
+        statusFim: status, statusFinal: status,
+        net: acc.valorDivergenteLiquido, netAbs: Math.abs(acc.valorDivergenteLiquido),
+        totalDivValor: acc.valorDivergenteAbsoluto,
+        netPecas: divsGrupo.reduce((s,d)=>s+d.diferenca,0), totalDivPecas: acc.pecasDivergentes,
+        locaisDiv: acc.locaisDivergentes,
+        acuraciaPecas: acc.acuraciaPecas, acuraciaLocais: acc.acuraciaPosicoes, acuraciaValor: acc.acuraciaValor
+      };
+    }).sort((a,b)=>a.chave.localeCompare(b.chave));
+  }
+  const porGrupoNet = agruparPorLogRuaTipo();
 
   // Locais distintos contados por dia. Cada local é contado UMA ÚNICA VEZ, no dia da
   // sua "Data Situação" na rodada final (maior Id Conferência) — esse é o campo que a
@@ -593,6 +651,6 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, topItensPositivos, topItensNegativos
+    rankingProdutividade, porRua, porLog, porGrupoNet, contadosPorDia, porDiaRua, topItensPositivos, topItensNegativos
   };
 }
