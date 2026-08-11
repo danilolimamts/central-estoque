@@ -142,11 +142,17 @@ function readMultiSheet(bufs, aliasMap, requiredCols, label, keyFields){
 
 async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, cicloId, cicloNumero, dataAbertura, dataPrevistaTermino, prioridadeConfig}){
   post('progress', {stage:'Lendo planilhas...', pct:2});
-  const wb390 = XLSX.read(buf390, {type:'array', cellDates:true});
-  const rows390 = sheetToRows(wb390);
-  if(!rows390.length) throw new Error('QRY0390: planilha vazia.');
-  const r390 = buildAliasResolver(Object.keys(rows390[0]), ALIAS_390);
-  validateColumns(r390, ['item','local','quantidade'], 'QRY0390');
+  // QRY0390 (estoque atual) é opcional — o estoque é rotativo (vivo) e essa planilha
+  // hoje não alimenta nenhum indicador calculado aqui, só é lida se o usuário mandar.
+  let rows390 = [], r390 = null;
+  if(buf390){
+    const wb390 = XLSX.read(buf390, {type:'array', cellDates:true});
+    rows390 = sheetToRows(wb390);
+    if(rows390.length){
+      r390 = buildAliasResolver(Object.keys(rows390[0]), ALIAS_390);
+      validateColumns(r390, ['item','local','quantidade'], 'QRY0390');
+    }
+  }
 
   // QRY0843, Base Congelada, SIGEQ278 e ZBIQ0051 podem vir em vários arquivos (a
   // extração de origem tem limite de período/linhas, ou os dados chegam em pedaços por
@@ -173,11 +179,13 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
 
   post('progress', {stage:'Indexando estoque atual (QRY0390)...', pct:10});
   const map390 = new Map();
-  for(const row of rows390){
-    const item = String(getVal(row, r390.item) ?? '').trim();
-    if(!item) continue;
-    const qtd = parseNumber(getVal(row, r390.quantidade));
-    map390.set(item, (map390.get(item)||0) + qtd);
+  if(r390){
+    for(const row of rows390){
+      const item = String(getVal(row, r390.item) ?? '').trim();
+      if(!item) continue;
+      const qtd = parseNumber(getVal(row, r390.quantidade));
+      map390.set(item, (map390.get(item)||0) + qtd);
+    }
   }
 
   // Valoração dos itens (seção 7.4 do fluxo de equalização, mesma lógica reaproveitada
@@ -205,7 +213,8 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     const val = valoracaoPorComponente.get(item);
     if(!val) return precoPorItem.get(item) || 0; // não é múltiplo: valora por si só
     if(val.inInterface !== 'S') return 0; // componente "N" não carrega valor do kit
-    return precoPorItem.get(val.itemPai) || 0; // componente "S": valor vem do item pai
+    if(!val.itemPai) return precoPorItem.get(item) || 0; // "S" mas sem item pai cadastrado: valora o próprio item
+    return precoPorItem.get(val.itemPai) || 0; // componente "S" com item pai: valor vem do item pai
   }
 
   post('progress', {stage:'Processando base congelada...', pct:20});

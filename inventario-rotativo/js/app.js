@@ -173,7 +173,9 @@ function irRenderView(){
    IMPORTAÇÃO
    ============================================================ */
 const IR_FILE_TYPES = [
-  {key:'f390', label:'QRY0390', desc:'Estoque por Local', pattern:/0390/i},
+  // QRY0390 é opcional: o estoque é rotativo (vivo) e hoje não entra em nenhum cálculo
+  // de indicador — não faz sentido travar o processamento do ciclo esperando por ela.
+  {key:'f390', label:'QRY0390', desc:'Estoque por Local (opcional)', pattern:/0390/i, optional:true},
   {key:'f843', label:'QRY0843', desc:'Produtividade (peças, locais, itens e divergências)', pattern:/0843/i},
   {key:'fCong', label:'Base Congelada', desc:'Locais congelados do ciclo (planilha manual)', pattern:/congelad/i},
   {key:'f278', label:'SIGEQ278', desc:'Preço de custo/compra por item', pattern:/278/i},
@@ -190,7 +192,7 @@ const IR_MULTI_DEFAULT_SLOTS = 4;
 function irRenderImportacao(){
   const f = IR.files;
   const filled = (k)=> IR_MULTI_KEYS.has(k) ? (f[k]||[]).some(Boolean) : !!f[k];
-  const allSelected = IR_FILE_TYPES.every(t=>filled(t.key));
+  const allSelected = IR_FILE_TYPES.every(t=>t.optional || filled(t.key));
   const dz = (t)=>{
     if(IR_MULTI_KEYS.has(t.key)){
       const slots = f[t.key]||[];
@@ -248,7 +250,7 @@ function irRenderImportacao(){
           <div class="progress-track"><div class="progress-fill orange" style="width:${IR.progress.pct}%"></div></div>
         </div>` : allSelected
           ? `<div class="form-actions"><button class="btn btn-primary" style="font-size:14px;padding:11px 28px;" onclick="irProcessar()">PROCESSAR CICLO</button></div>`
-          : `<p class="field-hint" style="margin-top:14px;">Selecione as planilhas (QRY0390, QRY0843, Base Congelada, SIGEQ278, ZBIQ0051) para habilitar o processamento.</p>`
+          : `<p class="field-hint" style="margin-top:14px;">Selecione as planilhas obrigatórias (QRY0843, Base Congelada, SIGEQ278, ZBIQ0051) para habilitar o processamento — a QRY0390 é opcional.</p>`
       }
     </div>
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
@@ -331,7 +333,7 @@ async function irProcessar(){
   const f = IR.files;
   const files843 = f.f843.filter(Boolean), filesCong = f.fCong.filter(Boolean),
         files278 = f.f278.filter(Boolean), files051 = f.f051.filter(Boolean);
-  if(!(f.f390 && files843.length && filesCong.length && files278.length && files051.length)) return;
+  if(!(files843.length && filesCong.length && files278.length && files051.length)) return;
   const numero = parseInt(document.getElementById('ir-inp-ciclo').value, 10);
   const dataAbertura = document.getElementById('ir-inp-abertura').value;
   const dataPrevistaTermino = document.getElementById('ir-inp-termino').value;
@@ -352,7 +354,7 @@ async function irProcessar(){
   irRenderView();
   try{
     const [buf390, bufs843, bufsCongelada, bufs278, bufs051] = await Promise.all([
-      f.f390.arrayBuffer(),
+      f.f390 ? f.f390.arrayBuffer() : Promise.resolve(null),
       Promise.all(files843.map(file=>file.arrayBuffer())),
       Promise.all(filesCong.map(file=>file.arrayBuffer())),
       Promise.all(files278.map(file=>file.arrayBuffer())),
@@ -381,7 +383,7 @@ async function irProcessar(){
       type:'process', buf390, bufs843, bufsCongelada, bufs278, bufs051,
       cicloId, cicloNumero:numero, dataAbertura, dataPrevistaTermino,
       prioridadeConfig: IR.prioridadeConfig
-    }, [buf390, ...bufs843, ...bufsCongelada, ...bufs278, ...bufs051]);
+    }, [...(buf390 ? [buf390] : []), ...bufs843, ...bufsCongelada, ...bufs278, ...bufs051]);
   }catch(err){
     IR.processing=false; irShowToast('Erro ao ler arquivos: '+err.message, true); irRenderView();
   }
@@ -1685,12 +1687,44 @@ async function irRenderComparativoResultado(){
     ['Tempo Médio (min)', irFmtNum(indA.tempoMedioContagemMin,1), irFmtNum(indB.tempoMedioContagemMin,1), indB.tempoMedioContagemMin-indA.tempoMedioContagemMin],
     ['Eficiência', irFmtPct(indA.eficiencia), irFmtPct(indB.eficiencia), indB.eficiencia-indA.eficiencia]
   ];
+  // Junta os Logs presentes em qualquer um dos dois ciclos (um ciclo pode não ter
+  // contado ainda um Log que o outro já tem) — cada ciclo já vem com seus próprios
+  // indicadores isolados por cicloId no IndexedDB, então não há mistura de dados aqui.
+  const porLogA = new Map((indA.porLog||[]).filter(r=>r.chave!=='(sem log)').map(r=>[r.chave,r]));
+  const porLogB = new Map((indB.porLog||[]).filter(r=>r.chave!=='(sem log)').map(r=>[r.chave,r]));
+  const logsChaves = Array.from(new Set([...porLogA.keys(), ...porLogB.keys()])).sort();
+  const linhasLog = logsChaves.map(chave=>{
+    const rA = porLogA.get(chave), rB = porLogB.get(chave);
+    const delta = (rB?rB.acuraciaPecas:null)!==null && (rA?rA.acuraciaPecas:null)!==null && rA && rB ? rB.acuraciaPecas-rA.acuraciaPecas : null;
+    return {chave, rA, rB, delta};
+  });
   el.innerHTML = `<div class="panel"><h3>${irCicloLabel(ciA)} vs. ${irCicloLabel(ciB)}</h3>
     <div class="table-wrap"><table><thead><tr><th>Indicador</th><th>${irCicloLabel(ciA)}</th><th>${irCicloLabel(ciB)}</th><th>Tendência</th></tr></thead>
     <tbody>${linhas.map(([label,a,b,delta])=>`<tr><td>${label}</td><td class="mono">${a}</td><td class="mono">${b}</td>
       <td><span class="tag ${delta>0?'tag-good':(delta<0?'tag-bad':'tag-muted')}">${delta>0?'▲ melhora':(delta<0?'▼ piora':'= igual')}</span></td></tr>`).join('')}</tbody>
     </table></div>
-  </div>`;
+  </div>
+  ${logsChaves.length ? `<div class="panel">
+    <h3>Acurácia por Log — ${irCicloLabel(ciA)} vs. ${irCicloLabel(ciB)}</h3>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Log</th>
+      <th>Peças (${irCicloLabel(ciA)})</th><th>Peças (${irCicloLabel(ciB)})</th>
+      <th>Locais (${irCicloLabel(ciA)})</th><th>Locais (${irCicloLabel(ciB)})</th>
+      <th>Valor (${irCicloLabel(ciA)})</th><th>Valor (${irCicloLabel(ciB)})</th>
+      <th>Tendência (Peças)</th>
+    </tr></thead>
+    <tbody>${linhasLog.map(({chave,rA,rB,delta})=>`<tr>
+      <td class="mono">${irEsc(chave)}</td>
+      <td class="mono">${rA?irFmtPct(rA.acuraciaPecas):'—'}</td>
+      <td class="mono">${rB?irFmtPct(rB.acuraciaPecas):'—'}</td>
+      <td class="mono">${rA?irFmtPct(rA.acuraciaPosicoes):'—'}</td>
+      <td class="mono">${rB?irFmtPct(rB.acuraciaPosicoes):'—'}</td>
+      <td class="mono">${rA?irFmtPct(rA.acuraciaValor):'—'}</td>
+      <td class="mono">${rB?irFmtPct(rB.acuraciaValor):'—'}</td>
+      <td>${delta===null ? '<span class="tag tag-muted">sem base</span>' : `<span class="tag ${delta>0?'tag-good':(delta<0?'tag-bad':'tag-muted')}">${delta>0?'▲ melhora':(delta<0?'▼ piora':'= igual')}</span>`}</td>
+    </tr>`).join('')}</tbody>
+    </table></div>
+  </div>` : ''}`;
 }
 
 /* ============================================================
