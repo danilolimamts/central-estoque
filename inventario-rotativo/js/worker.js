@@ -102,12 +102,66 @@ const ALIAS_CONGELADA = {
   qtdPecas: ['Qtd Peças','Qtd Pecas'], qtdItens: ['Qtd Itens'], pesoTotal: ['Peso Total'],
   filial: ['Filial'], predio: ['Predio','Prédio']
 };
+const ALIAS_410 = {
+  item: ['Item'], nomeItem: ['Nome'], dtMov: ['Dt.Mov.','Dt Mov','Data Mov'],
+  quantidade: ['Quantidade'], sentido: ['Sentido'], vlMov: ['Vl.Mov.','Vl Mov'],
+  idDeposito: ['Id Deposito','Id Depósito'], obsWms: ['Observacao WMS','Observação WMS']
+};
+// Legenda de motivos da QRY410 (Perdas e Ganhos no CD) — define quem entra no cálculo
+// de NET. Códigos que não aparecerem aqui contam como SIM por padrão (regra do usuário:
+// "o que não tiver na legenda, pode considerar"). Ordenados do mais específico (2
+// palavras) pro mais genérico, pra "ARI LOT" não ser confundido com "ARI".
+const IR_410_LEGENDA = [
+  {id:'ARI LOT', legenda:'Ajuste de Lote', considerarNet:true},
+  {id:'INS', legenda:'Baixa Insumo', considerarNet:false},
+  {id:'AIR', legenda:'Inventário Rotativo', considerarNet:true},
+  {id:'TID', legenda:'Troca de Identidade', considerarNet:true},
+  {id:'AIN', legenda:'Não Localizado', considerarNet:true},
+  {id:'INV', legenda:'Inversão de etiqueta', considerarNet:true},
+  {id:'ANF', legenda:'Nota Fiscal', considerarNet:false},
+  {id:'PAR', legenda:'Recebimento Parcial', considerarNet:true},
+  {id:'ARI', legenda:'Recebimento invertido', considerarNet:true},
+  {id:'API', legenda:'Ajuste MCL Reversa', considerarNet:true},
+  {id:'AEE', legenda:'Itens Localizados', considerarNet:true},
+  {id:'LOJA', legenda:'Ajuste Loja', considerarNet:true},
+  {id:'QBR', legenda:'Quebra CD', considerarNet:false},
+  {id:'EPI', legenda:'Baixa EPI', considerarNet:false},
+  {id:'IMP', legenda:'Ajuste Importação', considerarNet:true},
+  {id:'ASR', legenda:'Sobra Recebimento', considerarNet:true},
+  {id:'BAI', legenda:'Baixa Insumo', considerarNet:false},
+  {id:'INP', legenda:'Ajuste Pallets', considerarNet:false},
+  {id:'LIT', legenda:'Ajuste Litigio', considerarNet:true},
+  {id:'AUD', legenda:'Auditoria KPMG', considerarNet:true},
+  {id:'AIP', legenda:'Inventário Pontual', considerarNet:true},
+  {id:'ADE', legenda:'Auditorias', considerarNet:true},
+  {id:'AIC', legenda:'Inventário de Curvas', considerarNet:true},
+  {id:'AIT', legenda:'Inventario de Transitorios', considerarNet:true},
+  {id:'AII', legenda:'Inventário de Insumos', considerarNet:false}
+];
+// Extrai o código do início de "Observacao WMS" (formato usual "AIR - AJUSTE...", mas
+// nem sempre tem o traço) e casa com a legenda. Sem código (célula vazia) ou código
+// desconhecido: considera pra NET por padrão, igual pedido pelo usuário.
+function classificar410(obsWmsRaw){
+  const texto = String(obsWmsRaw||'').trim().toUpperCase();
+  if(!texto) return {id:'(sem observação)', legenda:'', considerarNet:true};
+  for(const item of IR_410_LEGENDA){
+    if(texto===item.id || texto.startsWith(item.id+' ') || texto.startsWith(item.id+'-')) {
+      return {id:item.id, legenda:item.legenda, considerarNet:item.considerarNet};
+    }
+  }
+  const codigo = (texto.split(/[\s-]/)[0]||texto.slice(0,10)).trim();
+  return {id:codigo||'(sem observação)', legenda:'', considerarNet:true};
+}
 
 self.onmessage = async (e)=>{
   const msg = e.data;
-  if(msg.type !== 'process') return;
-  try{ await runPipeline(msg); }
-  catch(err){ self.postMessage({type:'error', message: err.message||String(err)}); }
+  if(msg.type === 'process'){
+    try{ await runPipeline(msg); }
+    catch(err){ self.postMessage({type:'error', message: err.message||String(err)}); }
+  } else if(msg.type === 'process410'){
+    try{ await runPipeline410(msg); }
+    catch(err){ self.postMessage({type:'error410', message: err.message||String(err)}); }
+  }
 };
 function post(type, data){ self.postMessage({type, ...data}); }
 
@@ -142,11 +196,17 @@ function readMultiSheet(bufs, aliasMap, requiredCols, label, keyFields){
 
 async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, cicloId, cicloNumero, dataAbertura, dataPrevistaTermino, prioridadeConfig}){
   post('progress', {stage:'Lendo planilhas...', pct:2});
-  const wb390 = XLSX.read(buf390, {type:'array', cellDates:true});
-  const rows390 = sheetToRows(wb390);
-  if(!rows390.length) throw new Error('QRY0390: planilha vazia.');
-  const r390 = buildAliasResolver(Object.keys(rows390[0]), ALIAS_390);
-  validateColumns(r390, ['item','local','quantidade'], 'QRY0390');
+  // QRY0390 (estoque atual) é opcional — o estoque é rotativo (vivo) e essa planilha
+  // hoje não alimenta nenhum indicador calculado aqui, só é lida se o usuário mandar.
+  let rows390 = [], r390 = null;
+  if(buf390){
+    const wb390 = XLSX.read(buf390, {type:'array', cellDates:true});
+    rows390 = sheetToRows(wb390);
+    if(rows390.length){
+      r390 = buildAliasResolver(Object.keys(rows390[0]), ALIAS_390);
+      validateColumns(r390, ['item','local','quantidade'], 'QRY0390');
+    }
+  }
 
   // QRY0843, Base Congelada, SIGEQ278 e ZBIQ0051 podem vir em vários arquivos (a
   // extração de origem tem limite de período/linhas, ou os dados chegam em pedaços por
@@ -173,11 +233,13 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
 
   post('progress', {stage:'Indexando estoque atual (QRY0390)...', pct:10});
   const map390 = new Map();
-  for(const row of rows390){
-    const item = String(getVal(row, r390.item) ?? '').trim();
-    if(!item) continue;
-    const qtd = parseNumber(getVal(row, r390.quantidade));
-    map390.set(item, (map390.get(item)||0) + qtd);
+  if(r390){
+    for(const row of rows390){
+      const item = String(getVal(row, r390.item) ?? '').trim();
+      if(!item) continue;
+      const qtd = parseNumber(getVal(row, r390.quantidade));
+      map390.set(item, (map390.get(item)||0) + qtd);
+    }
   }
 
   // Valoração dos itens (seção 7.4 do fluxo de equalização, mesma lógica reaproveitada
@@ -205,7 +267,8 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     const val = valoracaoPorComponente.get(item);
     if(!val) return precoPorItem.get(item) || 0; // não é múltiplo: valora por si só
     if(val.inInterface !== 'S') return 0; // componente "N" não carrega valor do kit
-    return precoPorItem.get(val.itemPai) || 0; // componente "S": valor vem do item pai
+    if(!val.itemPai) return precoPorItem.get(item) || 0; // "S" mas sem item pai cadastrado: valora o próprio item
+    return precoPorItem.get(val.itemPai) || 0; // componente "S" com item pai: valor vem do item pai
   }
 
   post('progress', {stage:'Processando base congelada...', pct:20});
@@ -506,63 +569,6 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const porRua = agruparPor('x1', '(sem rua)', congeladosSemAir);
   const porLog = agruparPor('grupoClasse', '(sem log)');
 
-  // Detalhe por combinação Log (Grupo Classe) x Rua (X1) x Tipo (Classe Local) — tabela
-  // "NET" pedida pelo usuário, no mesmo formato do relatório de referência dele.
-  const localDatas = new Map(); // idLocal -> {ini, fim} (rodadas físicas, exclui abertura)
-  for(const c of contagens){
-    if(c.idConferencia<=1 || !c.local) continue;
-    const ini = c.dataInicioContagem, fim = c.dataFimContagem || c.dataSituacao;
-    let g = localDatas.get(c.local);
-    if(!g){ g = {ini:null, fim:null}; localDatas.set(c.local, g); }
-    if(ini && (!g.ini || ini<g.ini)) g.ini = ini;
-    if(fim && (!g.fim || fim>g.fim)) g.fim = fim;
-  }
-  function agruparPorLogRuaTipo(){
-    const grupos = new Map();
-    for(const l of congelados){
-      const rua = l.x1 || '(sem rua)', log = l.grupoClasse || '(sem log)', tipo = l.classeLocal || '(sem tipo)';
-      const chave = `${rua} ${log}-${tipo}`;
-      if(!grupos.has(chave)) grupos.set(chave, {rua, log, tipo, chave, locais:[]});
-      grupos.get(chave).locais.push(l);
-    }
-    const hoje = new Date();
-    const prazo = dataPrevistaTermino ? new Date(dataPrevistaTermino) : null;
-    return Array.from(grupos.values()).map(g=>{
-      const locaisDoGrupo = g.locais;
-      const idsGrupo = new Set(locaisDoGrupo.map(l=>l.idLocal));
-      const locaisOrcados = locaisDoGrupo.length;
-      const locaisTotalContados = locaisDoGrupo.filter(l=>locaisContadosSet.has(l.idLocal)).length;
-      const locaisPendentes = locaisOrcados - locaisTotalContados;
-      const pctContado = locaisOrcados>0 ? locaisTotalContados/locaisOrcados : 0;
-      const divsGrupo = divergencias.filter(d=>idsGrupo.has(d.local));
-      const acc = calcAcuraciasSubset(divsGrupo, locaisDoGrupo, locaisTotalContados);
-      let dataInicio = null, dataFim = null;
-      for(const l of locaisDoGrupo){
-        const dd = localDatas.get(l.idLocal);
-        if(!dd) continue;
-        if(dd.ini && (!dataInicio || dd.ini<dataInicio)) dataInicio = dd.ini;
-        if(dd.fim && (!dataFim || dd.fim>dataFim)) dataFim = dd.fim;
-      }
-      let status;
-      if(pctContado>=1) status = (prazo && dataFim && new Date(dataFim)>prazo) ? 'Finalizado Atrasado' : 'Finalizado';
-      else if(locaisTotalContados===0) status = 'Não Iniciado';
-      else status = (prazo && hoje>prazo) ? 'Atrasado' : 'Em Andamento';
-      return {
-        log: g.log, rua: g.rua, tipo: g.tipo, chave: g.chave,
-        dataInicio, dataFim, locais: locaisOrcados,
-        vlTotalContado: acc.vlFisicoTotal, pecasTotalContadas: acc.pecasContadas,
-        locaisTotalContados, locaisPendentes, pctContado,
-        statusFim: status, statusFinal: status,
-        net: acc.valorDivergenteLiquido, netAbs: Math.abs(acc.valorDivergenteLiquido),
-        totalDivValor: acc.valorDivergenteAbsoluto,
-        netPecas: divsGrupo.reduce((s,d)=>s+d.diferenca,0), totalDivPecas: acc.pecasDivergentes,
-        locaisDiv: acc.locaisDivergentes,
-        acuraciaPecas: acc.acuraciaPecas, acuraciaLocais: acc.acuraciaPosicoes, acuraciaValor: acc.acuraciaValor
-      };
-    }).sort((a,b)=>a.chave.localeCompare(b.chave));
-  }
-  const porGrupoNet = agruparPorLogRuaTipo();
-
   // Locais distintos contados por dia. Cada local é contado UMA ÚNICA VEZ, no dia da
   // sua "Data Situação" na rodada final (maior Id Conferência) — esse é o campo que a
   // QRY0843 usa para marcar quando o status do local foi fechado, e é o mesmo critério
@@ -658,7 +664,108 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade, porRua, porLog, porGrupoNet, contadosPorDia, porDiaRua,
+    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua,
     topItensPositivos, topItensNegativos, topItensPositivosValor, topItensNegativosValor
   };
+}
+
+/* ============================================================
+   QRY410 — Perdas e Ganhos no CD
+   Independente do ciclo rotativo: processa por ano (extraído de Dt.Mov.), não
+   depende de nenhum arquivo dos outros slots. Ver classificar410() acima pras
+   regras de negócio (Id Depósito 21 fora, Saída = negativo, legenda de motivos).
+   ============================================================ */
+async function runPipeline410({buf410}){
+  post('progress', {stage:'Lendo QRY410...', pct:5});
+  const wb410 = XLSX.read(buf410, {type:'array', cellDates:true});
+  const rows410 = sheetToRows(wb410);
+  if(!rows410.length) throw new Error('QRY410: planilha vazia.');
+  const r410 = buildAliasResolver(Object.keys(rows410[0]), ALIAS_410);
+  validateColumns(r410, ['dtMov','sentido','vlMov'], 'QRY410');
+
+  post('progress', {stage:'Processando '+rows410.length+' linha(s) da QRY410...', pct:15});
+  const porAno = new Map();
+  function getAno(ano){
+    if(!porAno.has(ano)) porAno.set(ano, {porMes:new Map(), porObs:new Map(), porItem:new Map(), porItemMes:new Map(), totalLinhas:0, linhasExcluidasDeposito21:0});
+    return porAno.get(ano);
+  }
+  let processadas = 0;
+  for(const row of rows410){
+    processadas++;
+    if(processadas % 20000 === 0){
+      post('progress', {stage:'Processando linha '+processadas+' de '+rows410.length+' (QRY410)...', pct:15+Math.round(processadas/rows410.length*60)});
+    }
+    const dt = parseDateVal(getVal(row, r410.dtMov));
+    if(!dt) continue;
+    const ano = dt.getFullYear();
+    const mes = ano+'-'+String(dt.getMonth()+1).padStart(2,'0');
+    const g = getAno(ano);
+    g.totalLinhas++;
+
+    // Id Depósito 21 fica de fora de tudo (regra explícita do usuário).
+    const idDeposito = parseInt(parseNumber(getVal(row, r410.idDeposito)), 10);
+    if(idDeposito===21){ g.linhasExcluidasDeposito21++; continue; }
+
+    const sentido = String(getVal(row, r410.sentido)||'').trim().toLowerCase();
+    const vlAbs = Math.abs(parseNumber(getVal(row, r410.vlMov)));
+    const sinal = sentido==='saida' || sentido==='saída' ? -1 : (sentido==='entrada' ? 1 : 0);
+    const valor = sinal*vlAbs;
+
+    const cls = classificar410(getVal(row, r410.obsWms));
+
+    // Quebra por Obs: mostra TODOS os motivos (considerados ou não), pra transparência.
+    if(!g.porObs.has(cls.id)) g.porObs.set(cls.id, {id:cls.id, legenda:cls.legenda, considerarNet:cls.considerarNet, saida:0, entrada:0});
+    const go = g.porObs.get(cls.id);
+    if(sinal<0) go.saida += valor;
+    else if(sinal>0) go.entrada += valor;
+
+    if(!cls.considerarNet) continue; // resto (mês, item) só conta com motivos válidos pro NET
+
+    if(!g.porMes.has(mes)) g.porMes.set(mes, {mes, ganhos:0, perdas:0});
+    const gm = g.porMes.get(mes);
+    if(sinal>0) gm.ganhos += valor;
+    else if(sinal<0) gm.perdas += valor;
+
+    const item = String(getVal(row, r410.item)||'').trim();
+    const nomeItem = String(getVal(row, r410.nomeItem)||'').trim();
+    if(item){
+      if(!g.porItem.has(item)) g.porItem.set(item, {item, nome:nomeItem, saldoValor:0});
+      g.porItem.get(item).saldoValor += valor;
+
+      // Item x mês — pra responder "por que o NET desse mês está tão negativo".
+      if(!g.porItemMes.has(mes)) g.porItemMes.set(mes, new Map());
+      const itensDoMes = g.porItemMes.get(mes);
+      if(!itensDoMes.has(item)) itensDoMes.set(item, {item, nome:nomeItem, saldoValor:0});
+      itensDoMes.get(item).saldoValor += valor;
+    }
+  }
+
+  post('progress', {stage:'Consolidando resumo por ano (QRY410)...', pct:80});
+  const anos = Array.from(porAno.keys()).sort((a,b)=>b-a);
+  const resumos = {};
+  for(const ano of anos){
+    const g = porAno.get(ano);
+    const porMes = Array.from(g.porMes.values()).sort((a,b)=>a.mes.localeCompare(b.mes)).map(m=>{
+      const itensDoMes = Array.from((g.porItemMes.get(m.mes)||new Map()).values());
+      return {
+        ...m, net: m.ganhos+m.perdas, netAbs: Math.abs(m.ganhos+m.perdas),
+        topItensPositivos: itensDoMes.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,20),
+        topItensNegativos: itensDoMes.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,20)
+      };
+    });
+    const porObs = Array.from(g.porObs.values()).map(o=>({...o, totalGeral: o.saida+o.entrada}))
+      .sort((a,b)=>Math.abs(b.totalGeral)-Math.abs(a.totalGeral));
+    const itens = Array.from(g.porItem.values());
+    const topItensPositivos = itens.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,20);
+    const topItensNegativos = itens.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,20);
+    const totalGanhos = porMes.reduce((s,m)=>s+m.ganhos,0);
+    const totalPerdas = porMes.reduce((s,m)=>s+m.perdas,0);
+    resumos[ano] = {
+      ano, totalLinhas:g.totalLinhas, linhasExcluidasDeposito21:g.linhasExcluidasDeposito21,
+      porMes, porObs, topItensPositivos, topItensNegativos,
+      totalGanhos, totalPerdas, totalNet: totalGanhos+totalPerdas, totalNetAbs: Math.abs(totalGanhos+totalPerdas)
+    };
+  }
+  post('progress', {stage:'Concluído.', pct:100});
+  self.postMessage({type:'done410', anos, resumos});
 }

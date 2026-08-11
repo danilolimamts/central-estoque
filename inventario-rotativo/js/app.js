@@ -18,7 +18,10 @@ const IR = {
   dashFilters:{applyProdDate:true},
   compararA:null, compararB:null,
   novoCiclo:false,
-  _porDiaRua:{}
+  _porDiaRua:{},
+  // Perdas e Ganhos (QRY410) — independente do ciclo, por ano.
+  net410Anos:[], net410AnoSel:null, net410MesSel:null, net410Data:null, net410File:null,
+  net410Processing:false, net410Progress:{stage:'', pct:0}
 };
 
 function irEsc(v){ if(v===undefined||v===null) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -60,6 +63,12 @@ async function irInit(){
     if(IR.ciclos.length){
       IR.cicloAtivo = IR.ciclos.find(c=>c.status==='aberto') || IR.ciclos[0];
       await irLoadCicloData(IR.cicloAtivo.id);
+    }
+    IR.net410Anos = await irGetAllNet410Anos();
+    if(IR.net410Anos.length){
+      IR.net410AnoSel = IR.net410Anos[0];
+      IR.net410Data = await irGetNet410(IR.net410AnoSel);
+      irSetNet410MesDefault();
     }
   }catch(e){ console.error('Falha ao iniciar', e); }
   irSwitchTab('dashboard');
@@ -173,7 +182,9 @@ function irRenderView(){
    IMPORTAÇÃO
    ============================================================ */
 const IR_FILE_TYPES = [
-  {key:'f390', label:'QRY0390', desc:'Estoque por Local', pattern:/0390/i},
+  // QRY0390 é opcional: o estoque é rotativo (vivo) e hoje não entra em nenhum cálculo
+  // de indicador — não faz sentido travar o processamento do ciclo esperando por ela.
+  {key:'f390', label:'QRY0390', desc:'Estoque por Local (opcional)', pattern:/0390/i, optional:true},
   {key:'f843', label:'QRY0843', desc:'Produtividade (peças, locais, itens e divergências)', pattern:/0843/i},
   {key:'fCong', label:'Base Congelada', desc:'Locais congelados do ciclo (planilha manual)', pattern:/congelad/i},
   {key:'f278', label:'SIGEQ278', desc:'Preço de custo/compra por item', pattern:/278/i},
@@ -190,7 +201,7 @@ const IR_MULTI_DEFAULT_SLOTS = 4;
 function irRenderImportacao(){
   const f = IR.files;
   const filled = (k)=> IR_MULTI_KEYS.has(k) ? (f[k]||[]).some(Boolean) : !!f[k];
-  const allSelected = IR_FILE_TYPES.every(t=>filled(t.key));
+  const allSelected = IR_FILE_TYPES.every(t=>t.optional || filled(t.key));
   const dz = (t)=>{
     if(IR_MULTI_KEYS.has(t.key)){
       const slots = f[t.key]||[];
@@ -248,10 +259,11 @@ function irRenderImportacao(){
           <div class="progress-track"><div class="progress-fill orange" style="width:${IR.progress.pct}%"></div></div>
         </div>` : allSelected
           ? `<div class="form-actions"><button class="btn btn-primary" style="font-size:14px;padding:11px 28px;" onclick="irProcessar()">PROCESSAR CICLO</button></div>`
-          : `<p class="field-hint" style="margin-top:14px;">Selecione as planilhas (QRY0390, QRY0843, Base Congelada, SIGEQ278, ZBIQ0051) para habilitar o processamento.</p>`
+          : `<p class="field-hint" style="margin-top:14px;">Selecione as planilhas obrigatórias (QRY0843, Base Congelada, SIGEQ278, ZBIQ0051) para habilitar o processamento — a QRY0390 é opcional.</p>`
       }
     </div>
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
+    ${irRenderNet410ImportPanel()}
   `;
 }
 function irRenderUltimoProcessamento(){
@@ -331,7 +343,7 @@ async function irProcessar(){
   const f = IR.files;
   const files843 = f.f843.filter(Boolean), filesCong = f.fCong.filter(Boolean),
         files278 = f.f278.filter(Boolean), files051 = f.f051.filter(Boolean);
-  if(!(f.f390 && files843.length && filesCong.length && files278.length && files051.length)) return;
+  if(!(files843.length && filesCong.length && files278.length && files051.length)) return;
   const numero = parseInt(document.getElementById('ir-inp-ciclo').value, 10);
   const dataAbertura = document.getElementById('ir-inp-abertura').value;
   const dataPrevistaTermino = document.getElementById('ir-inp-termino').value;
@@ -352,7 +364,7 @@ async function irProcessar(){
   irRenderView();
   try{
     const [buf390, bufs843, bufsCongelada, bufs278, bufs051] = await Promise.all([
-      f.f390.arrayBuffer(),
+      f.f390 ? f.f390.arrayBuffer() : Promise.resolve(null),
       Promise.all(files843.map(file=>file.arrayBuffer())),
       Promise.all(filesCong.map(file=>file.arrayBuffer())),
       Promise.all(files278.map(file=>file.arrayBuffer())),
@@ -381,7 +393,7 @@ async function irProcessar(){
       type:'process', buf390, bufs843, bufsCongelada, bufs278, bufs051,
       cicloId, cicloNumero:numero, dataAbertura, dataPrevistaTermino,
       prioridadeConfig: IR.prioridadeConfig
-    }, [buf390, ...bufs843, ...bufsCongelada, ...bufs278, ...bufs051]);
+    }, [...(buf390 ? [buf390] : []), ...bufs843, ...bufsCongelada, ...bufs278, ...bufs051]);
   }catch(err){
     IR.processing=false; irShowToast('Erro ao ler arquivos: '+err.message, true); irRenderView();
   }
@@ -390,6 +402,12 @@ function irUpdateProgressUI(){
   const stageEl = document.querySelector('.progress-stage');
   const fillEl = document.querySelector('.progress-fill');
   if(stageEl && fillEl){ stageEl.textContent = IR.progress.stage; fillEl.style.width = IR.progress.pct+'%'; }
+  else irRenderView();
+}
+function irUpdateProgressUI410(){
+  const stageEl = document.querySelector('.progress-stage');
+  const fillEl = document.querySelector('.progress-fill');
+  if(stageEl && fillEl){ stageEl.textContent = IR.net410Progress.stage; fillEl.style.width = IR.net410Progress.pct+'%'; }
   else irRenderView();
 }
 
@@ -1145,6 +1163,186 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
   }
 }
 /* ============================================================
+   QRY410 — PERDAS E GANHOS NO CD
+   Independente do ciclo rotativo (por ano, não por cicloId) — ver worker.js
+   runPipeline410() pras regras de negócio (Id Depósito 21 fora, Saída = negativo,
+   legenda de motivos que entram ou não no NET).
+   ============================================================ */
+function irOnFile410(file){ if(!file) return; IR.net410File = file; irRenderView(); }
+function irOnDropFile410(e){ e.preventDefault(); const file = e.dataTransfer.files[0]; if(file) irOnFile410(file); }
+function irRemoveFile410(){ IR.net410File = null; irRenderView(); }
+async function irSetNet410Ano(ano){
+  ano = parseInt(ano, 10);
+  IR.net410AnoSel = ano;
+  IR.net410Data = await irGetNet410(ano);
+  irSetNet410MesDefault();
+  irRenderView();
+}
+// Mês "atual" = o mês mais recente com movimento nos dados importados (não a data de
+// hoje — a QRY410 pode não ter sido atualizada até o mês corrente).
+function irSetNet410MesDefault(){
+  const rows = (IR.net410Data && IR.net410Data.porMes) || [];
+  IR.net410MesSel = rows.length ? rows[rows.length-1].mes : null;
+}
+function irSetNet410Mes(mes){ IR.net410MesSel = mes; irRenderView(); }
+function irProcessar410(){
+  if(IR.net410Processing || !IR.net410File) return;
+  IR.net410Processing = true; IR.net410Progress = {stage:'Lendo arquivo...', pct:0};
+  irRenderView();
+  const file = IR.net410File;
+  file.arrayBuffer().then(buf410=>{
+    const worker = new Worker('js/worker.js');
+    worker.onmessage = async (e)=>{
+      const msg = e.data;
+      if(msg.type==='progress'){ IR.net410Progress = {stage:msg.stage, pct:msg.pct}; irUpdateProgressUI410(); }
+      else if(msg.type==='error410'){
+        IR.net410Processing=false; worker.terminate();
+        irShowToast('Erro no processamento da QRY410: '+msg.message, true); irRenderView();
+      } else if(msg.type==='done410'){
+        IR.net410Processing = false; worker.terminate();
+        for(const ano of msg.anos) await irSaveNet410(ano, msg.resumos[ano]);
+        IR.net410Anos = await irGetAllNet410Anos();
+        IR.net410File = null;
+        IR.net410AnoSel = msg.anos[0];
+        IR.net410Data = await irGetNet410(IR.net410AnoSel);
+        irSetNet410MesDefault();
+        irShowToast('✓ QRY410 processada: '+msg.anos.map(a=>a+'').join(', ')+'.');
+        irRenderView();
+      }
+    };
+    worker.onerror = (err)=>{ IR.net410Processing=false; irShowToast('Erro no worker (QRY410): '+err.message, true); irRenderView(); };
+    worker.postMessage({type:'process410', buf410}, [buf410]);
+  }).catch(err=>{
+    IR.net410Processing=false; irShowToast('Erro ao ler arquivo: '+err.message, true); irRenderView();
+  });
+}
+/* Painel de importação da QRY410 — fica na aba Importação (não na NET) pra não mexer
+   no layout do Dashboard/NET com mais um dropzone. Processamento independente do
+   'PROCESSAR CICLO' (ver irProcessar410). */
+function irRenderNet410ImportPanel(){
+  const dz = `<div class="dropzone ${IR.net410File?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropFile410(event)">
+    <input type="file" id="ir-file-410" accept=".xlsx,.xls" style="display:none" onchange="irOnFile410(this.files[0])">
+    <div class="dz-icon">📄</div>
+    <div class="dz-title">QRY410</div>
+    <div class="dz-desc">Perdas e ganhos no CD</div>
+    ${IR.net410File
+      ? `<div class="dz-file mono">${irEsc(IR.net410File.name)}</div><button class="btn-link" onclick="irRemoveFile410()">Remover</button>`
+      : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-410').click()">Selecionar</button>`}
+  </div>`;
+  return `<div class="panel">
+    <h3>Perdas e Ganhos no CD (QRY410)</h3>
+    <p class="field-hint" style="margin-bottom:14px;">Independente do ciclo rotativo — organizado por ano, a partir da Data do Movimento. Não precisa esperar processar um ciclo: importe aqui quando quiser atualizar. O resultado aparece na aba NET.</p>
+    <div class="dz-grid" style="grid-template-columns:1fr;max-width:340px;">${dz}</div>
+    ${IR.net410Processing ? `
+      <div class="progress-wrap">
+        <div class="progress-stage">${irEsc(IR.net410Progress.stage)}</div>
+        <div class="progress-track"><div class="progress-fill orange" style="width:${IR.net410Progress.pct}%"></div></div>
+      </div>` : IR.net410File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessar410()">PROCESSAR QRY410</button></div>` : ''
+    }
+    ${IR.net410Anos.length ? `<p class="field-hint" style="margin-top:12px;">Anos já processados: ${IR.net410Anos.join(', ')} — <a href="#" onclick="irSwitchTab('ciclo');return false;">ver na aba NET</a>.</p>` : ''}
+  </div>`;
+}
+function irRenderNet410Panel(){
+  const d = IR.net410Data;
+  const anos = IR.net410Anos;
+  return `<div class="panel">
+    <h3>Perdas e Ganhos no CD (QRY410)</h3>
+    <p class="panel-sub">Independente do ciclo rotativo — organizado por ano. Inventário Rotativo (AIR) é só mais um dos motivos que compõem o NET, junto com auditorias, curvas etc. Importe/atualize a QRY410 na aba Importação.</p>
+    ${anos.length ? `<div class="two-col" style="max-width:340px;">
+      <div><label>Ano</label><select onchange="irSetNet410Ano(this.value)">
+        ${anos.map(a=>`<option value="${a}" ${a===IR.net410AnoSel?'selected':''}>${a}</option>`).join('')}
+      </select></div>
+      <div></div>
+    </div>` : `<p class="field-hint">Nenhuma QRY410 processada ainda — importe na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a>.</p>`}
+  </div>
+  ${d ? irRenderNet410Resultado(d) : ''}`;
+}
+const IR_MES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+function irRenderNet410Resultado(d){
+  const rows = d.porMes||[];
+  return `
+    <div class="panel">
+      <h3>Net mensal — ${d.ano}</h3>
+      <p class="panel-sub">Só considera motivos válidos pro NET (ver tabela por Obs abaixo). ${irFmtInt(d.linhasExcluidasDeposito21)} linha(s) do Id Depósito 21 ficaram de fora. Total de linhas do ano: ${irFmtInt(d.totalLinhas)}.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Mês</th><th>Net</th><th>Net Absoluto</th><th>Ganhos</th><th>Perdas</th></tr></thead>
+        <tbody>${rows.map(m=>`<tr>
+          <td>${irEsc(IR_MES_NOMES[parseInt(m.mes.slice(5,7),10)-1]||m.mes)}</td>
+          <td class="mono" style="color:${m.net>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtMoney(m.net)}</td>
+          <td class="mono">${irFmtMoney(m.netAbs)}</td>
+          <td class="mono" style="color:var(--success);">${irFmtMoney(m.ganhos)}</td>
+          <td class="mono" style="color:var(--danger);">${irFmtMoney(m.perdas)}</td>
+        </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);">Sem movimentos no ano</td></tr>'}</tbody>
+        <tfoot><tr style="font-weight:700;">
+          <td>Acumulado</td>
+          <td class="mono" style="color:${d.totalNet>=0?'var(--success)':'var(--danger)'};">${irFmtMoney(d.totalNet)}</td>
+          <td class="mono">${irFmtMoney(d.totalNetAbs)}</td>
+          <td class="mono" style="color:var(--success);">${irFmtMoney(d.totalGanhos)}</td>
+          <td class="mono" style="color:var(--danger);">${irFmtMoney(d.totalPerdas)}</td>
+        </tr></tfoot>
+      </table></div>
+    </div>
+    <div class="panel">
+      <h3>Por motivo (Obs) — ${d.ano}</h3>
+      <p class="panel-sub">Todos os motivos que apareceram no ano, considerados ou não pro NET (regra: sem legenda cadastrada conta como considerado).</p>
+      <div class="table-wrap"><table class="table-wide">
+        <thead><tr><th>Obs</th><th>Legenda</th><th>Considerar NET?</th><th>Saída</th><th>Entrada</th><th>Total Geral</th></tr></thead>
+        <tbody>${(d.porObs||[]).map(o=>`<tr>
+          <td class="mono">${irEsc(o.id)}</td>
+          <td>${irEsc(o.legenda)||'—'}</td>
+          <td><span class="tag ${o.considerarNet?'tag-good':'tag-muted'}">${o.considerarNet?'SIM':'NÃO'}</span></td>
+          <td class="mono" style="color:var(--danger);">${o.saida?irFmtMoney(o.saida):'—'}</td>
+          <td class="mono" style="color:var(--success);">${o.entrada?irFmtMoney(o.entrada):'—'}</td>
+          <td class="mono" style="font-weight:700;">${irFmtMoney(o.totalGeral)}</td>
+        </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);">Sem movimentos no ano</td></tr>'}</tbody>
+      </table></div>
+    </div>
+    <h3 style="margin:20px 0 -6px;">Itens que mais impactam no ano — ${d.ano}</h3>
+    <div class="bi-grid-2">
+      ${irRenderNet410ItensPanel(d.topItensPositivos, false, 'Soma do valor no ano ('+d.ano+'), só motivos considerados pro NET.')}
+      ${irRenderNet410ItensPanel(d.topItensNegativos, true, 'Soma do valor no ano ('+d.ano+'), só motivos considerados pro NET.')}
+    </div>
+    ${irRenderNet410ItensMesSection(d)}
+  `;
+}
+function irRenderNet410ItensPanel(items, negativos, subtitulo){
+  items = items||[];
+  const titulo = negativos ? 'Itens que mais impactam negativamente' : 'Itens que mais impactam positivamente';
+  const cls = negativos ? 'neg' : 'pos';
+  if(!items.length) return `<div class="panel"><h3>${titulo}</h3><p class="field-hint">Nenhum.</p></div>`;
+  const maxAbs = Math.max(1, ...items.map(i=>Math.abs(i.saldoValor)));
+  return `<div class="panel">
+    <h3>${titulo}</h3>
+    <p class="panel-sub">${irEsc(subtitulo)}</p>
+    ${items.map(i=>`<div class="bi-hbar-row bi-hbar-row-money">
+      <div class="bi-hbar-label" title="${irEsc(i.nome)}">${irEsc(i.nome||i.item)}</div>
+      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(Math.abs(i.saldoValor)/maxAbs*100)}%;"></div></div>
+      <div class="bi-hbar-val">${i.saldoValor>0?'+':''}${irFmtMoney(i.saldoValor)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+/* "Por que o NET do mês está tão negativo?" — mesmo ranking de itens, mas só do mês
+   selecionado (padrão: o mês mais recente com movimento nos dados importados). */
+function irRenderNet410ItensMesSection(d){
+  const meses = d.porMes||[];
+  if(!meses.length) return '';
+  const mesSel = IR.net410MesSel && meses.some(m=>m.mes===IR.net410MesSel) ? IR.net410MesSel : meses[meses.length-1].mes;
+  const m = meses.find(x=>x.mes===mesSel);
+  const mesLabel = IR_MES_NOMES[parseInt(mesSel.slice(5,7),10)-1]||mesSel;
+  return `
+    <div class="two-col" style="max-width:340px;margin:20px 0 4px;">
+      <div><label>Itens que mais impactam no mês</label><select onchange="irSetNet410Mes(this.value)">
+        ${meses.map(x=>`<option value="${x.mes}" ${x.mes===mesSel?'selected':''}>${irEsc(IR_MES_NOMES[parseInt(x.mes.slice(5,7),10)-1]||x.mes)} (Net: ${irFmtMoney(x.net)})</option>`).join('')}
+      </select></div>
+      <div></div>
+    </div>
+    <div class="bi-grid-2">
+      ${irRenderNet410ItensPanel(m.topItensPositivos, false, 'Soma do valor em '+mesLabel+', só motivos considerados pro NET.')}
+      ${irRenderNet410ItensPanel(m.topItensNegativos, true, 'Soma do valor em '+mesLabel+', só motivos considerados pro NET.')}
+    </div>
+  `;
+}
+/* ============================================================
    GESTÃO DO CICLO
    ============================================================ */
 /* Aba "NET" (ex-"Gestão do Ciclo") — comparação meta x realizado do ciclo e tabela
@@ -1152,7 +1350,6 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
    ainda serão ajustados conforme o usuário revisar. */
 function irRenderGestaoCiclo(){
   const c = IR.cicloAtivo, ind = IR.indicadores;
-  const grupos = (ind && ind.porGrupoNet) || [];
   const metaRows = ind ? [
     {label:'Acurácia Peças', meta: ind.meta, real: ind.acuraciaPecas},
     {label:'Acurácia Locais', meta: ind.meta, real: ind.acuraciaLocal},
@@ -1198,44 +1395,7 @@ function irRenderGestaoCiclo(){
         </tbody>
       </table></div>
     </div>` : ''}
-    <div class="panel">
-      <h3>NET por Log / Rua / Tipo (${grupos.length})</h3>
-      <p class="panel-sub">Detalhe por combinação de Log, Rua e Tipo de local — status, acurácias e saldo NET de cada grupo.</p>
-      <div class="table-wrap"><table class="table-wide">
-        <thead><tr>
-          <th>Log</th><th>Rua</th><th>Tipo</th><th>Chave</th><th>Data Início</th><th>Data Fim</th>
-          <th>Locais</th><th>Vl Total Contado</th><th>Peças Total Contadas</th><th>Locais Total Contados</th>
-          <th>Locais Pendentes</th><th>% Contado</th><th>Status Fim</th><th>Status Final</th>
-          <th>NET</th><th>NET ABS</th><th>Total Div Valor</th><th>NET Peças</th><th>Total Div Peças</th>
-          <th>Locais Div</th><th>Acurácia Peças</th><th>Acurácia Locais</th><th>Acurácia Valor</th>
-        </tr></thead>
-        <tbody>${grupos.map(g=>`<tr>
-          <td class="mono">${irEsc(g.log)}</td>
-          <td class="mono">${irEsc(g.rua)}</td>
-          <td class="mono">${irEsc(g.tipo)}</td>
-          <td class="mono">${irEsc(g.chave)}</td>
-          <td class="mono">${irFmtDate(g.dataInicio)}</td>
-          <td class="mono">${irFmtDate(g.dataFim)}</td>
-          <td class="mono">${irFmtInt(g.locais)}</td>
-          <td class="mono">${irFmtMoney(g.vlTotalContado)}</td>
-          <td class="mono">${irFmtInt(g.pecasTotalContadas)}</td>
-          <td class="mono">${irFmtInt(g.locaisTotalContados)}</td>
-          <td class="mono">${irFmtInt(g.locaisPendentes)}</td>
-          <td class="mono">${irFmtPct(g.pctContado)}</td>
-          <td><span class="tag">${irEsc(g.statusFim)}</span></td>
-          <td><span class="tag">${irEsc(g.statusFinal)}</span></td>
-          <td class="mono" style="color:${g.net>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtMoney(g.net)}</td>
-          <td class="mono">${irFmtMoney(g.netAbs)}</td>
-          <td class="mono">${irFmtMoney(g.totalDivValor)}</td>
-          <td class="mono" style="color:${g.netPecas>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtInt(g.netPecas)}</td>
-          <td class="mono">${irFmtInt(g.totalDivPecas)}</td>
-          <td class="mono">${irFmtInt(g.locaisDiv)}</td>
-          <td class="mono" style="${irHeatStyle(g.acuraciaPecas, ind ? ind.meta : 1)}">${irFmtPct(g.acuraciaPecas)}</td>
-          <td class="mono" style="${irHeatStyle(g.acuraciaLocais, ind ? ind.meta : 1)}">${irFmtPct(g.acuraciaLocais)}</td>
-          <td class="mono" style="${irHeatStyle(g.acuraciaValor, ind ? ind.meta : 1)}">${irFmtPct(g.acuraciaValor)}</td>
-        </tr>`).join('') || '<tr><td colspan="23" style="text-align:center;color:var(--ink-soft);">Nenhum grupo encontrado</td></tr>'}</tbody>
-      </table></div>
-    </div>
+    ${irRenderNet410Panel()}
   `;
 }
 async function irEncerrarCiclo(){
@@ -1685,12 +1845,44 @@ async function irRenderComparativoResultado(){
     ['Tempo Médio (min)', irFmtNum(indA.tempoMedioContagemMin,1), irFmtNum(indB.tempoMedioContagemMin,1), indB.tempoMedioContagemMin-indA.tempoMedioContagemMin],
     ['Eficiência', irFmtPct(indA.eficiencia), irFmtPct(indB.eficiencia), indB.eficiencia-indA.eficiencia]
   ];
+  // Junta os Logs presentes em qualquer um dos dois ciclos (um ciclo pode não ter
+  // contado ainda um Log que o outro já tem) — cada ciclo já vem com seus próprios
+  // indicadores isolados por cicloId no IndexedDB, então não há mistura de dados aqui.
+  const porLogA = new Map((indA.porLog||[]).filter(r=>r.chave!=='(sem log)').map(r=>[r.chave,r]));
+  const porLogB = new Map((indB.porLog||[]).filter(r=>r.chave!=='(sem log)').map(r=>[r.chave,r]));
+  const logsChaves = Array.from(new Set([...porLogA.keys(), ...porLogB.keys()])).sort();
+  const linhasLog = logsChaves.map(chave=>{
+    const rA = porLogA.get(chave), rB = porLogB.get(chave);
+    const delta = (rB?rB.acuraciaPecas:null)!==null && (rA?rA.acuraciaPecas:null)!==null && rA && rB ? rB.acuraciaPecas-rA.acuraciaPecas : null;
+    return {chave, rA, rB, delta};
+  });
   el.innerHTML = `<div class="panel"><h3>${irCicloLabel(ciA)} vs. ${irCicloLabel(ciB)}</h3>
     <div class="table-wrap"><table><thead><tr><th>Indicador</th><th>${irCicloLabel(ciA)}</th><th>${irCicloLabel(ciB)}</th><th>Tendência</th></tr></thead>
     <tbody>${linhas.map(([label,a,b,delta])=>`<tr><td>${label}</td><td class="mono">${a}</td><td class="mono">${b}</td>
       <td><span class="tag ${delta>0?'tag-good':(delta<0?'tag-bad':'tag-muted')}">${delta>0?'▲ melhora':(delta<0?'▼ piora':'= igual')}</span></td></tr>`).join('')}</tbody>
     </table></div>
-  </div>`;
+  </div>
+  ${logsChaves.length ? `<div class="panel">
+    <h3>Acurácia por Log — ${irCicloLabel(ciA)} vs. ${irCicloLabel(ciB)}</h3>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Log</th>
+      <th>Peças (${irCicloLabel(ciA)})</th><th>Peças (${irCicloLabel(ciB)})</th>
+      <th>Locais (${irCicloLabel(ciA)})</th><th>Locais (${irCicloLabel(ciB)})</th>
+      <th>Valor (${irCicloLabel(ciA)})</th><th>Valor (${irCicloLabel(ciB)})</th>
+      <th>Tendência (Peças)</th>
+    </tr></thead>
+    <tbody>${linhasLog.map(({chave,rA,rB,delta})=>`<tr>
+      <td class="mono">${irEsc(chave)}</td>
+      <td class="mono">${rA?irFmtPct(rA.acuraciaPecas):'—'}</td>
+      <td class="mono">${rB?irFmtPct(rB.acuraciaPecas):'—'}</td>
+      <td class="mono">${rA?irFmtPct(rA.acuraciaPosicoes):'—'}</td>
+      <td class="mono">${rB?irFmtPct(rB.acuraciaPosicoes):'—'}</td>
+      <td class="mono">${rA?irFmtPct(rA.acuraciaValor):'—'}</td>
+      <td class="mono">${rB?irFmtPct(rB.acuraciaValor):'—'}</td>
+      <td>${delta===null ? '<span class="tag tag-muted">sem base</span>' : `<span class="tag ${delta>0?'tag-good':(delta<0?'tag-bad':'tag-muted')}">${delta>0?'▲ melhora':(delta<0?'▼ piora':'= igual')}</span>`}</td>
+    </tr>`).join('')}</tbody>
+    </table></div>
+  </div>` : ''}`;
 }
 
 /* ============================================================
