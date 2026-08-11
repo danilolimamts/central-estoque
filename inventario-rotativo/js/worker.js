@@ -102,12 +102,66 @@ const ALIAS_CONGELADA = {
   qtdPecas: ['Qtd Peças','Qtd Pecas'], qtdItens: ['Qtd Itens'], pesoTotal: ['Peso Total'],
   filial: ['Filial'], predio: ['Predio','Prédio']
 };
+const ALIAS_410 = {
+  item: ['Item'], nomeItem: ['Nome'], dtMov: ['Dt.Mov.','Dt Mov','Data Mov'],
+  quantidade: ['Quantidade'], sentido: ['Sentido'], vlMov: ['Vl.Mov.','Vl Mov'],
+  idDeposito: ['Id Deposito','Id Depósito'], obsWms: ['Observacao WMS','Observação WMS']
+};
+// Legenda de motivos da QRY410 (Perdas e Ganhos no CD) — define quem entra no cálculo
+// de NET. Códigos que não aparecerem aqui contam como SIM por padrão (regra do usuário:
+// "o que não tiver na legenda, pode considerar"). Ordenados do mais específico (2
+// palavras) pro mais genérico, pra "ARI LOT" não ser confundido com "ARI".
+const IR_410_LEGENDA = [
+  {id:'ARI LOT', legenda:'Ajuste de Lote', considerarNet:true},
+  {id:'INS', legenda:'Baixa Insumo', considerarNet:false},
+  {id:'AIR', legenda:'Inventário Rotativo', considerarNet:true},
+  {id:'TID', legenda:'Troca de Identidade', considerarNet:true},
+  {id:'AIN', legenda:'Não Localizado', considerarNet:true},
+  {id:'INV', legenda:'Inversão de etiqueta', considerarNet:true},
+  {id:'ANF', legenda:'Nota Fiscal', considerarNet:false},
+  {id:'PAR', legenda:'Recebimento Parcial', considerarNet:true},
+  {id:'ARI', legenda:'Recebimento invertido', considerarNet:true},
+  {id:'API', legenda:'Ajuste MCL Reversa', considerarNet:true},
+  {id:'AEE', legenda:'Itens Localizados', considerarNet:true},
+  {id:'LOJA', legenda:'Ajuste Loja', considerarNet:true},
+  {id:'QBR', legenda:'Quebra CD', considerarNet:false},
+  {id:'EPI', legenda:'Baixa EPI', considerarNet:false},
+  {id:'IMP', legenda:'Ajuste Importação', considerarNet:true},
+  {id:'ASR', legenda:'Sobra Recebimento', considerarNet:true},
+  {id:'BAI', legenda:'Baixa Insumo', considerarNet:false},
+  {id:'INP', legenda:'Ajuste Pallets', considerarNet:false},
+  {id:'LIT', legenda:'Ajuste Litigio', considerarNet:true},
+  {id:'AUD', legenda:'Auditoria KPMG', considerarNet:true},
+  {id:'AIP', legenda:'Inventário Pontual', considerarNet:true},
+  {id:'ADE', legenda:'Auditorias', considerarNet:true},
+  {id:'AIC', legenda:'Inventário de Curvas', considerarNet:true},
+  {id:'AIT', legenda:'Inventario de Transitorios', considerarNet:true},
+  {id:'AII', legenda:'Inventário de Insumos', considerarNet:true}
+];
+// Extrai o código do início de "Observacao WMS" (formato usual "AIR - AJUSTE...", mas
+// nem sempre tem o traço) e casa com a legenda. Sem código (célula vazia) ou código
+// desconhecido: considera pra NET por padrão, igual pedido pelo usuário.
+function classificar410(obsWmsRaw){
+  const texto = String(obsWmsRaw||'').trim().toUpperCase();
+  if(!texto) return {id:'(sem observação)', legenda:'', considerarNet:true};
+  for(const item of IR_410_LEGENDA){
+    if(texto===item.id || texto.startsWith(item.id+' ') || texto.startsWith(item.id+'-')) {
+      return {id:item.id, legenda:item.legenda, considerarNet:item.considerarNet};
+    }
+  }
+  const codigo = (texto.split(/[\s-]/)[0]||texto.slice(0,10)).trim();
+  return {id:codigo||'(sem observação)', legenda:'', considerarNet:true};
+}
 
 self.onmessage = async (e)=>{
   const msg = e.data;
-  if(msg.type !== 'process') return;
-  try{ await runPipeline(msg); }
-  catch(err){ self.postMessage({type:'error', message: err.message||String(err)}); }
+  if(msg.type === 'process'){
+    try{ await runPipeline(msg); }
+    catch(err){ self.postMessage({type:'error', message: err.message||String(err)}); }
+  } else if(msg.type === 'process410'){
+    try{ await runPipeline410(msg); }
+    catch(err){ self.postMessage({type:'error410', message: err.message||String(err)}); }
+  }
 };
 function post(type, data){ self.postMessage({type, ...data}); }
 
@@ -670,4 +724,93 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     rankingProdutividade, porRua, porLog, porGrupoNet, contadosPorDia, porDiaRua,
     topItensPositivos, topItensNegativos, topItensPositivosValor, topItensNegativosValor
   };
+}
+
+/* ============================================================
+   QRY410 — Perdas e Ganhos no CD
+   Independente do ciclo rotativo: processa por ano (extraído de Dt.Mov.), não
+   depende de nenhum arquivo dos outros slots. Ver classificar410() acima pras
+   regras de negócio (Id Depósito 21 fora, Saída = negativo, legenda de motivos).
+   ============================================================ */
+async function runPipeline410({buf410}){
+  post('progress', {stage:'Lendo QRY410...', pct:5});
+  const wb410 = XLSX.read(buf410, {type:'array', cellDates:true});
+  const rows410 = sheetToRows(wb410);
+  if(!rows410.length) throw new Error('QRY410: planilha vazia.');
+  const r410 = buildAliasResolver(Object.keys(rows410[0]), ALIAS_410);
+  validateColumns(r410, ['dtMov','sentido','vlMov'], 'QRY410');
+
+  post('progress', {stage:'Processando '+rows410.length+' linha(s) da QRY410...', pct:15});
+  const porAno = new Map();
+  function getAno(ano){
+    if(!porAno.has(ano)) porAno.set(ano, {porMes:new Map(), porObs:new Map(), porItem:new Map(), totalLinhas:0, linhasExcluidasDeposito21:0});
+    return porAno.get(ano);
+  }
+  let processadas = 0;
+  for(const row of rows410){
+    processadas++;
+    if(processadas % 20000 === 0){
+      post('progress', {stage:'Processando linha '+processadas+' de '+rows410.length+' (QRY410)...', pct:15+Math.round(processadas/rows410.length*60)});
+    }
+    const dt = parseDateVal(getVal(row, r410.dtMov));
+    if(!dt) continue;
+    const ano = dt.getFullYear();
+    const mes = ano+'-'+String(dt.getMonth()+1).padStart(2,'0');
+    const g = getAno(ano);
+    g.totalLinhas++;
+
+    // Id Depósito 21 fica de fora de tudo (regra explícita do usuário).
+    const idDeposito = parseInt(parseNumber(getVal(row, r410.idDeposito)), 10);
+    if(idDeposito===21){ g.linhasExcluidasDeposito21++; continue; }
+
+    const sentido = String(getVal(row, r410.sentido)||'').trim().toLowerCase();
+    const vlAbs = Math.abs(parseNumber(getVal(row, r410.vlMov)));
+    const sinal = sentido==='saida' || sentido==='saída' ? -1 : (sentido==='entrada' ? 1 : 0);
+    const valor = sinal*vlAbs;
+
+    const cls = classificar410(getVal(row, r410.obsWms));
+
+    // Quebra por Obs: mostra TODOS os motivos (considerados ou não), pra transparência.
+    if(!g.porObs.has(cls.id)) g.porObs.set(cls.id, {id:cls.id, legenda:cls.legenda, considerarNet:cls.considerarNet, saida:0, entrada:0});
+    const go = g.porObs.get(cls.id);
+    if(sinal<0) go.saida += valor;
+    else if(sinal>0) go.entrada += valor;
+
+    if(!cls.considerarNet) continue; // resto (mês, item) só conta com motivos válidos pro NET
+
+    if(!g.porMes.has(mes)) g.porMes.set(mes, {mes, ganhos:0, perdas:0});
+    const gm = g.porMes.get(mes);
+    if(sinal>0) gm.ganhos += valor;
+    else if(sinal<0) gm.perdas += valor;
+
+    const item = String(getVal(row, r410.item)||'').trim();
+    if(item){
+      if(!g.porItem.has(item)) g.porItem.set(item, {item, nome:String(getVal(row, r410.nomeItem)||'').trim(), saldoValor:0});
+      g.porItem.get(item).saldoValor += valor;
+    }
+  }
+
+  post('progress', {stage:'Consolidando resumo por ano (QRY410)...', pct:80});
+  const anos = Array.from(porAno.keys()).sort((a,b)=>b-a);
+  const resumos = {};
+  for(const ano of anos){
+    const g = porAno.get(ano);
+    const porMes = Array.from(g.porMes.values()).sort((a,b)=>a.mes.localeCompare(b.mes)).map(m=>({
+      ...m, net: m.ganhos+m.perdas, netAbs: Math.abs(m.ganhos+m.perdas)
+    }));
+    const porObs = Array.from(g.porObs.values()).map(o=>({...o, totalGeral: o.saida+o.entrada}))
+      .sort((a,b)=>Math.abs(b.totalGeral)-Math.abs(a.totalGeral));
+    const itens = Array.from(g.porItem.values());
+    const topItensPositivos = itens.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,10);
+    const topItensNegativos = itens.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,10);
+    const totalGanhos = porMes.reduce((s,m)=>s+m.ganhos,0);
+    const totalPerdas = porMes.reduce((s,m)=>s+m.perdas,0);
+    resumos[ano] = {
+      ano, totalLinhas:g.totalLinhas, linhasExcluidasDeposito21:g.linhasExcluidasDeposito21,
+      porMes, porObs, topItensPositivos, topItensNegativos,
+      totalGanhos, totalPerdas, totalNet: totalGanhos+totalPerdas, totalNetAbs: Math.abs(totalGanhos+totalPerdas)
+    };
+  }
+  post('progress', {stage:'Concluído.', pct:100});
+  self.postMessage({type:'done410', anos, resumos});
 }

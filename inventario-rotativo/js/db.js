@@ -3,7 +3,7 @@
    100% client-side. Nenhum servidor, nenhuma API.
    ============================================================ */
 const IR_DB_NAME = 'inventario_rotativo_v1';
-const IR_DB_VERSION = 1;
+const IR_DB_VERSION = 2;
 
 const IR_STORES = {
   ciclos: 'ciclos',
@@ -12,7 +12,8 @@ const IR_STORES = {
   divergencias: 'divergencias',
   indicadores: 'indicadores',
   prioridadeConfig: 'prioridade_config',
-  importMeta: 'import_meta'
+  importMeta: 'import_meta',
+  net410: 'net410' // resumo de Perdas e Ganhos (QRY410) por ano — independente do ciclo
 };
 
 function irOpenDB(){
@@ -48,6 +49,9 @@ function irOpenDB(){
       }
       if(!db.objectStoreNames.contains(IR_STORES.importMeta)){
         db.createObjectStore(IR_STORES.importMeta, {keyPath:'cicloId'});
+      }
+      if(!db.objectStoreNames.contains(IR_STORES.net410)){
+        db.createObjectStore(IR_STORES.net410, {keyPath:'ano'});
       }
     };
     req.onsuccess = ()=>resolve(req.result);
@@ -201,6 +205,32 @@ async function irGetImportMeta(cicloId){
   return new Promise((resolve, reject)=>{
     const req = store.get(cicloId);
     req.onsuccess = ()=>resolve(req.result||null);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+
+/* ---------- Perdas e Ganhos (QRY410) — por ano, independente do ciclo ---------- */
+async function irSaveNet410(ano, resumo){
+  const store = await irTx(IR_STORES.net410, 'readwrite');
+  return new Promise((resolve, reject)=>{
+    const req = store.put({ano, ...resumo, processedAt: new Date().toISOString()});
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function irGetNet410(ano){
+  const store = await irTx(IR_STORES.net410, 'readonly');
+  return new Promise((resolve, reject)=>{
+    const req = store.get(ano);
+    req.onsuccess = ()=>resolve(req.result||null);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function irGetAllNet410Anos(){
+  const store = await irTx(IR_STORES.net410, 'readonly');
+  return new Promise((resolve, reject)=>{
+    const req = store.getAll();
+    req.onsuccess = ()=>resolve((req.result||[]).map(r=>r.ano).sort((a,b)=>b-a));
     req.onerror = ()=>reject(req.error);
   });
 }
