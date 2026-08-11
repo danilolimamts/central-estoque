@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 6;
+const IR_INDICADORES_VERSION = 7;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -399,12 +399,21 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const acuraciaPecas = clamp01(totalPecasFisicas>0 ? 1-(totalDiferencaAbs/totalPecasFisicas) : 1);
   const totalItensContados = divergencias.length;
 
+  // "AIR" (X1) não é uma rua física — são locais sistêmicos de ajuste (ex.: "AIR LOG
+  // 001 00", daí o prefixo em vez de igualdade exata) usados quando o local real não
+  // pode ser inventariado. Eles concentram ajustes de VALOR sem ter estoque físico
+  // (vlFisico≈0), o que inflava artificialmente a divergência e derrubava a Acurácia
+  // Valor global pra um número sem sentido — por isso ficam fora daqui, do mesmo jeito
+  // que já ficavam de fora da quebra por Rua logo abaixo.
+  const airLocalIds = new Set(congelados.filter(l=>/^AIR\b/i.test(l.x1||'')).map(l=>l.idLocal));
+  const divergenciasSemAir = airLocalIds.size ? divergencias.filter(d=>!airLocalIds.has(d.local)) : divergencias;
+
   // Acurácia Valor: valorado pela SIGEQ278 (preço de custo) cruzada com a ZBIQ0051
   // (S/N do componente no kit) — não mais pela QRY0114.
-  const totalVlFisico = divergencias.reduce((s,d)=>s+d.vlFisico,0);
-  const totalVlDivergenciaAbs = divergencias.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
+  const totalVlFisico = divergenciasSemAir.reduce((s,d)=>s+d.vlFisico,0);
+  const totalVlDivergenciaAbs = divergenciasSemAir.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
   const acuraciaValor = clamp01(totalVlFisico>0 ? 1-(totalVlDivergenciaAbs/totalVlFisico) : 1);
-  const valorDivergenteLiquido = divergencias.reduce((s,d)=>s+d.vlDivergencia,0);
+  const valorDivergenteLiquido = divergenciasSemAir.reduce((s,d)=>s+d.vlDivergencia,0);
   const valorDivergenteAbsoluto = totalVlDivergenciaAbs;
 
   // Acurácia Local (Posições) é medida sobre os locais CONTADOS (liquidados), não sobre
@@ -491,13 +500,9 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
       };
     }).sort((a,b)=>b.locaisOrcados-a.locaisOrcados);
   }
-  // "AIR" (X1) não é uma rua física — são locais sistêmicos de ajuste (um por LOG,
-  // ex.: "AIR LOG 001 00"), usados quando o local real não pode ser inventariado por
-  // ter pedido atrelado. A divergência deles já é corretamente atribuída ao respectivo
-  // LOG (Grupo Classe); incluí-los na visão por Rua só cria uma linha "AIR" sempre com
-  // 0% de acurácia, sem sentido físico — por isso ficam de fora aqui, mas continuam
-  // valendo normalmente na quebra por Log.
-  const congeladosSemAir = congelados.filter(l=>l.x1!=='AIR');
+  // AIR continua valendo normalmente na quebra por Log (Grupo Classe) — só sai da
+  // visão por Rua, onde não faz sentido físico (ver comentário de airLocalIds acima).
+  const congeladosSemAir = congelados.filter(l=>!airLocalIds.has(l.idLocal));
   const porRua = agruparPor('x1', '(sem rua)', congeladosSemAir);
   const porLog = agruparPor('grupoClasse', '(sem log)');
 
@@ -625,6 +630,8 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const itensSaldo = Array.from(porItemSaldo.values()).map(g=>({...g, locais:g.locais.size}));
   const topItensPositivos = itensSaldo.filter(i=>i.saldoQtd>0).sort((a,b)=>b.saldoQtd-a.saldoQtd).slice(0,10);
   const topItensNegativos = itensSaldo.filter(i=>i.saldoQtd<0).sort((a,b)=>a.saldoQtd-b.saldoQtd).slice(0,10);
+  const topItensPositivosValor = itensSaldo.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,10);
+  const topItensNegativosValor = itensSaldo.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,10);
 
   // Produtividade por colaborador (exclui contagem 1 = abertura)
   const porUsuario = new Map();
@@ -651,6 +658,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade, porRua, porLog, porGrupoNet, contadosPorDia, porDiaRua, topItensPositivos, topItensNegativos
+    rankingProdutividade, porRua, porLog, porGrupoNet, contadosPorDia, porDiaRua,
+    topItensPositivos, topItensNegativos, topItensPositivosValor, topItensNegativosValor
   };
 }
