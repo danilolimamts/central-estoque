@@ -405,7 +405,7 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 6; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 7; // mantido em sincronia com worker.js
 /* Barra de filtros do Dashboard, no estilo Power BI: ciclo + período de data num só
    lugar, com um chip pra escolher em quais painéis o filtro de data se aplica (hoje só
    a Produtividade responde a data — os demais KPIs/gráficos são do ciclo inteiro). */
@@ -478,7 +478,10 @@ function irRenderDashboard(){
       ${irRenderPorLogPanel(ind)}
       ${irRenderContadosPorDiaPanel(ind)}
     </div>
-    ${irRenderTopItensPanel(ind)}
+    <div class="bi-grid-2">
+      ${irRenderTopItensPanel(ind, 'pecas')}
+      ${irRenderTopItensPanel(ind, 'valor')}
+    </div>
     ${irRenderLogTablePanel(ind)}
     ${irRenderCalendarioPanel(ind)}
   `;
@@ -610,7 +613,6 @@ function irRenderPorLogPanel(ind){
   IR._porLogMap = new Map(rows.map(r=>[r.chave, r]));
   return `<div class="panel">
     <h3>Acurácias por Log</h3>
-    <p class="panel-sub">Grupo Classe da base congelada · barras e percentuais: peças / posições / valores. Passe o mouse para ver os detalhes.</p>
     <div class="bi-vbars">
       ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
         <div class="bi-cluster" style="height:100px;">
@@ -824,7 +826,6 @@ function irRenderContadosPorDiaPanel(ind){
   IR._porDiaRua = ind.porDiaRua||{};
   return `<div class="panel">
     <h3>Contados por Dia</h3>
-    <p class="panel-sub">Volume de posições contadas por dia (exclui a contagem de abertura). Linha tracejada = meta diária (${irFmtInt(IR_META_DIARIA)}). Passe o mouse na barra para ver o detalhe por Rua.</p>
     <div class="bi-vbars bi-vbars-meta">
       <div class="bi-vbar-meta-line" style="bottom:${metaPct}%;"><span>Meta ${irFmtInt(IR_META_DIARIA)}</span></div>
       ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowDiaTooltip(event,'${r.dia}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
@@ -883,18 +884,23 @@ function irRenderRuasMaisDivergentesPanel(ind){
     </table></div>
   </div>`;
 }
-function irRenderTopItensPanel(ind){
-  const pos = ind.topItensPositivos||[], neg = ind.topItensNegativos||[];
-  if(!pos.length && !neg.length) return `<div class="panel"><h3>Maiores saldos por item</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
-  const maxAbs = Math.max(1, ...pos.map(i=>i.saldoQtd), ...neg.map(i=>Math.abs(i.saldoQtd)));
-  const list = (items, cls)=>items.length ? items.map(i=>`<div class="bi-hbar-row">
+function irRenderTopItensPanel(ind, kind){
+  const isValor = kind==='valor';
+  const pos = (isValor ? ind.topItensPositivosValor : ind.topItensPositivos) || [];
+  const neg = (isValor ? ind.topItensNegativosValor : ind.topItensNegativos) || [];
+  const titulo = isValor ? 'Itens mais Divergentes (Valor)' : 'Itens mais Divergentes (Peças)';
+  const fmt = isValor ? irFmtMoney : irFmtInt;
+  const getVal = i => isValor ? i.saldoValor : i.saldoQtd;
+  if(!pos.length && !neg.length) return `<div class="panel"><h3>${titulo}</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
+  const maxAbs = Math.max(1, ...pos.map(getVal), ...neg.map(i=>Math.abs(getVal(i))));
+  const list = (items, cls)=>items.length ? items.map(i=>`<div class="bi-hbar-row${isValor?' bi-hbar-row-money':''}">
       <div class="bi-hbar-label" title="${irEsc(i.descricao)}">${irEsc(i.descricao||i.item)}</div>
-      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(Math.abs(i.saldoQtd)/maxAbs*100)}%;"></div></div>
-      <div class="bi-hbar-val">${i.saldoQtd>0?'+':''}${irFmtInt(i.saldoQtd)}</div>
+      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(Math.abs(getVal(i))/maxAbs*100)}%;"></div></div>
+      <div class="bi-hbar-val">${getVal(i)>0?'+':''}${fmt(getVal(i))}</div>
     </div>`).join('') : '<p class="field-hint">Nenhum.</p>';
   return `<div class="panel">
-    <h3>Maiores saldos por item (sobra x falta)</h3>
-    <p class="panel-sub">Soma líquida da diferença de quantidade por item, no ciclo.</p>
+    <h3>${titulo}</h3>
+    <p class="panel-sub">${isValor ? 'Soma líquida do valor divergente por item, no ciclo.' : 'Soma líquida da diferença de quantidade por item, no ciclo.'}</p>
     <div class="bi-grid-2">
       <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--success);">MAIS SOBRA (saldo positivo)</p>${list(pos,'pos')}</div>
       <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--danger);">MAIS FALTA (saldo negativo)</p>${list(neg,'neg')}</div>
@@ -955,6 +961,8 @@ function irGerarRelatorioEmail(){
   const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes);
   const topPos = (ind.topItensPositivos||[]).slice(0,5);
   const topNeg = (ind.topItensNegativos||[]).slice(0,5);
+  const topPosValor = (ind.topItensPositivosValor||[]).slice(0,5);
+  const topNegValor = (ind.topItensNegativosValor||[]).slice(0,5);
   const rowsLog = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
   const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
@@ -1040,7 +1048,7 @@ function irGerarRelatorioEmail(){
       </tr>`).join('') || '<tr><td colspan="7">Sem divergências registradas.</td></tr>'}</tbody>
     </table></div>
 
-    ${sectionTitle('⚖️','Maiores saldos por item','sobra x falta')}
+    ${sectionTitle('⚖️','Itens mais Divergentes (Peças)')}
     <div class="rp-cols2">
       <div class="rp-panel">
         <table class="rp-table"><thead><tr><th>Mais sobra</th><th>Saldo</th></tr></thead>
@@ -1052,7 +1060,17 @@ function irGerarRelatorioEmail(){
       </div>
     </div>
 
-    <p class="rp-footer">Boletim gerado automaticamente pelo módulo Inventário Rotativo. Anexe a imagem no seu e-mail.</p>
+    ${sectionTitle('💰','Itens mais Divergentes (Valor)')}
+    <div class="rp-cols2">
+      <div class="rp-panel">
+        <table class="rp-table"><thead><tr><th>Mais sobra</th><th style="white-space:nowrap;">Saldo</th></tr></thead>
+        <tbody>${topPosValor.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono good" style="white-space:nowrap;">+${irFmtMoney(i.saldoValor)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
+      </div>
+      <div class="rp-panel">
+        <table class="rp-table"><thead><tr><th>Mais falta</th><th style="white-space:nowrap;">Saldo</th></tr></thead>
+        <tbody>${topNegValor.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono bad" style="white-space:nowrap;">${irFmtMoney(i.saldoValor)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
+      </div>
+    </div>
     </div>
   </div>`;
   irBaixarBoletimImagem(html, `Boletim_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
