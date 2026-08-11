@@ -313,7 +313,7 @@ button{ font-family:inherit; cursor:pointer; }
 .bi-vbar-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:0; }
 .bi-vbar{ width:60%; max-width:34px; border-radius:4px 4px 0 0; background:var(--blue); position:relative; }
 .bi-vbar.orange{ background:var(--orange); }
-.bi-vbar-val{ font-size:10px; font-weight:700; color:var(--ink); margin-bottom:3px; white-space:nowrap; }
+.bi-vbar-val{ font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:3px; white-space:nowrap; }
 .bi-vbar-label{ font-size:9.5px; color:var(--ink-soft); margin-top:6px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .bi-vbar-pcts{ display:flex; flex-direction:column; align-items:center; gap:1px; font-size:9.5px; font-weight:700; margin-bottom:4px; }
 
@@ -339,10 +339,10 @@ button{ font-family:inherit; cursor:pointer; }
 .bi-vbar-sub{ font-size:9px; color:var(--ink-soft); margin-top:2px; }
 
 /* Grupo de 3 barras (acurácias por log) */
-.bi-cluster{ display:flex; gap:6px; align-items:flex-end; height:100%; }
+.bi-cluster{ display:flex; gap:9px; align-items:flex-end; height:100%; }
 .bi-cluster .bi-vbar{ width:16px; max-width:none; }
 .bi-cluster-bar{ display:flex; flex-direction:column; align-items:center; }
-.bi-cluster-val{ font-size:8.5px; font-weight:700; margin-bottom:3px; white-space:nowrap; }
+.bi-cluster-val{ font-size:10.5px; font-weight:700; margin-bottom:3px; white-space:nowrap; }
 
 .progress-track{ background:var(--surface2); border-radius:100px; height:8px; overflow:hidden; margin-top:8px; }
 .progress-fill{ height:100%; border-radius:100px; background:var(--blue); }
@@ -356,6 +356,10 @@ thead th .arrow{ opacity:.7; margin-left:3px; }
 tbody td{ padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:middle; }
 tbody tr:hover td{ background:var(--blue-light); }
 .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); }
+/* Tabelas largas (muitas colunas) — não encolhe pra caber, cresce e o wrapper rola
+   na horizontal em vez de quebrar o texto de cada célula em várias linhas. */
+table.table-wide{ width:auto; min-width:100%; }
+table.table-wide tbody td{ white-space:nowrap; }
 .table-scroll{ overflow-y:auto; position:relative; }
 
 /* ---------- TAGS / BADGES ---------- */
