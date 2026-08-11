@@ -248,7 +248,11 @@ function irRenderImportacao(){
   return `
     <div class="panel" ondragover="event.preventDefault()" ondrop="irOnDropMulti(event)">
       <h3>Importar planilhas</h3>
-      <p class="field-hint" style="margin-bottom:14px;">Arraste as planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo. QRY0843, Base Congelada, SIGEQ278 e ZBIQ0051 aceitam várias partes (para quando os dados de um mesmo ciclo vêm em pedaços).</p>
+      <p class="field-hint" style="margin-bottom:10px;">Arraste as planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo. QRY0843, Base Congelada, SIGEQ278 e ZBIQ0051 aceitam várias partes (para quando os dados de um mesmo ciclo vêm em pedaços).</p>
+      <input type="file" id="ir-file-all" accept=".xlsx,.xls" multiple style="display:none" onchange="irOnPickMultiAll(this.files)">
+      <div class="form-actions" style="margin:0 0 14px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('ir-file-all').click()">📂 Selecionar todos de uma vez</button>
+      </div>
       <div class="dz-grid">${IR_FILE_TYPES.map(dz).join('')}</div>
       <p class="field-hint" style="margin-top:16px;"><strong>Ciclo e ano deste processamento</strong> — pra importar outro ciclo/ano (ex: 2027), volte aqui depois e processe de novo com os campos abaixo trocados; cada combinação número + data de abertura vira um ciclo separado no Histórico.</p>
       <div class="two-col" style="margin-top:4px;">
@@ -332,9 +336,9 @@ function irOnDropSingle(e, key){
   const file = e.dataTransfer.files[0];
   if(file) irOnFile(key, file);
 }
-function irOnDropMulti(e){
-  e.preventDefault();
-  const files = Array.from(e.dataTransfer.files || []);
+// Identifica cada arquivo pelo nome e joga no slot certo — usado tanto ao arrastar
+// quanto ao escolher vários arquivos de uma vez pelo seletor nativo do sistema.
+function irClassifyAndAssignFiles(files){
   if(!files.length) return;
   let matched = 0, unmatched = [];
   const porChave = {};
@@ -348,6 +352,13 @@ function irOnDropMulti(e){
   irRenderView();
   if(matched) irShowToast(matched+' arquivo(s) reconhecido(s) automaticamente.');
   if(unmatched.length) irShowToast('Não consegui identificar: '+unmatched.join(', ')+'. Selecione manualmente.', true);
+}
+function irOnDropMulti(e){
+  e.preventDefault();
+  irClassifyAndAssignFiles(Array.from(e.dataTransfer.files || []));
+}
+function irOnPickMultiAll(fileList){
+  irClassifyAndAssignFiles(Array.from(fileList || []));
 }
 async function irProcessar(){
   if(IR.processing) return;
