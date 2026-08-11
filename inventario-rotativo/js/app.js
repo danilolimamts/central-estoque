@@ -658,25 +658,25 @@ function irRenderPorLogPanel(ind){
       ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
         <div class="bi-cluster" style="height:100px;">
           <div class="bi-cluster-bar">
-            <div class="bi-cluster-val mono" style="color:var(--blue);">${irFmtPct(r.acuraciaPecas)}</div>
-            <div class="bi-vbar" style="height:${Math.round(r.acuraciaPecas*100)}px;"></div>
+            <div class="bi-cluster-val mono" style="color:var(--orange);">${irFmtPct(r.acuraciaPecas)}</div>
+            <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPecas*100)}px;"></div>
           </div>
           <div class="bi-cluster-bar">
-            <div class="bi-cluster-val mono" style="color:var(--orange);">${irFmtPct(r.acuraciaPosicoes)}</div>
-            <div class="bi-vbar orange" style="height:${Math.round(r.acuraciaPosicoes*100)}px;"></div>
+            <div class="bi-cluster-val mono" style="color:var(--blue);">${irFmtPct(r.acuraciaPosicoes)}</div>
+            <div class="bi-vbar" style="height:${Math.round(r.acuraciaPosicoes*100)}px;"></div>
           </div>
           <div class="bi-cluster-bar">
-            <div class="bi-cluster-val mono" style="color:var(--blue-soft);">${irFmtPct(r.acuraciaValor)}</div>
-            <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}px;background:var(--blue-soft);"></div>
+            <div class="bi-cluster-val mono" style="color:var(--ink);">${irFmtPct(r.acuraciaValor)}</div>
+            <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}px;background:var(--ink);"></div>
           </div>
         </div>
         <div class="bi-vbar-label">${irEsc(r.chave)}</div>
       </div>`).join('')}
     </div>
     <p class="field-hint" style="margin-top:8px;">
-      <span class="mono" style="color:var(--blue);">■</span> Peças &nbsp;
-      <span class="mono" style="color:var(--orange);">■</span> Posições &nbsp;
-      <span class="mono" style="color:var(--blue-soft);">■</span> Valores
+      <span class="mono" style="color:var(--orange);">■</span> Peças &nbsp;
+      <span class="mono" style="color:var(--blue);">■</span> Posições &nbsp;
+      <span class="mono" style="color:#1D1F2A;">■</span> Valores
     </p>
   </div>`;
 }
@@ -684,7 +684,7 @@ function irRenderPorLogPanel(ind){
    rótulo da % acima de cada barra, cores fixas (vira imagem). */
 function irBuildLogBarChartSvg(rows, opts){
   opts = opts||{};
-  const colors = opts.colors || {pecas:'#0B2545', posicoes:'#C9A227', valor:'#7C8AA5', grid:'#E4E7EE', axis:'#6B7280'};
+  const colors = opts.colors || {pecas:'#FA4616', posicoes:'#001A72', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
   // W fixo = largura real do conteúdo dentro de .rp-panel-pad no boletim (920 de
   // .rp-page − 2×40 de padding do .rp-body − 2×20 de padding do .rp-panel-pad).
   // Usando esse valor exato (em vez de escalar por aspect-ratio) o SVG desenha 1:1
@@ -939,11 +939,20 @@ function irCalcItemSaldo(divergencias){
   }
   const itens = Array.from(map.values());
   return {
-    topItensPositivos: itens.filter(i=>i.saldoQtd>0).sort((a,b)=>b.saldoQtd-a.saldoQtd).slice(0,10),
-    topItensNegativos: itens.filter(i=>i.saldoQtd<0).sort((a,b)=>a.saldoQtd-b.saldoQtd).slice(0,10),
-    topItensPositivosValor: itens.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,10),
-    topItensNegativosValor: itens.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,10)
+    topItensPositivos: itens.filter(i=>i.saldoQtd>0).sort((a,b)=>b.saldoQtd-a.saldoQtd).slice(0,20),
+    topItensNegativos: itens.filter(i=>i.saldoQtd<0).sort((a,b)=>a.saldoQtd-b.saldoQtd).slice(0,20),
+    topItensPositivosValor: itens.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,20),
+    topItensNegativosValor: itens.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,20)
   };
+}
+// Alterna a lista "extra" (itens além dos primeiros visíveis) de um painel de itens
+// mais divergentes — usado pra não deixar o Dashboard gigante por padrão.
+function irToggleCollapse(id, btn){
+  const el = document.getElementById(id);
+  if(!btn.dataset.moreLabel) btn.dataset.moreLabel = btn.textContent;
+  const abrir = el.style.display === 'none';
+  el.style.display = abrir ? 'block' : 'none';
+  btn.textContent = abrir ? 'Ver menos' : btn.dataset.moreLabel;
 }
 function irRenderTopItensPanel(saldo, kind){
   const isValor = kind==='valor';
@@ -954,11 +963,21 @@ function irRenderTopItensPanel(saldo, kind){
   const getVal = i => isValor ? i.saldoValor : i.saldoQtd;
   if(!pos.length && !neg.length) return `<div class="panel"><h3>${titulo}</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
   const maxAbs = Math.max(1, ...pos.map(getVal), ...neg.map(i=>Math.abs(getVal(i))));
-  const list = (items, cls)=>items.length ? items.map(i=>`<div class="bi-hbar-row${isValor?' bi-hbar-row-money':''}">
-      <div class="bi-hbar-label" title="${irEsc(i.descricao)}">${irEsc(i.descricao||i.item)}</div>
+  const VISIVEL = 8;
+  const row = (i, cls)=>`<div class="bi-hbar-row${isValor?' bi-hbar-row-money':''}">
+      <div class="bi-hbar-label" title="${irEsc(i.item)} — ${irEsc(i.descricao)}"><span class="mono">${irEsc(i.item)}</span> — ${irEsc(i.descricao||i.item)}</div>
       <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(Math.abs(getVal(i))/maxAbs*100)}%;"></div></div>
       <div class="bi-hbar-val">${getVal(i)>0?'+':''}${fmt(getVal(i))}</div>
-    </div>`).join('') : '<p class="field-hint">Nenhum.</p>';
+    </div>`;
+  const list = (items, cls)=>{
+    if(!items.length) return '<p class="field-hint">Nenhum.</p>';
+    const visiveis = items.slice(0, VISIVEL).map(i=>row(i,cls)).join('');
+    const resto = items.slice(VISIVEL);
+    if(!resto.length) return visiveis;
+    const uid = 'ir-col-'+Math.random().toString(36).slice(2,9);
+    return `${visiveis}<div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>
+      <button class="btn-link" style="margin-top:4px;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>`;
+  };
   return `<div class="panel">
     <h3>${titulo}</h3>
     <p class="panel-sub">${isValor ? 'Soma líquida do valor divergente por item, no ciclo.' : 'Soma líquida da diferença de quantidade por item, no ciclo.'}</p>
@@ -1028,7 +1047,7 @@ function irGerarRelatorioEmail(){
   const rowsLog = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
   const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
-  const rpLogColors = {pecas:'#001A72', posicoes:'#FA4616', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
+  const rpLogColors = {pecas:'#FA4616', posicoes:'#001A72', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
   const porMes = irAgruparContadosPorMes(ind.contadosPorDia, c.dataAbertura);
   const maxMes = Math.max(1, ...porMes.map(m=>m.total));
   const html = `<div class="rp-page">
