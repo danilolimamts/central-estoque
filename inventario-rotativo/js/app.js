@@ -726,11 +726,19 @@ function irBuildContadosPorDiaSvg(rows, meta, opts){
   const W = 800, H = 260;
   const padL = 14, padR = 14, padT = 36, padB = 32;
   const plotW = W-padL-padR, plotH = H-padT-padB;
-  const n = rows.length;
-  const max = Math.max(1, meta, ...rows.map(r=>r.total));
+  // Slot mínimo por dia (data "dd/mm" + valor acima, sem colar no vizinho) — é uma
+  // imagem estática (sem como rolar como no Dashboard ao vivo), então em vez de
+  // espremer todo mundo até ficar ilegível, mostra só os últimos N dias, que são os
+  // mais relevantes pro acompanhamento do ciclo.
+  const MIN_SLOT = 34;
+  const maxDias = Math.max(1, Math.floor(plotW/MIN_SLOT));
+  const rowsVisiveis = rows.length > maxDias ? rows.slice(rows.length-maxDias) : rows;
+  const omitidos = rows.length - rowsVisiveis.length;
+  const n = rowsVisiveis.length;
+  const max = Math.max(1, meta, ...rowsVisiveis.map(r=>r.total));
   const barW = Math.min(50, plotW/n*0.7);
   let bars = '', labels = '', xLabels = '';
-  rows.forEach((r,i)=>{
+  rowsVisiveis.forEach((r,i)=>{
     const cx = padL + (i+0.5)*(plotW/n);
     const bh = (r.total/max)*plotH;
     const bx = cx-barW/2, by = padT+plotH-bh;
@@ -742,7 +750,8 @@ function irBuildContadosPorDiaSvg(rows, meta, opts){
   const metaY = padT+plotH-(meta/max)*plotH;
   const metaLine = `<line x1="${padL}" y1="${metaY.toFixed(1)}" x2="${W-padR}" y2="${metaY.toFixed(1)}" stroke="${colors.meta}" stroke-width="1.5" stroke-dasharray="5 4"/>
     <text x="${W-padR}" y="${(metaY-6).toFixed(1)}" font-size="11.5" text-anchor="end" fill="${colors.meta}" font-weight="700">Meta ${irFmtInt(meta)}</text>`;
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${bars}${labels}${xLabels}${metaLine}</svg>`;
+  const notaOmitidos = omitidos>0 ? `<text x="${padL}" y="14" font-size="11" fill="${colors.axis}">Mostrando os últimos ${n} de ${rows.length} dias</text>` : '';
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${notaOmitidos}${bars}${labels}${xLabels}${metaLine}</svg>`;
 }
 /* Gráfico de rosca (donut) genérico — usado no "Status do Inventário" do
    Dashboard e no boletim. Cores em hex/var explícitos por parâmetro (não
