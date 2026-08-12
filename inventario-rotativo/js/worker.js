@@ -462,21 +462,15 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const acuraciaPecas = clamp01(totalPecasFisicas>0 ? 1-(totalDiferencaAbs/totalPecasFisicas) : 1);
   const totalItensContados = divergencias.length;
 
-  // "AIR" (X1) não é uma rua física — são locais sistêmicos de ajuste (ex.: "AIR LOG
-  // 001 00", daí o prefixo em vez de igualdade exata) usados quando o local real não
-  // pode ser inventariado. Eles concentram ajustes de VALOR sem ter estoque físico
-  // (vlFisico≈0), o que inflava artificialmente a divergência e derrubava a Acurácia
-  // Valor global pra um número sem sentido — por isso ficam fora daqui, do mesmo jeito
-  // que já ficavam de fora da quebra por Rua logo abaixo.
-  const airLocalIds = new Set(congelados.filter(l=>/^AIR\b/i.test(l.x1||'')).map(l=>l.idLocal));
-  const divergenciasSemAir = airLocalIds.size ? divergencias.filter(d=>!airLocalIds.has(d.local)) : divergencias;
-
+  // "AIR" (X1) é tratado como um local normal, no mesmo padrão de qualquer outro —
+  // entra em Acurácia Valor, na quebra por Rua e por Log sem nenhuma exclusão especial
+  // (pedido explícito do usuário: "AIR local é como se fosse um local normal").
   // Acurácia Valor: valorado pela SIGEQ278 (preço de custo) cruzada com a ZBIQ0051
   // (S/N do componente no kit) — não mais pela QRY0114.
-  const totalVlFisico = divergenciasSemAir.reduce((s,d)=>s+d.vlFisico,0);
-  const totalVlDivergenciaAbs = divergenciasSemAir.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
+  const totalVlFisico = divergencias.reduce((s,d)=>s+d.vlFisico,0);
+  const totalVlDivergenciaAbs = divergencias.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
   const acuraciaValor = clamp01(totalVlFisico>0 ? 1-(totalVlDivergenciaAbs/totalVlFisico) : 1);
-  const valorDivergenteLiquido = divergenciasSemAir.reduce((s,d)=>s+d.vlDivergencia,0);
+  const valorDivergenteLiquido = divergencias.reduce((s,d)=>s+d.vlDivergencia,0);
   const valorDivergenteAbsoluto = totalVlDivergenciaAbs;
 
   // Acurácia Local (Posições) é medida sobre os locais CONTADOS (liquidados), não sobre
@@ -563,10 +557,8 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
       };
     }).sort((a,b)=>b.locaisOrcados-a.locaisOrcados);
   }
-  // AIR continua valendo normalmente na quebra por Log (Grupo Classe) — só sai da
-  // visão por Rua, onde não faz sentido físico (ver comentário de airLocalIds acima).
-  const congeladosSemAir = congelados.filter(l=>!airLocalIds.has(l.idLocal));
-  const porRua = agruparPor('x1', '(sem rua)', congeladosSemAir);
+  // AIR entra na quebra por Rua normalmente, como qualquer outro local (sem exclusão).
+  const porRua = agruparPor('x1', '(sem rua)');
   const porLog = agruparPor('grupoClasse', '(sem log)');
 
   // Locais distintos contados por dia. Cada local é contado UMA ÚNICA VEZ, no dia da
