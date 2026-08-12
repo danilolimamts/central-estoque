@@ -689,8 +689,15 @@ async function runPipeline410({buf410}){
     }
     const dt = parseDateVal(getVal(row, r410.dtMov));
     if(!dt) continue;
-    const ano = dt.getFullYear();
-    const mes = ano+'-'+String(dt.getMonth()+1).padStart(2,'0');
+    // getFullYear()/getMonth() (hora LOCAL) não servem aqui: o SheetJS (cellDates:true)
+    // monta esse Date usando os componentes UTC da célula (convenção dele pra evitar bug
+    // de DST) — em fuso negativo (Brasil, UTC-3) uma data sem hora tipo "01/03 00:00"
+    // vira 2026-03-01T00:00:00Z, que em hora local é 28/02 21:00. Ler com getFullYear()/
+    // getMonth() jogava os lançamentos do dia 1º pro mês anterior, subtraindo valor de
+    // março (e inflando fevereiro) — por isso as UTC, que refletem os componentes reais
+    // da célula, sem passar pela conversão de fuso.
+    const ano = dt.getUTCFullYear();
+    const mes = ano+'-'+String(dt.getUTCMonth()+1).padStart(2,'0');
     const g = getAno(ano);
     g.totalLinhas++;
 

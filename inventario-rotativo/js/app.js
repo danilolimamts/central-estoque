@@ -1154,6 +1154,9 @@ function irGerarRelatorioEmail(){
     </div>
 
     ${IR.net410Data && (IR.net410Data.porMes||[]).length ? `${sectionTitle('🧮','NET mensal (Perdas e Ganhos no CD)', 'ano '+IR.net410Data.ano+' — independente do ciclo')}
+    <div class="rp-panel rp-panel-pad">
+      ${irBuildNetMensalBarSvg(IR.net410Data.porMes)}
+    </div>
     <div class="rp-panel">${irBuildNetMensalColunasTable(IR.net410Data, 'rp-table')}</div>` : ''}
     </div>
   </div>`;
@@ -1325,6 +1328,33 @@ function irRenderNet410Panel(){
 }
 const IR_MES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const IR_MES_NOMES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+// Gráfico de colunas do NET mês a mês — barra pra cima (verde) quando positivo, pra
+// baixo (vermelho) quando negativo, em volta de uma linha de base no zero.
+function irBuildNetMensalBarSvg(rows, opts){
+  opts = opts||{};
+  const colors = opts.colors || {pos:'#1F8A52', neg:'#C0392B', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'};
+  const W = 800, H = 280;
+  const padL = 14, padR = 14, padT = 26, padB = 30;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const n = rows.length;
+  const maxAbs = Math.max(1, ...rows.map(r=>Math.abs(r.net)));
+  const baseY = padT + plotH/2;
+  const barW = Math.min(56, plotW/n*0.6);
+  let bars = '', labels = '', xLabels = '';
+  rows.forEach((r,i)=>{
+    const cx = padL + (i+0.5)*(plotW/n);
+    const h = Math.abs(r.net)/maxAbs*(plotH/2);
+    const pos = r.net>=0;
+    const by = pos ? baseY-h : baseY;
+    const color = pos ? colors.pos : colors.neg;
+    bars += `<rect x="${(cx-barW/2).toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" rx="2"/>`;
+    const labelY = pos ? by-6 : by+h+16;
+    labels += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" font-size="11" text-anchor="middle" fill="${colors.label}" font-weight="700">${irFmtMoney(r.net)}</text>`;
+    xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="11.5" text-anchor="middle" fill="${colors.axis}" font-weight="600">${IR_MES_NOMES_ABREV[parseInt(r.mes.slice(5,7),10)-1]}</text>`;
+  });
+  const zeroLine = `<line x1="${padL}" y1="${baseY.toFixed(1)}" x2="${W-padR}" y2="${baseY.toFixed(1)}" stroke="${colors.grid}" stroke-width="1.5"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${zeroLine}${bars}${labels}${xLabels}</svg>`;
+}
 // Tabela do NET com um mês por coluna (visão compacta, lado a lado) — usada na aba NET
 // e reaproveitada no boletim, pra bater o ano do ciclo em uma linha só, mês a mês.
 function irBuildNetMensalColunasTable(d, tableCls){
@@ -1345,6 +1375,7 @@ function irRenderNet410Resultado(d){
     <div class="panel">
       <h3>NET mensal em colunas — ${d.ano}</h3>
       <p class="panel-sub">Mesmo valor de NET da tabela abaixo, só que com um mês por coluna pra facilitar a leitura lado a lado.</p>
+      ${irBuildNetMensalBarSvg(rows)}
       ${irBuildNetMensalColunasTable(d, 'table-wide')}
     </div>
     <div class="panel">
