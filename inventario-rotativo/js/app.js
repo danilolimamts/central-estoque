@@ -1152,6 +1152,9 @@ function irGerarRelatorioEmail(){
         <tbody>${topNegValor.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono bad" style="white-space:nowrap;">${irFmtMoney(i.saldoValor)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
       </div>
     </div>
+
+    ${IR.net410Data && (IR.net410Data.porMes||[]).length ? `${sectionTitle('🧮','NET mensal (Perdas e Ganhos no CD)', 'ano '+IR.net410Data.ano+' — independente do ciclo')}
+    <div class="rp-panel">${irBuildNetMensalColunasTable(IR.net410Data, 'rp-table')}</div>` : ''}
     </div>
   </div>`;
   irBaixarBoletimImagem(html, `Boletim_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
@@ -1321,9 +1324,29 @@ function irRenderNet410Panel(){
   ${d ? irRenderNet410Resultado(d) : ''}`;
 }
 const IR_MES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const IR_MES_NOMES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+// Tabela do NET com um mês por coluna (visão compacta, lado a lado) — usada na aba NET
+// e reaproveitada no boletim, pra bater o ano do ciclo em uma linha só, mês a mês.
+function irBuildNetMensalColunasTable(d, tableCls){
+  const rows = d.porMes||[];
+  if(!rows.length) return '';
+  return `<div class="table-wrap"><table class="${tableCls||''}">
+    <thead><tr><th>Indicador</th>${rows.map(m=>`<th>${IR_MES_NOMES_ABREV[parseInt(m.mes.slice(5,7),10)-1]}</th>`).join('')}<th>Total ${d.ano}</th></tr></thead>
+    <tbody><tr>
+      <td style="font-weight:700;">NET</td>
+      ${rows.map(m=>`<td class="mono" style="color:${m.net>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtMoney(m.net)}</td>`).join('')}
+      <td class="mono" style="color:${d.totalNet>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtMoney(d.totalNet)}</td>
+    </tr></tbody>
+  </table></div>`;
+}
 function irRenderNet410Resultado(d){
   const rows = d.porMes||[];
   return `
+    <div class="panel">
+      <h3>NET mensal em colunas — ${d.ano}</h3>
+      <p class="panel-sub">Mesmo valor de NET da tabela abaixo, só que com um mês por coluna pra facilitar a leitura lado a lado.</p>
+      ${irBuildNetMensalColunasTable(d, 'table-wide')}
+    </div>
     <div class="panel">
       <h3>Net mensal — ${d.ano}</h3>
       <p class="panel-sub">Só considera motivos válidos pro NET (ver tabela por Obs abaixo). ${irFmtInt(d.linhasExcluidasDeposito21)} linha(s) do Id Depósito 21 ficaram de fora. Total de linhas do ano: ${irFmtInt(d.totalLinhas)}.</p>
