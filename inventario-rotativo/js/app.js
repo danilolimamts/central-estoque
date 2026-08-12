@@ -515,10 +515,8 @@ function irRenderDashboard(){
       ${irRenderStatusInventarioPanel(ind)}
     </div>
     ${irRenderDashProdutividade()}
-    <div class="bi-grid-2">
-      ${irRenderPorLogPanel(ind)}
-      ${irRenderContadosPorDiaPanel(ind)}
-    </div>
+    ${irRenderPorLogPanel(ind)}
+    ${irRenderContadosPorDiaPanel(ind)}
     <div class="bi-grid-2">
       ${irRenderTopItensPanel(itemSaldo, 'pecas')}
       ${irRenderTopItensPanel(itemSaldo, 'valor')}
@@ -654,7 +652,7 @@ function irRenderPorLogPanel(ind){
   IR._porLogMap = new Map(rows.map(r=>[r.chave, r]));
   return `<div class="panel">
     <h3>Acurácias por Log</h3>
-    <div class="bi-vbars">
+    <div class="bi-vbars bi-vbars-grouped">
       ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
         <div class="bi-cluster" style="height:100px;">
           <div class="bi-cluster-bar">
@@ -867,7 +865,7 @@ function irRenderContadosPorDiaPanel(ind){
   IR._porDiaRua = ind.porDiaRua||{};
   return `<div class="panel">
     <h3>Contados por Dia</h3>
-    <div class="bi-vbars bi-vbars-meta">
+    <div class="bi-vbars bi-vbars-meta bi-vbars-scroll">
       <div class="bi-vbar-meta-line" style="bottom:${metaPct}%;"><span>Meta ${irFmtInt(IR_META_DIARIA)}</span></div>
       ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowDiaTooltip(event,'${r.dia}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
         <div class="bi-vbar-val">${irFmtInt(r.total)}</div>
@@ -1298,25 +1296,33 @@ const IR_MES_NOMES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set
 // baixo (vermelho) quando negativo, em volta de uma linha de base no zero.
 function irBuildNetMensalBarSvg(rows, opts){
   opts = opts||{};
-  const colors = opts.colors || {pos:'#1F8A52', neg:'#C0392B', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'};
-  const W = 800, H = 280;
-  const padL = 14, padR = 14, padT = 26, padB = 30;
+  // Positivo não é sinônimo de "bom" aqui (é só o sentido do saldo) — por isso não
+  // usa verde. Azul (mesmo tom de "Locais/Posições" no resto do app) pra positivo,
+  // vermelho pra negativo.
+  const colors = opts.colors || {pos:'#001A72', neg:'#C0392B', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'};
+  const W = 800, H = 320;
+  const padL = 14, padR = 14, padT = 26, padB = 46;
   const plotW = W-padL-padR, plotH = H-padT-padB;
   const n = rows.length;
   const maxAbs = Math.max(1, ...rows.map(r=>Math.abs(r.net)));
   const baseY = padT + plotH/2;
+  // Fator 0.86 (em vez de ir até a metade inteira do plotH) garante uma folga fixa
+  // entre a ponta da maior barra e o rótulo do mês no eixo X — sem isso, o rótulo de
+  // valor de uma barra grande (ex.: NET de março bem negativo) ficava colado ou
+  // em cima do nome do mês.
+  const barMaxH = (plotH/2)*0.86;
   const barW = Math.min(56, plotW/n*0.6);
   let bars = '', labels = '', xLabels = '';
   rows.forEach((r,i)=>{
     const cx = padL + (i+0.5)*(plotW/n);
-    const h = Math.abs(r.net)/maxAbs*(plotH/2);
+    const h = Math.abs(r.net)/maxAbs*barMaxH;
     const pos = r.net>=0;
     const by = pos ? baseY-h : baseY;
     const color = pos ? colors.pos : colors.neg;
     bars += `<rect x="${(cx-barW/2).toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" rx="2"/>`;
     const labelY = pos ? by-6 : by+h+16;
     labels += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" font-size="11" text-anchor="middle" fill="${colors.label}" font-weight="700">${irFmtMoney(r.net)}</text>`;
-    xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="11.5" text-anchor="middle" fill="${colors.axis}" font-weight="600">${IR_MES_NOMES_ABREV[parseInt(r.mes.slice(5,7),10)-1]}</text>`;
+    xLabels += `<text x="${cx.toFixed(1)}" y="${H-14}" font-size="12" text-anchor="middle" fill="${colors.axis}" font-weight="600">${IR_MES_NOMES_ABREV[parseInt(r.mes.slice(5,7),10)-1]}</text>`;
   });
   const zeroLine = `<line x1="${padL}" y1="${baseY.toFixed(1)}" x2="${W-padR}" y2="${baseY.toFixed(1)}" stroke="${colors.grid}" stroke-width="1.5"/>`;
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${zeroLine}${bars}${labels}${xLabels}</svg>`;
@@ -1330,8 +1336,8 @@ function irBuildNetMensalColunasTable(d, tableCls){
     <thead><tr><th>Indicador</th>${rows.map(m=>`<th>${IR_MES_NOMES_ABREV[parseInt(m.mes.slice(5,7),10)-1]}</th>`).join('')}<th>Total ${d.ano}</th></tr></thead>
     <tbody><tr>
       <td style="font-weight:700;">NET</td>
-      ${rows.map(m=>`<td class="mono" style="color:${m.net>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtMoney(m.net)}</td>`).join('')}
-      <td class="mono" style="color:${d.totalNet>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtMoney(d.totalNet)}</td>
+      ${rows.map(m=>`<td class="mono" style="color:${m.net>=0?'var(--blue)':'var(--danger)'};font-weight:700;">${irFmtMoney(m.net)}</td>`).join('')}
+      <td class="mono" style="color:${d.totalNet>=0?'var(--blue)':'var(--danger)'};font-weight:700;">${irFmtMoney(d.totalNet)}</td>
     </tr></tbody>
   </table></div>`;
 }
@@ -1351,14 +1357,14 @@ function irRenderNet410Resultado(d){
         <thead><tr><th>Mês</th><th>Net</th><th>Net Absoluto</th><th>Ganhos</th><th>Perdas</th></tr></thead>
         <tbody>${rows.map(m=>`<tr>
           <td>${irEsc(IR_MES_NOMES[parseInt(m.mes.slice(5,7),10)-1]||m.mes)}</td>
-          <td class="mono" style="color:${m.net>=0?'var(--success)':'var(--danger)'};font-weight:700;">${irFmtMoney(m.net)}</td>
+          <td class="mono" style="color:${m.net>=0?'var(--blue)':'var(--danger)'};font-weight:700;">${irFmtMoney(m.net)}</td>
           <td class="mono">${irFmtMoney(m.netAbs)}</td>
           <td class="mono" style="color:var(--success);">${irFmtMoney(m.ganhos)}</td>
           <td class="mono" style="color:var(--danger);">${irFmtMoney(m.perdas)}</td>
         </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);">Sem movimentos no ano</td></tr>'}</tbody>
         <tfoot><tr style="font-weight:700;">
           <td>Acumulado</td>
-          <td class="mono" style="color:${d.totalNet>=0?'var(--success)':'var(--danger)'};">${irFmtMoney(d.totalNet)}</td>
+          <td class="mono" style="color:${d.totalNet>=0?'var(--blue)':'var(--danger)'};">${irFmtMoney(d.totalNet)}</td>
           <td class="mono">${irFmtMoney(d.totalNetAbs)}</td>
           <td class="mono" style="color:var(--success);">${irFmtMoney(d.totalGanhos)}</td>
           <td class="mono" style="color:var(--danger);">${irFmtMoney(d.totalPerdas)}</td>
