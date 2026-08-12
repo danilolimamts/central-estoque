@@ -1039,11 +1039,6 @@ function irGerarRelatorioEmail(){
   );
 
   const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes);
-  const itemSaldo = irCalcItemSaldo(IR.divergencias);
-  const topPos = itemSaldo.topItensPositivos.slice(0,5);
-  const topNeg = itemSaldo.topItensNegativos.slice(0,5);
-  const topPosValor = itemSaldo.topItensPositivosValor.slice(0,5);
-  const topNegValor = itemSaldo.topItensNegativosValor.slice(0,5);
   const rowsLog = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
   const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
@@ -1129,35 +1124,6 @@ function irGerarRelatorioEmail(){
       </tr>`).join('') || '<tr><td colspan="7">Sem divergências registradas.</td></tr>'}</tbody>
     </table></div>
 
-    ${sectionTitle('⚖️','Itens mais Divergentes (Peças)')}
-    <div class="rp-cols2">
-      <div class="rp-panel">
-        <table class="rp-table"><thead><tr><th>Mais sobra</th><th>Saldo</th></tr></thead>
-        <tbody>${topPos.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono good">+${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
-      </div>
-      <div class="rp-panel">
-        <table class="rp-table"><thead><tr><th>Mais falta</th><th>Saldo</th></tr></thead>
-        <tbody>${topNeg.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono bad">${irFmtInt(i.saldoQtd)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
-      </div>
-    </div>
-
-    ${sectionTitle('💰','Itens mais Divergentes (Valor)')}
-    <div class="rp-cols2">
-      <div class="rp-panel">
-        <table class="rp-table"><thead><tr><th>Mais sobra</th><th style="white-space:nowrap;">Saldo</th></tr></thead>
-        <tbody>${topPosValor.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono good" style="white-space:nowrap;">+${irFmtMoney(i.saldoValor)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
-      </div>
-      <div class="rp-panel">
-        <table class="rp-table"><thead><tr><th>Mais falta</th><th style="white-space:nowrap;">Saldo</th></tr></thead>
-        <tbody>${topNegValor.map(i=>`<tr><td>${irEsc(i.descricao||i.item)}</td><td class="mono bad" style="white-space:nowrap;">${irFmtMoney(i.saldoValor)}</td></tr>`).join('') || '<tr><td colspan="2">Nenhum</td></tr>'}</tbody></table>
-      </div>
-    </div>
-
-    ${IR.net410Data && (IR.net410Data.porMes||[]).length ? `${sectionTitle('🧮','NET mensal (Perdas e Ganhos no CD)', 'ano '+IR.net410Data.ano+' — independente do ciclo')}
-    <div class="rp-panel rp-panel-pad">
-      ${irBuildNetMensalBarSvg(IR.net410Data.porMes)}
-    </div>
-    <div class="rp-panel">${irBuildNetMensalColunasTable(IR.net410Data, 'rp-table')}</div>` : ''}
     </div>
   </div>`;
   irBaixarBoletimImagem(html, `Boletim_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
