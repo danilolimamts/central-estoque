@@ -100,6 +100,10 @@ function audRenderHeaderBar(){
   const dt = m ? new Date(m.processedAt) : null;
   const statusChip = (ok)=>`<span class="aud-hb-status ${ok?'ok':'pend'}">${ok?'OK':'Pendente'}</span>`;
   return `<div class="aud-headerbar">
+    <a href="../" class="aud-hb-back" title="Voltar para a Central">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      <span>Central</span>
+    </a>
     <img class="aud-hb-logo" src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico">
     <div class="aud-hb-sep"></div>
     <div class="aud-hb-group">Atualizado em <b>${dt?dt.toLocaleDateString('pt-BR'):'—'}</b></div>
