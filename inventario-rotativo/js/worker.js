@@ -513,8 +513,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const abertura = dataAbertura ? new Date(dataAbertura) : hoje;
   const termino = dataPrevistaTermino ? new Date(dataPrevistaTermino) : null;
   const diasDecorridos = Math.max(1, Math.round((hoje-abertura)/86400000));
-  const ritmoLocaisPorDia = locaisConcluidos/diasDecorridos;
-  const diasRestantes = ritmoLocaisPorDia>0 ? Math.ceil(locaisPendentes/ritmoLocaisPorDia) : null;
+  const diasRestantes = irDiasUteisEntre(hoje, termino);
 
   let eficiencia = 0;
   if(termino){
