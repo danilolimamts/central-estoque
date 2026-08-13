@@ -646,14 +646,40 @@ function irRenderPorRuaPanel(ind){
     </table></div>
   </div>`;
 }
+// Só esses 4 logs têm base congelada confiável hoje (os demais — LOG 4, COFRE, ESC,
+// MOVI, INV etc. — ficam de fora até o usuário corrigir a base congelada deles).
+const IR_LOGS_VALIDOS = ['LOG 1','LOG 2','LOG 3','LOG 6'];
+function irFiltrarLogsValidos(porLog){
+  return (porLog||[]).filter(r=>IR_LOGS_VALIDOS.includes(r.chave) && r.locaisContados>0)
+    .slice().sort((a,b)=>IR_LOGS_VALIDOS.indexOf(a.chave)-IR_LOGS_VALIDOS.indexOf(b.chave));
+}
+// Total agregado dos logs válidos — recalculado a partir dos totais brutos (peças/
+// locais/valor), não é média das porcentagens, pra manter a mesma metodologia
+// ponderada por volume usada em cada acurácia individual.
+function irCalcLogTotal(rows){
+  const sum = k => rows.reduce((s,r)=>s+(r[k]||0), 0);
+  const pecasContadas = sum('pecasContadas'), pecasDivergentes = sum('pecasDivergentes');
+  const vlFisicoTotal = sum('vlFisicoTotal'), valorDivergenteAbsoluto = sum('valorDivergenteAbsoluto');
+  const locaisContados = sum('locaisContados'), locaisDivergentes = sum('locaisDivergentes');
+  return {
+    chave: 'TOTAL', isTotal: true,
+    acuraciaPecas: pecasContadas>0 ? Math.max(0,1-pecasDivergentes/pecasContadas) : 1,
+    acuraciaValor: vlFisicoTotal>0 ? Math.max(0,1-valorDivergenteAbsoluto/vlFisicoTotal) : 1,
+    acuraciaPosicoes: locaisContados>0 ? Math.max(0,1-locaisDivergentes/locaisContados) : 1,
+    pecasContadas, pecasDivergentes, vlFisicoTotal, valorDivergenteAbsoluto,
+    locaisContados, locaisDivergentes, locaisOrcados: sum('locaisOrcados')
+  };
+}
 function irRenderPorLogPanel(ind){
-  const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  const rows = irFiltrarLogsValidos(ind.porLog);
   if(!rows.length) return `<div class="panel"><h3>Acurácias e NET por Log</h3><p class="field-hint">Nenhum log com locais contados ainda.</p></div>`;
-  IR._porLogMap = new Map(rows.map(r=>[r.chave, r]));
+  const rowsComTotal = [...rows, irCalcLogTotal(rows)];
+  IR._porLogMap = new Map(rowsComTotal.map(r=>[r.chave, r]));
   return `<div class="panel">
     <h3>Acurácias por Log</h3>
+    <p class="panel-sub">Só LOG 1, 2, 3 e 6 — os demais logs ainda têm base congelada pra corrigir.</p>
     <div class="bi-vbars bi-vbars-grouped">
-      ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
+      ${rowsComTotal.map(r=>`<div class="bi-vbar-col${r.isTotal?' bi-vbar-col-total':''}" onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
         <div class="bi-cluster" style="height:100px;">
           <div class="bi-cluster-bar">
             <div class="bi-cluster-val mono" style="color:var(--orange);">${irFmtPct(r.acuraciaPecas)}</div>
@@ -668,7 +694,7 @@ function irRenderPorLogPanel(ind){
             <div class="bi-vbar" style="height:${Math.round(r.acuraciaValor*100)}px;background:var(--ink);"></div>
           </div>
         </div>
-        <div class="bi-vbar-label">${irEsc(r.chave)}</div>
+        <div class="bi-vbar-label">${r.isTotal?'TOTAL':irEsc(r.chave)}</div>
       </div>`).join('')}
     </div>
     <p class="field-hint" style="margin-top:8px;">
@@ -1046,7 +1072,8 @@ function irGerarRelatorioEmail(){
   );
 
   const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes);
-  const rowsLog = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)' && r.locaisContados>0).slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  const rowsLog = irFiltrarLogsValidos(ind.porLog);
+  const rowsLogComTotal = rowsLog.length ? [...rowsLog, irCalcLogTotal(rowsLog)] : [];
   const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
   const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
   const rpLogColors = {pecas:'#FA4616', posicoes:'#001A72', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
@@ -1095,7 +1122,7 @@ function irGerarRelatorioEmail(){
 
     ${rowsLog.length ? `${sectionTitle('📊','Acurácias por Log','peças, posições e valores — rótulo mostra a % de cada barra')}
     <div class="rp-panel rp-panel-pad">
-      ${irBuildLogBarChartSvg(rowsLog, {colors:rpLogColors})}
+      ${irBuildLogBarChartSvg(rowsLogComTotal, {colors:rpLogColors})}
       <p class="rp-chart-legend">
         <span style="color:${rpLogColors.pecas};">■</span> Peças &nbsp;
         <span style="color:${rpLogColors.posicoes};">■</span> Posições &nbsp;

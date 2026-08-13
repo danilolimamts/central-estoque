@@ -340,7 +340,11 @@ button{ font-family:inherit; cursor:pointer; }
    ilegível, mantém cada coluna com largura fixa e rola horizontalmente dentro do
    próprio painel (sem vazar/cortar pra fora do card, como acontecia antes). */
 .bi-vbars-scroll{ overflow-x:auto; overflow-y:hidden; padding-bottom:6px; }
-.bi-vbars-scroll > .bi-vbar-col{ flex:0 0 auto; width:48px; }
+/* flex-grow:1 com flex-shrink:0 e base de 48px: quando os dias cabem numa tela só,
+   as colunas esticam pra ocupar o espaço todo (sem sobrar vazio); quando não cabem,
+   elas nunca encolhem além de 48px — o excesso vira rolagem horizontal em vez de
+   cortar/espremer as barras. */
+.bi-vbars-scroll > .bi-vbar-col{ flex:1 0 48px; width:auto; }
 
 /* Status do Inventário (rosca + estatísticas) */
 .status-donut-row{ display:flex; align-items:center; gap:28px; flex-wrap:wrap; }
@@ -371,6 +375,9 @@ button{ font-family:inherit; cursor:pointer; }
 /* Separação visual clara entre um Log e outro (cada um é um grupo de 3 barras) —
    sem isso os clusters ficavam visualmente colados uns nos outros. */
 .bi-vbars-grouped > .bi-vbar-col:not(:last-child){ border-right:1px solid var(--line); padding-right:22px; margin-right:0; }
+/* Coluna "TOTAL" (agregado dos logs) se destaca das demais — não é só mais um log. */
+.bi-vbars-grouped > .bi-vbar-col-total{ padding-left:22px; margin-left:8px; border-left:2px solid var(--line); }
+.bi-vbar-col-total .bi-vbar-label{ font-weight:800; color:var(--ink); }
 
 .progress-track{ background:var(--surface2); border-radius:100px; height:8px; overflow:hidden; margin-top:8px; }
 .progress-fill{ height:100%; border-radius:100px; background:var(--blue); }
