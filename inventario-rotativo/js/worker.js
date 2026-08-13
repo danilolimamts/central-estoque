@@ -249,10 +249,13 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   // ZBIQ0051 não é um múltiplo — valora normalmente pelo próprio preço na 278.
   post('progress', {stage:'Indexando preços (SIGEQ278)...', pct:14});
   const precoPorItem = new Map(); // item -> preço de custo
+  const nomePorItem278 = new Map(); // item -> nome (fallback quando a QRY0843 vem sem "Item Nome")
   for(const row of rows278){
     const item = String(getVal(row, r278.item) ?? '').trim();
     if(!item) continue;
     precoPorItem.set(item, parseNumber(getVal(row, r278.precoCusto)));
+    const nome = String(getVal(row, r278.nomeItem) ?? '').trim();
+    if(nome) nomePorItem278.set(item, nome);
   }
   const valoracaoPorComponente = new Map(); // item_componente -> {itemPai, inInterface}
   for(const row of rows051){
@@ -383,9 +386,13 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       const sistema = g.sistema ?? 0;
       const diferenca = g.final - sistema;
       const precoUnitario = precoUnitarioDoItem(item);
+      // A QRY0843 às vezes vem sem "Item Nome" preenchido — nesse caso usa o nome
+      // cadastrado na SIGEQ278 como alternativa, pra não sobrar código repetido no
+      // lugar do nome nas listas de itens divergentes.
+      const itemNome = g.itemNome || nomePorItem278.get(item) || '';
       divergencias.push({
         id: cicloId+'|'+local+'|'+item,
-        cicloId, local, item, itemNome: g.itemNome,
+        cicloId, local, item, itemNome,
         qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
         precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
         statusLocal: st.status, rodadasLocal: st.rodadas,

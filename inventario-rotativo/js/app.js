@@ -577,19 +577,20 @@ function irCalNavMonth(delta){
   irRenderView();
 }
 function irRenderLogTablePanel(ind){
-  const rows = (ind.porLog||[]).filter(r=>r.chave!=='(sem log)').slice().sort((a,b)=>a.chave.localeCompare(b.chave));
+  const rows = irFiltrarLogsValidos(ind.porLog);
   if(!rows.length) return '';
+  const rowsComTotal = [...rows, irCalcLogTotal(rows)];
   const meta = ind.meta;
   return `<div class="panel">
     <h3>Acurácia por Log</h3>
-    <p class="panel-sub">Locais orçados x contados (Grupo Classe da base congelada), peças e acurácias por log.</p>
+    <p class="panel-sub">Locais orçados x contados (Grupo Classe da base congelada), peças e acurácias por log. Só LOG 1, 2, 3 e 6 — os demais ainda têm base congelada pra corrigir.</p>
     <div class="table-wrap"><table>
       <thead><tr>
         <th>Log</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Divergentes</th>
         <th>Peças Contadas</th><th>Peças Divergentes</th>
         <th>Acurácia Peças</th><th>Acurácia Posições</th><th>Acurácia Valor</th>
       </tr></thead>
-      <tbody>${rows.map(r=>`<tr>
+      <tbody>${rowsComTotal.map(r=>`<tr${r.isTotal?' style="font-weight:700;border-top:2px solid var(--line);"':''}>
         <td class="mono">${irEsc(r.chave)}</td>
         <td class="mono">${irFmtInt(r.locaisOrcados)}</td>
         <td class="mono">${irFmtInt(r.locaisContados)}</td>
