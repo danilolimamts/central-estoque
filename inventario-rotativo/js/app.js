@@ -449,7 +449,7 @@ const IR_INDICADORES_VERSION = 7; // mantido em sincronia com worker.js
 /* Barra de filtros do Dashboard, no estilo Power BI: ciclo + período de data num só
    lugar, com um chip pra escolher em quais painéis o filtro de data se aplica (hoje só
    a Produtividade responde a data — os demais KPIs/gráficos são do ciclo inteiro). */
-function irRenderDashFilterBar(){
+function irRenderDashCicloBar(){
   const ordenados = IR.ciclos.slice().sort((a,b)=>b.numero-a.numero);
   // Sempre em dropdown, mesmo com um único ciclo — facilita quando novos ciclos forem
   // processados (não precisa a lista "aparecer" de repente, já fica pronta).
@@ -461,6 +461,12 @@ function irRenderDashFilterBar(){
       <label>Ciclo</label>
       ${cicloSelect}
     </div>
+  </div>`;
+}
+// Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
+// dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
+function irRenderDashDateFilterBar(){
+  return `<div class="panel dash-filter-bar">
     <div class="dash-filter-group">
       <label>Período</label>
       <input type="date" value="${irEsc(IR.prodFilters.de)}" onchange="irProdSetFilter('de', this.value)">
@@ -503,7 +509,7 @@ function irRenderDashboard(){
     irKpiTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
   );
   return `
-    ${irRenderDashFilterBar()}
+    ${irRenderDashCicloBar()}
     <div class="form-actions" style="margin:0 0 12px;">
       <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>
@@ -514,6 +520,7 @@ function irRenderDashboard(){
       ${irRenderSaudeEstoquePanel(ind)}
       ${irRenderStatusInventarioPanel(ind)}
     </div>
+    ${irRenderDashDateFilterBar()}
     ${irRenderDashProdutividade()}
     ${irRenderPorLogPanel(ind)}
     ${irRenderContadosPorDiaPanel(ind)}
@@ -901,13 +908,15 @@ function irRenderContadosPorDiaPanel(ind){
   IR._porDiaRua = ind.porDiaRua||{};
   return `<div class="panel">
     <h3>Contados por Dia</h3>
-    <div class="bi-vbars bi-vbars-meta bi-vbars-scroll">
-      <div class="bi-vbar-meta-line" style="bottom:${metaPct}%;"><span>Meta ${irFmtInt(IR_META_DIARIA)}</span></div>
-      ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowDiaTooltip(event,'${r.dia}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
-        <div class="bi-vbar-val">${irFmtInt(r.total)}</div>
-        <div class="bi-vbar orange" style="height:${Math.round(r.total/max*100)}%;"></div>
-        <div class="bi-vbar-label">${new Date(r.dia+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>
-      </div>`).join('')}
+    <div class="bi-vbars-scroll">
+      <div class="bi-vbars bi-vbars-meta">
+        <div class="bi-vbar-meta-line" style="bottom:${metaPct}%;"><span>Meta ${irFmtInt(IR_META_DIARIA)}</span></div>
+        ${rows.map(r=>`<div class="bi-vbar-col" onmouseenter="irShowDiaTooltip(event,'${r.dia}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
+          <div class="bi-vbar-val">${irFmtInt(r.total)}</div>
+          <div class="bi-vbar orange" style="height:${Math.round(r.total/max*100)}%;"></div>
+          <div class="bi-vbar-label">${new Date(r.dia+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>
+        </div>`).join('')}
+      </div>
     </div>
   </div>`;
 }
