@@ -343,13 +343,19 @@ button{ font-family:inherit; cursor:pointer; }
 .bi-vbar-pcts{ display:flex; flex-direction:column; align-items:center; gap:1px; font-size:9.5px; font-weight:700; margin-bottom:4px; }
 /* "Contados por Dia" tem muitas colunas (1 por dia) — em vez de espremer tudo até
    ilegível, mantém cada coluna com largura fixa e rola horizontalmente dentro do
-   próprio painel (sem vazar/cortar pra fora do card, como acontecia antes). */
+   próprio painel (sem vazar/cortar pra fora do card, como acontecia antes).
+   .bi-vbars-scroll é só a "janela" que rola; .bi-vbars fica DENTRO dela com
+   width:max-content, pra crescer com o conteúdo — importante pra linha da meta
+   (position:absolute; left:0; right:0) se referenciar a essa largura total e rolar
+   junto com as barras, em vez de ficar "grudada" na largura visível só (o que
+   fazia a linha parecer que "parava" no meio dos dias ao rolar). */
 .bi-vbars-scroll{ overflow-x:auto; overflow-y:hidden; padding-bottom:6px; }
+.bi-vbars-scroll > .bi-vbars{ width:max-content; min-width:100%; }
 /* flex-grow:1 com flex-shrink:0 e base de 48px: quando os dias cabem numa tela só,
    as colunas esticam pra ocupar o espaço todo (sem sobrar vazio); quando não cabem,
    elas nunca encolhem além de 48px — o excesso vira rolagem horizontal em vez de
    cortar/espremer as barras. */
-.bi-vbars-scroll > .bi-vbar-col{ flex:1 0 48px; width:auto; }
+.bi-vbars-scroll .bi-vbar-col{ flex:1 0 48px; width:auto; }
 
 /* Status do Inventário (rosca + estatísticas) */
 .status-donut-row{ display:flex; align-items:center; gap:28px; flex-wrap:wrap; }
