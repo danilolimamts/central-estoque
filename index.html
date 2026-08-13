@@ -72,7 +72,10 @@
   .card-inventario .card-top{ background:linear-gradient(135deg,#0026B8 0%,#3D5AFE 55%,#7C8CFF 100%); }
   .card-elevadores .card-top{ background:linear-gradient(135deg,#0E9488 0%,#2DD4BF 100%); }
   .card-projetos .card-top{ background:linear-gradient(135deg,#8B5CF6 0%,#C4B5FD 100%); }
-  .card.disabled .card-top{ background:linear-gradient(135deg,#C7CADD 0%,#DCDEED 100%); }
+  .card-transitorios .card-top{ background:linear-gradient(135deg,#D97706 0%,#FBBF24 100%); }
+  /* "Em breve" fica com a cor do módulo, só esmaecida — mantém cada card
+     reconhecível pela cor mesmo antes de ficar disponível. */
+  .card.disabled .card-top{ filter:saturate(.4) brightness(1.12); }
   .card-icon{
     position:relative; z-index:1; width:42px; height:42px; border-radius:11px; background:rgba(255,255,255,.22);
     backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; color:#fff;
@@ -93,6 +96,7 @@
   .card-inventario .tag{ background:#E9EDFF; color:#1E33C7; }
   .card-elevadores .tag{ background:#E3FBF7; color:#0B7A70; }
   .card-projetos .tag{ background:#F1EAFE; color:#6D28D9; }
+  .card-transitorios .tag{ background:#FEF3E2; color:#B45309; }
   .card.disabled .tag{ background:#F0F1F8; color:#8890B8; }
   .card-cta{
     display:flex; align-items:center; justify-content:space-between; font-size:12.5px; font-weight:800;
@@ -176,6 +180,20 @@
         <div class="card-body">
           <h3 class="card-title">Projetos</h3>
           <p class="card-desc">Acompanhamento de projetos e iniciativas do CD.</p>
+          <div class="card-tags"><span class="tag">Em preparação</span></div>
+          <div class="card-cta"><span>Em breve</span></div>
+        </div>
+      </div>
+      <div class="card card-transitorios disabled">
+        <div class="card-top">
+          <div class="card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>
+          </div>
+          <span class="card-status"><span class="dot"></span>Em breve</span>
+        </div>
+        <div class="card-body">
+          <h3 class="card-title">Gestão de Transitórios</h3>
+          <p class="card-desc">Controle e acompanhamento de itens transitórios do CD.</p>
           <div class="card-tags"><span class="tag">Em preparação</span></div>
           <div class="card-cta"><span>Em breve</span></div>
         </div>
