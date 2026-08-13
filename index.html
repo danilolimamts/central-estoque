@@ -7,13 +7,13 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
-<meta name="theme-color" content="#001A72">
+<meta name="theme-color" content="#0A0E3D">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --blue:#001A72; --blue-soft:#33488E; --orange:#FA4616;
-    --ink:#1C1F37; --ink-soft:#666C93; --line:#E2E4F5;
-    --paper:#F5F5FC; --surface:#FFFFFF;
-    --success:#1F8A52;
+    --ink:#161933; --ink-soft:#6A6F94; --line:#E7E8F5;
+    --paper:#F3F4FB; --surface:#FFFFFF;
   }
   *{ box-sizing:border-box; }
   body{
@@ -21,77 +21,110 @@
     -webkit-font-smoothing:antialiased;
   }
   .hero{
-    background:linear-gradient(135deg, var(--blue) 0%, #000E42 100%);
-    color:#fff; padding:26px 32px 46px;
+    position:relative; overflow:hidden;
+    background:radial-gradient(1100px 520px at 12% -10%, #2A3AA8 0%, transparent 55%),
+               radial-gradient(900px 480px at 100% 0%, #FF6A2E 0%, transparent 45%),
+               linear-gradient(150deg, #0A0E3D 0%, #0D1250 55%, #1A1466 100%);
+    color:#fff; padding:28px 32px 58px;
   }
-  .hero-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
-  .hero-logo{ height:30px; display:block; }
+  .hero::after{
+    content:''; position:absolute; inset:0; opacity:.5; pointer-events:none;
+    background-image:radial-gradient(circle, rgba(255,255,255,.09) 1px, transparent 1px);
+    background-size:26px 26px; mask-image:linear-gradient(to bottom, rgba(0,0,0,.6), transparent 70%);
+  }
+  .hero-inner{ position:relative; }
+  .hero-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+  .hero-logo{ height:30px; display:block; filter:drop-shadow(0 2px 6px rgba(0,0,0,.3)); }
   .hero-badge{
     display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.1);
-    border:1px solid rgba(255,255,255,.18); border-radius:100px; padding:4px 12px;
-    font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#C7CEEF;
+    border:1px solid rgba(255,255,255,.2); backdrop-filter:blur(6px); border-radius:100px; padding:5px 13px;
+    font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:#E4E7FF;
   }
-  h1{ font-size:32px; font-weight:800; margin:14px 0 6px; letter-spacing:-.01em; }
-  .hero p{ margin:0; color:#B9C0E6; font-size:14.5px; }
-  .body{ max-width:1120px; margin:-24px auto 60px; padding:0 32px; }
+  .hero-badge.hero-badge-accent{ background:linear-gradient(90deg,#FF6A2E,#FF9142); border-color:transparent; color:#fff; }
+  h1{
+    font-size:34px; font-weight:800; margin:16px 0 8px; letter-spacing:-.02em;
+    background:linear-gradient(90deg,#fff 30%,#C9CEFF 100%); -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .hero-inner p{ margin:0; color:#AEB3E0; font-size:14.5px; max-width:520px; }
+  .body{ max-width:1160px; margin:-30px auto 60px; padding:0 32px; position:relative; }
   .section-label{
-    font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft);
+    font-size:11.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-soft);
     margin:0 0 14px 4px;
   }
-  .cards{ display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:18px; }
+  .cards{ display:grid; grid-template-columns:repeat(auto-fit, minmax(255px, 1fr)); gap:20px; }
   .card{
-    background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden;
-    box-shadow:0 10px 24px -18px rgba(20,24,40,.35); display:flex; flex-direction:column;
-    transition:transform .15s, box-shadow .15s;
+    background:var(--surface); border:1px solid var(--line); border-radius:16px; overflow:hidden;
+    box-shadow:0 14px 30px -20px rgba(20,24,60,.35); display:flex; flex-direction:column;
+    transition:transform .18s ease, box-shadow .18s ease;
   }
   a.card{ text-decoration:none; color:inherit; }
-  a.card:hover{ transform:translateY(-3px); box-shadow:0 16px 30px -16px rgba(20,24,40,.4); }
+  a.card:hover{ transform:translateY(-4px); box-shadow:0 22px 40px -18px rgba(20,24,60,.45); }
   .card-top{
-    height:88px; display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
-    background:linear-gradient(135deg, var(--blue), var(--blue-soft));
+    position:relative; height:96px; display:flex; align-items:center; justify-content:space-between; padding:16px;
+    overflow:hidden;
   }
-  .card.disabled .card-top{ background:#DADDEC; }
+  .card-top::after{
+    content:''; position:absolute; inset:0;
+    background-image:radial-gradient(circle, rgba(255,255,255,.16) 1.5px, transparent 1.5px);
+    background-size:16px 16px; opacity:.5;
+  }
+  .card-auditoria .card-top{ background:linear-gradient(135deg,#FA4616 0%,#FF8A3D 100%); }
+  .card-inventario .card-top{ background:linear-gradient(135deg,#0026B8 0%,#3D5AFE 55%,#7C8CFF 100%); }
+  .card-elevadores .card-top{ background:linear-gradient(135deg,#0E9488 0%,#2DD4BF 100%); }
+  .card-projetos .card-top{ background:linear-gradient(135deg,#8B5CF6 0%,#C4B5FD 100%); }
+  .card.disabled .card-top{ background:linear-gradient(135deg,#C7CADD 0%,#DCDEED 100%); }
   .card-icon{
-    width:40px; height:40px; border-radius:10px; background:rgba(255,255,255,.16);
-    display:flex; align-items:center; justify-content:center; color:#fff;
+    position:relative; z-index:1; width:42px; height:42px; border-radius:11px; background:rgba(255,255,255,.22);
+    backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; color:#fff;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.35);
   }
-  .card.disabled .card-icon{ background:rgba(255,255,255,.5); color:#8990B3; }
   .card-status{
-    font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:100px;
-    background:rgba(255,255,255,.16); color:#fff; display:flex; align-items:center; gap:5px;
+    position:relative; z-index:1; font-size:10.5px; font-weight:700; padding:4px 10px; border-radius:100px;
+    background:rgba(255,255,255,.22); color:#fff; display:flex; align-items:center; gap:5px; backdrop-filter:blur(4px);
   }
-  .card-status .dot{ width:6px; height:6px; border-radius:50%; background:#3DD68C; }
-  .card.disabled .card-status{ background:rgba(255,255,255,.6); color:#5A6088; }
-  .card.disabled .card-status .dot{ background:#9AA1C4; }
-  .card-body{ padding:16px; flex:1; display:flex; flex-direction:column; }
-  .card-title{ font-size:16.5px; font-weight:800; margin:0 0 4px; color:var(--ink); }
-  .card-desc{ font-size:12.5px; color:var(--ink-soft); line-height:1.5; margin:0 0 12px; flex:1; }
+  .card-status .dot{ width:6px; height:6px; border-radius:50%; background:#3DFFA0; box-shadow:0 0 6px #3DFFA0; }
+  .card.disabled .card-status .dot{ background:#8890B8; box-shadow:none; }
+  .card-body{ padding:18px 18px 16px; flex:1; display:flex; flex-direction:column; }
+  .card-title{ font-size:17px; font-weight:800; margin:0 0 5px; color:var(--ink); letter-spacing:-.01em; }
+  .card-desc{ font-size:12.5px; color:var(--ink-soft); line-height:1.55; margin:0 0 14px; flex:1; }
   .card-tags{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
-  .tag{ font-size:10.5px; font-weight:600; padding:3px 9px; border-radius:100px; background:var(--paper); color:var(--blue-soft); }
+  .tag{ font-size:10.5px; font-weight:700; padding:3px 10px; border-radius:100px; }
+  .card-auditoria .tag{ background:#FFF0E8; color:#D6390F; }
+  .card-inventario .tag{ background:#E9EDFF; color:#1E33C7; }
+  .card-elevadores .tag{ background:#E3FBF7; color:#0B7A70; }
+  .card-projetos .tag{ background:#F1EAFE; color:#6D28D9; }
+  .card.disabled .tag{ background:#F0F1F8; color:#8890B8; }
   .card-cta{
-    display:flex; align-items:center; justify-content:space-between; font-size:12.5px; font-weight:700;
-    color:var(--orange); padding-top:10px; border-top:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between; font-size:12.5px; font-weight:800;
+    padding-top:12px; border-top:1px solid var(--line);
   }
+  .card-auditoria .card-cta{ color:#FA4616; }
+  .card-inventario .card-cta{ color:#3D5AFE; }
+  .card-elevadores .card-cta{ color:#0E9488; }
   .card.disabled .card-cta{ color:#9AA1C4; }
+  .card-cta .arrow{ transition:transform .15s; }
+  a.card:hover .card-cta .arrow{ transform:translateX(3px); }
   @media(max-width:640px){
-    .hero{ padding:20px 18px 40px; } .body{ padding:0 18px; } h1{ font-size:24px; }
+    .hero{ padding:22px 18px 46px; } .body{ padding:0 18px; } h1{ font-size:25px; }
   }
 </style>
 </head>
 <body>
   <div class="hero">
-    <div class="hero-top">
-      <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="hero-logo">
-      <span class="hero-badge">CD Cajamar</span>
+    <div class="hero-inner">
+      <div class="hero-top">
+        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="hero-logo">
+        <span class="hero-badge">CD Cajamar</span>
+      </div>
+      <span class="hero-badge hero-badge-accent">Torre de Controle</span>
+      <h1>Central — Loja do Mecânico</h1>
+      <p>Dados, indicadores e operação do CD conectados em um único ambiente.</p>
     </div>
-    <span class="hero-badge">Torre de Controle</span>
-    <h1>Central — Loja do Mecânico</h1>
-    <p>Dados, indicadores e operação do CD conectados em um único ambiente.</p>
   </div>
   <div class="body">
     <p class="section-label">Aplicações</p>
     <div class="cards">
-      <a class="card" href="./auditoria/">
+      <a class="card card-auditoria" href="./auditoria/">
         <div class="card-top">
           <div class="card-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><path d="M11 7v4l2.5 2.5"/></svg>
@@ -102,10 +135,10 @@
           <h3 class="card-title">Auditoria</h3>
           <p class="card-desc">Auditoria de divergências, endereços e inventários do CD.</p>
           <div class="card-tags"><span class="tag">Divergências</span><span class="tag">Endereços</span><span class="tag">Inventários</span></div>
-          <div class="card-cta"><span>Acessar</span><span>→</span></div>
+          <div class="card-cta"><span>Acessar</span><span class="arrow">→</span></div>
         </div>
       </a>
-      <a class="card" href="./inventario-rotativo/">
+      <a class="card card-inventario" href="./inventario-rotativo/">
         <div class="card-top">
           <div class="card-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
@@ -116,10 +149,10 @@
           <h3 class="card-title">Inventário Rotativo</h3>
           <p class="card-desc">Ciclos, produtividade, divergências e NET do inventário rotativo.</p>
           <div class="card-tags"><span class="tag">Ciclos</span><span class="tag">Produtividade</span><span class="tag">NET</span></div>
-          <div class="card-cta"><span>Acessar</span><span>→</span></div>
+          <div class="card-cta"><span>Acessar</span><span class="arrow">→</span></div>
         </div>
       </a>
-      <a class="card" href="./equalizacao-elevadores/">
+      <a class="card card-elevadores" href="./equalizacao-elevadores/">
         <div class="card-top">
           <div class="card-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="10" rx="1"/></svg>
@@ -130,10 +163,10 @@
           <h3 class="card-title">Equalização de Elevadores</h3>
           <p class="card-desc">Equalização de bases e colunas de elevadores do CD.</p>
           <div class="card-tags"><span class="tag">Bases</span><span class="tag">Colunas</span></div>
-          <div class="card-cta"><span>Acessar</span><span>→</span></div>
+          <div class="card-cta"><span>Acessar</span><span class="arrow">→</span></div>
         </div>
       </a>
-      <div class="card disabled">
+      <div class="card card-projetos disabled">
         <div class="card-top">
           <div class="card-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
