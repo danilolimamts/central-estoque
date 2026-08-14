@@ -817,6 +817,36 @@ function irBuildContadosPorDiaSvg(rows, meta, opts){
   const notaOmitidos = omitidos>0 ? `<text x="${padL}" y="14" font-size="11" fill="${colors.axis}">Mostrando os últimos ${n} de ${rows.length} dias</text>` : '';
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${notaOmitidos}${bars}${labels}${xLabels}${metaLine}</svg>`;
 }
+/* Gráfico de colunas com linha de base no zero — pra série que tem mês positivo E
+   negativo (NET da 410 por mês), diferente do resto dos gráficos de barra do app
+   (que partem sempre de 0 pra cima). Barra positiva sobe da base, negativa desce;
+   rótulo fica do lado de fora da barra (acima se positiva, abaixo se negativa). */
+function irBuildColunasComBaseZeroSvg(rows, opts){
+  opts = opts||{};
+  const corPos = opts.corPos||'#001A72', corNeg = opts.corNeg||'#C0392B', corAxis = opts.corAxis||'#6B7280', corLabel = opts.corLabel||'#1D1F2A';
+  const campo = opts.campo||'valor', fmt = opts.fmt||irFmtMoney, xLabel = opts.xLabel||(r=>r.label);
+  const W = 800, H = 260;
+  const padL = 14, padR = 14, padT = 34, padB = 30;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const n = rows.length;
+  const maxAbs = Math.max(1, ...rows.map(r=>Math.abs(r[campo])));
+  const baseY = padT + plotH/2;
+  const barW = Math.min(56, plotW/n*0.62);
+  let bars = '', labels = '', xLabels = '';
+  const baseLine = `<line x1="${padL}" y1="${baseY.toFixed(1)}" x2="${W-padR}" y2="${baseY.toFixed(1)}" stroke="${corAxis}" stroke-width="1"/>`;
+  rows.forEach((r,i)=>{
+    const cx = padL + (i+0.5)*(plotW/n);
+    const v = r[campo];
+    const bh = Math.abs(v)/maxAbs*(plotH/2-8);
+    const cor = v>=0 ? corPos : corNeg;
+    const by = v>=0 ? baseY-bh : baseY;
+    bars += `<rect x="${(cx-barW/2).toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${cor}" rx="2"/>`;
+    const labelY = v>=0 ? by-6 : by+bh+14;
+    labels += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" font-size="11" text-anchor="middle" fill="${corLabel}" font-weight="700">${fmt(v)}</text>`;
+    xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="11.5" text-anchor="middle" fill="${corAxis}" font-weight="600">${irEsc(xLabel(r))}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${baseLine}${bars}${labels}${xLabels}</svg>`;
+}
 /* Gráfico de rosca (donut) genérico — usado no "Status do Inventário" do
    Dashboard e no boletim. Cores em hex/var explícitos por parâmetro (não
    depende do tema) pra funcionar igual em qualquer contexto. */
@@ -1162,14 +1192,6 @@ function irGerarRelatorioEmail(){
   if(!ind || !c){ irShowToast('Sem dados de ciclo pra gerar relatório.', true); return; }
   const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
   const sectionTitle = rpSectionTitle;
-  // NET mensal (QRY410) — diferente do "Divergente (líq.)" acima, que é o líquido do
-  // CICLO inteiro (ganho−perda das divergências físicas contadas) e pode ficar perto
-  // de zero mesmo com bastante movimento (ganhos e perdas se cancelando). O NET
-  // mensal vem da 410 (todos os ajustes do CD, não só o inventário) e é o número que
-  // efetivamente responde "quanto o estoque ganhou/perdeu esse mês".
-  const net410MesAtual = IR.net410Data && IR.net410Data.porMes && IR.net410Data.porMes.length
-    ? IR.net410Data.porMes[IR.net410Data.porMes.length-1] : null;
-  const net410MesLabel = net410MesAtual ? IR_MES_NOMES[parseInt(net410MesAtual.mes.slice(5,7),10)-1]+'/'+net410MesAtual.mes.slice(0,4) : '';
   // Cor da célula de acurácia: amarelo bem em cima da meta, vermelho abaixo,
   // verde acima — pedido explícito do usuário (ex.: meta 97% → 97% = amarelo).
   const rpAcColor = (val, meta)=>{
@@ -1192,8 +1214,7 @@ function irGerarRelatorioEmail(){
   const blocoValor = rpBlock('black','💰','Valor',
     rpTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
     rpTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
-    rpTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líq.)', '', 'ganho − perda do ciclo') +
-    (net410MesAtual ? rpTile('📈', irFmtMoney(net410MesAtual.net), 'NET Mensal (410)', net410MesAtual.net>=0?'good':'bad', net410MesLabel) : '')
+    rpTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líq.)', '', 'ganho − perda do ciclo')
   );
   const blocoCiclo = rpBlock('neutral','🔄','Ciclo',
     rpTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
@@ -1210,6 +1231,13 @@ function irGerarRelatorioEmail(){
   const rpLogColors = {pecas:'#FA4616', posicoes:'#001A72', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
   const porMes = irAgruparContadosPorMes(ind.contadosPorDia, c.dataAbertura);
   const maxMes = Math.max(1, ...porMes.map(m=>m.total));
+  // NET mensal (QRY410) — a série do ano inteiro, ganho/perda de TODOS os ajustes do
+  // CD (não só o ciclo rotativo). Diferente do "Divergente (líq.)" acima, que é só o
+  // líquido do ciclo. Fica de fora se a 410 ainda não foi processada.
+  const netMensalRows = (IR.net410Data && IR.net410Data.porMes || []).map(m=>({
+    mes:m.mes, net:m.net, label: IR_MES_NOMES_ABREV[parseInt(m.mes.slice(5,7),10)-1]
+  }));
+  const netMensalTotal = netMensalRows.reduce((s,r)=>s+r.net,0);
   const html = `<div class="rp-page">
     <div class="rp-hero">
       <div class="rp-hero-top">
@@ -1225,6 +1253,15 @@ function irGerarRelatorioEmail(){
     <div class="rp-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
+
+    ${netMensalRows.length ? `${sectionTitle('📈','NET Mensal em Colunas','QRY410 — mesmo valor da tabela abaixo, um mês por coluna pra facilitar a leitura lado a lado')}
+    <div class="rp-panel rp-panel-pad">
+      ${irBuildColunasComBaseZeroSvg(netMensalRows, {campo:'net', fmt:irFmtMoney, xLabel:r=>r.label, corPos:'#001A72', corNeg:'#C0392B'})}
+      <div class="table-wrap" style="margin-top:14px;"><table class="rp-table">
+        <thead><tr><th>Indicador</th>${netMensalRows.map(r=>`<th>${irEsc(r.label)}</th>`).join('')}<th>Total ${irEsc(String(IR.net410AnoSel||''))}</th></tr></thead>
+        <tbody><tr><td>NET</td>${netMensalRows.map(r=>`<td style="color:${r.net>=0?'#001A72':'#C0392B'};font-weight:700;">${irFmtMoney(r.net)}</td>`).join('')}<td style="font-weight:800;">${irFmtMoney(netMensalTotal)}</td></tr></tbody>
+      </table></div>
+    </div>` : ''}
 
     ${sectionTitle('🟡','Status do Inventário','percentual de locais contados')}
     <div class="rp-panel rp-panel-pad">
@@ -1274,7 +1311,7 @@ function irGerarRelatorioEmail(){
     <div class="rp-panel rp-panel-pad">
       ${irBuildContadosPorDiaSvg(ind.divergentesPorDia, null, {colors:{bar:'#FA4616', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'}, campo:'pecas', fmt:irFmtInt})}
     </div>
-    ${sectionTitle('💰','Valor Divergente por Dia', (net410MesAtual ? 'NET mensal ('+net410MesLabel+'): '+irFmtMoney(net410MesAtual.net)+' · ' : '')+'NET do ciclo: '+irFmtMoney(ind.valorDivergenteLiquido)+' · barras abaixo são valor absoluto por dia')}
+    ${sectionTitle('💰','Valor Divergente por Dia','soma do valor divergente absoluto (QRY0843), por dia de fechamento do local')}
     <div class="rp-panel rp-panel-pad">
       ${irBuildContadosPorDiaSvg(ind.divergentesPorDia, null, {colors:{bar:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'}, campo:'valor', fmt:irFmtMoney})}
     </div>
