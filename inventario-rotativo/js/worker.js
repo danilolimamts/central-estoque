@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 7;
+const IR_INDICADORES_VERSION = 8;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -589,6 +589,26 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
       .sort((a,b)=>b.locais-a.locais);
   }
 
+  // Divergências por dia (peças, valor absoluto e locais) — mesmo critério de "dia
+  // final" usado em contadosPorDia (Data Situação da rodada final do local), só que
+  // aqui olha SÓ pros locais que fecharam com pelo menos 1 item divergente. Alimenta
+  // o painel do Dashboard "Peças/Valor/Locais Divergentes por Dia" (mesmo layout do
+  // gráfico de Produtividade, sem linha de meta) e o boletim.
+  const diaDivMap = new Map(); // dia -> {pecas, valorAbs, locaisSet}
+  for(const d of divergencias){
+    if(d.diferenca===0) continue;
+    const final = diaFinalPorLocal.get(d.local);
+    if(!final) continue;
+    if(!diaDivMap.has(final.dia)) diaDivMap.set(final.dia, {pecas:0, valorAbs:0, locaisSet:new Set()});
+    const g = diaDivMap.get(final.dia);
+    g.pecas += Math.abs(d.diferenca);
+    g.valorAbs += Math.abs(d.vlDivergencia);
+    g.locaisSet.add(d.local);
+  }
+  const divergentesPorDia = Array.from(diaDivMap.entries())
+    .map(([dia,g])=>({dia, pecas:g.pecas, valor:g.valorAbs, locais:g.locaisSet.size}))
+    .sort((a,b)=>a.dia.localeCompare(b.dia));
+
   // Saldo líquido por item (para ranking de maiores sobras/faltas)
   const porItemSaldo = new Map();
   for(const d of divergencias){
@@ -631,7 +651,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua,
+    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, divergentesPorDia,
     topItensPositivos, topItensNegativos, topItensPositivosValor, topItensNegativosValor
   };
 }
@@ -682,8 +702,10 @@ async function runPipeline410({buf410}){
 
     const sentido = String(getVal(row, r410.sentido)||'').trim().toLowerCase();
     const vlAbs = Math.abs(parseNumber(getVal(row, r410.vlMov)));
+    const qtdAbs = Math.abs(parseNumber(getVal(row, r410.quantidade)));
     const sinal = sentido==='saida' || sentido==='saída' ? -1 : (sentido==='entrada' ? 1 : 0);
     const valor = sinal*vlAbs;
+    const qtd = sinal*qtdAbs;
 
     const cls = classificar410(getVal(row, r410.obsWms));
 
@@ -705,8 +727,10 @@ async function runPipeline410({buf410}){
     const item = String(getVal(row, r410.item)||'').trim();
     const nomeItem = String(getVal(row, r410.nomeItem)||'').trim();
     if(item){
-      if(!g.porItem.has(item)) g.porItem.set(item, {item, nome:nomeItem, saldoValor:0});
-      g.porItem.get(item).saldoValor += valor;
+      if(!g.porItem.has(item)) g.porItem.set(item, {item, nome:nomeItem, saldoValor:0, saldoQtd:0});
+      const gItem = g.porItem.get(item);
+      gItem.saldoValor += valor;
+      gItem.saldoQtd += qtd;
 
       // Item x mês — pra responder "por que o NET desse mês está tão alto/baixo" e
       // também "quanto disso veio do Inventário Rotativo (AIR) x de outros motivos"
@@ -714,10 +738,11 @@ async function runPipeline410({buf410}){
       // os ajustes, o inventário é só um dos motivos que compõem o NET.
       if(!g.porItemMes.has(mes)) g.porItemMes.set(mes, new Map());
       const itensDoMes = g.porItemMes.get(mes);
-      if(!itensDoMes.has(item)) itensDoMes.set(item, {item, nome:nomeItem, saldoValor:0, ganhos:0, perdas:0, porObs:new Map()});
+      if(!itensDoMes.has(item)) itensDoMes.set(item, {item, nome:nomeItem, saldoValor:0, ganhos:0, perdas:0, saldoQtd:0, ganhosQtd:0, perdasQtd:0, porObs:new Map()});
       const gi = itensDoMes.get(item);
       gi.saldoValor += valor;
-      if(sinal>0) gi.ganhos += valor; else if(sinal<0) gi.perdas += valor;
+      gi.saldoQtd += qtd;
+      if(sinal>0){ gi.ganhos += valor; gi.ganhosQtd += qtd; } else if(sinal<0){ gi.perdas += valor; gi.perdasQtd += qtd; }
       gi.porObs.set(cls.id, (gi.porObs.get(cls.id)||0) + valor);
     }
   }
@@ -739,8 +764,11 @@ async function runPipeline410({buf410}){
         // é o que permite justificar um mês positivo grande que na verdade compensa
         // uma perda de outro mês do mesmo ano (ex.: ganhou 10 mil agora, mas perdeu os
         // mesmos 10 mil num ciclo anterior, então no ano o saldo desse item é zero).
-        const saldoAno = (g.porItem.get(i.item)||{}).saldoValor || 0;
+        const itemAno = g.porItem.get(i.item) || {};
+        const saldoAno = itemAno.saldoValor || 0;
+        const saldoQtdAno = itemAno.saldoQtd || 0;
         return {item:i.item, nome:i.nome, saldoValor:i.saldoValor, ganhos:i.ganhos, perdas:i.perdas,
+          saldoQtd:i.saldoQtd, ganhosQtd:i.ganhosQtd, perdasQtd:i.perdasQtd, saldoQtdAno,
           saldoAIR, saldoOutros:i.saldoValor-saldoAIR, saldoAno, porObs:porObsArr};
       });
       const net = m.ganhos+m.perdas;

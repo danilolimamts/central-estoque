@@ -455,7 +455,7 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 7; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 8; // mantido em sincronia com worker.js
 /* Barra de filtros do Dashboard, no estilo Power BI: ciclo + período de data num só
    lugar, com um chip pra escolher em quais painéis o filtro de data se aplica (hoje só
    a Produtividade responde a data — os demais KPIs/gráficos são do ciclo inteiro). */
@@ -535,6 +535,7 @@ function irRenderDashboard(){
     ${irRenderDashProdutividade()}
     ${irRenderPorLogPanel(ind)}
     ${irRenderContadosPorDiaPanel(ind)}
+    ${irRenderDivergentesPorDiaPanel(ind)}
     ${irRenderItemDivEscopoBar()}
     <div class="bi-grid-2">
       ${irRenderTopItensPanel(itemSaldo, 'pecas')}
@@ -768,6 +769,8 @@ function irBuildLogBarChartSvg(rows, opts){
 function irBuildContadosPorDiaSvg(rows, meta, opts){
   opts = opts||{};
   const colors = opts.colors || {bar:'#FA4616', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A', meta:'#001A72'};
+  const campo = opts.campo || 'total';
+  const fmt = opts.fmt || irFmtInt;
   // W fixo = mesma largura útil do painel do boletim (ver comentário em irBuildLogBarChartSvg).
   const W = 800, H = 260;
   const padL = 14, padR = 14, padT = 36, padB = 32;
@@ -781,21 +784,23 @@ function irBuildContadosPorDiaSvg(rows, meta, opts){
   const rowsVisiveis = rows.length > maxDias ? rows.slice(rows.length-maxDias) : rows;
   const omitidos = rows.length - rowsVisiveis.length;
   const n = rowsVisiveis.length;
-  const max = Math.max(1, meta, ...rowsVisiveis.map(r=>r.total));
+  const max = Math.max(1, meta, ...rowsVisiveis.map(r=>r[campo]));
   const barW = Math.min(50, plotW/n*0.7);
   let bars = '', labels = '', xLabels = '';
   rowsVisiveis.forEach((r,i)=>{
     const cx = padL + (i+0.5)*(plotW/n);
-    const bh = (r.total/max)*plotH;
+    const bh = (r[campo]/max)*plotH;
     const bx = cx-barW/2, by = padT+plotH-bh;
     bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${colors.bar}" rx="2"/>`;
-    labels += `<text x="${cx.toFixed(1)}" y="${(by-6).toFixed(1)}" font-size="11" text-anchor="middle" fill="${colors.label}" font-weight="700">${irFmtInt(r.total)}</text>`;
+    labels += `<text x="${cx.toFixed(1)}" y="${(by-6).toFixed(1)}" font-size="11" text-anchor="middle" fill="${colors.label}" font-weight="700">${fmt(r[campo])}</text>`;
     const dia = new Date(r.dia+'T00:00:00');
     xLabels += `<text x="${cx.toFixed(1)}" y="${H-12}" font-size="11.5" text-anchor="middle" fill="${colors.axis}" font-weight="600">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</text>`;
   });
+  // meta null/undefined = sem linha de meta (gráficos que não têm uma meta diária,
+  // como os de divergência — só faz sentido pra "Contados por Dia").
   const metaY = padT+plotH-(meta/max)*plotH;
-  const metaLine = `<line x1="${padL}" y1="${metaY.toFixed(1)}" x2="${W-padR}" y2="${metaY.toFixed(1)}" stroke="${colors.meta}" stroke-width="1.5" stroke-dasharray="5 4"/>
-    <text x="${W-padR}" y="${(metaY-6).toFixed(1)}" font-size="11.5" text-anchor="end" fill="${colors.meta}" font-weight="700">Meta ${irFmtInt(meta)}</text>`;
+  const metaLine = (meta!==null && meta!==undefined) ? `<line x1="${padL}" y1="${metaY.toFixed(1)}" x2="${W-padR}" y2="${metaY.toFixed(1)}" stroke="${colors.meta}" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="${W-padR}" y="${(metaY-6).toFixed(1)}" font-size="11.5" text-anchor="end" fill="${colors.meta}" font-weight="700">Meta ${irFmtInt(meta)}</text>` : '';
   const notaOmitidos = omitidos>0 ? `<text x="${padL}" y="14" font-size="11" fill="${colors.axis}">Mostrando os últimos ${n} de ${rows.length} dias</text>` : '';
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${notaOmitidos}${bars}${labels}${xLabels}${metaLine}</svg>`;
 }
@@ -930,6 +935,35 @@ function irRenderContadosPorDiaPanel(ind){
         </div>`).join('')}
       </div>
     </div>
+  </div>`;
+}
+// Peças/Valor/Locais divergentes por dia — mesmo estilo do gráfico "Contados por
+// Dia" (barras por dia da Data Fim/Situação da rodada final do local), mas sem a
+// linha de meta, já que aqui não existe uma meta diária de divergência. Ajuda a
+// responder "quando o NET desviou" com números concretos, não só o total do mês.
+function irRenderDivergentesPorDiaPanel(ind){
+  const rows = ind.divergentesPorDia||[];
+  if(!rows.length) return '';
+  const diaLabel = (dia)=> new Date(dia+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+  const chart = (campo, cor, fmt, titulo)=>{
+    const max = Math.max(1, ...rows.map(r=>r[campo]));
+    return `<div class="panel">
+      <h3>${titulo}</h3>
+      <div class="bi-vbars-scroll">
+        <div class="bi-vbars">
+          ${rows.map(r=>`<div class="bi-vbar-col">
+            <div class="bi-vbar-val">${fmt(r[campo])}</div>
+            <div class="bi-vbar ${cor}" style="height:${Math.round(r[campo]/max*100)}%;"></div>
+            <div class="bi-vbar-label">${diaLabel(r.dia)}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  };
+  return `<div class="bi-grid-3">
+    ${chart('pecas','orange',irFmtInt,'Peças Divergentes por Dia')}
+    ${chart('valor','ink',irFmtMoney,'Valor Divergente por Dia (abs.)')}
+    ${chart('locais','blue',irFmtInt,'Locais Divergentes por Dia')}
   </div>`;
 }
 function irShowDiaTooltip(ev, dia){
@@ -1211,6 +1245,19 @@ function irGerarRelatorioEmail(){
     ${ind.contadosPorDia && ind.contadosPorDia.length ? `${sectionTitle('📅','Contados por Dia','locais contados por dia · linha tracejada = meta diária')}
     <div class="rp-panel rp-panel-pad">
       ${irBuildContadosPorDiaSvg(ind.contadosPorDia, IR_META_DIARIA)}
+    </div>` : ''}
+
+    ${ind.divergentesPorDia && ind.divergentesPorDia.length ? `${sectionTitle('⚠️','Peças Divergentes por Dia','soma da diferença absoluta, por dia de fechamento do local')}
+    <div class="rp-panel rp-panel-pad">
+      ${irBuildContadosPorDiaSvg(ind.divergentesPorDia, null, {colors:{bar:'#FA4616', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'}, campo:'pecas', fmt:irFmtInt})}
+    </div>
+    ${sectionTitle('💰','Valor Divergente por Dia','soma do valor divergente absoluto, por dia de fechamento do local')}
+    <div class="rp-panel rp-panel-pad">
+      ${irBuildContadosPorDiaSvg(ind.divergentesPorDia, null, {colors:{bar:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'}, campo:'valor', fmt:irFmtMoney})}
+    </div>
+    ${sectionTitle('📍','Locais Divergentes por Dia','locais fechados com pelo menos 1 item divergente, por dia')}
+    <div class="rp-panel rp-panel-pad">
+      ${irBuildContadosPorDiaSvg(ind.divergentesPorDia, null, {colors:{bar:'#001A72', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'}, campo:'locais', fmt:irFmtInt})}
     </div>` : ''}
 
     ${sectionTitle('🛣️','Ruas mais divergentes','todas as ruas, por peças divergentes')}
@@ -1888,6 +1935,23 @@ function irRenderNetDistorcaoPanel(){
   const todosItens = [...(m.topItensPositivos||[]), ...(m.topItensNegativos||[])]
     .sort((a,b)=>Math.abs(b.saldoValor)-Math.abs(a.saldoValor)).slice(0,15);
 
+  // Itens processados com uma versão anterior da 410 (antes de Ganhos/Saldo no
+  // Ano/Quantidade existirem) não têm esses campos — sem isso não dá pra mostrar
+  // as colunas novas, então avisa em vez de exibir tudo vazio silenciosamente.
+  const dadosDesatualizados = todosItens.some(i=>i.ganhos===undefined || i.saldoAno===undefined);
+
+  // Local mais divergente pro item no ciclo ATIVO (a 410 não tem local/endereço —
+  // só a QRY0843 do ciclo em andamento tem isso). Ajuda o auditor a saber pra onde ir
+  // fisicamente validar. Pode não achar nada se o item não estiver no ciclo atual.
+  const localMaisDivergente = (item)=>{
+    const divs = (IR.divergencias||[]).filter(d=>d.item===item && d.diferenca!==0);
+    if(!divs.length) return null;
+    divs.sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia));
+    return divs[0];
+  };
+
+  const subQtd = (qtd)=> qtd ? `<div class="bi-vbar-sub">${qtd>0?'+':''}${irFmtInt(qtd)} pçs</div>` : '';
+
   const row = (i)=>{
     const pctItem = m.netAbs>0 ? Math.abs(i.saldoValor)/m.netAbs : 0;
     const ehAIR = Math.abs(i.saldoAIR) >= Math.abs(i.saldoValor)*0.5; // maioria do saldo veio do inventário
@@ -1896,22 +1960,26 @@ function irRenderNetDistorcaoPanel(){
     // (ou quase) — ganho de um mês/ciclo cobrindo perda de outro. É essa comparação
     // que permite justificar um NET mensal alto sem estar "sujo".
     const compensado = i.saldoAno!==undefined && Math.abs(i.saldoValor)>0 && Math.abs(i.saldoAno) < Math.abs(i.saldoValor)*0.3;
+    const local = localMaisDivergente(i.item);
+    const outrosLocais = local ? (IR.divergencias||[]).filter(d=>d.item===i.item && d.diferenca!==0).length - 1 : 0;
     return `<tr>
       <td class="mono">${irEsc(i.item)}</td>
       <td>${irEsc(i.nome||'—')}</td>
-      <td class="mono" style="color:var(--blue);">${i.ganhos?'+'+irFmtMoney(i.ganhos):'—'}</td>
-      <td class="mono" style="font-weight:700;color:${i.saldoValor>=0?'var(--blue)':'var(--danger)'};">${i.saldoValor>=0?'+':''}${irFmtMoney(i.saldoValor)}</td>
-      <td class="mono" style="font-weight:700;color:${i.saldoAno>=0?'var(--ink)':'var(--danger)'};">${i.saldoAno!==undefined?(i.saldoAno>=0?'+':'')+irFmtMoney(i.saldoAno):'—'}${compensado?' <span class="tag tag-muted" style="margin-left:4px;">compensado no ano</span>':''}</td>
+      <td class="mono" style="color:var(--blue);">${i.ganhos?'+'+irFmtMoney(i.ganhos):'—'}${subQtd(i.ganhosQtd)}</td>
+      <td class="mono" style="font-weight:700;color:${i.saldoValor>=0?'var(--blue)':'var(--danger)'};">${i.saldoValor>=0?'+':''}${irFmtMoney(i.saldoValor)}${subQtd(i.saldoQtd)}</td>
+      <td class="mono" style="font-weight:700;color:${i.saldoAno>=0?'var(--ink)':'var(--danger)'};">${i.saldoAno!==undefined?(i.saldoAno>=0?'+':'')+irFmtMoney(i.saldoAno):'—'}${subQtd(i.saldoQtdAno)}${compensado?' <span class="tag tag-muted" style="margin-left:4px;">compensado no ano</span>':''}</td>
       <td class="mono">${irFmtPct(pctItem)}</td>
       <td class="mono" style="color:var(--orange);">${i.saldoAIR?irFmtMoney(i.saldoAIR):'—'}</td>
       <td style="font-size:11.5px;">${outrosTop.length ? outrosTop.map(o=>`${irEsc(irLegenda410(o.id))}: ${irFmtMoney(o.valor)}`).join('<br>') : '—'}</td>
+      <td style="font-size:11.5px;">${local ? `${irEsc(local.local)}<div class="bi-vbar-sub">dif. ${local.diferenca>0?'+':''}${irFmtInt(local.diferenca)} pçs${outrosLocais>0?' · +'+outrosLocais+' outro(s)':''}</div>` : '<span class="field-hint">fora do ciclo atual</span>'}</td>
       <td><span class="tag ${ehAIR?'tag-good':'tag-muted'}">${ehAIR?'Validar no inventário':'Não é do inventário'}</span></td>
     </tr>`;
   };
 
   return `<div class="panel">
     <h3>Por que o NET está distorcido?</h3>
-    <p class="panel-sub">A 410 acumula TODOS os ajustes do CD — o Inventário Rotativo (AIR) é só um dos motivos. Escolha o mês e veja quais itens mais pesam no NET e se a origem foi o inventário ou outro processo.</p>
+    <p class="panel-sub">A 410 acumula TODOS os ajustes do CD — o Inventário Rotativo (AIR) é só um dos motivos. Escolha o mês e veja quais itens mais pesam no NET, em qual local validar e se a origem foi o inventário ou outro processo.</p>
+    ${dadosDesatualizados ? `<p class="field-hint" style="color:var(--danger);margin-bottom:12px;">⚠️ Alguns dados desse ano foram processados antes de Ganhos, Saldo no Ano e Quantidade existirem nessa análise — aparecem como "—" abaixo. Reimporte a QRY410 na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> pra atualizar.</p>` : ''}
     <div class="two-col" style="max-width:420px;margin-bottom:14px;">
       <div><label>Ano</label><select onchange="irSetNet410Ano(this.value)">
         ${IR.net410Anos.map(a=>`<option value="${a}" ${a===IR.net410AnoSel?'selected':''}>${a}</option>`).join('')}
@@ -1927,7 +1995,7 @@ function irRenderNetDistorcaoPanel(){
       <div class="kpi-card"><div class="num mono">${irFmtPct(pctAIR)}</div><div class="label">% do NET vindo do inventário</div></div>
     </div>
     ${todosItens.length ? `<div class="table-wrap"><table>
-      <thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no mês</th><th>Saldo no mês</th><th>Saldo no ano</th><th>% do NET</th><th>Do inventário (AIR)</th><th>Outros motivos</th><th>Ação sugerida</th></tr></thead>
+      <thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no mês</th><th>Saldo no mês</th><th>Saldo no ano</th><th>% do NET</th><th>Do inventário (AIR)</th><th>Outros motivos</th><th>Local mais divergente (ciclo atual)</th><th>Ação sugerida</th></tr></thead>
       <tbody>${todosItens.map(row).join('')}</tbody>
     </table></div>` : `<p class="field-hint">Nenhum item com saldo válido pro NET nesse mês.</p>`}
   </div>`;
