@@ -107,37 +107,6 @@ const ALIAS_410 = {
   quantidade: ['Quantidade'], sentido: ['Sentido'], vlMov: ['Vl.Mov.','Vl Mov'],
   idDeposito: ['Id Deposito','Id Depósito'], obsWms: ['Observacao WMS','Observação WMS']
 };
-// Legenda de motivos da QRY410 (Perdas e Ganhos no CD) — define quem entra no cálculo
-// de NET. Códigos que não aparecerem aqui contam como SIM por padrão (regra do usuário:
-// "o que não tiver na legenda, pode considerar"). Ordenados do mais específico (2
-// palavras) pro mais genérico, pra "ARI LOT" não ser confundido com "ARI".
-const IR_410_LEGENDA = [
-  {id:'ARI LOT', legenda:'Ajuste de Lote', considerarNet:true},
-  {id:'INS', legenda:'Baixa Insumo', considerarNet:false},
-  {id:'AIR', legenda:'Inventário Rotativo', considerarNet:true},
-  {id:'TID', legenda:'Troca de Identidade', considerarNet:true},
-  {id:'AIN', legenda:'Não Localizado', considerarNet:true},
-  {id:'INV', legenda:'Inversão de etiqueta', considerarNet:true},
-  {id:'ANF', legenda:'Nota Fiscal', considerarNet:false},
-  {id:'PAR', legenda:'Recebimento Parcial', considerarNet:true},
-  {id:'ARI', legenda:'Recebimento invertido', considerarNet:true},
-  {id:'API', legenda:'Ajuste MCL Reversa', considerarNet:true},
-  {id:'AEE', legenda:'Itens Localizados', considerarNet:true},
-  {id:'LOJA', legenda:'Ajuste Loja', considerarNet:true},
-  {id:'QBR', legenda:'Quebra CD', considerarNet:false},
-  {id:'EPI', legenda:'Baixa EPI', considerarNet:false},
-  {id:'IMP', legenda:'Ajuste Importação', considerarNet:true},
-  {id:'ASR', legenda:'Sobra Recebimento', considerarNet:true},
-  {id:'BAI', legenda:'Baixa Insumo', considerarNet:false},
-  {id:'INP', legenda:'Ajuste Pallets', considerarNet:false},
-  {id:'LIT', legenda:'Ajuste Litigio', considerarNet:true},
-  {id:'AUD', legenda:'Auditoria KPMG', considerarNet:true},
-  {id:'AIP', legenda:'Inventário Pontual', considerarNet:true},
-  {id:'ADE', legenda:'Auditorias', considerarNet:true},
-  {id:'AIC', legenda:'Inventário de Curvas', considerarNet:true},
-  {id:'AIT', legenda:'Inventario de Transitorios', considerarNet:true},
-  {id:'AII', legenda:'Inventário de Insumos', considerarNet:false}
-];
 // Extrai o código do início de "Observacao WMS" (formato usual "AIR - AJUSTE...", mas
 // nem sempre tem o traço) e casa com a legenda. Sem código (célula vazia) ou código
 // desconhecido: considera pra NET por padrão, igual pedido pelo usuário.
@@ -726,10 +695,12 @@ async function runPipeline410({buf410}){
 
     if(!cls.considerarNet) continue; // resto (mês, item) só conta com motivos válidos pro NET
 
-    if(!g.porMes.has(mes)) g.porMes.set(mes, {mes, ganhos:0, perdas:0});
+    if(!g.porMes.has(mes)) g.porMes.set(mes, {mes, ganhos:0, perdas:0, ganhosAIR:0, perdasAIR:0});
     const gm = g.porMes.get(mes);
-    if(sinal>0) gm.ganhos += valor;
-    else if(sinal<0) gm.perdas += valor;
+    // *AIR = só o que veio do Inventário Rotativo — soma bruta do mês (não só dos
+    // top itens), pra separar "quanto do NET veio do inventário" do resto dos ajustes.
+    if(sinal>0){ gm.ganhos += valor; if(cls.id==='AIR') gm.ganhosAIR += valor; }
+    else if(sinal<0){ gm.perdas += valor; if(cls.id==='AIR') gm.perdasAIR += valor; }
 
     const item = String(getVal(row, r410.item)||'').trim();
     const nomeItem = String(getVal(row, r410.nomeItem)||'').trim();
@@ -737,11 +708,16 @@ async function runPipeline410({buf410}){
       if(!g.porItem.has(item)) g.porItem.set(item, {item, nome:nomeItem, saldoValor:0});
       g.porItem.get(item).saldoValor += valor;
 
-      // Item x mês — pra responder "por que o NET desse mês está tão negativo".
+      // Item x mês — pra responder "por que o NET desse mês está tão alto/baixo" e
+      // também "quanto disso veio do Inventário Rotativo (AIR) x de outros motivos"
+      // (Auditoria KPMG, Itens Localizados, Ajuste Loja etc.) — a 410 acumula TODOS
+      // os ajustes, o inventário é só um dos motivos que compõem o NET.
       if(!g.porItemMes.has(mes)) g.porItemMes.set(mes, new Map());
       const itensDoMes = g.porItemMes.get(mes);
-      if(!itensDoMes.has(item)) itensDoMes.set(item, {item, nome:nomeItem, saldoValor:0});
-      itensDoMes.get(item).saldoValor += valor;
+      if(!itensDoMes.has(item)) itensDoMes.set(item, {item, nome:nomeItem, saldoValor:0, porObs:new Map()});
+      const gi = itensDoMes.get(item);
+      gi.saldoValor += valor;
+      gi.porObs.set(cls.id, (gi.porObs.get(cls.id)||0) + valor);
     }
   }
 
@@ -751,9 +727,19 @@ async function runPipeline410({buf410}){
   for(const ano of anos){
     const g = porAno.get(ano);
     const porMes = Array.from(g.porMes.values()).sort((a,b)=>a.mes.localeCompare(b.mes)).map(m=>{
-      const itensDoMes = Array.from((g.porItemMes.get(m.mes)||new Map()).values());
+      // saldoAIR = quanto do saldo do item veio de Inventário Rotativo; saldoOutros =
+      // resto (Auditoria KPMG, Itens Localizados, Ajuste Loja etc.) — é o que permite
+      // dizer pro auditor "esse item é do inventário, vale a pena validar" ou "não é
+      // do inventário, a distorção veio de outro processo".
+      const itensDoMes = Array.from((g.porItemMes.get(m.mes)||new Map()).values()).map(i=>{
+        const saldoAIR = i.porObs.get('AIR')||0;
+        const porObsArr = Array.from(i.porObs.entries()).map(([id,valor])=>({id, valor})).sort((a,b)=>Math.abs(b.valor)-Math.abs(a.valor));
+        return {item:i.item, nome:i.nome, saldoValor:i.saldoValor, saldoAIR, saldoOutros:i.saldoValor-saldoAIR, porObs:porObsArr};
+      });
+      const net = m.ganhos+m.perdas;
+      const netAIR = m.ganhosAIR+m.perdasAIR;
       return {
-        ...m, net: m.ganhos+m.perdas, netAbs: Math.abs(m.ganhos+m.perdas),
+        ...m, net, netAbs: Math.abs(net), netAIR, netOutros: net-netAIR,
         topItensPositivos: itensDoMes.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,20),
         topItensNegativos: itensDoMes.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,20)
       };
