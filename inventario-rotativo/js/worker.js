@@ -775,8 +775,10 @@ async function runPipeline410({buf410}){
       const netAIR = m.ganhosAIR+m.perdasAIR;
       return {
         ...m, net, netAbs: Math.abs(net), netAIR, netOutros: net-netAIR,
-        topItensPositivos: itensDoMes.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,20),
-        topItensNegativos: itensDoMes.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,20)
+        // Sem slice aqui — a UI decide quantos mostrar com base na cobertura acumulada
+        // do NET (não dá pra saber de antemão se os itens que explicam o mês são 5 ou 50).
+        topItensPositivos: itensDoMes.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor),
+        topItensNegativos: itensDoMes.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor)
       };
     });
     const porObs = Array.from(g.porObs.values()).map(o=>({...o, totalGeral: o.saida+o.entrada}))

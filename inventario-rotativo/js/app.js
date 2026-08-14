@@ -1911,20 +1911,38 @@ function irDivergenciasFiltered(){
     return true;
   }).sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia));
 }
-/* "Por que o NET está distorcido?" — a 410 acumula TODOS os ajustes do CD (o
-   Inventário Rotativo/AIR é só um dos motivos), então quando o NET do mês está
-   estranhamente alto ou baixo, o auditor precisa saber rápido: (1) quanto disso é
-   do inventário x de outro processo, e (2) quais itens específicos puxaram o
-   número, pra já saber o que validar sem precisar garimpar a planilha inteira. */
+// Descrição completa só cabe truncada — mostra 1ª e última palavra (o modelo/cor no
+// meio raramente ajuda a identificar o item, item+código já faz esse papel) e guarda
+// o texto completo no title (tooltip ao passar o mouse).
+function irTruncDesc(nome){
+  const s = String(nome||'').trim();
+  if(!s) return '—';
+  const partes = s.split(/\s+/);
+  if(partes.length<=2) return irEsc(s);
+  return irEsc(partes[0]+' … '+partes[partes.length-1]);
+}
 function irSetDivNetMes(mes){ IR.divNetMesSel = mes; irRenderView(); }
+function irToggleNetItensResto(uid, btn){
+  const el = document.getElementById(uid);
+  if(!el) return;
+  const abrindo = el.style.display==='none';
+  el.style.display = abrindo ? '' : 'none';
+  btn.textContent = abrindo ? 'Ver menos' : btn.dataset.labelFechado;
+}
+// "Por que o NET está distorcido?" — a 410 acumula TODOS os ajustes do CD (o
+// Inventário Rotativo/AIR é só um dos motivos), então quando o NET do mês está
+// estranhamente alto ou baixo, o auditor precisa saber rápido quais itens específicos
+// explicam a maior parte do número — não só uma lista de "top itens" arbitrária, mas
+// itens suficientes pra cobrir a maior parte do NET, com local e quantidade pra ir
+// direto validar fisicamente.
 function irRenderNetDistorcaoPanel(){
   if(!IR.net410Anos.length){
-    return `<div class="panel"><h3>Por que o NET está distorcido?</h3><p class="field-hint">Nenhuma QRY410 processada ainda — importe na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> pra usar essa análise.</p></div>`;
+    return `<div class="panel"><p class="field-hint">Nenhuma QRY410 processada ainda — importe na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> pra usar essa análise.</p></div>`;
   }
   const d = IR.net410Data;
   if(!d) return '';
   const meses = d.porMes||[];
-  if(!meses.length) return `<div class="panel"><h3>Por que o NET está distorcido?</h3><p class="field-hint">Sem movimentos no ano ${d.ano}.</p></div>`;
+  if(!meses.length) return `<div class="panel"><p class="field-hint">Sem movimentos no ano ${d.ano}.</p></div>`;
   if(!IR.divNetMesSel || !meses.some(m=>m.mes===IR.divNetMesSel)) IR.divNetMesSel = meses[meses.length-1].mes;
   const m = meses.find(mm=>mm.mes===IR.divNetMesSel);
   const mesLabel = IR_MES_NOMES[parseInt(m.mes.slice(5,7),10)-1]+'/'+m.mes.slice(0,4);
@@ -1932,13 +1950,39 @@ function irRenderNetDistorcaoPanel(){
 
   // Junta os itens positivos e negativos do mês, ordena por |saldo| — são os que
   // mais pesam na distorção do NET, seja puxando pra cima ou pra baixo.
-  const todosItens = [...(m.topItensPositivos||[]), ...(m.topItensNegativos||[])]
-    .sort((a,b)=>Math.abs(b.saldoValor)-Math.abs(a.saldoValor)).slice(0,15);
+  const todosOrdenados = [...(m.topItensPositivos||[]), ...(m.topItensNegativos||[])]
+    .sort((a,b)=>Math.abs(b.saldoValor)-Math.abs(a.saldoValor));
+  // Cobertura acumulada usa a MOVIMENTAÇÃO BRUTA (soma de |saldo| de todos os itens),
+  // não o NET do mês — quando dois itens grandes se cancelam (ex.: +19.452 de um lado,
+  // -19.452 do outro, sobrando quase nada de NET), usar o NET pequeno como base faria
+  // a % de cada item explodir pra bem além de 100%, o que não significa nada. A soma
+  // bruta sempre vai de 0% a 100% de forma sensata.
+  const totalMovimentoBruto = todosOrdenados.reduce((s,i)=>s+Math.abs(i.saldoValor), 0);
+  let acumulado = 0;
+  const comCobertura = todosOrdenados.map(i=>{
+    acumulado += Math.abs(i.saldoValor);
+    return {...i,
+      pctDoNet: m.netAbs>0 ? Math.abs(i.saldoValor)/m.netAbs : 0,
+      pctAcumulado: totalMovimentoBruto>0 ? acumulado/totalMovimentoBruto : 0};
+  });
+  // Cancelamento forte = a movimentação bruta é bem maior que o NET final, ou seja,
+  // ganhos e perdas grandes quase se anulam — vale alertar, porque é o padrão clássico
+  // de item com contagem trocada (ex.: duas variantes de cor do mesmo modelo).
+  const cancelamentoForte = m.netAbs>0 && totalMovimentoBruto >= m.netAbs*3;
+  // Mostra itens até cobrir 90% da movimentação bruta do mês (com pelo menos 5, pra dar
+  // contexto mesmo quando 1-2 itens já dominam) — o resto fica atrás de "ver mais",
+  // sem sumir, mas sem poluir a leitura principal.
+  const COBERTURA_ALVO = 0.90;
+  let corte = comCobertura.findIndex(i=>i.pctAcumulado>=COBERTURA_ALVO);
+  if(corte===-1) corte = comCobertura.length-1;
+  corte = Math.max(corte, Math.min(4, comCobertura.length-1));
+  const visiveis = comCobertura.slice(0, corte+1);
+  const resto = comCobertura.slice(corte+1);
 
   // Itens processados com uma versão anterior da 410 (antes de Ganhos/Saldo no
   // Ano/Quantidade existirem) não têm esses campos — sem isso não dá pra mostrar
   // as colunas novas, então avisa em vez de exibir tudo vazio silenciosamente.
-  const dadosDesatualizados = todosItens.some(i=>i.ganhos===undefined || i.saldoAno===undefined);
+  const dadosDesatualizados = comCobertura.some(i=>i.ganhos===undefined || i.saldoAno===undefined);
 
   // Local mais divergente pro item no ciclo ATIVO (a 410 não tem local/endereço —
   // só a QRY0843 do ciclo em andamento tem isso). Ajuda o auditor a saber pra onde ir
@@ -1950,36 +1994,52 @@ function irRenderNetDistorcaoPanel(){
     return divs[0];
   };
 
-  const subQtd = (qtd)=> qtd ? `<div class="bi-vbar-sub">${qtd>0?'+':''}${irFmtInt(qtd)} pçs</div>` : '';
-
   const row = (i)=>{
-    const pctItem = m.netAbs>0 ? Math.abs(i.saldoValor)/m.netAbs : 0;
-    const ehAIR = Math.abs(i.saldoAIR) >= Math.abs(i.saldoValor)*0.5; // maioria do saldo veio do inventário
-    const outrosTop = (i.porObs||[]).filter(o=>o.id!=='AIR').slice(0,2);
+    // Motivo principal = maior |valor| dentre TODOS os motivos do item (AIR incluso),
+    // já vem ordenado do worker — substitui as antigas colunas separadas "AIR" e
+    // "Outros motivos", que ficavam as duas vazias quando o item não tinha nenhum
+    // motivo classificado nos dados (sinal de reprocessamento pendente).
+    const motivoTop = (i.porObs||[])[0];
+    const ehAIR = motivoTop && motivoTop.id==='AIR';
+    const local = localMaisDivergente(i.item);
+    const outrosLocais = local ? (IR.divergencias||[]).filter(d=>d.item===i.item && d.diferenca!==0).length - 1 : 0;
     // Compensado no ano = o mês pesa no NET mas ao longo do ano esse item se anula
     // (ou quase) — ganho de um mês/ciclo cobrindo perda de outro. É essa comparação
     // que permite justificar um NET mensal alto sem estar "sujo".
     const compensado = i.saldoAno!==undefined && Math.abs(i.saldoValor)>0 && Math.abs(i.saldoAno) < Math.abs(i.saldoValor)*0.3;
-    const local = localMaisDivergente(i.item);
-    const outrosLocais = local ? (IR.divergencias||[]).filter(d=>d.item===i.item && d.diferenca!==0).length - 1 : 0;
     return `<tr>
       <td class="mono">${irEsc(i.item)}</td>
-      <td>${irEsc(i.nome||'—')}</td>
-      <td class="mono" style="color:var(--blue);">${i.ganhos?'+'+irFmtMoney(i.ganhos):'—'}${subQtd(i.ganhosQtd)}</td>
-      <td class="mono" style="font-weight:700;color:${i.saldoValor>=0?'var(--blue)':'var(--danger)'};">${i.saldoValor>=0?'+':''}${irFmtMoney(i.saldoValor)}${subQtd(i.saldoQtd)}</td>
-      <td class="mono" style="font-weight:700;color:${i.saldoAno>=0?'var(--ink)':'var(--danger)'};">${i.saldoAno!==undefined?(i.saldoAno>=0?'+':'')+irFmtMoney(i.saldoAno):'—'}${subQtd(i.saldoQtdAno)}${compensado?' <span class="tag tag-muted" style="margin-left:4px;">compensado no ano</span>':''}</td>
-      <td class="mono">${irFmtPct(pctItem)}</td>
-      <td class="mono" style="color:var(--orange);">${i.saldoAIR?irFmtMoney(i.saldoAIR):'—'}</td>
-      <td style="font-size:11.5px;">${outrosTop.length ? outrosTop.map(o=>`${irEsc(irLegenda410(o.id))}: ${irFmtMoney(o.valor)}`).join('<br>') : '—'}</td>
-      <td style="font-size:11.5px;">${local ? `${irEsc(local.local)}<div class="bi-vbar-sub">dif. ${local.diferenca>0?'+':''}${irFmtInt(local.diferenca)} pçs${outrosLocais>0?' · +'+outrosLocais+' outro(s)':''}</div>` : '<span class="field-hint">fora do ciclo atual</span>'}</td>
+      <td title="${irEsc(i.nome||'')}">${irTruncDesc(i.nome)}</td>
+      <td class="mono" style="color:var(--blue);">${i.ganhos?'+'+irFmtMoney(i.ganhos):'—'}</td>
+      <td class="mono" style="font-weight:700;color:${i.saldoValor>=0?'var(--blue)':'var(--danger)'};white-space:nowrap;">${i.saldoValor>=0?'+':''}${irFmtMoney(i.saldoValor)} <span class="field-hint">(${i.saldoQtd!==undefined?(i.saldoQtd>0?'+':'')+irFmtInt(i.saldoQtd)+' pçs':'—'})</span></td>
+      <td class="mono" style="font-weight:700;color:${i.saldoAno>=0?'var(--ink)':'var(--danger)'};">${i.saldoAno!==undefined?(i.saldoAno>=0?'+':'')+irFmtMoney(i.saldoAno):'—'}${compensado?' <span class="tag tag-muted">compensado</span>':''}</td>
+      <td class="mono">${irFmtPct(i.pctDoNet)}</td>
+      <td class="mono" style="font-weight:700;">${irFmtPct(i.pctAcumulado)}</td>
+      <td style="font-size:11.5px;">${motivoTop ? `<span style="color:${ehAIR?'var(--orange)':'var(--ink)'};font-weight:700;">${irEsc(irLegenda410(motivoTop.id))}</span><br>${irFmtMoney(motivoTop.valor)}` : '—'}</td>
+      <td style="font-size:11.5px;">${local ? `${irEsc(local.local)}<div class="field-hint">dif. ${local.diferenca>0?'+':''}${irFmtInt(local.diferenca)} pçs${outrosLocais>0?' · +'+outrosLocais:''}</div>` : '<span class="field-hint">fora do ciclo atual</span>'}</td>
       <td><span class="tag ${ehAIR?'tag-good':'tag-muted'}">${ehAIR?'Validar no inventário':'Não é do inventário'}</span></td>
     </tr>`;
   };
 
+  const thead = `<thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no mês</th><th>Saldo no mês</th><th>Saldo no ano</th><th>% do NET</th><th>% Acum. movimentação</th><th>Motivo principal</th><th>Local mais divergente (ciclo atual)</th><th>Ação sugerida</th></tr></thead>`;
+  let tabela;
+  if(!comCobertura.length){
+    tabela = `<p class="field-hint">Nenhum item com saldo válido pro NET nesse mês.</p>`;
+  } else {
+    const uid = 'ir-net-resto-'+Math.random().toString(36).slice(2,9);
+    const coberturaVisivel = visiveis.length ? irFmtPct(visiveis[visiveis.length-1].pctAcumulado) : '0%';
+    tabela = `<p class="field-hint" style="margin-bottom:8px;">Esses <strong>${visiveis.length}</strong> ${visiveis.length===1?'item explica':'itens explicam'} <strong>${coberturaVisivel}</strong> da movimentação de ${irEsc(mesLabel)} (${irFmtMoney(totalMovimentoBruto)} em ganhos e perdas somados em módulo).</p>
+    <div class="table-wrap"><table>
+      ${thead}
+      <tbody>${visiveis.map(row).join('')}</tbody>
+      ${resto.length ? `<tbody id="${uid}" style="display:none;">${resto.map(row).join('')}</tbody>` : ''}
+    </table></div>
+    ${resto.length ? `<button class="btn-link" style="margin-top:8px;" data-label-fechado="Ver mais ${resto.length} até 100% do NET" onclick="irToggleNetItensResto('${uid}', this)">Ver mais ${resto.length} até 100% do NET</button>` : ''}`;
+  }
+
   return `<div class="panel">
-    <h3>Por que o NET está distorcido?</h3>
-    <p class="panel-sub">A 410 acumula TODOS os ajustes do CD — o Inventário Rotativo (AIR) é só um dos motivos. Escolha o mês e veja quais itens mais pesam no NET, em qual local validar e se a origem foi o inventário ou outro processo.</p>
     ${dadosDesatualizados ? `<p class="field-hint" style="color:var(--danger);margin-bottom:12px;">⚠️ Alguns dados desse ano foram processados antes de Ganhos, Saldo no Ano e Quantidade existirem nessa análise — aparecem como "—" abaixo. Reimporte a QRY410 na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> pra atualizar.</p>` : ''}
+    ${cancelamentoForte ? `<p class="field-hint" style="color:var(--orange);margin-bottom:12px;">⚠️ A movimentação bruta de ${irEsc(mesLabel)} (${irFmtMoney(totalMovimentoBruto)}) é bem maior que o NET final (${irFmtMoney(m.netAbs)}) — sinal de que ganhos e perdas grandes estão se cancelando. Vale checar se não é troca de contagem entre itens parecidos (ex.: mesma peça em cores/variações diferentes).</p>` : ''}
     <div class="two-col" style="max-width:420px;margin-bottom:14px;">
       <div><label>Ano</label><select onchange="irSetNet410Ano(this.value)">
         ${IR.net410Anos.map(a=>`<option value="${a}" ${a===IR.net410AnoSel?'selected':''}>${a}</option>`).join('')}
@@ -1994,10 +2054,7 @@ function irRenderNetDistorcaoPanel(){
       <div class="kpi-card"><div class="num mono">${irFmtMoney(m.netOutros)}</div><div class="label">Vindo de outros motivos</div></div>
       <div class="kpi-card"><div class="num mono">${irFmtPct(pctAIR)}</div><div class="label">% do NET vindo do inventário</div></div>
     </div>
-    ${todosItens.length ? `<div class="table-wrap"><table>
-      <thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no mês</th><th>Saldo no mês</th><th>Saldo no ano</th><th>% do NET</th><th>Do inventário (AIR)</th><th>Outros motivos</th><th>Local mais divergente (ciclo atual)</th><th>Ação sugerida</th></tr></thead>
-      <tbody>${todosItens.map(row).join('')}</tbody>
-    </table></div>` : `<p class="field-hint">Nenhum item com saldo válido pro NET nesse mês.</p>`}
+    ${tabela}
   </div>`;
 }
 function irRenderDivergencias(){
@@ -2007,6 +2064,8 @@ function irRenderDivergencias(){
   const locais = Array.from(new Set(IR.divergencias.map(d=>d.local))).sort();
   return `
     ${irRenderNetDistorcaoPanel()}
+    <button class="btn-link" style="margin-bottom:10px;" onclick="irToggleDivRawTable(this)">📋 Ver lista completa de divergências do ciclo atual (${irFmtInt(irDivergenciasFiltered().length)} itens, item × local)</button>
+    <div id="ir-div-raw-wrap" style="display:none;">
     <div class="filter-bar">
       <input type="text" placeholder="Buscar por item, descrição ou local..." value="${irEsc(IR.divFilters.search)}" oninput="irDivSetSearch(this.value)">
       <select onchange="irDivSetFilter('local', this.value)">
@@ -2021,7 +2080,15 @@ function irRenderDivergencias(){
         <tbody id="ir-div-window"></tbody></table>
       </div>
     </div>
+    </div>
   `;
+}
+function irToggleDivRawTable(btn){
+  const el = document.getElementById('ir-div-raw-wrap');
+  if(!el) return;
+  const abrindo = el.style.display==='none';
+  el.style.display = abrindo ? '' : 'none';
+  if(abrindo) irMountDivergenciasScroll(false);
 }
 function irDivSetSearch(val){ IR.divFilters.search = val; irMountDivergenciasScroll(true); irUpdateDivCount(); }
 function irDivSetFilter(k,v){ IR.divFilters[k]=v; irRenderView(); }
