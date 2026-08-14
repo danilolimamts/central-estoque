@@ -1651,8 +1651,14 @@ function irCalcProdutividade(contagens){
   const horasPorUsuario = new Map();
   const matrizLocais = new Map(); // usuario -> Map(horaDia -> Set(locais))
   for(const c of contagens){
-    const horaCompleta = c.dataInicioContagem.slice(0,13); // YYYY-MM-DDTHH (p/ homem-hora)
-    const horaDia = parseInt(c.dataInicioContagem.slice(11,13), 10); // 0-23 (p/ matriz)
+    // Hora do bloco = Data Fim Contagem (quando o local foi de fato finalizado), não
+    // Início — Início é só quando o colaborador abriu a contagem, podendo ficar em
+    // aberto além do horário de trabalho dele (ex.: local pendurado, retomado depois
+    // por outra pessoa ou fechado só no dia seguinte), o que jogava contagens pra
+    // horários que ele nem estava trabalhando mais.
+    const dataRef = c.dataFimContagem || c.dataInicioContagem;
+    const horaCompleta = dataRef.slice(0,13); // YYYY-MM-DDTHH (p/ homem-hora)
+    const horaDia = parseInt(dataRef.slice(11,13), 10); // 0-23 (p/ matriz)
     if(!porUsuario.has(c.usuario)) porUsuario.set(c.usuario, {usuario:c.usuario, locais:new Set(), itens:0, pecas:0, contagens:0, minutos:0, nMin:0, horas:new Set()});
     const gu = porUsuario.get(c.usuario);
     gu.locais.add(c.local); gu.itens++; gu.pecas += (c.qtFis||0); gu.contagens++; gu.horas.add(horaCompleta);
