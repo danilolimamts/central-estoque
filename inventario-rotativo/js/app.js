@@ -1892,10 +1892,16 @@ function irRenderNetDistorcaoPanel(){
     const pctItem = m.netAbs>0 ? Math.abs(i.saldoValor)/m.netAbs : 0;
     const ehAIR = Math.abs(i.saldoAIR) >= Math.abs(i.saldoValor)*0.5; // maioria do saldo veio do inventário
     const outrosTop = (i.porObs||[]).filter(o=>o.id!=='AIR').slice(0,2);
+    // Compensado no ano = o mês pesa no NET mas ao longo do ano esse item se anula
+    // (ou quase) — ganho de um mês/ciclo cobrindo perda de outro. É essa comparação
+    // que permite justificar um NET mensal alto sem estar "sujo".
+    const compensado = i.saldoAno!==undefined && Math.abs(i.saldoValor)>0 && Math.abs(i.saldoAno) < Math.abs(i.saldoValor)*0.3;
     return `<tr>
       <td class="mono">${irEsc(i.item)}</td>
       <td>${irEsc(i.nome||'—')}</td>
+      <td class="mono" style="color:var(--blue);">${i.ganhos?'+'+irFmtMoney(i.ganhos):'—'}</td>
       <td class="mono" style="font-weight:700;color:${i.saldoValor>=0?'var(--blue)':'var(--danger)'};">${i.saldoValor>=0?'+':''}${irFmtMoney(i.saldoValor)}</td>
+      <td class="mono" style="font-weight:700;color:${i.saldoAno>=0?'var(--ink)':'var(--danger)'};">${i.saldoAno!==undefined?(i.saldoAno>=0?'+':'')+irFmtMoney(i.saldoAno):'—'}${compensado?' <span class="tag tag-muted" style="margin-left:4px;">compensado no ano</span>':''}</td>
       <td class="mono">${irFmtPct(pctItem)}</td>
       <td class="mono" style="color:var(--orange);">${i.saldoAIR?irFmtMoney(i.saldoAIR):'—'}</td>
       <td style="font-size:11.5px;">${outrosTop.length ? outrosTop.map(o=>`${irEsc(irLegenda410(o.id))}: ${irFmtMoney(o.valor)}`).join('<br>') : '—'}</td>
@@ -1921,7 +1927,7 @@ function irRenderNetDistorcaoPanel(){
       <div class="kpi-card"><div class="num mono">${irFmtPct(pctAIR)}</div><div class="label">% do NET vindo do inventário</div></div>
     </div>
     ${todosItens.length ? `<div class="table-wrap"><table>
-      <thead><tr><th>Item</th><th>Descrição</th><th>Saldo no mês</th><th>% do NET</th><th>Do inventário (AIR)</th><th>Outros motivos</th><th>Ação sugerida</th></tr></thead>
+      <thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no mês</th><th>Saldo no mês</th><th>Saldo no ano</th><th>% do NET</th><th>Do inventário (AIR)</th><th>Outros motivos</th><th>Ação sugerida</th></tr></thead>
       <tbody>${todosItens.map(row).join('')}</tbody>
     </table></div>` : `<p class="field-hint">Nenhum item com saldo válido pro NET nesse mês.</p>`}
   </div>`;

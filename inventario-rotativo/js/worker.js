@@ -714,9 +714,10 @@ async function runPipeline410({buf410}){
       // os ajustes, o inventário é só um dos motivos que compõem o NET.
       if(!g.porItemMes.has(mes)) g.porItemMes.set(mes, new Map());
       const itensDoMes = g.porItemMes.get(mes);
-      if(!itensDoMes.has(item)) itensDoMes.set(item, {item, nome:nomeItem, saldoValor:0, porObs:new Map()});
+      if(!itensDoMes.has(item)) itensDoMes.set(item, {item, nome:nomeItem, saldoValor:0, ganhos:0, perdas:0, porObs:new Map()});
       const gi = itensDoMes.get(item);
       gi.saldoValor += valor;
+      if(sinal>0) gi.ganhos += valor; else if(sinal<0) gi.perdas += valor;
       gi.porObs.set(cls.id, (gi.porObs.get(cls.id)||0) + valor);
     }
   }
@@ -734,7 +735,13 @@ async function runPipeline410({buf410}){
       const itensDoMes = Array.from((g.porItemMes.get(m.mes)||new Map()).values()).map(i=>{
         const saldoAIR = i.porObs.get('AIR')||0;
         const porObsArr = Array.from(i.porObs.entries()).map(([id,valor])=>({id, valor})).sort((a,b)=>Math.abs(b.valor)-Math.abs(a.valor));
-        return {item:i.item, nome:i.nome, saldoValor:i.saldoValor, saldoAIR, saldoOutros:i.saldoValor-saldoAIR, porObs:porObsArr};
+        // saldoAno = saldo do item no ano INTEIRO (todos os meses), não só nesse mês —
+        // é o que permite justificar um mês positivo grande que na verdade compensa
+        // uma perda de outro mês do mesmo ano (ex.: ganhou 10 mil agora, mas perdeu os
+        // mesmos 10 mil num ciclo anterior, então no ano o saldo desse item é zero).
+        const saldoAno = (g.porItem.get(i.item)||{}).saldoValor || 0;
+        return {item:i.item, nome:i.nome, saldoValor:i.saldoValor, ganhos:i.ganhos, perdas:i.perdas,
+          saldoAIR, saldoOutros:i.saldoValor-saldoAIR, saldoAno, porObs:porObsArr};
       });
       const net = m.ganhos+m.perdas;
       const netAIR = m.ganhosAIR+m.perdasAIR;
