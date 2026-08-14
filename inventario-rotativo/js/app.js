@@ -28,6 +28,7 @@ const IR = {
   net410Anos:[], net410AnoSel:null, net410MesSel:null, net410Data:null, net410File:null,
   net410Processing:false, net410Progress:{stage:'', pct:0},
   divNetMesSel:null, // mês selecionado no painel "Por que o NET está distorcido?" (aba Divergências)
+  divNetDiaSel:null, // dia selecionado (opcional) no mesmo painel — "" ou null = mês inteiro
 };
 
 function irEsc(v){ if(v===undefined||v===null) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1921,7 +1922,8 @@ function irTruncDesc(nome){
   if(partes.length<=2) return irEsc(s);
   return irEsc(partes[0]+' … '+partes[partes.length-1]);
 }
-function irSetDivNetMes(mes){ IR.divNetMesSel = mes; irRenderView(); }
+function irSetDivNetMes(mes){ IR.divNetMesSel = mes; IR.divNetDiaSel = null; irRenderView(); }
+function irSetDivNetDia(dia){ IR.divNetDiaSel = dia || null; irRenderView(); }
 function irToggleNetItensResto(uid, btn){
   const el = document.getElementById(uid);
   if(!el) return;
@@ -1944,8 +1946,15 @@ function irRenderNetDistorcaoPanel(){
   const meses = d.porMes||[];
   if(!meses.length) return `<div class="panel"><p class="field-hint">Sem movimentos no ano ${d.ano}.</p></div>`;
   if(!IR.divNetMesSel || !meses.some(m=>m.mes===IR.divNetMesSel)) IR.divNetMesSel = meses[meses.length-1].mes;
-  const m = meses.find(mm=>mm.mes===IR.divNetMesSel);
-  const mesLabel = IR_MES_NOMES[parseInt(m.mes.slice(5,7),10)-1]+'/'+m.mes.slice(0,4);
+  const mSel = meses.find(mm=>mm.mes===IR.divNetMesSel);
+  // Dia é opcional — "ver as divergências de ontem" sem esperar o mês fechar. Os
+  // dias do seletor são só os que tiveram movimento dentro do mês escolhido.
+  const diasDoMes = (d.porDia||[]).filter(dd=>dd.dia.slice(0,7)===IR.divNetMesSel).sort((a,b)=>a.dia.localeCompare(b.dia));
+  if(IR.divNetDiaSel && !diasDoMes.some(dd=>dd.dia===IR.divNetDiaSel)) IR.divNetDiaSel = null;
+  const m = IR.divNetDiaSel ? diasDoMes.find(dd=>dd.dia===IR.divNetDiaSel) : mSel;
+  const mesLabel = IR.divNetDiaSel
+    ? new Date(IR.divNetDiaSel+'T00:00:00').toLocaleDateString('pt-BR')
+    : IR_MES_NOMES[parseInt(mSel.mes.slice(5,7),10)-1]+'/'+mSel.mes.slice(0,4);
   const pctAIR = m.net!==0 ? Math.abs(m.netAIR/m.net) : 0;
 
   // Junta os itens positivos e negativos do mês, ordena por |saldo| — são os que
@@ -2021,10 +2030,11 @@ function irRenderNetDistorcaoPanel(){
     </tr>`;
   };
 
-  const thead = `<thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no mês</th><th>Saldo no mês</th><th>Saldo no ano</th><th>% do NET</th><th>% Acum. movimentação</th><th>Motivo principal</th><th>Local mais divergente (ciclo atual)</th><th>Ação sugerida</th></tr></thead>`;
+  const periodoCurto = IR.divNetDiaSel ? 'dia' : 'mês';
+  const thead = `<thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no ${periodoCurto}</th><th>Saldo no ${periodoCurto}</th><th>Saldo no ano</th><th>% do NET</th><th>% Acum. movimentação</th><th>Motivo principal</th><th>Local mais divergente (ciclo atual)</th><th>Ação sugerida</th></tr></thead>`;
   let tabela;
   if(!comCobertura.length){
-    tabela = `<p class="field-hint">Nenhum item com saldo válido pro NET nesse mês.</p>`;
+    tabela = `<p class="field-hint">Nenhum item com saldo válido pro NET nesse ${periodoCurto==='dia'?'dia':'mês'}.</p>`;
   } else {
     const uid = 'ir-net-resto-'+Math.random().toString(36).slice(2,9);
     const coberturaVisivel = visiveis.length ? irFmtPct(visiveis[visiveis.length-1].pctAcumulado) : '0%';
@@ -2034,18 +2044,22 @@ function irRenderNetDistorcaoPanel(){
       <tbody>${visiveis.map(row).join('')}</tbody>
       ${resto.length ? `<tbody id="${uid}" style="display:none;">${resto.map(row).join('')}</tbody>` : ''}
     </table></div>
-    ${resto.length ? `<button class="btn-link" style="margin-top:8px;" data-label-fechado="Ver mais ${resto.length} até 100% do NET" onclick="irToggleNetItensResto('${uid}', this)">Ver mais ${resto.length} até 100% do NET</button>` : ''}`;
+    ${resto.length ? `<button class="btn-link" style="margin-top:8px;" data-label-fechado="Ver mais ${resto.length} até 100% da movimentação" onclick="irToggleNetItensResto('${uid}', this)">Ver mais ${resto.length} até 100% da movimentação</button>` : ''}`;
   }
 
   return `<div class="panel">
     ${dadosDesatualizados ? `<p class="field-hint" style="color:var(--danger);margin-bottom:12px;">⚠️ Alguns dados desse ano foram processados antes de Ganhos, Saldo no Ano e Quantidade existirem nessa análise — aparecem como "—" abaixo. Reimporte a QRY410 na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> pra atualizar.</p>` : ''}
     ${cancelamentoForte ? `<p class="field-hint" style="color:var(--orange);margin-bottom:12px;">⚠️ A movimentação bruta de ${irEsc(mesLabel)} (${irFmtMoney(totalMovimentoBruto)}) é bem maior que o NET final (${irFmtMoney(m.netAbs)}) — sinal de que ganhos e perdas grandes estão se cancelando. Vale checar se não é troca de contagem entre itens parecidos (ex.: mesma peça em cores/variações diferentes).</p>` : ''}
-    <div class="two-col" style="max-width:420px;margin-bottom:14px;">
+    <div class="two-col" style="max-width:620px;margin-bottom:14px;grid-template-columns:1fr 1fr 1fr;">
       <div><label>Ano</label><select onchange="irSetNet410Ano(this.value)">
         ${IR.net410Anos.map(a=>`<option value="${a}" ${a===IR.net410AnoSel?'selected':''}>${a}</option>`).join('')}
       </select></div>
       <div><label>Mês</label><select onchange="irSetDivNetMes(this.value)">
         ${meses.map(mm=>`<option value="${mm.mes}" ${mm.mes===IR.divNetMesSel?'selected':''}>${irEsc(IR_MES_NOMES[parseInt(mm.mes.slice(5,7),10)-1])}</option>`).join('')}
+      </select></div>
+      <div><label>Dia (opcional)</label><select onchange="irSetDivNetDia(this.value)">
+        <option value="">Mês inteiro</option>
+        ${diasDoMes.map(dd=>`<option value="${dd.dia}" ${dd.dia===IR.divNetDiaSel?'selected':''}>${new Date(dd.dia+'T00:00:00').toLocaleDateString('pt-BR')}</option>`).join('')}
       </select></div>
     </div>
     <div class="kpi-grid">
