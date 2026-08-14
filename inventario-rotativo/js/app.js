@@ -1924,6 +1924,44 @@ function irTruncDesc(nome){
   if(partes.length<=2) return irEsc(s);
   return irEsc(partes[0]+' … '+partes[partes.length-1]);
 }
+// Evidência = a prova documental de cada lançamento que formou o saldo do item (Num
+// Doc, quem fez, quando, sentido, qtd, valor e a Observação WMS original) — pra
+// responder "evidencie essa divergência" sem precisar abrir a QRY410 original.
+function irBuildMovEvidenciaTable(movs){
+  const row = (m)=>{
+    const dh = m.dataHora ? new Date(m.dataHora) : null;
+    // getUTC* — mesmo motivo do resto da 410: SheetJS monta a data com componentes
+    // UTC, então ler com getters locais desloca a hora em fusos negativos (Brasil).
+    const dhLabel = dh ? `${String(dh.getUTCDate()).padStart(2,'0')}/${String(dh.getUTCMonth()+1).padStart(2,'0')}/${dh.getUTCFullYear()} ${String(dh.getUTCHours()).padStart(2,'0')}:${String(dh.getUTCMinutes()).padStart(2,'0')}` : '—';
+    return `<tr>
+      <td class="mono">${irEsc(m.numDoc||'—')}</td>
+      <td>${irEsc(m.usuario||'—')}</td>
+      <td class="mono">${dhLabel}</td>
+      <td>${irEsc(m.sentido||'—')}</td>
+      <td class="mono">${irFmtInt(m.qtd)}</td>
+      <td class="mono">${irFmtMoney(m.valor)}</td>
+      <td style="font-size:11px;">${irEsc(m.obsWms||'—')}</td>
+    </tr>`;
+  };
+  return `<div class="table-wrap" style="margin:0 0 4px 24px;">
+    <table>
+      <thead><tr><th>Num Doc</th><th>Usuário</th><th>Data/Hora</th><th>Sentido</th><th>Qtd</th><th>Valor</th><th>Observação WMS</th></tr></thead>
+      <tbody>${movs.map(row).join('')}</tbody>
+    </table>
+  </div>`;
+}
+function irToggleMovEvidencia(uid, btn){
+  const el = document.getElementById(uid);
+  if(!el) return;
+  const abrindo = el.style.display==='none';
+  el.style.display = abrindo ? '' : 'none';
+  if(abrindo){
+    btn.dataset.labelVer = btn.dataset.labelVer || btn.textContent;
+    btn.textContent = 'Ocultar';
+  } else {
+    btn.textContent = btn.dataset.labelVer || 'Ver';
+  }
+}
 function irSetDivNetMes(mes){ IR.divNetMesSel = mes; IR.divNetDiaSel = null; irRenderView(); }
 function irSetDivNetDia(dia){ IR.divNetDiaSel = dia || null; irRenderView(); }
 function irToggleNetItensResto(uid, btn){
@@ -2018,7 +2056,9 @@ function irRenderNetDistorcaoPanel(){
     // (ou quase) — ganho de um mês/ciclo cobrindo perda de outro. É essa comparação
     // que permite justificar um NET mensal alto sem estar "sujo".
     const compensado = i.saldoAno!==undefined && Math.abs(i.saldoValor)>0 && Math.abs(i.saldoAno) < Math.abs(i.saldoValor)*0.3;
-    return `<tr>
+    const uid = 'ir-mov-'+irEsc(i.item)+'-'+Math.random().toString(36).slice(2,7);
+    const movs = i.movimentos||[];
+    const linhaPrincipal = `<tr>
       <td class="mono">${irEsc(i.item)}</td>
       <td title="${irEsc(i.nome||'')}">${irTruncDesc(i.nome)}</td>
       <td class="mono" style="color:var(--blue);">${i.ganhos?'+'+irFmtMoney(i.ganhos):'—'}</td>
@@ -2029,11 +2069,14 @@ function irRenderNetDistorcaoPanel(){
       <td style="font-size:11.5px;">${motivoTop ? `<span style="color:${ehAIR?'var(--orange)':'var(--ink)'};font-weight:700;">${irEsc(irLegenda410(motivoTop.id, IR.net410Legenda))}</span><br>${irFmtMoney(motivoTop.valor)}` : '—'}</td>
       <td style="font-size:11.5px;">${local ? `${irEsc(local.local)}<div class="field-hint">dif. ${local.diferenca>0?'+':''}${irFmtInt(local.diferenca)} pçs${outrosLocais>0?' · +'+outrosLocais:''}</div>` : '<span class="field-hint">fora do ciclo atual</span>'}</td>
       <td><span class="tag ${ehAIR?'tag-good':'tag-muted'}">${ehAIR?'Validar no inventário':'Não é do inventário'}</span></td>
+      <td>${movs.length ? `<button class="btn-link" onclick="irToggleMovEvidencia('${uid}', this)">Ver ${movs.length}</button>` : '<span class="field-hint">—</span>'}</td>
     </tr>`;
+    if(!movs.length) return linhaPrincipal;
+    return linhaPrincipal + `<tr id="${uid}" style="display:none;"><td colspan="11" style="padding:0 0 10px;">${irBuildMovEvidenciaTable(movs)}</td></tr>`;
   };
 
   const periodoCurto = IR.divNetDiaSel ? 'dia' : 'mês';
-  const thead = `<thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no ${periodoCurto}</th><th>Saldo no ${periodoCurto}</th><th>Saldo no ano</th><th>% do NET</th><th>% Acum. movimentação</th><th>Motivo principal</th><th>Local mais divergente (ciclo atual)</th><th>Ação sugerida</th></tr></thead>`;
+  const thead = `<thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no ${periodoCurto}</th><th>Saldo no ${periodoCurto}</th><th>Saldo no ano</th><th>% do NET</th><th>% Acum. movimentação</th><th>Motivo principal</th><th>Local mais divergente (ciclo atual)</th><th>Ação sugerida</th><th>Evidência</th></tr></thead>`;
   let tabela;
   if(!comCobertura.length){
     tabela = `<p class="field-hint">Nenhum item com saldo válido pro NET nesse ${periodoCurto==='dia'?'dia':'mês'}.</p>`;

@@ -105,7 +105,11 @@ const ALIAS_CONGELADA = {
 const ALIAS_410 = {
   item: ['Item'], nomeItem: ['Nome'], dtMov: ['Dt.Mov.','Dt Mov','Data Mov'],
   quantidade: ['Quantidade'], sentido: ['Sentido'], vlMov: ['Vl.Mov.','Vl Mov'],
-  idDeposito: ['Id Deposito','Id Depósito'], obsWms: ['Observacao WMS','Observação WMS']
+  idDeposito: ['Id Deposito','Id Depósito'], obsWms: ['Observacao WMS','Observação WMS'],
+  // Evidência do lançamento (documento, quem fez, quando) — não entra em nenhum
+  // cálculo, só fica junto do item pra provar o movimento quando alguém perguntar
+  // "por que esse item mudou" (ex.: "item X, doc 460816, fulano, 13/08 17:38").
+  numDoc: ['Num Doc','Num.Doc','Numero Doc'], usuario: ['Usuário','Usuario'], dataHora: ['Data/Hora','Data Hora']
 };
 // Classificação de motivos (extrai o código do início de "Observacao WMS" e casa com
 // a legenda) mora em rules.js (irClassificarMotivo410) — compartilhada com a UI, e
@@ -676,7 +680,7 @@ async function runPipeline410({buf410}){
   }
   // Acumula um movimento num período (mês OU dia) — mesma lógica pros dois níveis,
   // só muda a chave e os Maps de destino.
-  function acumularPeriodo(porPeriodo, porItemPeriodo, chave, sinal, valor, qtd, item, nomeItem, clsId){
+  function acumularPeriodo(porPeriodo, porItemPeriodo, chave, sinal, valor, qtd, item, nomeItem, clsId, evid){
     if(!porPeriodo.has(chave)) porPeriodo.set(chave, {ganhos:0, perdas:0, ganhosAIR:0, perdasAIR:0});
     const gp = porPeriodo.get(chave);
     if(sinal>0){ gp.ganhos += valor; if(clsId==='AIR') gp.ganhosAIR += valor; }
@@ -684,12 +688,15 @@ async function runPipeline410({buf410}){
     if(!item) return;
     if(!porItemPeriodo.has(chave)) porItemPeriodo.set(chave, new Map());
     const itensDoPeriodo = porItemPeriodo.get(chave);
-    if(!itensDoPeriodo.has(item)) itensDoPeriodo.set(item, {item, nome:nomeItem, saldoValor:0, ganhos:0, perdas:0, saldoQtd:0, ganhosQtd:0, perdasQtd:0, porObs:new Map()});
+    if(!itensDoPeriodo.has(item)) itensDoPeriodo.set(item, {item, nome:nomeItem, saldoValor:0, ganhos:0, perdas:0, saldoQtd:0, ganhosQtd:0, perdasQtd:0, porObs:new Map(), movs:[]});
     const gi = itensDoPeriodo.get(item);
     gi.saldoValor += valor;
     gi.saldoQtd += qtd;
     if(sinal>0){ gi.ganhos += valor; gi.ganhosQtd += qtd; } else if(sinal<0){ gi.perdas += valor; gi.perdasQtd += qtd; }
     gi.porObs.set(clsId, (gi.porObs.get(clsId)||0) + valor);
+    // Evidência do lançamento (doc/usuário/data) — cap de 300 por item/período só pra
+    // não deixar um item com movimentação anormalmente repetitiva inflar o resumo.
+    if(evid && gi.movs.length<300) gi.movs.push(evid);
   }
   // Monta o array final de um nível de período (mês ou dia) — cobertura, saldoAno
   // (sempre do ANO INTEIRO, não do período) e top itens, do mesmo jeito nos dois níveis.
@@ -699,9 +706,10 @@ async function runPipeline410({buf410}){
         const saldoAIR = i.porObs.get('AIR')||0;
         const porObsArr = Array.from(i.porObs.entries()).map(([id,valor])=>({id, valor})).sort((a,b)=>Math.abs(b.valor)-Math.abs(a.valor));
         const itemAno = porItemAno.get(i.item) || {};
+        const movimentos = (i.movs||[]).slice().sort((a,b)=>(a.dataHora||'').localeCompare(b.dataHora||''));
         return {item:i.item, nome:i.nome, saldoValor:i.saldoValor, ganhos:i.ganhos, perdas:i.perdas,
           saldoQtd:i.saldoQtd, ganhosQtd:i.ganhosQtd, perdasQtd:i.perdasQtd, saldoQtdAno: itemAno.saldoQtd||0,
-          saldoAIR, saldoOutros:i.saldoValor-saldoAIR, saldoAno: itemAno.saldoValor||0, porObs:porObsArr};
+          saldoAIR, saldoOutros:i.saldoValor-saldoAIR, saldoAno: itemAno.saldoValor||0, porObs:porObsArr, movimentos};
       });
       const net = p.ganhos+p.perdas;
       const netAIR = p.ganhosAIR+p.perdasAIR;
@@ -769,8 +777,19 @@ async function runPipeline410({buf410}){
       gItem.saldoQtd += qtd;
     }
 
-    acumularPeriodo(g.porMes, g.porItemMes, mes, sinal, valor, qtd, item, nomeItem, cls.id);
-    acumularPeriodo(g.porDia, g.porItemDia, dia, sinal, valor, qtd, item, nomeItem, cls.id);
+    // Evidência (documento/usuário/data-hora do lançamento) — prova de quem fez o
+    // ajuste e quando, pra responder "evidencie essa divergência" sem precisar abrir
+    // a planilha original.
+    const evid = {
+      numDoc: String(getVal(row, r410.numDoc)||'').trim(),
+      usuario: String(getVal(row, r410.usuario)||'').trim(),
+      dataHora: isoDateTime(parseDateVal(getVal(row, r410.dataHora))),
+      sentido: sinal>0?'Entrada':(sinal<0?'Saída':''),
+      qtd: qtdAbs, valor: vlAbs, obsWms: String(getVal(row, r410.obsWms)||'').trim()
+    };
+
+    acumularPeriodo(g.porMes, g.porItemMes, mes, sinal, valor, qtd, item, nomeItem, cls.id, evid);
+    acumularPeriodo(g.porDia, g.porItemDia, dia, sinal, valor, qtd, item, nomeItem, cls.id, evid);
   }
 
   post('progress', {stage:'Consolidando resumo por ano (QRY410)...', pct:80});
