@@ -19,6 +19,11 @@ const IR = {
   compararA:null, compararB:null,
   novoCiclo:false,
   _porDiaRua:{},
+  // Escopo dos painéis "Itens mais Divergentes" — por padrão soma só o ciclo ativo
+  // (igual antes), mas dá pra expandir pra um ano inteiro (todos os ciclos abertos
+  // naquele ano) ou todos os ciclos já processados. itemDivSaldo é o resultado já
+  // calculado pro escopo atual (populado por irAtualizarItemDivSaldo).
+  itemDivFiltro:{tipo:'ciclo'}, itemDivSaldo:null,
   // Perdas e Ganhos (QRY410) — independente do ciclo, por ano.
   net410Anos:[], net410AnoSel:null, net410MesSel:null, net410Data:null, net410File:null,
   net410Processing:false, net410Progress:{stage:'', pct:0}
@@ -79,6 +84,10 @@ async function irLoadCicloData(cicloId){
   IR.divergencias = await irGetByCiclo(IR_STORES.divergencias, cicloId);
   IR.locais = await irGetByCiclo(IR_STORES.locais, cicloId);
   IR.contagens = await irGetByCiclo(IR_STORES.contagens, cicloId);
+  // Troca de ciclo ativo volta o escopo dos "Itens mais Divergentes" pro padrão
+  // (só o ciclo atual) — senão ficaria somando um ciclo antigo com o novo ativo.
+  IR.itemDivFiltro = {tipo:'ciclo'};
+  IR.itemDivSaldo = irCalcItemSaldo(IR.divergencias);
 }
 const IR_MOBILE_QUERY = '(max-width:640px)'; // precisa bater com o breakpoint do CSS (theme.css)
 // No mobile o menu é um overlay (aberto/fechado); no desktop é o modo compacto de 56px.
@@ -483,7 +492,8 @@ function irRenderDashDateFilterBar(){
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  const itemSaldo = irCalcItemSaldo(IR.divergencias);
+  if(!IR.itemDivSaldo) IR.itemDivSaldo = irCalcItemSaldo(IR.divergencias);
+  const itemSaldo = IR.itemDivSaldo;
   // Cada bloco tem sempre 3 bullets, no mesmo formato: ícone + acurácia (com meta),
   // + volume principal, + divergência/pendência. Os demais indicadores (itens
   // divergentes, recontagens, tempo médio etc.) continuam na aba Indicadores.
@@ -524,6 +534,7 @@ function irRenderDashboard(){
     ${irRenderDashProdutividade()}
     ${irRenderPorLogPanel(ind)}
     ${irRenderContadosPorDiaPanel(ind)}
+    ${irRenderItemDivEscopoBar()}
     <div class="bi-grid-2">
       ${irRenderTopItensPanel(itemSaldo, 'pecas')}
       ${irRenderTopItensPanel(itemSaldo, 'valor')}
@@ -988,6 +999,53 @@ function irCalcItemSaldo(divergencias){
     topItensNegativosValor: itens.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,20)
   };
 }
+// Busca as divergências do escopo escolhido pro painel "Itens mais Divergentes":
+// só o ciclo ativo (padrão, já carregado em memória), um ano inteiro (soma de todos
+// os ciclos abertos naquele ano) ou todos os ciclos já processados. É por isso que
+// o saldo por item pode "não bater" com um relatório de fora (ex.: QRY0144) — aqui
+// é sempre soma líquida (ganho − perda), mas só dentro do escopo escolhido.
+async function irCarregarDivergenciasEscopo(escopo){
+  if(escopo.tipo==='ano'){
+    const ciclosDoAno = IR.ciclos.filter(c=>String(c.dataAbertura||'').slice(0,4)===String(escopo.ano));
+    const listas = await Promise.all(ciclosDoAno.map(c=>irGetByCiclo(IR_STORES.divergencias, c.id)));
+    return listas.flat();
+  }
+  if(escopo.tipo==='todos'){
+    const listas = await Promise.all(IR.ciclos.map(c=>irGetByCiclo(IR_STORES.divergencias, c.id)));
+    return listas.flat();
+  }
+  return IR.divergencias; // 'ciclo' — já está carregado em memória
+}
+async function irAtualizarItemDivSaldo(){
+  const divs = await irCarregarDivergenciasEscopo(IR.itemDivFiltro);
+  IR.itemDivSaldo = irCalcItemSaldo(divs);
+  irRenderView();
+}
+function irOnItemDivEscopoChange(value){
+  IR.itemDivFiltro = value.startsWith('ano:') ? {tipo:'ano', ano:value.slice(4)} : {tipo:value};
+  irAtualizarItemDivSaldo();
+}
+function irItemDivEscopoLabel(){
+  const f = IR.itemDivFiltro;
+  if(f.tipo==='ano') return `no ano ${f.ano} (todos os ciclos)`;
+  if(f.tipo==='todos') return 'em todos os ciclos já processados';
+  return 'no ciclo atual';
+}
+function irRenderItemDivEscopoBar(){
+  const anos = Array.from(new Set(IR.ciclos.map(c=>String(c.dataAbertura||'').slice(0,4)).filter(Boolean))).sort((a,b)=>b.localeCompare(a));
+  const f = IR.itemDivFiltro;
+  const valorAtual = f.tipo==='ano' ? 'ano:'+f.ano : f.tipo;
+  return `<div class="panel dash-filter-bar" style="margin-bottom:14px;">
+    <div class="dash-filter-group">
+      <label>Escopo dos itens divergentes</label>
+      <select onchange="irOnItemDivEscopoChange(this.value)">
+        <option value="ciclo" ${valorAtual==='ciclo'?'selected':''}>Ciclo atual (${irEsc(irCicloLabel(IR.cicloAtivo))})</option>
+        ${anos.map(a=>`<option value="ano:${a}" ${valorAtual==='ano:'+a?'selected':''}>Ano ${a} (todos os ciclos)</option>`).join('')}
+        <option value="todos" ${valorAtual==='todos'?'selected':''}>Todos os ciclos já processados</option>
+      </select>
+    </div>
+  </div>`;
+}
 // Alterna a lista "extra" (itens além dos primeiros visíveis) de um painel de itens
 // mais divergentes — usado pra não deixar o Dashboard gigante por padrão.
 function irToggleCollapse(id, btn){
@@ -1023,7 +1081,7 @@ function irRenderTopItensPanel(saldo, kind){
   };
   return `<div class="panel">
     <h3>${titulo}</h3>
-    <p class="panel-sub">${isValor ? 'Soma líquida do valor divergente por item, no ciclo.' : 'Soma líquida da diferença de quantidade por item, no ciclo.'}</p>
+    <p class="panel-sub">${isValor ? 'Soma líquida do valor divergente por item' : 'Soma líquida da diferença de quantidade por item'}, ${irItemDivEscopoLabel()}.</p>
     <div class="bi-grid-2">
       <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--success);">MAIS SOBRA (saldo positivo)</p>${list(pos,'pos')}</div>
       <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--danger);">MAIS FALTA (saldo negativo)</p>${list(neg,'neg')}</div>
