@@ -338,6 +338,7 @@ button{ font-family:inherit; cursor:pointer; }
 .bi-vbar-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:0; }
 .bi-vbar{ width:60%; max-width:40px; border-radius:4px 4px 0 0; background:var(--blue); position:relative; }
 .bi-vbar.orange{ background:var(--orange); }
+.bi-vbar.ink{ background:var(--ink); }
 .bi-vbar-val{ font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:3px; white-space:nowrap; }
 .bi-vbar-label{ font-size:11.5px; font-weight:600; color:var(--ink-soft); margin-top:6px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .bi-vbar-pcts{ display:flex; flex-direction:column; align-items:center; gap:1px; font-size:9.5px; font-weight:700; margin-bottom:4px; }
