@@ -1914,15 +1914,20 @@ function irDivergenciasFiltered(){
     return true;
   }).sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia));
 }
-// Descrição completa só cabe truncada — mostra 1ª e última palavra (o modelo/cor no
-// meio raramente ajuda a identificar o item, item+código já faz esse papel) e guarda
-// o texto completo no title (tooltip ao passar o mouse).
+// Descrição completa só cabe truncada — junta palavras do início até ~42 caracteres
+// (o suficiente pra identificar o item na maioria dos casos, sem quebrar a linha) e
+// fecha com a última palavra; o texto completo fica no title (tooltip ao passar o
+// mouse). Só corta quando realmente precisa — descrições curtas passam inteiras.
 function irTruncDesc(nome){
   const s = String(nome||'').trim();
   if(!s) return '—';
   const partes = s.split(/\s+/);
   if(partes.length<=2) return irEsc(s);
-  return irEsc(partes[0]+' … '+partes[partes.length-1]);
+  const LIMITE = 42;
+  let out = partes[0], i = 1;
+  while(i<partes.length-1 && (out+' '+partes[i]).length<=LIMITE){ out += ' '+partes[i]; i++; }
+  if(i>=partes.length-1) return irEsc(s);
+  return irEsc(out+' … '+partes[partes.length-1]);
 }
 // Evidência = a prova documental de cada lançamento que formou o saldo do item (Num
 // Doc, quem fez, quando, sentido, qtd, valor e a Observação WMS original) — pra
@@ -1970,6 +1975,44 @@ function irToggleNetItensResto(uid, btn){
   const abrindo = el.style.display==='none';
   el.style.display = abrindo ? '' : 'none';
   btn.textContent = abrindo ? 'Ver menos' : btn.dataset.labelFechado;
+}
+// Maiores ganhos/perdas separados por valor e por peças — em vez de uma lista só
+// misturando os dois sinais ordenada por |saldo| (confuso: um ganho grande e uma
+// perda grande apareciam lado a lado sem destaque visual do sinal). Mesmo estilo de
+// barra horizontal já usado em "Itens mais Divergentes" do Dashboard, pra manter a
+// linguagem visual consistente e a linha sempre de 1 altura só.
+function irRenderNetTopLists(comCobertura){
+  const VISIVEL = 6;
+  const bloco = (titulo, campo, fmt)=>{
+    const pos = comCobertura.filter(i=>i[campo]>0).sort((a,b)=>b[campo]-a[campo]);
+    const neg = comCobertura.filter(i=>i[campo]<0).sort((a,b)=>a[campo]-b[campo]);
+    const maxAbs = Math.max(1, ...pos.map(i=>i[campo]), ...neg.map(i=>Math.abs(i[campo])));
+    const row = (i, cls)=>`<div class="bi-hbar-row bi-hbar-row-money">
+      <div class="bi-hbar-label" title="${irEsc(i.item)} — ${irEsc(i.nome||'')}"><span class="mono">${irEsc(i.item)}</span> — ${irEsc(i.nome||i.item)}</div>
+      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(Math.abs(i[campo])/maxAbs*100)}%;"></div></div>
+      <div class="bi-hbar-val">${i[campo]>0?'+':''}${fmt(i[campo])}</div>
+    </div>`;
+    const list = (items, cls)=>{
+      if(!items.length) return '<p class="field-hint">Nenhum.</p>';
+      const visiveis = items.slice(0, VISIVEL).map(i=>row(i,cls)).join('');
+      const resto = items.slice(VISIVEL);
+      if(!resto.length) return visiveis;
+      const uid = 'ir-nettop-'+Math.random().toString(36).slice(2,9);
+      return `${visiveis}<div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>
+        <button class="btn-link" style="margin-top:4px;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>`;
+    };
+    return `<div><h4 style="margin:0 0 10px;font-size:13px;">${titulo}</h4>
+      <div class="bi-grid-2">
+        <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--success);">MAIORES GANHOS</p>${list(pos,'pos')}</div>
+        <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--danger);">MAIORES PERDAS</p>${list(neg,'neg')}</div>
+      </div>
+    </div>`;
+  };
+  return `<div class="panel">
+    ${bloco('Por Valor (R$)', 'saldoValor', irFmtMoney)}
+    <div class="divider" style="height:1px;background:var(--line);margin:18px 0;"></div>
+    ${bloco('Por Quantidade (peças)', 'saldoQtd', irFmtInt)}
+  </div>`;
 }
 // "Por que o NET está distorcido?" — a 410 acumula TODOS os ajustes do CD (o
 // Inventário Rotativo/AIR é só um dos motivos), então quando o NET do mês está
@@ -2084,7 +2127,7 @@ function irRenderNetDistorcaoPanel(){
     const uid = 'ir-net-resto-'+Math.random().toString(36).slice(2,9);
     const coberturaVisivel = visiveis.length ? irFmtPct(visiveis[visiveis.length-1].pctAcumulado) : '0%';
     tabela = `<p class="field-hint" style="margin-bottom:8px;">Esses <strong>${visiveis.length}</strong> ${visiveis.length===1?'item explica':'itens explicam'} <strong>${coberturaVisivel}</strong> da movimentação de ${irEsc(mesLabel)} (${irFmtMoney(totalMovimentoBruto)} em ganhos e perdas somados em módulo).</p>
-    <div class="table-wrap"><table>
+    <div class="table-wrap"><table class="table-wide">
       ${thead}
       <tbody>${visiveis.map(row).join('')}</tbody>
       ${resto.length ? `<tbody id="${uid}" style="display:none;">${resto.map(row).join('')}</tbody>` : ''}
@@ -2113,6 +2156,7 @@ function irRenderNetDistorcaoPanel(){
       <div class="kpi-card"><div class="num mono">${irFmtMoney(m.netOutros)}</div><div class="label">Vindo de outros motivos</div></div>
       <div class="kpi-card"><div class="num mono">${irFmtPct(pctAIR)}</div><div class="label">% do NET vindo do inventário</div></div>
     </div>
+    ${irRenderNetTopLists(comCobertura)}
     ${tabela}
   </div>`;
 }
