@@ -407,6 +407,10 @@ tbody tr:hover td{ background:var(--blue-light); }
    na horizontal em vez de quebrar o texto de cada célula em várias linhas. */
 table.table-wide{ width:auto; min-width:100%; }
 table.table-wide tbody td{ white-space:nowrap; }
+/* Linha no padrão de planilha (Excel) — bem mais fina que a linha padrão do app,
+   pra tabelas densas com muita coisa pra escanear rápido (ex.: painel do NET). */
+table.table-dense thead th{ padding:6px 10px; font-size:10.5px; }
+table.table-dense tbody td{ padding:3px 10px; font-size:12.5px; }
 .table-scroll{ overflow-y:auto; position:relative; }
 
 /* ---------- TAGS / BADGES ---------- */

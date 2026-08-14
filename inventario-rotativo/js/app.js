@@ -11,6 +11,8 @@ const IR = {
   prioridadeConfig:null,
   net410Legenda:[], // legenda de motivos da 410 (editável em Configurações)
   net410Ignorados:[], // itens ocultos da análise de distorção do NET (motivo já conhecido)
+  netAuditoriaN:10, // quantos itens entram na "Gerar Auditoria" (top N por |saldo| do período atual)
+  netAuditoriaGerada:null, // {geradoEm, mesLabel, linhas:[...]} — resultado da última geração
   files:{f390:null, f843:[null,null,null,null], fCong:[null,null,null,null], f278:[null,null,null,null], f051:[null,null,null,null]},
   processing:false, progress:{stage:'', pct:0},
   divergencias:[], locais:[], contagens:[],
@@ -1125,11 +1127,11 @@ function irRenderTopItensPanel(saldo, kind){
     const resto = items.slice(VISIVEL);
     if(!resto.length) return visiveis;
     const uid = 'ir-col-'+Math.random().toString(36).slice(2,9);
-    // Botão ANTES do bloco escondido — assim, ao expandir, "Ver menos" fica logo
-    // acima do conteúdo que apareceu, sem precisar rolar até o final da lista pra
-    // recolher de novo.
-    return `${visiveis}<button class="btn-link" style="margin:4px 0;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>
-      <div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>`;
+    // Botão no TOPO da lista (antes de qualquer linha) — dá pra abrir/fechar sem
+    // rolar até o meio ou o fim da lista, ainda mais útil quando "ver mais" trouxer
+    // muitas linhas.
+    return `<button class="btn-link" style="margin:0 0 6px;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>
+      ${visiveis}<div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>`;
   };
   return `<div class="panel">
     <h3>${titulo}</h3>
@@ -1160,6 +1162,14 @@ function irGerarRelatorioEmail(){
   if(!ind || !c){ irShowToast('Sem dados de ciclo pra gerar relatório.', true); return; }
   const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
   const sectionTitle = rpSectionTitle;
+  // NET mensal (QRY410) — diferente do "Divergente (líq.)" acima, que é o líquido do
+  // CICLO inteiro (ganho−perda das divergências físicas contadas) e pode ficar perto
+  // de zero mesmo com bastante movimento (ganhos e perdas se cancelando). O NET
+  // mensal vem da 410 (todos os ajustes do CD, não só o inventário) e é o número que
+  // efetivamente responde "quanto o estoque ganhou/perdeu esse mês".
+  const net410MesAtual = IR.net410Data && IR.net410Data.porMes && IR.net410Data.porMes.length
+    ? IR.net410Data.porMes[IR.net410Data.porMes.length-1] : null;
+  const net410MesLabel = net410MesAtual ? IR_MES_NOMES[parseInt(net410MesAtual.mes.slice(5,7),10)-1]+'/'+net410MesAtual.mes.slice(0,4) : '';
   // Cor da célula de acurácia: amarelo bem em cima da meta, vermelho abaixo,
   // verde acima — pedido explícito do usuário (ex.: meta 97% → 97% = amarelo).
   const rpAcColor = (val, meta)=>{
@@ -1182,7 +1192,8 @@ function irGerarRelatorioEmail(){
   const blocoValor = rpBlock('black','💰','Valor',
     rpTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
     rpTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
-    rpTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líq.)', '', 'ganho − perda')
+    rpTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líq.)', '', 'ganho − perda do ciclo') +
+    (net410MesAtual ? rpTile('📈', irFmtMoney(net410MesAtual.net), 'NET Mensal (410)', net410MesAtual.net>=0?'good':'bad', net410MesLabel) : '')
   );
   const blocoCiclo = rpBlock('neutral','🔄','Ciclo',
     rpTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
@@ -1263,7 +1274,7 @@ function irGerarRelatorioEmail(){
     <div class="rp-panel rp-panel-pad">
       ${irBuildContadosPorDiaSvg(ind.divergentesPorDia, null, {colors:{bar:'#FA4616', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'}, campo:'pecas', fmt:irFmtInt})}
     </div>
-    ${sectionTitle('💰','Valor Divergente por Dia','NET do ciclo: '+irFmtMoney(ind.valorDivergenteLiquido)+' (ganho − perda) · barras abaixo são valor absoluto por dia')}
+    ${sectionTitle('💰','Valor Divergente por Dia', (net410MesAtual ? 'NET mensal ('+net410MesLabel+'): '+irFmtMoney(net410MesAtual.net)+' · ' : '')+'NET do ciclo: '+irFmtMoney(ind.valorDivergenteLiquido)+' · barras abaixo são valor absoluto por dia')}
     <div class="rp-panel rp-panel-pad">
       ${irBuildContadosPorDiaSvg(ind.divergentesPorDia, null, {colors:{bar:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'}, campo:'valor', fmt:irFmtMoney})}
     </div>
@@ -1976,6 +1987,90 @@ function irToggleMovEvidencia(uid, btn){
     btn.textContent = btn.dataset.labelVer || 'Ver';
   }
 }
+// "Gerar Auditoria" — pega os Top N itens que já estão na tela (mesmo período/
+// filtro que o usuário está vendo) e cruza CADA UM com TODOS os locais onde ele
+// está divergente no ciclo ativo (não só o "local mais divergente" já mostrado na
+// tabela) — um item pode ter mais de um local divergente, e o local pode até se
+// repetir entre itens diferentes; a lista final é o que se entrega pro colaborador
+// ir auditar fisicamente.
+function irGerarAuditoriaNet(){
+  const input = document.getElementById('ir-net-audit-n');
+  const n = Math.max(1, parseInt(input && input.value, 10) || 10);
+  IR.netAuditoriaN = n;
+  const itens = (IR._netComCoberturaAtual || []).slice(0, n);
+  if(!itens.length){ irShowToast('Sem itens nesse período pra gerar auditoria.', true); return; }
+  const linhas = [];
+  for(const i of itens){
+    const locais = (IR.divergencias||[]).filter(d=>d.item===i.item && d.diferenca!==0)
+      .sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia));
+    if(!locais.length){
+      linhas.push({item:i.item, nome:i.nome, saldoValor:i.saldoValor, local:null});
+    } else {
+      // Um item pode aparecer em mais de um local (e o local pode se repetir entre
+      // itens diferentes) — lista TODOS, sem esconder nenhum, pra garantir que o
+      // auditor não deixe de conferir uma posição.
+      for(const l of locais) linhas.push({item:i.item, nome:i.nome, saldoValor:i.saldoValor, local:l.local, qtdeSistema:l.qtdeSistema, qtdeFisica:l.qtdeFisica, diferenca:l.diferenca, vlDivergencia:l.vlDivergencia});
+    }
+  }
+  IR.netAuditoriaGerada = {geradoEm: new Date().toLocaleString('pt-BR'), mesLabel: IR._netMesLabelAtual, n, itensCount: itens.length, linhas};
+  irRenderView();
+}
+function irRenderAuditoriaNetGerada(){
+  const g = IR.netAuditoriaGerada;
+  const row = (l)=>`<tr>
+    <td class="mono">${irEsc(l.item)}</td>
+    <td title="${irEsc(l.nome||'')}">${irTruncDesc(l.nome)}</td>
+    <td class="mono" style="color:${l.saldoValor>=0?'var(--blue)':'var(--danger)'};font-weight:700;">${l.saldoValor>=0?'+':''}${irFmtMoney(l.saldoValor)}</td>
+    <td class="mono">${l.local ? irEsc(l.local) : '<span class="field-hint">fora do ciclo atual</span>'}</td>
+    <td class="mono">${l.qtdeSistema!==undefined?irFmtInt(l.qtdeSistema):'—'}</td>
+    <td class="mono">${l.qtdeFisica!==undefined?irFmtInt(l.qtdeFisica):'—'}</td>
+    <td class="mono" style="color:${l.diferenca>0?'var(--success)':(l.diferenca<0?'var(--danger)':'var(--ink)')};font-weight:700;">${l.diferenca!==undefined?(l.diferenca>0?'+':'')+irFmtInt(l.diferenca):'—'}</td>
+  </tr>`;
+  return `<div class="panel" style="background:var(--surface2);margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+      <h3 style="margin:0;">Auditoria Direcionada — Top ${g.n} de ${irEsc(g.mesLabel)}</h3>
+      <button class="btn btn-secondary" onclick="irBaixarAuditoriaNetImagem()">📥 Baixar / Compartilhar</button>
+    </div>
+    <p class="field-hint" style="margin-bottom:12px;">Gerado em ${irEsc(g.geradoEm)} · ${g.itensCount} ${g.itensCount===1?'item':'itens'} · ${g.linhas.length} ${g.linhas.length===1?'local a conferir':'locais a conferir'}.</p>
+    <div class="table-wrap"><table class="table-dense">
+      <thead><tr><th>Item</th><th>Descrição</th><th>Saldo no período</th><th>Local</th><th>Qtde Sistema</th><th>Qtde Física</th><th>Diferença</th></tr></thead>
+      <tbody>${g.linhas.map(row).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+async function irBaixarAuditoriaNetImagem(){
+  const g = IR.netAuditoriaGerada;
+  if(!g) return;
+  const c = IR.cicloAtivo;
+  const row = (l)=>`<tr>
+    <td>${irEsc(l.item)}</td>
+    <td>${irEsc(l.nome||'')}</td>
+    <td>${l.saldoValor>=0?'+':''}${irFmtMoney(l.saldoValor)}</td>
+    <td>${l.local ? irEsc(l.local) : 'fora do ciclo atual'}</td>
+    <td>${l.qtdeSistema!==undefined?irFmtInt(l.qtdeSistema):'—'}</td>
+    <td>${l.qtdeFisica!==undefined?irFmtInt(l.qtdeFisica):'—'}</td>
+    <td>${l.diferenca!==undefined?(l.diferenca>0?'+':'')+irFmtInt(l.diferenca):'—'}</td>
+  </tr>`;
+  const html = `<div class="rp-page">
+    <div class="rp-hero">
+      <div class="rp-hero-top">
+        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+      </div>
+      <div class="rp-hero-badge">Auditoria Direcionada</div>
+      <h1>Top ${g.n} itens de ${irEsc(g.mesLabel)}</h1>
+      <p>Loja do Mecânico · Centro de Distribuição Cajamar${c?' · '+irEsc(irCicloLabel(c)):''}</p>
+    </div>
+    <div class="rp-body">
+      <p class="rp-footer" style="margin:0 0 14px;">Gerado em ${irEsc(g.geradoEm)} · ${g.itensCount} itens · ${g.linhas.length} locais a conferir</p>
+      <div class="rp-panel"><table class="rp-table">
+        <thead><tr><th>Item</th><th>Descrição</th><th>Saldo no período</th><th>Local</th><th>Qtde Sistema</th><th>Qtde Física</th><th>Diferença</th></tr></thead>
+        <tbody>${g.linhas.map(row).join('')}</tbody>
+      </table></div>
+      <p class="rp-footer">Gerado automaticamente pelo módulo Inventário Rotativo.</p>
+    </div>
+  </div>`;
+  irBaixarBoletimImagem(html, `Auditoria_Direcionada_${new Date().toISOString().slice(0,10)}.png`);
+}
 async function irIgnorarNet410Item(item, nome){
   await irSaveNet410Ignorado(item, nome);
   IR.net410Ignorados = await irGetNet410IgnoradosAll();
@@ -2013,8 +2108,8 @@ function irRenderNetTopLists(comCobertura){
       const resto = items.slice(VISIVEL);
       if(!resto.length) return visiveis;
       const uid = 'ir-nettop-'+Math.random().toString(36).slice(2,9);
-      return `${visiveis}<button class="btn-link" style="margin:4px 0;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>
-        <div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>`;
+      return `<button class="btn-link" style="margin:0 0 6px;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>
+        ${visiveis}<div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>`;
     };
     return `<div><h4 style="margin:0 0 10px;font-size:13px;">${titulo}</h4>
       <div class="bi-grid-2">
@@ -2078,6 +2173,10 @@ function irRenderNetDistorcaoPanel(){
       pctDoNet: m.netAbs>0 ? Math.abs(i.saldoValor)/m.netAbs : 0,
       pctAcumulado: totalMovimentoBruto>0 ? acumulado/totalMovimentoBruto : 0};
   });
+  // Cache pro botão "Gerar Auditoria" — evita recalcular tudo de novo só pra pegar
+  // os top N itens do período que já está na tela.
+  IR._netComCoberturaAtual = comCobertura;
+  IR._netMesLabelAtual = mesLabel;
   // Cancelamento forte = a movimentação bruta é bem maior que o NET final, ou seja,
   // ganhos e perdas grandes quase se anulam — vale alertar, porque é o padrão clássico
   // de item com contagem trocada (ex.: duas variantes de cor do mesmo modelo).
@@ -2152,7 +2251,7 @@ function irRenderNetDistorcaoPanel(){
     // até o fim de uma lista que pode ter centenas de linhas.
     tabela = `<p class="field-hint" style="margin-bottom:8px;">Esses <strong>${visiveis.length}</strong> ${visiveis.length===1?'item explica':'itens explicam'} <strong>${coberturaVisivel}</strong> da movimentação de ${irEsc(mesLabel)} (${irFmtMoney(totalMovimentoBruto)} em ganhos e perdas somados em módulo).</p>
     ${resto.length ? `<button class="btn-link" style="margin-bottom:8px;" data-label-fechado="Ver mais ${resto.length} até 100% da movimentação" onclick="irToggleNetItensResto('${uid}', this)">Ver mais ${resto.length} até 100% da movimentação</button>` : ''}
-    <div class="table-wrap"><table class="table-wide">
+    <div class="table-wrap"><table class="table-wide table-dense">
       ${thead}
       <tbody>${visiveis.map(row).join('')}</tbody>
       ${resto.length ? `<tbody id="${uid}" style="display:none;">${resto.map(row).join('')}</tbody>` : ''}
@@ -2160,6 +2259,12 @@ function irRenderNetDistorcaoPanel(){
   }
 
   return `<div class="panel">
+    <div class="form-actions" style="align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line);">
+      <div style="max-width:160px;"><label>Top N itens</label><input type="number" id="ir-net-audit-n" min="1" max="100" value="${IR.netAuditoriaN}"></div>
+      <button class="btn btn-primary" onclick="irGerarAuditoriaNet()">🔍 Gerar Auditoria</button>
+      <p class="field-hint" style="margin:0 0 8px;max-width:38ch;">Monta a lista dos itens mais divergentes do período com todos os locais onde cada um está divergente no ciclo atual — pra entregar pro colaborador auditar fisicamente.</p>
+    </div>
+    ${IR.netAuditoriaGerada ? irRenderAuditoriaNetGerada() : ''}
     ${dadosDesatualizados ? `<p class="field-hint" style="color:var(--danger);margin-bottom:12px;">⚠️ Alguns dados desse ano foram processados antes de Ganhos, Saldo no Ano e Quantidade existirem nessa análise — aparecem como "—" abaixo. Reimporte a QRY410 na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> pra atualizar.</p>` : ''}
     ${cancelamentoForte ? `<p class="field-hint" style="color:var(--orange);margin-bottom:12px;">⚠️ A movimentação bruta de ${irEsc(mesLabel)} (${irFmtMoney(totalMovimentoBruto)}) é bem maior que o NET final (${irFmtMoney(m.netAbs)}) — sinal de que ganhos e perdas grandes estão se cancelando. Vale checar se não é troca de contagem entre itens parecidos (ex.: mesma peça em cores/variações diferentes).</p>` : ''}
     ${ignoradosSet.size ? `<p class="field-hint" style="margin-bottom:12px;">${ignoradosSet.size} ${ignoradosSet.size===1?'item ignorado não aparece':'itens ignorados não aparecem'} nessa análise (motivo já conhecido) — <a href="#" onclick="irSwitchTab('configuracoes');return false;">gerenciar em Configurações</a>.</p>` : ''}
