@@ -673,8 +673,55 @@ async function runPipeline410({buf410}){
   post('progress', {stage:'Processando '+rows410.length+' linha(s) da QRY410...', pct:15});
   const porAno = new Map();
   function getAno(ano){
-    if(!porAno.has(ano)) porAno.set(ano, {porMes:new Map(), porObs:new Map(), porItem:new Map(), porItemMes:new Map(), totalLinhas:0, linhasExcluidasDeposito21:0});
+    if(!porAno.has(ano)) porAno.set(ano, {
+      porMes:new Map(), porItemMes:new Map(),
+      // porDia = mesma quebra, mas por dia — pra responder "o que aconteceu ontem"
+      // rápido, sem esperar o mês fechar pra dar pra investigar.
+      porDia:new Map(), porItemDia:new Map(),
+      porObs:new Map(), porItem:new Map(), totalLinhas:0, linhasExcluidasDeposito21:0
+    });
     return porAno.get(ano);
+  }
+  // Acumula um movimento num período (mês OU dia) — mesma lógica pros dois níveis,
+  // só muda a chave e os Maps de destino.
+  function acumularPeriodo(porPeriodo, porItemPeriodo, chave, sinal, valor, qtd, item, nomeItem, clsId){
+    if(!porPeriodo.has(chave)) porPeriodo.set(chave, {ganhos:0, perdas:0, ganhosAIR:0, perdasAIR:0});
+    const gp = porPeriodo.get(chave);
+    if(sinal>0){ gp.ganhos += valor; if(clsId==='AIR') gp.ganhosAIR += valor; }
+    else if(sinal<0){ gp.perdas += valor; if(clsId==='AIR') gp.perdasAIR += valor; }
+    if(!item) return;
+    if(!porItemPeriodo.has(chave)) porItemPeriodo.set(chave, new Map());
+    const itensDoPeriodo = porItemPeriodo.get(chave);
+    if(!itensDoPeriodo.has(item)) itensDoPeriodo.set(item, {item, nome:nomeItem, saldoValor:0, ganhos:0, perdas:0, saldoQtd:0, ganhosQtd:0, perdasQtd:0, porObs:new Map()});
+    const gi = itensDoPeriodo.get(item);
+    gi.saldoValor += valor;
+    gi.saldoQtd += qtd;
+    if(sinal>0){ gi.ganhos += valor; gi.ganhosQtd += qtd; } else if(sinal<0){ gi.perdas += valor; gi.perdasQtd += qtd; }
+    gi.porObs.set(clsId, (gi.porObs.get(clsId)||0) + valor);
+  }
+  // Monta o array final de um nível de período (mês ou dia) — cobertura, saldoAno
+  // (sempre do ANO INTEIRO, não do período) e top itens, do mesmo jeito nos dois níveis.
+  function finalizarPeriodos(porPeriodo, porItemPeriodo, porItemAno, chaveLabel){
+    return Array.from(porPeriodo.entries()).sort((a,b)=>a[0].localeCompare(b[0])).map(([chave,p])=>{
+      const itensDoPeriodo = Array.from((porItemPeriodo.get(chave)||new Map()).values()).map(i=>{
+        const saldoAIR = i.porObs.get('AIR')||0;
+        const porObsArr = Array.from(i.porObs.entries()).map(([id,valor])=>({id, valor})).sort((a,b)=>Math.abs(b.valor)-Math.abs(a.valor));
+        const itemAno = porItemAno.get(i.item) || {};
+        return {item:i.item, nome:i.nome, saldoValor:i.saldoValor, ganhos:i.ganhos, perdas:i.perdas,
+          saldoQtd:i.saldoQtd, ganhosQtd:i.ganhosQtd, perdasQtd:i.perdasQtd, saldoQtdAno: itemAno.saldoQtd||0,
+          saldoAIR, saldoOutros:i.saldoValor-saldoAIR, saldoAno: itemAno.saldoValor||0, porObs:porObsArr};
+      });
+      const net = p.ganhos+p.perdas;
+      const netAIR = p.ganhosAIR+p.perdasAIR;
+      return {
+        [chaveLabel]: chave, ganhos:p.ganhos, perdas:p.perdas, net, netAbs: Math.abs(net), netAIR, netOutros: net-netAIR,
+        // Sem slice aqui — a UI decide quantos mostrar com base na cobertura acumulada
+        // da movimentação (não dá pra saber de antemão se os itens que explicam o
+        // período são 5 ou 50).
+        topItensPositivos: itensDoPeriodo.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor),
+        topItensNegativos: itensDoPeriodo.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor)
+      };
+    });
   }
   let processadas = 0;
   for(const row of rows410){
@@ -693,6 +740,7 @@ async function runPipeline410({buf410}){
     // da célula, sem passar pela conversão de fuso.
     const ano = dt.getUTCFullYear();
     const mes = ano+'-'+String(dt.getUTCMonth()+1).padStart(2,'0');
+    const dia = mes+'-'+String(dt.getUTCDate()).padStart(2,'0');
     const g = getAno(ano);
     g.totalLinhas++;
 
@@ -715,36 +763,22 @@ async function runPipeline410({buf410}){
     if(sinal<0) go.saida += valor;
     else if(sinal>0) go.entrada += valor;
 
-    if(!cls.considerarNet) continue; // resto (mês, item) só conta com motivos válidos pro NET
-
-    if(!g.porMes.has(mes)) g.porMes.set(mes, {mes, ganhos:0, perdas:0, ganhosAIR:0, perdasAIR:0});
-    const gm = g.porMes.get(mes);
-    // *AIR = só o que veio do Inventário Rotativo — soma bruta do mês (não só dos
-    // top itens), pra separar "quanto do NET veio do inventário" do resto dos ajustes.
-    if(sinal>0){ gm.ganhos += valor; if(cls.id==='AIR') gm.ganhosAIR += valor; }
-    else if(sinal<0){ gm.perdas += valor; if(cls.id==='AIR') gm.perdasAIR += valor; }
+    if(!cls.considerarNet) continue; // resto (mês/dia, item) só conta com motivos válidos pro NET
 
     const item = String(getVal(row, r410.item)||'').trim();
     const nomeItem = String(getVal(row, r410.nomeItem)||'').trim();
+
+    // Saldo do item no ANO INTEIRO — usado tanto pro "saldo no ano" do painel mensal
+    // quanto pro do painel diário (é sempre o mesmo número, o ano não muda por dia).
     if(item){
       if(!g.porItem.has(item)) g.porItem.set(item, {item, nome:nomeItem, saldoValor:0, saldoQtd:0});
       const gItem = g.porItem.get(item);
       gItem.saldoValor += valor;
       gItem.saldoQtd += qtd;
-
-      // Item x mês — pra responder "por que o NET desse mês está tão alto/baixo" e
-      // também "quanto disso veio do Inventário Rotativo (AIR) x de outros motivos"
-      // (Auditoria KPMG, Itens Localizados, Ajuste Loja etc.) — a 410 acumula TODOS
-      // os ajustes, o inventário é só um dos motivos que compõem o NET.
-      if(!g.porItemMes.has(mes)) g.porItemMes.set(mes, new Map());
-      const itensDoMes = g.porItemMes.get(mes);
-      if(!itensDoMes.has(item)) itensDoMes.set(item, {item, nome:nomeItem, saldoValor:0, ganhos:0, perdas:0, saldoQtd:0, ganhosQtd:0, perdasQtd:0, porObs:new Map()});
-      const gi = itensDoMes.get(item);
-      gi.saldoValor += valor;
-      gi.saldoQtd += qtd;
-      if(sinal>0){ gi.ganhos += valor; gi.ganhosQtd += qtd; } else if(sinal<0){ gi.perdas += valor; gi.perdasQtd += qtd; }
-      gi.porObs.set(cls.id, (gi.porObs.get(cls.id)||0) + valor);
     }
+
+    acumularPeriodo(g.porMes, g.porItemMes, mes, sinal, valor, qtd, item, nomeItem, cls.id);
+    acumularPeriodo(g.porDia, g.porItemDia, dia, sinal, valor, qtd, item, nomeItem, cls.id);
   }
 
   post('progress', {stage:'Consolidando resumo por ano (QRY410)...', pct:80});
@@ -752,35 +786,8 @@ async function runPipeline410({buf410}){
   const resumos = {};
   for(const ano of anos){
     const g = porAno.get(ano);
-    const porMes = Array.from(g.porMes.values()).sort((a,b)=>a.mes.localeCompare(b.mes)).map(m=>{
-      // saldoAIR = quanto do saldo do item veio de Inventário Rotativo; saldoOutros =
-      // resto (Auditoria KPMG, Itens Localizados, Ajuste Loja etc.) — é o que permite
-      // dizer pro auditor "esse item é do inventário, vale a pena validar" ou "não é
-      // do inventário, a distorção veio de outro processo".
-      const itensDoMes = Array.from((g.porItemMes.get(m.mes)||new Map()).values()).map(i=>{
-        const saldoAIR = i.porObs.get('AIR')||0;
-        const porObsArr = Array.from(i.porObs.entries()).map(([id,valor])=>({id, valor})).sort((a,b)=>Math.abs(b.valor)-Math.abs(a.valor));
-        // saldoAno = saldo do item no ano INTEIRO (todos os meses), não só nesse mês —
-        // é o que permite justificar um mês positivo grande que na verdade compensa
-        // uma perda de outro mês do mesmo ano (ex.: ganhou 10 mil agora, mas perdeu os
-        // mesmos 10 mil num ciclo anterior, então no ano o saldo desse item é zero).
-        const itemAno = g.porItem.get(i.item) || {};
-        const saldoAno = itemAno.saldoValor || 0;
-        const saldoQtdAno = itemAno.saldoQtd || 0;
-        return {item:i.item, nome:i.nome, saldoValor:i.saldoValor, ganhos:i.ganhos, perdas:i.perdas,
-          saldoQtd:i.saldoQtd, ganhosQtd:i.ganhosQtd, perdasQtd:i.perdasQtd, saldoQtdAno,
-          saldoAIR, saldoOutros:i.saldoValor-saldoAIR, saldoAno, porObs:porObsArr};
-      });
-      const net = m.ganhos+m.perdas;
-      const netAIR = m.ganhosAIR+m.perdasAIR;
-      return {
-        ...m, net, netAbs: Math.abs(net), netAIR, netOutros: net-netAIR,
-        // Sem slice aqui — a UI decide quantos mostrar com base na cobertura acumulada
-        // do NET (não dá pra saber de antemão se os itens que explicam o mês são 5 ou 50).
-        topItensPositivos: itensDoMes.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor),
-        topItensNegativos: itensDoMes.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor)
-      };
-    });
+    const porMes = finalizarPeriodos(g.porMes, g.porItemMes, g.porItem, 'mes');
+    const porDia = finalizarPeriodos(g.porDia, g.porItemDia, g.porItem, 'dia');
     const porObs = Array.from(g.porObs.values()).map(o=>({...o, totalGeral: o.saida+o.entrada}))
       .sort((a,b)=>Math.abs(b.totalGeral)-Math.abs(a.totalGeral));
     const itens = Array.from(g.porItem.values());
@@ -790,7 +797,7 @@ async function runPipeline410({buf410}){
     const totalPerdas = porMes.reduce((s,m)=>s+m.perdas,0);
     resumos[ano] = {
       ano, totalLinhas:g.totalLinhas, linhasExcluidasDeposito21:g.linhasExcluidasDeposito21,
-      porMes, porObs, topItensPositivos, topItensNegativos,
+      porMes, porDia, porObs, topItensPositivos, topItensNegativos,
       totalGanhos, totalPerdas, totalNet: totalGanhos+totalPerdas, totalNetAbs: Math.abs(totalGanhos+totalPerdas)
     };
   }
