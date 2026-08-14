@@ -3,7 +3,7 @@
    100% client-side. Nenhum servidor, nenhuma API.
    ============================================================ */
 const IR_DB_NAME = 'inventario_rotativo_v1';
-const IR_DB_VERSION = 3;
+const IR_DB_VERSION = 4;
 
 const IR_STORES = {
   ciclos: 'ciclos',
@@ -14,7 +14,8 @@ const IR_STORES = {
   prioridadeConfig: 'prioridade_config',
   importMeta: 'import_meta',
   net410: 'net410', // resumo de Perdas e Ganhos (QRY410) por ano — independente do ciclo
-  net410Legenda: 'net410_legenda' // legenda de motivos da 410 (AIR/ADE/LOJA/...), editável em Configurações
+  net410Legenda: 'net410_legenda', // legenda de motivos da 410 (AIR/ADE/LOJA/...), editável em Configurações
+  net410Ignorados: 'net410_ignorados' // itens com motivo já conhecido, ocultos da análise de distorção do NET
 };
 
 function irOpenDB(){
@@ -56,6 +57,9 @@ function irOpenDB(){
       }
       if(!db.objectStoreNames.contains(IR_STORES.net410Legenda)){
         db.createObjectStore(IR_STORES.net410Legenda, {keyPath:'id'});
+      }
+      if(!db.objectStoreNames.contains(IR_STORES.net410Ignorados)){
+        db.createObjectStore(IR_STORES.net410Ignorados, {keyPath:'item'});
       }
     };
     req.onsuccess = ()=>resolve(req.result);
@@ -278,4 +282,33 @@ async function irSeedNet410LegendaIfEmpty(){
     tx.onerror = ()=>reject(tx.error);
   });
   return irGetNet410LegendaAll();
+}
+
+/* ---------- Itens ignorados na análise de distorção do NET ---------- */
+// Item com motivo já conhecido (ex.: troca de identidade já identificada e resolvida)
+// — o usuário marca "já sei o motivo, não preciso ver de novo" e ele some dos
+// rankings/listas do painel "Por que o NET está distorcido" até ser desmarcado.
+async function irGetNet410IgnoradosAll(){
+  const store = await irTx(IR_STORES.net410Ignorados, 'readonly');
+  return new Promise((resolve, reject)=>{
+    const req = store.getAll();
+    req.onsuccess = ()=>resolve(req.result||[]);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function irSaveNet410Ignorado(item, nome, motivo){
+  const store = await irTx(IR_STORES.net410Ignorados, 'readwrite');
+  return new Promise((resolve, reject)=>{
+    const req = store.put({item, nome:nome||'', motivo:motivo||'', criadoEm:new Date().toISOString()});
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function irRemoverNet410Ignorado(item){
+  const store = await irTx(IR_STORES.net410Ignorados, 'readwrite');
+  return new Promise((resolve, reject)=>{
+    const req = store.delete(item);
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
 }

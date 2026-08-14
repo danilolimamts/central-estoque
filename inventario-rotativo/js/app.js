@@ -10,6 +10,7 @@ const IR = {
   indicadores:null, importMeta:null,
   prioridadeConfig:null,
   net410Legenda:[], // legenda de motivos da 410 (editável em Configurações)
+  net410Ignorados:[], // itens ocultos da análise de distorção do NET (motivo já conhecido)
   files:{f390:null, f843:[null,null,null,null], fCong:[null,null,null,null], f278:[null,null,null,null], f051:[null,null,null,null]},
   processing:false, progress:{stage:'', pct:0},
   divergencias:[], locais:[], contagens:[],
@@ -68,6 +69,7 @@ async function irInit(){
   try{
     IR.prioridadeConfig = await irSeedPrioridadeConfigIfEmpty();
     IR.net410Legenda = await irSeedNet410LegendaIfEmpty();
+    IR.net410Ignorados = await irGetNet410IgnoradosAll();
     IR.ciclos = await irGetAllCiclos();
     if(IR.ciclos.length){
       IR.cicloAtivo = IR.ciclos.find(c=>c.status==='aberto') || IR.ciclos[0];
@@ -878,19 +880,22 @@ function irAgruparContadosPorMes(rows, dataAbertura){
   });
 }
 function irRenderStatusInventarioPanel(ind){
-  const total = ind.locaisCongelados||0, contados = ind.locaisContadosTotal||0;
-  const pct = total>0 ? contados/total : 0;
+  // Mesma base do KPI "Andamento" (locaisConcluidos ÷ locaisCongelados) — antes esse
+  // donut usava locaisContadosTotal (inclui locais ainda "em contagem", não fechados),
+  // o que fazia o % daqui não bater com o card de Andamento do Ciclo.
+  const total = ind.locaisCongelados||0, concluidos = ind.locaisConcluidos||0;
+  const pct = total>0 ? concluidos/total : 0;
   const porMes = irAgruparContadosPorMes(ind.contadosPorDia, IR.cicloAtivo && IR.cicloAtivo.dataAbertura);
   const maxMes = Math.max(1, ...porMes.map(m=>m.total));
   return `<div class="panel">
     <h3>Status do Inventário</h3>
-    <p class="panel-sub">Percentual de locais já contados em relação ao total orçado do ciclo.</p>
+    <p class="panel-sub">Percentual de locais concluídos em relação ao total orçado do ciclo.</p>
     <div class="status-donut-row">
       ${irDonutSvg(pct)}
       <div class="status-donut-stats">
         <div class="status-donut-stat"><div class="n mono">${irFmtInt(total)}</div><div class="l">Locais totais (orçados)</div></div>
-        <div class="status-donut-stat"><div class="n mono good">${irFmtInt(contados)}</div><div class="l">Locais contados</div></div>
-        <div class="status-donut-stat"><div class="n mono bad">${irFmtInt(total-contados)}</div><div class="l">Ainda não contados</div></div>
+        <div class="status-donut-stat"><div class="n mono good">${irFmtInt(concluidos)}</div><div class="l">Locais concluídos</div></div>
+        <div class="status-donut-stat"><div class="n mono bad">${irFmtInt(total-concluidos)}</div><div class="l">Ainda não concluídos</div></div>
       </div>
       ${porMes.length ? `<div class="status-month-list">
         <div class="status-month-title">Locais contados por mês</div>
@@ -1114,8 +1119,11 @@ function irRenderTopItensPanel(saldo, kind){
     const resto = items.slice(VISIVEL);
     if(!resto.length) return visiveis;
     const uid = 'ir-col-'+Math.random().toString(36).slice(2,9);
-    return `${visiveis}<div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>
-      <button class="btn-link" style="margin-top:4px;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>`;
+    // Botão ANTES do bloco escondido — assim, ao expandir, "Ver menos" fica logo
+    // acima do conteúdo que apareceu, sem precisar rolar até o final da lista pra
+    // recolher de novo.
+    return `${visiveis}<button class="btn-link" style="margin:4px 0;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>
+      <div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>`;
   };
   return `<div class="panel">
     <h3>${titulo}</h3>
@@ -1144,7 +1152,6 @@ const rpSectionTitle = (icon, texto, nota)=>`<div class="rp-section-title"><span
 function irGerarRelatorioEmail(){
   const ind = IR.indicadores, c = IR.cicloAtivo;
   if(!ind || !c){ irShowToast('Sem dados de ciclo pra gerar relatório.', true); return; }
-  const agora = new Date().toLocaleString('pt-BR');
   const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
   const sectionTitle = rpSectionTitle;
   // Cor da célula de acurácia: amarelo bem em cima da meta, vermelho abaixo,
@@ -1180,7 +1187,8 @@ function irGerarRelatorioEmail(){
   const rua = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes);
   const rowsLog = irFiltrarLogsValidos(ind.porLog);
   const rowsLogComTotal = rowsLog.length ? [...rowsLog, irCalcLogTotal(rowsLog)] : [];
-  const pctContagem = ind.locaisCongelados>0 ? ind.locaisContadosTotal/ind.locaisCongelados : 0;
+  // Mesma base do KPI "Andamento" (locaisConcluidos), pra bater com o card de Ciclo.
+  const pctContagem = ind.locaisCongelados>0 ? ind.locaisConcluidos/ind.locaisCongelados : 0;
   const rpDonutColors = {color:'#FA4616', track:'#EEF0F4', textColor:'#1D1F2A'};
   const rpLogColors = {pecas:'#FA4616', posicoes:'#001A72', valor:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280'};
   const porMes = irAgruparContadosPorMes(ind.contadosPorDia, c.dataAbertura);
@@ -1194,11 +1202,6 @@ function irGerarRelatorioEmail(){
       <div class="rp-hero-badge">Boletim de Inventário Rotativo</div>
       <h1>Andamento do ${irCicloLabel(c)}</h1>
       <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
-      <div class="rp-hero-meta">
-        <span>Gerado em ${agora}</span>
-        <span>Abertura ${irFmtDate(c.dataAbertura)}</span>
-        <span>Término previsto ${irFmtDate(c.dataPrevistaTermino)}</span>
-      </div>
     </div>
     <div class="rp-body">
 
@@ -1212,8 +1215,8 @@ function irGerarRelatorioEmail(){
         ${irDonutSvg(pctContagem, rpDonutColors)}
         <div class="rp-donut-stats">
           <div class="rp-donut-stat"><div class="n">${irFmtInt(ind.locaisCongelados)}</div><div class="l">Locais totais (orçados)</div></div>
-          <div class="rp-donut-stat"><div class="n good">${irFmtInt(ind.locaisContadosTotal)}</div><div class="l">Locais contados</div></div>
-          <div class="rp-donut-stat"><div class="n bad">${irFmtInt(ind.locaisCongelados-ind.locaisContadosTotal)}</div><div class="l">Ainda não contados</div></div>
+          <div class="rp-donut-stat"><div class="n good">${irFmtInt(ind.locaisConcluidos)}</div><div class="l">Locais concluídos</div></div>
+          <div class="rp-donut-stat"><div class="n bad">${irFmtInt(ind.locaisCongelados-ind.locaisConcluidos)}</div><div class="l">Ainda não concluídos</div></div>
         </div>
         ${porMes.length ? `<div class="rp-month-list">
           <div class="rp-month-title">Locais contados por mês</div>
@@ -1967,6 +1970,12 @@ function irToggleMovEvidencia(uid, btn){
     btn.textContent = btn.dataset.labelVer || 'Ver';
   }
 }
+async function irIgnorarNet410Item(item, nome){
+  await irSaveNet410Ignorado(item, nome);
+  IR.net410Ignorados = await irGetNet410IgnoradosAll();
+  irShowToast(`"${nome||item}" não vai mais aparecer nessa análise — gerenciar em Configurações.`);
+  irRenderView();
+}
 function irSetDivNetMes(mes){ IR.divNetMesSel = mes; IR.divNetDiaSel = null; irRenderView(); }
 function irSetDivNetDia(dia){ IR.divNetDiaSel = dia || null; irRenderView(); }
 function irToggleNetItensResto(uid, btn){
@@ -1998,8 +2007,8 @@ function irRenderNetTopLists(comCobertura){
       const resto = items.slice(VISIVEL);
       if(!resto.length) return visiveis;
       const uid = 'ir-nettop-'+Math.random().toString(36).slice(2,9);
-      return `${visiveis}<div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>
-        <button class="btn-link" style="margin-top:4px;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>`;
+      return `${visiveis}<button class="btn-link" style="margin:4px 0;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>
+        <div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>`;
     };
     return `<div><h4 style="margin:0 0 10px;font-size:13px;">${titulo}</h4>
       <div class="bi-grid-2">
@@ -2040,9 +2049,15 @@ function irRenderNetDistorcaoPanel(){
     : IR_MES_NOMES[parseInt(mSel.mes.slice(5,7),10)-1]+'/'+mSel.mes.slice(0,4);
   const pctAIR = m.net!==0 ? Math.abs(m.netAIR/m.net) : 0;
 
+  // Itens ignorados (motivo já conhecido, ex.: troca de identidade já identificada)
+  // saem da análise inteira — não só da lista, também da cobertura acumulada e da
+  // movimentação bruta, senão eles continuariam pesando nos % mesmo escondidos.
+  const ignoradosSet = new Set((IR.net410Ignorados||[]).map(i=>i.item));
+
   // Junta os itens positivos e negativos do mês, ordena por |saldo| — são os que
   // mais pesam na distorção do NET, seja puxando pra cima ou pra baixo.
   const todosOrdenados = [...(m.topItensPositivos||[]), ...(m.topItensNegativos||[])]
+    .filter(i=>!ignoradosSet.has(i.item))
     .sort((a,b)=>Math.abs(b.saldoValor)-Math.abs(a.saldoValor));
   // Cobertura acumulada usa a MOVIMENTAÇÃO BRUTA (soma de |saldo| de todos os itens),
   // não o NET do mês — quando dois itens grandes se cancelam (ex.: +19.452 de um lado,
@@ -2113,31 +2128,35 @@ function irRenderNetDistorcaoPanel(){
       <td style="font-size:11.5px;">${local ? `${irEsc(local.local)}<div class="field-hint">dif. ${local.diferenca>0?'+':''}${irFmtInt(local.diferenca)} pçs${outrosLocais>0?' · +'+outrosLocais:''}</div>` : '<span class="field-hint">fora do ciclo atual</span>'}</td>
       <td><span class="tag ${ehAIR?'tag-good':'tag-muted'}">${ehAIR?'Validar no inventário':'Não é do inventário'}</span></td>
       <td>${movs.length ? `<button class="btn-link" onclick="irToggleMovEvidencia('${uid}', this)">Ver ${movs.length}</button>` : '<span class="field-hint">—</span>'}</td>
+      <td><button class="btn-link" title="Já sei o motivo — esconder esse item da análise" onclick="irIgnorarNet410Item('${irEsc(i.item)}','${irEsc((i.nome||'').replace(/'/g,"\\'"))}')">Ignorar</button></td>
     </tr>`;
     if(!movs.length) return linhaPrincipal;
-    return linhaPrincipal + `<tr id="${uid}" style="display:none;"><td colspan="11" style="padding:0 0 10px;">${irBuildMovEvidenciaTable(movs)}</td></tr>`;
+    return linhaPrincipal + `<tr id="${uid}" style="display:none;"><td colspan="12" style="padding:0 0 10px;">${irBuildMovEvidenciaTable(movs)}</td></tr>`;
   };
 
   const periodoCurto = IR.divNetDiaSel ? 'dia' : 'mês';
-  const thead = `<thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no ${periodoCurto}</th><th>Saldo no ${periodoCurto}</th><th>Saldo no ano</th><th>% do NET</th><th>% Acum. movimentação</th><th>Motivo principal</th><th>Local mais divergente (ciclo atual)</th><th>Ação sugerida</th><th>Evidência</th></tr></thead>`;
+  const thead = `<thead><tr><th>Item</th><th>Descrição</th><th>Ganhos no ${periodoCurto}</th><th>Saldo no ${periodoCurto}</th><th>Saldo no ano</th><th>% do NET</th><th>% Acum. movimentação</th><th>Motivo principal</th><th>Local mais divergente (ciclo atual)</th><th>Ação sugerida</th><th>Evidência</th><th></th></tr></thead>`;
   let tabela;
   if(!comCobertura.length){
     tabela = `<p class="field-hint">Nenhum item com saldo válido pro NET nesse ${periodoCurto==='dia'?'dia':'mês'}.</p>`;
   } else {
     const uid = 'ir-net-resto-'+Math.random().toString(36).slice(2,9);
     const coberturaVisivel = visiveis.length ? irFmtPct(visiveis[visiveis.length-1].pctAcumulado) : '0%';
+    // Botão de "ver mais" ANTES da tabela — pra recolher de novo sem precisar rolar
+    // até o fim de uma lista que pode ter centenas de linhas.
     tabela = `<p class="field-hint" style="margin-bottom:8px;">Esses <strong>${visiveis.length}</strong> ${visiveis.length===1?'item explica':'itens explicam'} <strong>${coberturaVisivel}</strong> da movimentação de ${irEsc(mesLabel)} (${irFmtMoney(totalMovimentoBruto)} em ganhos e perdas somados em módulo).</p>
+    ${resto.length ? `<button class="btn-link" style="margin-bottom:8px;" data-label-fechado="Ver mais ${resto.length} até 100% da movimentação" onclick="irToggleNetItensResto('${uid}', this)">Ver mais ${resto.length} até 100% da movimentação</button>` : ''}
     <div class="table-wrap"><table class="table-wide">
       ${thead}
       <tbody>${visiveis.map(row).join('')}</tbody>
       ${resto.length ? `<tbody id="${uid}" style="display:none;">${resto.map(row).join('')}</tbody>` : ''}
-    </table></div>
-    ${resto.length ? `<button class="btn-link" style="margin-top:8px;" data-label-fechado="Ver mais ${resto.length} até 100% da movimentação" onclick="irToggleNetItensResto('${uid}', this)">Ver mais ${resto.length} até 100% da movimentação</button>` : ''}`;
+    </table></div>`;
   }
 
   return `<div class="panel">
     ${dadosDesatualizados ? `<p class="field-hint" style="color:var(--danger);margin-bottom:12px;">⚠️ Alguns dados desse ano foram processados antes de Ganhos, Saldo no Ano e Quantidade existirem nessa análise — aparecem como "—" abaixo. Reimporte a QRY410 na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> pra atualizar.</p>` : ''}
     ${cancelamentoForte ? `<p class="field-hint" style="color:var(--orange);margin-bottom:12px;">⚠️ A movimentação bruta de ${irEsc(mesLabel)} (${irFmtMoney(totalMovimentoBruto)}) é bem maior que o NET final (${irFmtMoney(m.netAbs)}) — sinal de que ganhos e perdas grandes estão se cancelando. Vale checar se não é troca de contagem entre itens parecidos (ex.: mesma peça em cores/variações diferentes).</p>` : ''}
+    ${ignoradosSet.size ? `<p class="field-hint" style="margin-bottom:12px;">${ignoradosSet.size} ${ignoradosSet.size===1?'item ignorado não aparece':'itens ignorados não aparecem'} nessa análise (motivo já conhecido) — <a href="#" onclick="irSwitchTab('configuracoes');return false;">gerenciar em Configurações</a>.</p>` : ''}
     <div class="two-col" style="max-width:620px;margin-bottom:14px;grid-template-columns:1fr 1fr 1fr;">
       <div><label>Ano</label><select onchange="irSetNet410Ano(this.value)">
         ${IR.net410Anos.map(a=>`<option value="${a}" ${a===IR.net410AnoSel?'selected':''}>${a}</option>`).join('')}
@@ -2454,7 +2473,33 @@ function irRenderConfiguracoes(){
     <p class="field-hint" id="ir-cfg-soma" style="margin-top:8px;">Soma atual: ${(soma*100).toFixed(0)}%</p>
     <div class="form-actions"><button class="btn btn-primary" onclick="irSalvarPrioridadeConfig()">Salvar pesos</button></div>
   </div>
-  ${irRenderNet410LegendaConfig()}`;
+  ${irRenderNet410LegendaConfig()}
+  ${irRenderNet410IgnoradosConfig()}`;
+}
+// Itens ignorados na análise "Por que o NET está distorcido" — marcados manualmente
+// no painel de Divergências quando o motivo já é conhecido. Aqui dá pra ver a lista
+// completa e trazer o item de volta pra análise a qualquer momento.
+function irRenderNet410IgnoradosConfig(){
+  const lista = (IR.net410Ignorados||[]).slice().sort((a,b)=>(a.criadoEm||'').localeCompare(b.criadoEm||''));
+  const row = (i)=>`<tr>
+    <td class="mono">${irEsc(i.item)}</td>
+    <td>${irEsc(i.nome||'—')}</td>
+    <td class="field-hint">${i.criadoEm ? new Date(i.criadoEm).toLocaleDateString('pt-BR') : '—'}</td>
+    <td><button class="btn-link" onclick="irRestaurarNet410Item('${irEsc(i.item)}')">Restaurar</button></td>
+  </tr>`;
+  return `<div class="panel">
+    <h3>Itens ignorados na análise do NET</h3>
+    <p class="field-hint" style="margin-bottom:12px;">Itens marcados como "já sei o motivo" no painel "Por que o NET está distorcido" — ficam fora dos rankings e da cobertura até você restaurar aqui.</p>
+    ${lista.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Item</th><th>Descrição</th><th>Ignorado em</th><th></th></tr></thead>
+      <tbody>${lista.map(row).join('')}</tbody>
+    </table></div>` : `<p class="field-hint">Nenhum item ignorado.</p>`}
+  </div>`;
+}
+async function irRestaurarNet410Item(item){
+  await irRemoverNet410Ignorado(item);
+  IR.net410Ignorados = await irGetNet410IgnoradosAll();
+  irRenderView();
 }
 // Legenda de motivos da 410 (AIR/ADE/LOJA/...) — editável aqui em vez de fixa no
 // código, pra dar conta de motivo novo ou mudança de classificação sem precisar
