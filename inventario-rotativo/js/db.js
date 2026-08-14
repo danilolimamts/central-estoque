@@ -3,7 +3,7 @@
    100% client-side. Nenhum servidor, nenhuma API.
    ============================================================ */
 const IR_DB_NAME = 'inventario_rotativo_v1';
-const IR_DB_VERSION = 2;
+const IR_DB_VERSION = 3;
 
 const IR_STORES = {
   ciclos: 'ciclos',
@@ -13,7 +13,8 @@ const IR_STORES = {
   indicadores: 'indicadores',
   prioridadeConfig: 'prioridade_config',
   importMeta: 'import_meta',
-  net410: 'net410' // resumo de Perdas e Ganhos (QRY410) por ano — independente do ciclo
+  net410: 'net410', // resumo de Perdas e Ganhos (QRY410) por ano — independente do ciclo
+  net410Legenda: 'net410_legenda' // legenda de motivos da 410 (AIR/ADE/LOJA/...), editável em Configurações
 };
 
 function irOpenDB(){
@@ -52,6 +53,9 @@ function irOpenDB(){
       }
       if(!db.objectStoreNames.contains(IR_STORES.net410)){
         db.createObjectStore(IR_STORES.net410, {keyPath:'ano'});
+      }
+      if(!db.objectStoreNames.contains(IR_STORES.net410Legenda)){
+        db.createObjectStore(IR_STORES.net410Legenda, {keyPath:'id'});
       }
     };
     req.onsuccess = ()=>resolve(req.result);
@@ -233,4 +237,45 @@ async function irGetAllNet410Anos(){
     req.onsuccess = ()=>resolve((req.result||[]).map(r=>r.ano).sort((a,b)=>b-a));
     req.onerror = ()=>reject(req.error);
   });
+}
+
+/* ---------- Legenda de motivos da 410 (editável em Configurações) ---------- */
+async function irGetNet410LegendaAll(){
+  const store = await irTx(IR_STORES.net410Legenda, 'readonly');
+  return new Promise((resolve, reject)=>{
+    const req = store.getAll();
+    req.onsuccess = ()=>resolve(req.result||[]);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function irSaveNet410LegendaItem(item){
+  const store = await irTx(IR_STORES.net410Legenda, 'readwrite');
+  return new Promise((resolve, reject)=>{
+    const req = store.put(item);
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function irDeleteNet410LegendaItem(id){
+  const store = await irTx(IR_STORES.net410Legenda, 'readwrite');
+  return new Promise((resolve, reject)=>{
+    const req = store.delete(id);
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+// Semeia a legenda com os padrões de fábrica (IR_410_LEGENDA, de rules.js) na
+// primeira vez que alguém abre a tela — depois disso, o que está no IndexedDB
+// manda, o usuário pode editar/adicionar/remover à vontade.
+async function irSeedNet410LegendaIfEmpty(){
+  const existing = await irGetNet410LegendaAll();
+  if(existing.length) return existing;
+  const store = await irTx(IR_STORES.net410Legenda, 'readwrite');
+  await new Promise((resolve, reject)=>{
+    IR_410_LEGENDA.forEach(l=>store.put({...l}));
+    const tx = store.transaction;
+    tx.oncomplete = ()=>resolve();
+    tx.onerror = ()=>reject(tx.error);
+  });
+  return irGetNet410LegendaAll();
 }
