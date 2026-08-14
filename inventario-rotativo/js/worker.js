@@ -107,20 +107,9 @@ const ALIAS_410 = {
   quantidade: ['Quantidade'], sentido: ['Sentido'], vlMov: ['Vl.Mov.','Vl Mov'],
   idDeposito: ['Id Deposito','Id Depósito'], obsWms: ['Observacao WMS','Observação WMS']
 };
-// Extrai o código do início de "Observacao WMS" (formato usual "AIR - AJUSTE...", mas
-// nem sempre tem o traço) e casa com a legenda. Sem código (célula vazia) ou código
-// desconhecido: considera pra NET por padrão, igual pedido pelo usuário.
-function classificar410(obsWmsRaw){
-  const texto = String(obsWmsRaw||'').trim().toUpperCase();
-  if(!texto) return {id:'(sem observação)', legenda:'', considerarNet:true};
-  for(const item of IR_410_LEGENDA){
-    if(texto===item.id || texto.startsWith(item.id+' ') || texto.startsWith(item.id+'-')) {
-      return {id:item.id, legenda:item.legenda, considerarNet:item.considerarNet};
-    }
-  }
-  const codigo = (texto.split(/[\s-]/)[0]||texto.slice(0,10)).trim();
-  return {id:codigo||'(sem observação)', legenda:'', considerarNet:true};
-}
+// Classificação de motivos (extrai o código do início de "Observacao WMS" e casa com
+// a legenda) mora em rules.js (irClassificarMotivo410) — compartilhada com a UI, e
+// parametrizada pela lista editável em Configurações (net410_legenda no IndexedDB).
 
 self.onmessage = async (e)=>{
   const msg = e.data;
@@ -659,8 +648,9 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
 /* ============================================================
    QRY410 — Perdas e Ganhos no CD
    Independente do ciclo rotativo: processa por ano (extraído de Dt.Mov.), não
-   depende de nenhum arquivo dos outros slots. Ver classificar410() acima pras
-   regras de negócio (Id Depósito 21 fora, Saída = negativo, legenda de motivos).
+   depende de nenhum arquivo dos outros slots. Ver irClassificarMotivo410() em
+   rules.js pras regras de negócio (Id Depósito 21 fora, Saída = negativo, legenda
+   de motivos — editável em Configurações).
    ============================================================ */
 async function runPipeline410({buf410}){
   post('progress', {stage:'Lendo QRY410...', pct:5});
@@ -669,6 +659,8 @@ async function runPipeline410({buf410}){
   if(!rows410.length) throw new Error('QRY410: planilha vazia.');
   const r410 = buildAliasResolver(Object.keys(rows410[0]), ALIAS_410);
   validateColumns(r410, ['dtMov','sentido','vlMov'], 'QRY410');
+  // Legenda editável em Configurações — semeia com o padrão de fábrica na primeira vez.
+  const legenda410 = await irSeedNet410LegendaIfEmpty();
 
   post('progress', {stage:'Processando '+rows410.length+' linha(s) da QRY410...', pct:15});
   const porAno = new Map();
@@ -755,7 +747,7 @@ async function runPipeline410({buf410}){
     const valor = sinal*vlAbs;
     const qtd = sinal*qtdAbs;
 
-    const cls = classificar410(getVal(row, r410.obsWms));
+    const cls = irClassificarMotivo410(getVal(row, r410.obsWms), legenda410);
 
     // Quebra por Obs: mostra TODOS os motivos (considerados ou não), pra transparência.
     if(!g.porObs.has(cls.id)) g.porObs.set(cls.id, {id:cls.id, legenda:cls.legenda, considerarNet:cls.considerarNet, saida:0, entrada:0});

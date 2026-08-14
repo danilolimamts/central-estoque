@@ -14,9 +14,10 @@ const IR_STATUS_LOCAL = {
 // Legenda de motivos da QRY410 (Perdas e Ganhos no CD) — define quem entra no cálculo
 // de NET. Códigos que não aparecerem aqui contam como SIM por padrão (regra do usuário:
 // "o que não tiver na legenda, pode considerar"). Ordenados do mais específico (2
-// palavras) pro mais genérico, pra "ARI LOT" não ser confundido com "ARI". Compartilhado
-// entre o worker (classifica cada linha da 410) e a UI principal (mostra o nome do
-// motivo nos painéis de análise, ex.: "por que o NET está distorcido").
+// palavras) pro mais genérico, pra "ARI LOT" não ser confundido com "ARI". Isso aqui é
+// só a SEMENTE/padrão de fábrica — a lista de verdade fica no IndexedDB
+// (net410_legenda), editável em Configurações, pra não precisar mexer em código toda
+// vez que aparecer um motivo novo ou a classificação mudar.
 const IR_410_LEGENDA = [
   {id:'ARI LOT', legenda:'Ajuste de Lote', considerarNet:true},
   {id:'INS', legenda:'Baixa Insumo', considerarNet:false},
@@ -44,10 +45,29 @@ const IR_410_LEGENDA = [
   {id:'AIT', legenda:'Inventario de Transitorios', considerarNet:true},
   {id:'AII', legenda:'Inventário de Insumos', considerarNet:false}
 ];
-function irLegenda410(id){
+// legendaList opcional = a lista editável do usuário (carregada do IndexedDB); sem
+// ela, cai no padrão de fábrica (IR_410_LEGENDA) — mantém retrocompatibilidade com
+// qualquer chamada antiga que não passe o segundo argumento.
+function irLegenda410(id, legendaList){
   if(id==='(sem observação)') return 'Sem observação';
-  const item = IR_410_LEGENDA.find(l=>l.id===id);
+  const lista = legendaList || IR_410_LEGENDA;
+  const item = lista.find(l=>l.id===id);
   return item ? item.legenda : id;
+}
+// Mesma lógica de "match" usada em classificar410 (worker.js), mas parametrizada pela
+// lista de legenda — pra rodar tanto com a lista padrão quanto com a editada pelo
+// usuário em Configurações.
+function irClassificarMotivo410(obsWmsRaw, legendaList){
+  const texto = String(obsWmsRaw||'').trim().toUpperCase();
+  const lista = legendaList || IR_410_LEGENDA;
+  if(!texto) return {id:'(sem observação)', legenda:'', considerarNet:true};
+  for(const item of lista){
+    if(texto===item.id || texto.startsWith(item.id+' ') || texto.startsWith(item.id+'-')){
+      return {id:item.id, legenda:item.legenda, considerarNet:item.considerarNet};
+    }
+  }
+  const codigo = (texto.split(/[\s-]/)[0]||texto.slice(0,10)).trim();
+  return {id:codigo||'(sem observação)', legenda:'', considerarNet:true};
 }
 
 /* Dias úteis até o fim do ciclo — feriados nacionais + estado de SP + município de

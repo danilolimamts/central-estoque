@@ -9,6 +9,7 @@ const IR = {
   ciclos:[], cicloAtivo:null,
   indicadores:null, importMeta:null,
   prioridadeConfig:null,
+  net410Legenda:[], // legenda de motivos da 410 (editável em Configurações)
   files:{f390:null, f843:[null,null,null,null], fCong:[null,null,null,null], f278:[null,null,null,null], f051:[null,null,null,null]},
   processing:false, progress:{stage:'', pct:0},
   divergencias:[], locais:[], contagens:[],
@@ -66,6 +67,7 @@ async function irInit(){
 
   try{
     IR.prioridadeConfig = await irSeedPrioridadeConfigIfEmpty();
+    IR.net410Legenda = await irSeedNet410LegendaIfEmpty();
     IR.ciclos = await irGetAllCiclos();
     if(IR.ciclos.length){
       IR.cicloAtivo = IR.ciclos.find(c=>c.status==='aberto') || IR.ciclos[0];
@@ -2024,7 +2026,7 @@ function irRenderNetDistorcaoPanel(){
       <td class="mono" style="font-weight:700;color:${i.saldoAno>=0?'var(--ink)':'var(--danger)'};">${i.saldoAno!==undefined?(i.saldoAno>=0?'+':'')+irFmtMoney(i.saldoAno):'—'}${compensado?' <span class="tag tag-muted">compensado</span>':''}</td>
       <td class="mono">${irFmtPct(i.pctDoNet)}</td>
       <td class="mono" style="font-weight:700;">${irFmtPct(i.pctAcumulado)}</td>
-      <td style="font-size:11.5px;">${motivoTop ? `<span style="color:${ehAIR?'var(--orange)':'var(--ink)'};font-weight:700;">${irEsc(irLegenda410(motivoTop.id))}</span><br>${irFmtMoney(motivoTop.valor)}` : '—'}</td>
+      <td style="font-size:11.5px;">${motivoTop ? `<span style="color:${ehAIR?'var(--orange)':'var(--ink)'};font-weight:700;">${irEsc(irLegenda410(motivoTop.id, IR.net410Legenda))}</span><br>${irFmtMoney(motivoTop.valor)}` : '—'}</td>
       <td style="font-size:11.5px;">${local ? `${irEsc(local.local)}<div class="field-hint">dif. ${local.diferenca>0?'+':''}${irFmtInt(local.diferenca)} pçs${outrosLocais>0?' · +'+outrosLocais:''}</div>` : '<span class="field-hint">fora do ciclo atual</span>'}</td>
       <td><span class="tag ${ehAIR?'tag-good':'tag-muted'}">${ehAIR?'Validar no inventário':'Não é do inventário'}</span></td>
     </tr>`;
@@ -2364,7 +2366,57 @@ function irRenderConfiguracoes(){
     </div>
     <p class="field-hint" id="ir-cfg-soma" style="margin-top:8px;">Soma atual: ${(soma*100).toFixed(0)}%</p>
     <div class="form-actions"><button class="btn btn-primary" onclick="irSalvarPrioridadeConfig()">Salvar pesos</button></div>
+  </div>
+  ${irRenderNet410LegendaConfig()}`;
+}
+// Legenda de motivos da 410 (AIR/ADE/LOJA/...) — editável aqui em vez de fixa no
+// código, pra dar conta de motivo novo ou mudança de classificação sem precisar
+// mexer em código. "Considera no NET" só vale a partir do próximo processamento da
+// QRY410 (é usado durante a importação); o nome/legenda já atualiza na hora nos
+// painéis que buscam ao vivo (ex.: "Motivo principal" em Divergências).
+function irRenderNet410LegendaConfig(){
+  const lista = (IR.net410Legenda||[]).slice().sort((a,b)=>a.id.localeCompare(b.id));
+  const row = (l)=>`<tr>
+    <td class="mono">${irEsc(l.id)}</td>
+    <td><input type="text" value="${irEsc(l.legenda)}" onchange="irSetLegenda410Campo('${irEsc(l.id)}','legenda',this.value)"></td>
+    <td style="text-align:center;"><input type="checkbox" ${l.considerarNet?'checked':''} onchange="irSetLegenda410Campo('${irEsc(l.id)}','considerarNet',this.checked)"></td>
+    <td><button class="btn-link" onclick="irRemoverLegenda410('${irEsc(l.id)}')">Remover</button></td>
+  </tr>`;
+  return `<div class="panel">
+    <h3>Legenda de motivos da QRY410</h3>
+    <p class="field-hint" style="margin-bottom:12px;">Mapeia o código no início da "Observação WMS" (ex.: AIR, ADE, LOJA) pro nome exibido nos painéis de NET, e se esse motivo entra no cálculo do NET. Código não listado aqui conta como "considera no NET" por padrão. "Considera no NET" só vale a partir da próxima vez que reimportar a QRY410.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Código</th><th>Legenda</th><th style="text-align:center;">Considera no NET</th><th></th></tr></thead>
+      <tbody>${lista.map(row).join('')}</tbody>
+    </table></div>
+    <div class="two-col" style="margin-top:14px;">
+      <div><label>Novo código</label><input type="text" id="ir-cfg-legenda-id" placeholder="Ex.: XYZ" style="text-transform:uppercase;"></div>
+      <div><label>Legenda</label><input type="text" id="ir-cfg-legenda-nome" placeholder="Ex.: Motivo Novo"></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="irAdicionarLegenda410()">Adicionar código</button></div>
   </div>`;
+}
+async function irSetLegenda410Campo(id, campo, valor){
+  const item = (IR.net410Legenda||[]).find(l=>l.id===id);
+  if(!item) return;
+  item[campo] = valor;
+  await irSaveNet410LegendaItem({...item});
+  irShowToast('Legenda salva.');
+}
+async function irRemoverLegenda410(id){
+  IR.net410Legenda = (IR.net410Legenda||[]).filter(l=>l.id!==id);
+  await irDeleteNet410LegendaItem(id);
+  irRenderView();
+}
+async function irAdicionarLegenda410(){
+  const id = document.getElementById('ir-cfg-legenda-id').value.trim().toUpperCase();
+  const nome = document.getElementById('ir-cfg-legenda-nome').value.trim();
+  if(!id){ irShowToast('Informe o código.', true); return; }
+  if((IR.net410Legenda||[]).some(l=>l.id===id)){ irShowToast('Esse código já existe.', true); return; }
+  const item = {id, legenda:nome, considerarNet:true};
+  IR.net410Legenda = [...(IR.net410Legenda||[]), item];
+  await irSaveNet410LegendaItem(item);
+  irRenderView();
 }
 async function irSalvarPrioridadeConfig(){
   const valor = parseFloat(document.getElementById('ir-cfg-valor').value)/100;
