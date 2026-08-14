@@ -11,6 +11,45 @@ const IR_STATUS_LOCAL = {
   encerrado_sem_convergencia: {label:'Encerrado sem convergência (5ª rodada)', cor:'#C83812'}
 };
 
+// Legenda de motivos da QRY410 (Perdas e Ganhos no CD) — define quem entra no cálculo
+// de NET. Códigos que não aparecerem aqui contam como SIM por padrão (regra do usuário:
+// "o que não tiver na legenda, pode considerar"). Ordenados do mais específico (2
+// palavras) pro mais genérico, pra "ARI LOT" não ser confundido com "ARI". Compartilhado
+// entre o worker (classifica cada linha da 410) e a UI principal (mostra o nome do
+// motivo nos painéis de análise, ex.: "por que o NET está distorcido").
+const IR_410_LEGENDA = [
+  {id:'ARI LOT', legenda:'Ajuste de Lote', considerarNet:true},
+  {id:'INS', legenda:'Baixa Insumo', considerarNet:false},
+  {id:'AIR', legenda:'Inventário Rotativo', considerarNet:true},
+  {id:'TID', legenda:'Troca de Identidade', considerarNet:true},
+  {id:'AIN', legenda:'Não Localizado', considerarNet:true},
+  {id:'INV', legenda:'Inversão de etiqueta', considerarNet:true},
+  {id:'ANF', legenda:'Nota Fiscal', considerarNet:false},
+  {id:'PAR', legenda:'Recebimento Parcial', considerarNet:true},
+  {id:'ARI', legenda:'Recebimento invertido', considerarNet:true},
+  {id:'API', legenda:'Ajuste MCL Reversa', considerarNet:true},
+  {id:'AEE', legenda:'Itens Localizados', considerarNet:true},
+  {id:'LOJA', legenda:'Ajuste Loja', considerarNet:true},
+  {id:'QBR', legenda:'Quebra CD', considerarNet:false},
+  {id:'EPI', legenda:'Baixa EPI', considerarNet:false},
+  {id:'IMP', legenda:'Ajuste Importação', considerarNet:true},
+  {id:'ASR', legenda:'Sobra Recebimento', considerarNet:true},
+  {id:'BAI', legenda:'Baixa Insumo', considerarNet:false},
+  {id:'INP', legenda:'Ajuste Pallets', considerarNet:false},
+  {id:'LIT', legenda:'Ajuste Litigio', considerarNet:true},
+  {id:'AUD', legenda:'Auditoria KPMG', considerarNet:true},
+  {id:'AIP', legenda:'Inventário Pontual', considerarNet:true},
+  {id:'ADE', legenda:'Auditorias', considerarNet:true},
+  {id:'AIC', legenda:'Inventário de Curvas', considerarNet:true},
+  {id:'AIT', legenda:'Inventario de Transitorios', considerarNet:true},
+  {id:'AII', legenda:'Inventário de Insumos', considerarNet:false}
+];
+function irLegenda410(id){
+  if(id==='(sem observação)') return 'Sem observação';
+  const item = IR_410_LEGENDA.find(l=>l.id===id);
+  return item ? item.legenda : id;
+}
+
 /* Dias úteis até o fim do ciclo — feriados nacionais + estado de SP + município de
    Cajamar (sede do CD). "Dias Restantes" antes era baseado no ritmo médio de
    contagem, que cai perto do fim do ciclo (menos locais sobrando pra dividir entre

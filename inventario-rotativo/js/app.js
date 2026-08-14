@@ -26,7 +26,8 @@ const IR = {
   itemDivFiltro:{tipo:'ciclo'}, itemDivSaldo:null,
   // Perdas e Ganhos (QRY410) — independente do ciclo, por ano.
   net410Anos:[], net410AnoSel:null, net410MesSel:null, net410Data:null, net410File:null,
-  net410Processing:false, net410Progress:{stage:'', pct:0}
+  net410Processing:false, net410Progress:{stage:'', pct:0},
+  divNetMesSel:null, // mês selecionado no painel "Por que o NET está distorcido?" (aba Divergências)
 };
 
 function irEsc(v){ if(v===undefined||v===null) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1863,10 +1864,75 @@ function irDivergenciasFiltered(){
     return true;
   }).sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia));
 }
+/* "Por que o NET está distorcido?" — a 410 acumula TODOS os ajustes do CD (o
+   Inventário Rotativo/AIR é só um dos motivos), então quando o NET do mês está
+   estranhamente alto ou baixo, o auditor precisa saber rápido: (1) quanto disso é
+   do inventário x de outro processo, e (2) quais itens específicos puxaram o
+   número, pra já saber o que validar sem precisar garimpar a planilha inteira. */
+function irSetDivNetMes(mes){ IR.divNetMesSel = mes; irRenderView(); }
+function irRenderNetDistorcaoPanel(){
+  if(!IR.net410Anos.length){
+    return `<div class="panel"><h3>Por que o NET está distorcido?</h3><p class="field-hint">Nenhuma QRY410 processada ainda — importe na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> pra usar essa análise.</p></div>`;
+  }
+  const d = IR.net410Data;
+  if(!d) return '';
+  const meses = d.porMes||[];
+  if(!meses.length) return `<div class="panel"><h3>Por que o NET está distorcido?</h3><p class="field-hint">Sem movimentos no ano ${d.ano}.</p></div>`;
+  if(!IR.divNetMesSel || !meses.some(m=>m.mes===IR.divNetMesSel)) IR.divNetMesSel = meses[meses.length-1].mes;
+  const m = meses.find(mm=>mm.mes===IR.divNetMesSel);
+  const mesLabel = IR_MES_NOMES[parseInt(m.mes.slice(5,7),10)-1]+'/'+m.mes.slice(0,4);
+  const pctAIR = m.net!==0 ? Math.abs(m.netAIR/m.net) : 0;
+
+  // Junta os itens positivos e negativos do mês, ordena por |saldo| — são os que
+  // mais pesam na distorção do NET, seja puxando pra cima ou pra baixo.
+  const todosItens = [...(m.topItensPositivos||[]), ...(m.topItensNegativos||[])]
+    .sort((a,b)=>Math.abs(b.saldoValor)-Math.abs(a.saldoValor)).slice(0,15);
+
+  const row = (i)=>{
+    const pctItem = m.netAbs>0 ? Math.abs(i.saldoValor)/m.netAbs : 0;
+    const ehAIR = Math.abs(i.saldoAIR) >= Math.abs(i.saldoValor)*0.5; // maioria do saldo veio do inventário
+    const outrosTop = (i.porObs||[]).filter(o=>o.id!=='AIR').slice(0,2);
+    return `<tr>
+      <td class="mono">${irEsc(i.item)}</td>
+      <td>${irEsc(i.nome||'—')}</td>
+      <td class="mono" style="font-weight:700;color:${i.saldoValor>=0?'var(--blue)':'var(--danger)'};">${i.saldoValor>=0?'+':''}${irFmtMoney(i.saldoValor)}</td>
+      <td class="mono">${irFmtPct(pctItem)}</td>
+      <td class="mono" style="color:var(--orange);">${i.saldoAIR?irFmtMoney(i.saldoAIR):'—'}</td>
+      <td style="font-size:11.5px;">${outrosTop.length ? outrosTop.map(o=>`${irEsc(irLegenda410(o.id))}: ${irFmtMoney(o.valor)}`).join('<br>') : '—'}</td>
+      <td><span class="tag ${ehAIR?'tag-good':'tag-muted'}">${ehAIR?'Validar no inventário':'Não é do inventário'}</span></td>
+    </tr>`;
+  };
+
+  return `<div class="panel">
+    <h3>Por que o NET está distorcido?</h3>
+    <p class="panel-sub">A 410 acumula TODOS os ajustes do CD — o Inventário Rotativo (AIR) é só um dos motivos. Escolha o mês e veja quais itens mais pesam no NET e se a origem foi o inventário ou outro processo.</p>
+    <div class="two-col" style="max-width:420px;margin-bottom:14px;">
+      <div><label>Ano</label><select onchange="irSetNet410Ano(this.value)">
+        ${IR.net410Anos.map(a=>`<option value="${a}" ${a===IR.net410AnoSel?'selected':''}>${a}</option>`).join('')}
+      </select></div>
+      <div><label>Mês</label><select onchange="irSetDivNetMes(this.value)">
+        ${meses.map(mm=>`<option value="${mm.mes}" ${mm.mes===IR.divNetMesSel?'selected':''}>${irEsc(IR_MES_NOMES[parseInt(mm.mes.slice(5,7),10)-1])}</option>`).join('')}
+      </select></div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card ${m.net>=0?'good':'bad'}"><div class="num mono">${irFmtMoney(m.net)}</div><div class="label">NET de ${irEsc(mesLabel)}</div></div>
+      <div class="kpi-card orange"><div class="num mono">${irFmtMoney(m.netAIR)}</div><div class="label">Vindo do Inventário (AIR)</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtMoney(m.netOutros)}</div><div class="label">Vindo de outros motivos</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtPct(pctAIR)}</div><div class="label">% do NET vindo do inventário</div></div>
+    </div>
+    ${todosItens.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Item</th><th>Descrição</th><th>Saldo no mês</th><th>% do NET</th><th>Do inventário (AIR)</th><th>Outros motivos</th><th>Ação sugerida</th></tr></thead>
+      <tbody>${todosItens.map(row).join('')}</tbody>
+    </table></div>` : `<p class="field-hint">Nenhum item com saldo válido pro NET nesse mês.</p>`}
+  </div>`;
+}
 function irRenderDivergencias(){
-  if(!IR.divergencias.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
+  const semDivergencias = !IR.divergencias.length;
+  if(semDivergencias && !IR.net410Anos.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
+  if(semDivergencias) return irRenderNetDistorcaoPanel();
   const locais = Array.from(new Set(IR.divergencias.map(d=>d.local))).sort();
   return `
+    ${irRenderNetDistorcaoPanel()}
     <div class="filter-bar">
       <input type="text" placeholder="Buscar por item, descrição ou local..." value="${irEsc(IR.divFilters.search)}" oninput="irDivSetSearch(this.value)">
       <select onchange="irDivSetFilter('local', this.value)">
