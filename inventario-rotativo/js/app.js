@@ -783,8 +783,10 @@ function irBuildContadosPorDiaSvg(rows, meta, opts){
   // Slot mínimo por dia (data "dd/mm" + valor acima, sem colar no vizinho) — é uma
   // imagem estática (sem como rolar como no Dashboard ao vivo), então em vez de
   // espremer todo mundo até ficar ilegível, mostra só os últimos N dias, que são os
-  // mais relevantes pro acompanhamento do ciclo.
-  const MIN_SLOT = 34;
+  // mais relevantes pro acompanhamento do ciclo. Rótulo em R$ é bem mais largo que um
+  // inteiro simples ("R$ 1.234,56" vs "12") — precisa de mais espaço por dia, senão os
+  // rótulos vizinhos colam um no outro.
+  const MIN_SLOT = opts.minSlot || (fmt===irFmtMoney ? 56 : 34);
   const maxDias = Math.max(1, Math.floor(plotW/MIN_SLOT));
   const rowsVisiveis = rows.length > maxDias ? rows.slice(rows.length-maxDias) : rows;
   const omitidos = rows.length - rowsVisiveis.length;
@@ -797,7 +799,11 @@ function irBuildContadosPorDiaSvg(rows, meta, opts){
     const bh = (r[campo]/max)*plotH;
     const bx = cx-barW/2, by = padT+plotH-bh;
     bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${colors.bar}" rx="2"/>`;
-    labels += `<text x="${cx.toFixed(1)}" y="${(by-6).toFixed(1)}" font-size="11" text-anchor="middle" fill="${colors.label}" font-weight="700">${fmt(r[campo])}</text>`;
+    // Sem rótulo em dias com valor zero — só polui (um "R$ 0,00" atrás do outro,
+    // grudados, ilegível) e não carrega informação nenhuma.
+    if(r[campo]){
+      labels += `<text x="${cx.toFixed(1)}" y="${(by-6).toFixed(1)}" font-size="10.5" text-anchor="middle" fill="${colors.label}" font-weight="700">${fmt(r[campo])}</text>`;
+    }
     const dia = new Date(r.dia+'T00:00:00');
     xLabels += `<text x="${cx.toFixed(1)}" y="${H-12}" font-size="11.5" text-anchor="middle" fill="${colors.axis}" font-weight="600">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</text>`;
   });
@@ -1257,7 +1263,7 @@ function irGerarRelatorioEmail(){
     <div class="rp-panel rp-panel-pad">
       ${irBuildContadosPorDiaSvg(ind.divergentesPorDia, null, {colors:{bar:'#FA4616', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'}, campo:'pecas', fmt:irFmtInt})}
     </div>
-    ${sectionTitle('💰','Valor Divergente por Dia','soma do valor divergente absoluto, por dia de fechamento do local')}
+    ${sectionTitle('💰','Valor Divergente por Dia','NET do ciclo: '+irFmtMoney(ind.valorDivergenteLiquido)+' (ganho − perda) · barras abaixo são valor absoluto por dia')}
     <div class="rp-panel rp-panel-pad">
       ${irBuildContadosPorDiaSvg(ind.divergentesPorDia, null, {colors:{bar:'#1D1F2A', grid:'#E4E7EE', axis:'#6B7280', label:'#1D1F2A'}, campo:'valor', fmt:irFmtMoney})}
     </div>
