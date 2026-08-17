@@ -1244,7 +1244,7 @@ function irGerarRelatorioEmail(){
         <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
         <div class="rp-hero-status">${c.status==='aberto'?'Ciclo em andamento':'Ciclo encerrado'}</div>
       </div>
-      <div class="rp-hero-badge">Boletim de Inventário Rotativo</div>
+      <div class="rp-hero-badge">Boletim de Inventário</div>
       <h1>Andamento do ${irCicloLabel(c)}</h1>
       <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
     </div>
@@ -1373,7 +1373,7 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
     URL.revokeObjectURL(url);
 
     const numero = IR.cicloAtivo ? IR.cicloAtivo.numero : '';
-    const assunto = `Boletim Inventário Rotativo — Ciclo ${numero}`;
+    const assunto = `Boletim Inventário — Ciclo ${numero}`;
     let compartilhou = false;
     // Se o navegador suportar compartilhar arquivo (Web Share API), abre direto
     // a folha de compartilhamento nativa — o usuário escolhe o e-mail e já
@@ -1948,7 +1948,7 @@ function irCompartilharProdutividade(){
       </div>
       ${rpSectionTitle('⏰','Locais por colaborador, hora a hora','janela 06h–22h de expediente')}
       <div class="rp-panel">${irBuildProdMatrizRpTable(p)}</div>
-      <p class="rp-footer">Gerado automaticamente pelo módulo Inventário Rotativo.</p>
+      <p class="rp-footer">Gerado automaticamente pelo módulo Inventário.</p>
     </div>
   </div>`;
   irBaixarBoletimImagem(html, `Produtividade_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
@@ -2103,7 +2103,7 @@ async function irBaixarAuditoriaNetImagem(){
         <thead><tr><th>Item</th><th>Descrição</th><th>Saldo no período</th><th>Local</th><th>Qtde Sistema</th><th>Qtde Física</th><th>Diferença</th></tr></thead>
         <tbody>${g.linhas.map(row).join('')}</tbody>
       </table></div>
-      <p class="rp-footer">Gerado automaticamente pelo módulo Inventário Rotativo.</p>
+      <p class="rp-footer">Gerado automaticamente pelo módulo Inventário.</p>
     </div>
   </div>`;
   irBaixarBoletimImagem(html, `Auditoria_Direcionada_${new Date().toISOString().slice(0,10)}.png`);

@@ -1,6 +1,6 @@
 {
-  "name": "Inventário Rotativo — Loja do Mecânico",
-  "short_name": "Inv. Rotativo",
+  "name": "Inventário — Loja do Mecânico",
+  "short_name": "Inventário",
   "description": "Centro de gestão do inventário rotativo: ciclos, contagens, divergências, produtividade e auditoria inteligente.",
   "start_url": "./index.html",
   "scope": "./",
