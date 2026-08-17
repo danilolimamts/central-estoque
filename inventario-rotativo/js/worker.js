@@ -416,7 +416,16 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   self.postMessage({type:'done', indicadores, totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length, totalLocais: locais.length});
 }
 
-function isoDateTime(d){ return d ? d.toISOString() : ''; }
+// d.toISOString() converte pra UTC — como parseDateVal monta o Date com os componentes
+// LOCAIS (hora exata da planilha), isso deslocava todo horário em +3h (fuso do Brasil),
+// jogando contagens pra coluna de hora errada na matriz de produtividade e, perto da
+// virada do dia, até pro dia seguinte nos gráficos "por dia de fechamento". Monta a
+// string manualmente, preservando o horário de parede sem passar por UTC.
+function isoDateTime(d){
+  if(!d) return '';
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+}
 
 function calcularIndicadores({congelados, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino}){
   const locaisCongelados = congelados.length;
