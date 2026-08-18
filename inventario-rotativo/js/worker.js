@@ -240,10 +240,9 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   }
   function precoUnitarioDoItem(item){
     const val = valoracaoPorComponente.get(item);
-    if(!val) return precoPorItem.get(item) || 0; // não é múltiplo: valora por si só
-    if(val.inInterface !== 'S') return 0; // componente "N" não carrega valor do kit
-    if(!val.itemPai) return precoPorItem.get(item) || 0; // "S" mas sem item pai cadastrado: valora o próprio item
-    return precoPorItem.get(val.itemPai) || 0; // componente "S" com item pai: valor vem do item pai
+    if(!val) return precoPorItem.get(item) || 0; // não está na 051: não é múltiplo, valora por si só na 278
+    if(!val.itemPai) return precoPorItem.get(item) || 0; // é múltiplo mas sem item pai cadastrado: valora o próprio item
+    return precoPorItem.get(val.itemPai) || 0; // é múltiplo com item pai: valor vem do item pai na 278
   }
 
   post('progress', {stage:'Processando base congelada...', pct:20});
