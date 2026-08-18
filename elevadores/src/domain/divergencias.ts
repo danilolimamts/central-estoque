@@ -32,8 +32,14 @@ export interface DivergenciaSAC {
   canal: string;
   /* Valor da devolucao, sempre positivo. Na planilha vem negativo. */
   valor: number;
-  /* Data Emissao Pedido: e a data pedida para o corte por mes. */
+  /* Data que manda no corte por ano e por mes: a Data Saida, que e
+     quando a mercadoria deixou o CD. Cai na Data Emissao Pedido
+     quando a saida nao veio preenchida. */
   data: Date | null;
+  /* Falso quando a data acima veio da emissao do pedido, e nao da
+     saida. A tela avisa, porque as duas datas nao significam a mesma
+     coisa e misturar sem dizer distorce a leitura mes a mes. */
+  dataPelaSaida: boolean;
 }
 
 /* Motivos que nao sao responsabilidade do CD:

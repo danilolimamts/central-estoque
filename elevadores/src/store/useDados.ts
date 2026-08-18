@@ -51,13 +51,20 @@ function reidratarAcoes(acoes: Acao[]): Acao[] {
   });
 }
 
-/* A Data Emissao Pedido tambem vira string no IndexedDB. Importacao
-   antiga, gravada antes da aba de divergencias existir, volta sem o
-   campo: por isso o valor padrao. */
+/* A data tambem vira string no IndexedDB. Importacao antiga, gravada
+   antes da aba de divergencias existir, volta sem o campo: por isso o
+   valor padrao.
+
+   dataPelaSaida nao existia nas importacoes anteriores a coluna Data
+   Saida entrar na planilha. Nelas a data veio mesmo da emissao do
+   pedido, entao falso e o valor correto, e nao so um preenchimento:
+   a tela vai marcar essas linhas ate a proxima importacao. */
 function reidratarDivergencias(lista: DivergenciaSAC[] | undefined): DivergenciaSAC[] {
-  return (lista ?? []).map((d) =>
-    typeof d.data === 'string' ? { ...d, data: new Date(d.data) } : d
-  );
+  return (lista ?? []).map((d) => ({
+    ...d,
+    data: typeof d.data === 'string' ? new Date(d.data) : d.data,
+    dataPelaSaida: d.dataPelaSaida === true,
+  }));
 }
 
 /* Grava o retrato do plano no historico. Falhar aqui nunca pode

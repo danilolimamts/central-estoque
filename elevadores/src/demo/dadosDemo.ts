@@ -248,5 +248,8 @@ export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
     canal: 'TELEVENDAS',
     valor,
     data: new Date(Date.UTC(ano, mes, dia)),
+    /* Um caso do exemplo sem data de saida, para a tela mostrar como
+       ela avisa quando cai na emissao do pedido. */
+    dataPelaSaida: i !== 5,
   }));
 }

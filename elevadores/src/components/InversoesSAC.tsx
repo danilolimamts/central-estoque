@@ -74,6 +74,12 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
   const transportadoras = useMemo(() => porTransportadora(doAnoEscolhido), [doAnoEscolhido]);
   const causas = useMemo(() => porCausa(doAnoEscolhido), [doAnoEscolhido]);
   const responsaveis = useMemo(() => porResponsavel(doAnoEscolhido), [doAnoEscolhido]);
+  /* Casos que entraram pela emissao do pedido por falta da data de
+     saida na planilha. */
+  const semSaida = useMemo(
+    () => doAnoEscolhido.filter((d) => d.data != null && !d.dataPelaSaida).length,
+    [doAnoEscolhido]
+  );
   /* O numero que a operacao e cobrada: so o que sobrou para o CD. */
   const soDoCD = useMemo(
     () => doAnoEscolhido.filter((d) => responsavelDe(d) === 'CD'),
@@ -165,7 +171,13 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
   return (
     <Cartao
       titulo="Inversões e faltas apontadas pelo SAC"
-      descricao={`${inversoes.length} caso(s) de inversão ou peça faltando em ${divergencias.length} devolução(ões) · ${soDoCD.length} apurado(s) como erro da operação`}
+      descricao={
+        `${inversoes.length} caso(s) de inversão ou peça faltando em ${divergencias.length} devolução(ões) · ` +
+        `${soDoCD.length} apurado(s) como erro da operação · pela data de saída` +
+        /* Quem le mes a mes precisa saber quantas linhas nao tem data
+           de saida: elas entram pela emissao do pedido. */
+        (semSaida > 0 ? ` · ${semSaida} sem data de saída, contado(s) pelo pedido` : '')
+      }
       acoes={
         anos.length > 1 ? (
           <Selecao
@@ -261,7 +273,7 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
           <Tabela>
             <thead>
               <tr>
-                <Th>Data</Th>
+                <Th>Data saída</Th>
                 <Th>Origem</Th>
                 <Th>Entrega</Th>
                 <Th>Causa</Th>
@@ -275,7 +287,23 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
             <tbody>
               {doAnoEscolhido.map((d, i) => (
                 <tr key={`${d.pedido}-${i}`}>
-                  <Td>{d.data?.toLocaleDateString('pt-BR', { timeZone: 'UTC' }) ?? '—'}</Td>
+                  {/* Sem data de saida a linha cai na emissao do
+                      pedido. O asterisco avisa, porque as duas datas
+                      nao querem dizer a mesma coisa. */}
+                  <Td>
+                    <span
+                      title={
+                        d.dataPelaSaida
+                          ? 'Data de saída da mercadoria'
+                          : 'Sem data de saída na planilha: contado pela emissão do pedido'
+                      }
+                    >
+                      {d.data?.toLocaleDateString('pt-BR', { timeZone: 'UTC' }) ?? '—'}
+                      {d.data && !d.dataPelaSaida && (
+                        <b style={{ color: cores.semantico.ambar, marginLeft: 3 }}>*</b>
+                      )}
+                    </span>
+                  </Td>
                   <Td>
                     <span
                       className="tag"

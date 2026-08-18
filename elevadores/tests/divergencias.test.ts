@@ -33,7 +33,7 @@ function div(p: Partial<DivergenciaSAC> = {}): DivergenciaSAC {
     produto: 'BASE PARA ELEVADOR', motivo: 'Diferente do comprado',
     submotivo: 'Divergência operacional CD', comentario: 'Cliente recebeu a base no tamanho incorreto.',
     transportadora: 'TERMACO', estado: 'São Paulo', canal: 'TELEVENDAS',
-    valor: 1000, data: new Date(Date.UTC(2026, 4, 4)),
+    valor: 1000, data: new Date(Date.UTC(2026, 4, 4)), dataPelaSaida: true,
     ...p,
   };
 }
@@ -281,6 +281,74 @@ describe('leitura da aba', () => {
     expect(lidas[0].itemProduto).toBe('4484433');
     expect(lidas[0].data?.toISOString().slice(0, 10)).toBe('2026-05-04');
     expect(inversoesDeBase(lidas)).toHaveLength(1);
+  });
+
+  it('a data do painel e a saida da mercadoria, nao a emissao do pedido', () => {
+    const comSaida = [...cabecalho, 'Data Saída'];
+    const lidas = lerDivergencias([
+      comSaida,
+      ['260710-1', 'CD_CAJAMAR', '4484433 - BASE 4T', 'Diferente do comprado',
+       'Divergência operacional CD', 'base no tamanho incorreto', 'TERMACO', 'SP',
+       -100, new Date(Date.UTC(2026, 0, 15)), 'TELEVENDAS', new Date(Date.UTC(2026, 2, 20))],
+    ]);
+    expect(lidas[0].data?.toISOString().slice(0, 10)).toBe('2026-03-20');
+    expect(lidas[0].dataPelaSaida).toBe(true);
+  });
+
+  it('sem data de saida o caso cai na emissao do pedido, e avisa', () => {
+    /* Deixar a linha de fora faria a devolucao sumir do painel. Ela
+       entra, mas marcada, porque as duas datas nao sao a mesma coisa. */
+    const comSaida = [...cabecalho, 'Data Saída'];
+    const lidas = lerDivergencias([
+      comSaida,
+      ['260710-1', 'CD_CAJAMAR', '4484433 - BASE 4T', 'Diferente do comprado',
+       'Divergência operacional CD', 'base no tamanho incorreto', 'TERMACO', 'SP',
+       -100, new Date(Date.UTC(2026, 0, 15)), 'TELEVENDAS', ''],
+    ]);
+    expect(lidas[0].data?.toISOString().slice(0, 10)).toBe('2026-01-15');
+    expect(lidas[0].dataPelaSaida).toBe(false);
+  });
+
+  it('a data zero do Excel nao vira data de 1900', () => {
+    /* Campo em branco chega como 00/01/1900 em texto ou como serial 0.
+       Nos dois casos e ausencia de data, e nao uma data antiga - se
+       passasse, o painel ganharia um ano 1899 no seletor. */
+    const comSaida = [...cabecalho, 'Data Saída'];
+    const linha = (saidaBruta: unknown) => [
+      '260710-1', 'CD_CAJAMAR', '4484433 - BASE 4T', 'Diferente do comprado',
+      'Divergência operacional CD', 'base no tamanho incorreto', 'TERMACO', 'SP',
+      -100, new Date(Date.UTC(2026, 0, 15)), 'TELEVENDAS', saidaBruta,
+    ];
+    for (const zero of ['00/01/1900', 0, 1]) {
+      const lidas = lerDivergencias([comSaida, linha(zero)]);
+      expect(lidas[0].dataPelaSaida).toBe(false);
+      expect(lidas[0].data?.getUTCFullYear()).toBe(2026);
+    }
+  });
+
+  it('sem nenhuma das duas datas o caso fica sem data, e nao com uma inventada', () => {
+    const comSaida = [...cabecalho, 'Data Saída'];
+    const lidas = lerDivergencias([
+      comSaida,
+      ['260710-1', 'CD_CAJAMAR', '4484433 - BASE 4T', 'Diferente do comprado',
+       'Divergência operacional CD', 'base no tamanho incorreto', 'TERMACO', 'SP',
+       -100, '', 'TELEVENDAS', ''],
+    ]);
+    expect(lidas[0].data).toBeNull();
+    expect(lidas[0].dataPelaSaida).toBe(false);
+  });
+
+  it('planilha antiga, sem a coluna de saida, continua sendo lida', () => {
+    /* A coluna entrou agora. Quem importar um arquivo anterior nao
+       pode perder o corte por mes. */
+    const lidas = lerDivergencias([
+      cabecalho,
+      ['260710-1', 'CD_CAJAMAR', '4484433 - BASE 4T', 'Diferente do comprado',
+       'Divergência operacional CD', 'base no tamanho incorreto', 'TERMACO', 'SP',
+       -100, new Date(Date.UTC(2026, 0, 15)), 'TELEVENDAS'],
+    ]);
+    expect(lidas[0].data?.toISOString().slice(0, 10)).toBe('2026-01-15');
+    expect(lidas[0].dataPelaSaida).toBe(false);
   });
 
   it('linha em branco da tabela nao vira registro', () => {
