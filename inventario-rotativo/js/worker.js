@@ -241,8 +241,12 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   function precoUnitarioDoItem(item){
     const val = valoracaoPorComponente.get(item);
     if(!val) return precoPorItem.get(item) || 0; // não está na 051: não é múltiplo, valora por si só na 278
-    if(!val.itemPai) return precoPorItem.get(item) || 0; // é múltiplo mas sem item pai cadastrado: valora o próprio item
-    return precoPorItem.get(val.itemPai) || 0; // é múltiplo com item pai: valor vem do item pai na 278
+    if(val.inInterface !== 'S') return 0; // componente "N" do kit: não valora (só o "S" carrega o valor, senão duplica entre os componentes)
+    // "S" — PROCX aninhado: tenta o item pai primeiro; se não achar item pai cadastrado
+    // OU o item pai não tiver preço na 278, cai pro preço do próprio item na 278.
+    const precoPai = val.itemPai ? precoPorItem.get(val.itemPai) : undefined;
+    if(precoPai) return precoPai;
+    return precoPorItem.get(item) || 0;
   }
 
   post('progress', {stage:'Processando base congelada...', pct:20});
@@ -404,13 +408,16 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       // cadastrado na SIGEQ278 como alternativa, pra não sobrar código repetido no
       // lugar do nome nas listas de itens divergentes.
       const itemNome = g.itemNome || nomePorItem278.get(item) || '';
+      // Componente "N" da 051 tem preço 0 por design (não carrega o valor do kit) — não
+      // é uma lacuna de dado, então não deve aparecer no diagnóstico de "sem preço".
+      const componenteSemValor = (valoracaoPorComponente.get(item)||{}).inInterface==='N';
       divergencias.push({
         id: cicloId+'|'+local+'|'+item,
         cicloId, local, item, itemNome,
         qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
         precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
         statusLocal: st.status, rodadasLocal: st.rodadas,
-        diagnostico: diferenca!==0 ? 'divergente' : 'correto'
+        diagnostico: diferenca!==0 ? 'divergente' : 'correto', componenteSemValor
       });
     }
     pecasFisicasPorLocal.set(local, totalFisico);
@@ -509,7 +516,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   // vez do usuário ter que adivinhar por que um dia com contagem aparece zerado.
   const semPrecoPorItem = new Map();
   for(const d of divergencias){
-    if(d.diferenca===0 || d.precoUnitario>0) continue;
+    if(d.diferenca===0 || d.precoUnitario>0 || d.componenteSemValor) continue;
     let g = semPrecoPorItem.get(d.item);
     if(!g){ g = {item:d.item, nome:d.itemNome, pecasDivergentes:0, locais:0}; semPrecoPorItem.set(d.item, g); }
     g.pecasDivergentes += Math.abs(d.diferenca);

@@ -584,7 +584,7 @@ function irRenderItensSemPrecoPanel(ind){
   if(!itens.length) return '';
   return `<div class="panel">
     <h3>⚠️ Itens divergentes sem preço encontrado</h3>
-    <p class="panel-sub">${irFmtInt(ind.itensSemPrecoTotal||itens.length)} itens divergiram em peça mas não têm preço na SIGEQ278/ZBIQ0051 (ou o componente "N" não carrega valor do kit) — o valor divergente desses fica R$ 0,00 até corrigir a valoração na origem. Mostrando os ${itens.length} com mais peças divergentes.</p>
+    <p class="panel-sub">${irFmtInt(ind.itensSemPrecoTotal||itens.length)} itens divergiram em peça mas não têm preço encontrado (nem próprio na SIGEQ278, nem do item pai via ZBIQ0051) — o valor divergente desses fica R$ 0,00 até corrigir a valoração na origem. Componentes "N" da 051 não entram aqui (são zerados por design, não é lacuna de dado). Mostrando os ${itens.length} com mais peças divergentes.</p>
     <div class="table-wrap table-scroll" style="max-height:320px;"><table class="table-dense">
       <thead><tr><th>Item</th><th>Descrição</th><th>Peças Divergentes</th><th>Locais</th></tr></thead>
       <tbody>${itens.map(i=>`<tr>
