@@ -50,6 +50,16 @@ function parseDateVal(v){
   return isNaN(d.getTime()) ? null : d;
 }
 function isSim(v){ return String(v||'').trim().toUpperCase()==='SIM'; }
+// Normaliza código de item pra cruzar QRY0843/SIGEQ278/ZBIQ0051 mesmo quando um export
+// guarda o código como texto com zero à esquerda (ex.: "02831399") e outro como número
+// puro (2831399) — sem isso o preço nunca batia pra esses itens (precoUnitarioDoItem
+// caía no fallback 0), zerando o valor divergente mesmo em dias com peça contada.
+function irNormItemKey(v){
+  const s = String(v ?? '').trim();
+  if(s==='') return '';
+  const n = Number(s);
+  return (Number.isFinite(n) && Number.isInteger(n)) ? String(n) : s;
+}
 
 function buildAliasResolver(headers, aliasMap){
   const resolved = {};
@@ -197,7 +207,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   const map390 = new Map();
   if(r390){
     for(const row of rows390){
-      const item = String(getVal(row, r390.item) ?? '').trim();
+      const item = irNormItemKey(getVal(row, r390.item));
       if(!item) continue;
       const qtd = parseNumber(getVal(row, r390.quantidade));
       map390.set(item, (map390.get(item)||0) + qtd);
@@ -213,7 +223,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   const precoPorItem = new Map(); // item -> preço de custo
   const nomePorItem278 = new Map(); // item -> nome (fallback quando a QRY0843 vem sem "Item Nome")
   for(const row of rows278){
-    const item = String(getVal(row, r278.item) ?? '').trim();
+    const item = irNormItemKey(getVal(row, r278.item));
     if(!item) continue;
     precoPorItem.set(item, parseNumber(getVal(row, r278.precoCusto)));
     const nome = String(getVal(row, r278.nomeItem) ?? '').trim();
@@ -221,10 +231,10 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   }
   const valoracaoPorComponente = new Map(); // item_componente -> {itemPai, inInterface}
   for(const row of rows051){
-    const itemComponente = String(getVal(row, r051.itemComponente) ?? '').trim();
+    const itemComponente = irNormItemKey(getVal(row, r051.itemComponente));
     if(!itemComponente) continue;
     valoracaoPorComponente.set(itemComponente, {
-      itemPai: String(getVal(row, r051.itemPai) ?? '').trim(),
+      itemPai: irNormItemKey(getVal(row, r051.itemPai)),
       inInterface: String(getVal(row, r051.inInterface) ?? '').trim().toUpperCase()
     });
   }
@@ -266,7 +276,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   for(const row of rows843){
     idx843++;
     const local = String(getVal(row, r843.local) ?? '').trim();
-    const item = String(getVal(row, r843.item) ?? '').trim();
+    const item = irNormItemKey(getVal(row, r843.item));
     const idConferencia = parseInt(parseNumber(getVal(row, r843.idConferencia)), 10) || 0;
     const obsInventario = String(getVal(row, r843.obsInventario) ?? '').trim();
     const situacaoInventario = String(getVal(row, r843.situacaoInventario) ?? '').trim();
@@ -694,6 +704,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     locaisCongelados, locaisContadosTotal, locaisConcluidos, locaisPendentes, locaisEmContagem, locaisNaoIniciados,
     andamentoCiclo, acuraciaPecas, acuraciaLocal, acuraciaValor, meta: IR_META_ACURACIA,
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
+    locaisDivergentes: locaisComDivergencia.size, valorFisicoTotal: totalVlFisico,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
     rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, divergentesPorDia,

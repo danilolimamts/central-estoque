@@ -33,6 +33,7 @@ const IR = {
   net410Processing:false, net410Progress:{stage:'', pct:0},
   divNetMesSel:null, // mês selecionado no painel "Por que o NET está distorcido?" (aba Divergências)
   divNetDiaSel:null, // dia selecionado (opcional) no mesmo painel — "" ou null = mês inteiro
+  comparativoCiclos:null, // [{ciclo, ind}] de todos os ciclos já processados, pro gráfico do Dashboard
 };
 
 function irEsc(v){ if(v===undefined||v===null) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -96,6 +97,19 @@ async function irLoadCicloData(cicloId){
   // (só o ciclo atual) — senão ficaria somando um ciclo antigo com o novo ativo.
   IR.itemDivFiltro = {tipo:'ciclo'};
   IR.itemDivSaldo = irCalcItemSaldo(IR.divergencias);
+  IR.comparativoCiclos = null; // recarrega no próximo render do Dashboard (irCarregarComparativoCiclos)
+}
+// Carrega os indicadores de TODOS os ciclos já processados (ordenados por ano+número)
+// pro gráfico "Comparativo de Acurácias entre Ciclos" do Dashboard — cada ciclo já é
+// isolado por cicloId no IndexedDB, então não há mistura entre eles aqui.
+async function irCarregarComparativoCiclos(){
+  const ciclosOrdenados = IR.ciclos.slice().sort((a,b)=>{
+    const anoA = irCicloAno(a)||0, anoB = irCicloAno(b)||0;
+    return anoA!==anoB ? anoA-anoB : a.numero-b.numero;
+  });
+  const pares = await Promise.all(ciclosOrdenados.map(async c=>({ciclo:c, ind: await irGetIndicadores(c.id)})));
+  IR.comparativoCiclos = pares;
+  irRenderView();
 }
 const IR_MOBILE_QUERY = '(max-width:640px)'; // precisa bater com o breakpoint do CSS (theme.css)
 // No mobile o menu é um overlay (aberto/fechado); no desktop é o modo compacto de 56px.
@@ -204,6 +218,12 @@ function irRenderView(){
   root.innerHTML = (renderers[IR.currentTab] || (()=>''))();
   if(IR.currentTab==='divergencias') irMountDivergenciasScroll();
   if(IR.currentTab==='auditoria') irMountAuditoriaScroll();
+  if(IR.currentTab==='dashboard') irScrollVBarsToEnd();
+}
+// Gráficos "por dia" (Peças/Valor/Locais Divergentes por Dia) abrem rolados pro dia
+// mais recente por padrão — é o que interessa de cara, sem precisar arrastar a barra.
+function irScrollVBarsToEnd(){
+  document.querySelectorAll('#viewRoot .bi-vbars-scroll').forEach(el=>{ el.scrollLeft = el.scrollWidth; });
 }
 
 /* ============================================================
@@ -502,6 +522,7 @@ function irRenderDashboard(){
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
   if(!IR.itemDivSaldo) IR.itemDivSaldo = irCalcItemSaldo(IR.divergencias);
   const itemSaldo = IR.itemDivSaldo;
+  if(IR.comparativoCiclos===null) irCarregarComparativoCiclos(); // async — re-renderiza quando chegar
   // Cada bloco tem sempre 3 bullets, no mesmo formato: ícone + acurácia (com meta),
   // + volume principal, + divergência/pendência. Os demais indicadores (itens
   // divergentes, recontagens, tempo médio etc.) continuam na aba Indicadores.
@@ -534,6 +555,7 @@ function irRenderDashboard(){
     <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
+    ${irRenderComparativoCiclosPanel(ind)}
     <div class="bi-grid-2">
       ${irRenderSaudeEstoquePanel(ind)}
       ${irRenderStatusInventarioPanel(ind)}
@@ -846,6 +868,71 @@ function irBuildColunasComBaseZeroSvg(rows, opts){
     xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="11.5" text-anchor="middle" fill="${corAxis}" font-weight="600">${irEsc(xLabel(r))}</text>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${baseLine}${bars}${labels}${xLabels}</svg>`;
+}
+/* Gráfico de barras agrupadas (3 séries por ciclo: Peças/Locais/Valor) — "Comparativo
+   de Acurácias entre Ciclos" do Dashboard. Ciclo sem indicadores ainda (não processado)
+   entra com barras cinza vazias, só pra manter o eixo com todos os ciclos cadastrados. */
+function irBuildAcuraciaCiclosSvg(rows, opts){
+  opts = opts||{};
+  const meta = opts.meta!=null ? opts.meta : 0.97;
+  const cores = {pecas:'#FA4616', locais:'#001A72', valor:'#1D1F2A', vazio:'#D8DCE3', axis:'#6B7280', label:'#1D1F2A', meta:'#6B7280'};
+  const W = 800, H = 260;
+  const padL = 14, padR = 14, padT = 30, padB = 32;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const n = Math.max(1, rows.length);
+  const grupoW = plotW/n;
+  const barW = Math.min(26, grupoW*0.24);
+  const gap = 4;
+  const metaY = padT + plotH*(1-meta);
+  let bars = '', labels = '', xLabels = '';
+  rows.forEach((r,i)=>{
+    const cx = padL + (i+0.5)*grupoW;
+    const series = [{v:r.pecas, cor:cores.pecas}, {v:r.locais, cor:cores.locais}, {v:r.valor, cor:cores.valor}];
+    const totalW = series.length*barW + (series.length-1)*gap;
+    let bx = cx - totalW/2;
+    series.forEach(s=>{
+      const tem = s.v!==null && s.v!==undefined;
+      const bh = tem ? Math.max(0,Math.min(1,s.v))*plotH : plotH*0.015;
+      const by = padT+plotH-bh;
+      bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${tem?s.cor:cores.vazio}" rx="2"/>`;
+      if(tem) labels += `<text x="${(bx+barW/2).toFixed(1)}" y="${(by-5).toFixed(1)}" font-size="9.5" text-anchor="middle" fill="${cores.label}" font-weight="700">${(s.v*100).toFixed(1)}%</text>`;
+      bx += barW+gap;
+    });
+    xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="12" text-anchor="middle" fill="${cores.axis}" font-weight="700">${irEsc(r.label)}</text>`;
+  });
+  const metaLine = `<line x1="${padL}" y1="${metaY.toFixed(1)}" x2="${W-padR}" y2="${metaY.toFixed(1)}" stroke="${cores.meta}" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="${W-padR}" y="${(metaY-6).toFixed(1)}" font-size="11.5" text-anchor="end" fill="${cores.meta}" font-weight="700">Meta ${(meta*100).toFixed(0)}%</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${metaLine}${bars}${labels}${xLabels}</svg>`;
+}
+function irRenderComparativoCiclosPanel(){
+  const pares = IR.comparativoCiclos;
+  if(!pares || pares.length<1) return '';
+  const rows = pares.map(({ciclo,ind})=>({
+    label:'Ciclo '+ciclo.numero,
+    pecas: ind?ind.acuraciaPecas:null, locais: ind?ind.acuraciaLocal:null, valor: ind?ind.acuraciaValor:null
+  }));
+  let pecasContadas=0, pecasDivergentes=0, locaisContados=0, locaisDivergentes=0, valorContado=0, valorDivergente=0;
+  for(const {ind} of pares){
+    if(!ind) continue;
+    pecasContadas += ind.pecasContadas||0; pecasDivergentes += ind.pecasDivergentes||0;
+    locaisContados += ind.locaisContadosTotal||0; locaisDivergentes += ind.locaisDivergentes||0;
+    valorContado += ind.valorFisicoTotal||0; valorDivergente += ind.valorDivergenteAbsoluto||0;
+  }
+  return `<div class="panel">
+    <h3>Comparativo de Acurácias entre Ciclos</h3>
+    <p class="panel-sub">Peças, Locais e Valor de cada ciclo já processado, com a meta de ${irFmtPct(IR_META_ACURACIA)}.</p>
+    ${irBuildAcuraciaCiclosSvg(rows, {meta:IR_META_ACURACIA})}
+    <div class="cmp-legend">
+      <span><span class="cmp-dot" style="background:#FA4616;"></span>Peças</span>
+      <span><span class="cmp-dot" style="background:#001A72;"></span>Locais</span>
+      <span><span class="cmp-dot" style="background:#1D1F2A;"></span>Valor</span>
+    </div>
+    <div class="kpi-blocks" style="margin-top:14px;">
+      ${irKpiBlock('orange','📦','Peças', irKpiTile('📦', irFmtInt(pecasContadas), 'Contadas', '', 'todos os ciclos') + irKpiTile('⚠️', irFmtInt(pecasDivergentes), 'Divergentes', 'bad', ''))}
+      ${irKpiBlock('blue','📍','Locais', irKpiTile('📍', irFmtInt(locaisContados), 'Contados', '', 'todos os ciclos') + irKpiTile('⚠️', irFmtInt(locaisDivergentes), 'Divergentes', 'bad', ''))}
+      ${irKpiBlock('black','💰','Valor', irKpiTile('💰', irFmtMoney(valorContado), 'Contado', '', 'todos os ciclos') + irKpiTile('⚠️', irFmtMoney(valorDivergente), 'Divergente', 'bad', ''))}
+    </div>
+  </div>`;
 }
 /* Gráfico de rosca (donut) genérico — usado no "Status do Inventário" do
    Dashboard e no boletim. Cores em hex/var explícitos por parâmetro (não
