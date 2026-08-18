@@ -34,7 +34,7 @@ const PAGINAS: Record<Pagina, { titulo: string; subtitulo: string }> = {
   },
 };
 
-function Icone({ nome }: { nome: Pagina | 'tema' | 'menu' }) {
+function Icone({ nome }: { nome: Pagina | 'tema' | 'menu' | 'voltar' }) {
   const comum = {
     width: 15,
     height: 15,
@@ -81,6 +81,15 @@ function Icone({ nome }: { nome: Pagina | 'tema' | 'menu' }) {
         <line x1="3" y1="12" x2="21" y2="12" />
         <line x1="3" y1="6" x2="21" y2="6" />
         <line x1="3" y1="18" x2="21" y2="18" />
+      </svg>
+    );
+  /* Mesma seta que o Inventario usa para voltar a Central, para os
+     dois apps falarem a mesma lingua. */
+  if (nome === 'voltar')
+    return (
+      <svg {...comum} width={14} height={14} strokeLinecap="round" strokeLinejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12" />
+        <polyline points="12 19 5 12 12 5" />
       </svg>
     );
   return (
@@ -237,6 +246,17 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
+          {/* Volta para a Central, no mesmo lugar em que o Inventario
+              coloca a dele: rodape do menu, acima do tema.
+
+              O link existia so no index.html gerado, onde qualquer
+              publicacao apagava. Aqui ele nasce do codigo e sobrevive
+              ao build - e sai do canto superior direito, onde ficava
+              por cima do selo de contexto. */}
+          <a className="theme-toggle" href="../" title="Voltar para a Central">
+            <Icone nome="voltar" />
+            <span>Voltar para a Central</span>
+          </a>
           {/* Com o menu recolhido sobra so o icone: o title e o que diz
               para que serve o botao. */}
           <button className="theme-toggle" onClick={alternarTema} title="Alternar tema">
