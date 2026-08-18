@@ -3,7 +3,7 @@
    100% client-side. Nenhum servidor, nenhuma API.
    ============================================================ */
 const IR_DB_NAME = 'inventario_rotativo_v1';
-const IR_DB_VERSION = 4;
+const IR_DB_VERSION = 5;
 
 const IR_STORES = {
   ciclos: 'ciclos',
@@ -15,7 +15,8 @@ const IR_STORES = {
   importMeta: 'import_meta',
   net410: 'net410', // resumo de Perdas e Ganhos (QRY410) por ano — independente do ciclo
   net410Legenda: 'net410_legenda', // legenda de motivos da 410 (AIR/ADE/LOJA/...), editável em Configurações
-  net410Ignorados: 'net410_ignorados' // itens com motivo já conhecido, ocultos da análise de distorção do NET
+  net410Ignorados: 'net410_ignorados', // itens com motivo já conhecido, ocultos da análise de distorção do NET
+  net410PadroesIgnorados: 'net410_padroes_ignorados' // trecho da Observação WMS (ex.: "SALDO") que oculta qualquer item que o carregue, sem precisar ignorar item por item
 };
 
 function irOpenDB(){
@@ -60,6 +61,9 @@ function irOpenDB(){
       }
       if(!db.objectStoreNames.contains(IR_STORES.net410Ignorados)){
         db.createObjectStore(IR_STORES.net410Ignorados, {keyPath:'item'});
+      }
+      if(!db.objectStoreNames.contains(IR_STORES.net410PadroesIgnorados)){
+        db.createObjectStore(IR_STORES.net410PadroesIgnorados, {keyPath:'id'});
       }
     };
     req.onsuccess = ()=>resolve(req.result);
@@ -311,4 +315,45 @@ async function irRemoverNet410Ignorado(item){
     req.onsuccess = ()=>resolve();
     req.onerror = ()=>reject(req.error);
   });
+}
+
+/* ---------- Padrões de Observação ignorados na análise de distorção do NET ---------- */
+// Trecho de texto (ex.: "SALDO") que, se aparecer na Observação WMS de qualquer
+// movimento de um item, esconde esse item da análise inteira — pensado pra ajustes
+// recorrentes (ex.: "SALDO INCLUIDO INDEVIDAMENTE...") que aparecem em itens
+// diferentes mês a mês, sem precisar clicar "Ignorar" item por item toda vez.
+async function irGetNet410PadroesIgnoradosAll(){
+  const store = await irTx(IR_STORES.net410PadroesIgnorados, 'readonly');
+  return new Promise((resolve, reject)=>{
+    const req = store.getAll();
+    req.onsuccess = ()=>resolve(req.result||[]);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function irSaveNet410PadraoIgnorado(padrao){
+  const texto = String(padrao||'').trim();
+  if(!texto) return;
+  const store = await irTx(IR_STORES.net410PadroesIgnorados, 'readwrite');
+  return new Promise((resolve, reject)=>{
+    const req = store.put({id: texto.toUpperCase(), padrao: texto, criadoEm:new Date().toISOString()});
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function irRemoverNet410PadraoIgnorado(id){
+  const store = await irTx(IR_STORES.net410PadroesIgnorados, 'readwrite');
+  return new Promise((resolve, reject)=>{
+    const req = store.delete(id);
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+// Semeia com "SALDO" na primeira vez que a tela é aberta (ajuste do tipo "SALDO
+// INCLUIDO INDEVIDAMENTE..." pedido explicitamente pelo usuário) — depois disso, o
+// que está salvo manda, o usuário edita/adiciona/remove à vontade.
+async function irSeedNet410PadroesIgnoradosIfEmpty(){
+  const existing = await irGetNet410PadroesIgnoradosAll();
+  if(existing.length) return existing;
+  await irSaveNet410PadraoIgnorado('SALDO');
+  return irGetNet410PadroesIgnoradosAll();
 }
