@@ -294,10 +294,41 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     });
   }
   post('progress', {stage:'Calculando convergência por local...', pct:50});
-  const porLocal = new Map();
+  const porLocalBruto = new Map();
   for(const c of contagens){
-    if(!porLocal.has(c.local)) porLocal.set(c.local, []);
-    porLocal.get(c.local).push(c);
+    if(!porLocalBruto.has(c.local)) porLocalBruto.set(c.local, []);
+    porLocalBruto.get(c.local).push(c);
+  }
+  // Um local pode aparecer em mais de um "Id Inventario" dentro do mesmo arquivo — ex.:
+  // uma auditoria antiga já liquidada que sobrou no export, junto com o inventário
+  // rotativo atual. Sem isolar por Id Inventario, a Rodada 1 (sistema) podia vir de uma
+  // sessão e a rodada final (física) de outra completamente diferente, misturando duas
+  // auditorias na mesma divergência — inflando o saldo do item bem acima do que bate com
+  // um relatório isolado por auditoria (ex.: QRY0144). Fica só com o Id Inventario
+  // dominante daquele local (mais linhas; empate = data de situação mais recente).
+  const porLocal = new Map();
+  for(const [local, listaBruta] of porLocalBruto){
+    const porInventario = new Map();
+    for(const c of listaBruta){
+      const inv = c.inventario || '';
+      if(!porInventario.has(inv)) porInventario.set(inv, []);
+      porInventario.get(inv).push(c);
+    }
+    let lista = listaBruta;
+    if(porInventario.size>1){
+      let melhorRows = null;
+      for(const rows of porInventario.values()){
+        if(!melhorRows) { melhorRows = rows; continue; }
+        if(rows.length>melhorRows.length) { melhorRows = rows; continue; }
+        if(rows.length===melhorRows.length){
+          const maxAtual = rows.reduce((s,r)=>r.dataSituacao>s?r.dataSituacao:s, '');
+          const maxMelhor = melhorRows.reduce((s,r)=>r.dataSituacao>s?r.dataSituacao:s, '');
+          if(maxAtual>maxMelhor) melhorRows = rows;
+        }
+      }
+      lista = melhorRows;
+    }
+    porLocal.set(local, lista);
   }
   const statusPorLocal = new Map(); // local -> {status, rodadas}
   for(const [local, lista] of porLocal){

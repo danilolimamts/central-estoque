@@ -1758,17 +1758,11 @@ function irCalcProdutividade(contagens){
   const porUsuario = new Map();
   const horasPorUsuario = new Map();
   const matrizLocais = new Map(); // usuario -> Map(horaDia -> Set(locais))
-  // Um local pode passar por mais de um colaborador em rodadas diferentes (recontagem:
-  // rodada 2 por uma pessoa, rodada final por outra). Pra não contar o mesmo local mais
-  // de uma vez na soma entre colaboradores (o que inflava a coluna "Locais" da matriz
-  // acima do total único mostrado no KPI), cada local só entra na conta de quem fechou
-  // a rodada final — mesmo critério de "dia de fechamento" já usado em Contados por Dia
-  // e Locais Divergentes por Dia (worker.js).
-  const finalPorLocal = new Map(); // local -> {usuario, dataRef, rodada}
-  for(const c of contagens){
-    const atual = finalPorLocal.get(c.local);
-    if(!atual || c.idConferencia>atual.rodada) finalPorLocal.set(c.local, {usuario:c.usuario, dataRef:(c.dataFimContagem||c.dataInicioContagem), rodada:c.idConferencia});
-  }
+  // Aqui a métrica é "local CONTADO" (esforço de cada colaborador), não "local
+  // fechado" — um local recontado por mais de um colaborador conta pra todos que
+  // participaram, de propósito (cada um fez trabalho real ali). Por isso o total
+  // somado das linhas pode passar do total único de locais do ciclo — são métricas
+  // diferentes: essa é "quem trabalhou onde", não deduplicação de local.
   for(const c of contagens){
     // Hora do bloco = Data Fim Contagem (quando o local foi de fato finalizado), não
     // Início — Início é só quando o colaborador abriu a contagem, podendo ficar em
@@ -1777,26 +1771,21 @@ function irCalcProdutividade(contagens){
     // horários que ele nem estava trabalhando mais.
     const dataRef = c.dataFimContagem || c.dataInicioContagem;
     const horaCompleta = dataRef.slice(0,13); // YYYY-MM-DDTHH (p/ homem-hora)
+    const horaDia = parseInt(dataRef.slice(11,13), 10); // 0-23 (p/ matriz)
     if(!porUsuario.has(c.usuario)) porUsuario.set(c.usuario, {usuario:c.usuario, locais:new Set(), itens:0, pecas:0, contagens:0, minutos:0, nMin:0, horas:new Set()});
     const gu = porUsuario.get(c.usuario);
-    gu.itens++; gu.pecas += (c.qtFis||0); gu.contagens++; gu.horas.add(horaCompleta);
+    gu.locais.add(c.local); gu.itens++; gu.pecas += (c.qtFis||0); gu.contagens++; gu.horas.add(horaCompleta);
     if(c.dataInicioContagem && c.dataFimContagem){
       const ini=new Date(c.dataInicioContagem).getTime(), fim=new Date(c.dataFimContagem).getTime();
       if(fim>ini){ gu.minutos += (fim-ini)/60000; gu.nMin++; }
     }
     if(!horasPorUsuario.has(c.usuario)) horasPorUsuario.set(c.usuario, new Set());
     horasPorUsuario.get(c.usuario).add(horaCompleta);
-  }
-  for(const [local, f] of finalPorLocal){
-    if(!f.usuario || !f.dataRef) continue;
-    const gu = porUsuario.get(f.usuario);
-    if(gu) gu.locais.add(local);
-    const horaDia = parseInt(f.dataRef.slice(11,13), 10);
     if(horaDia>=IR_HORA_INICIO && horaDia<=IR_HORA_FIM){
-      if(!matrizLocais.has(f.usuario)) matrizLocais.set(f.usuario, new Map());
-      const mu = matrizLocais.get(f.usuario);
+      if(!matrizLocais.has(c.usuario)) matrizLocais.set(c.usuario, new Map());
+      const mu = matrizLocais.get(c.usuario);
       if(!mu.has(horaDia)) mu.set(horaDia, new Set());
-      mu.get(horaDia).add(local);
+      mu.get(horaDia).add(c.local);
     }
   }
   const ranking = Array.from(porUsuario.values()).map(g=>({
