@@ -504,6 +504,20 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const valorDivergenteLiquido = divergencias.reduce((s,d)=>s+d.vlDivergencia,0);
   const valorDivergenteAbsoluto = totalVlDivergenciaAbs;
 
+  // Itens que divergiram em peça mas cujo preço não foi encontrado na SIGEQ278/ZBIQ0051
+  // (precoUnitario=0) — o valor divergente desses fica artificialmente R$ 0,00, mesmo
+  // com peça/local realmente divergente. Lista pra diagnóstico direto (Dashboard), em
+  // vez do usuário ter que adivinhar por que um dia com contagem aparece zerado.
+  const semPrecoPorItem = new Map();
+  for(const d of divergencias){
+    if(d.diferenca===0 || d.precoUnitario>0) continue;
+    let g = semPrecoPorItem.get(d.item);
+    if(!g){ g = {item:d.item, nome:d.itemNome, pecasDivergentes:0, locais:0}; semPrecoPorItem.set(d.item, g); }
+    g.pecasDivergentes += Math.abs(d.diferenca);
+    g.locais++;
+  }
+  const itensSemPreco = Array.from(semPrecoPorItem.values()).sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes).slice(0,30);
+
   // Acurácia Local (Posições) é medida sobre os locais CONTADOS (liquidados), não sobre
   // o total orçado do CD — mesma regra da Acurácia Peças ("1 − divergência ÷ total contado").
   const locaisContadosTotal = statusPorLocal.size;
@@ -705,6 +719,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     andamentoCiclo, acuraciaPecas, acuraciaLocal, acuraciaValor, meta: IR_META_ACURACIA,
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
     locaisDivergentes: locaisComDivergencia.size, valorFisicoTotal: totalVlFisico,
+    itensSemPreco, itensSemPrecoTotal: semPrecoPorItem.size,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
     rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, divergentesPorDia,

@@ -555,7 +555,6 @@ function irRenderDashboard(){
     <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
-    ${irRenderComparativoCiclosPanel(ind)}
     <div class="bi-grid-2">
       ${irRenderSaudeEstoquePanel(ind)}
       ${irRenderStatusInventarioPanel(ind)}
@@ -565,14 +564,37 @@ function irRenderDashboard(){
     ${irRenderPorLogPanel(ind)}
     ${irRenderContadosPorDiaPanel(ind)}
     ${irRenderDivergentesPorDiaPanel(ind)}
+    ${irRenderItensSemPrecoPanel(ind)}
     ${irRenderItemDivEscopoBar()}
     <div class="bi-grid-2">
       ${irRenderTopItensPanel(itemSaldo, 'pecas')}
       ${irRenderTopItensPanel(itemSaldo, 'valor')}
     </div>
     ${irRenderLogTablePanel(ind)}
+    ${irRenderComparativoCiclosPanel(ind)}
     ${irRenderCalendarioPanel(ind)}
   `;
+}
+// Itens que divergiram em peça mas não tiveram preço encontrado na SIGEQ278/ZBIQ0051 —
+// o valor divergente desses fica R$ 0,00 mesmo com peça/local realmente divergente.
+// Diagnóstico direto pro usuário ir corrigir a valoração na origem, em vez de ficar
+// perguntando por que um dia com contagem aparece zerado no gráfico de valor.
+function irRenderItensSemPrecoPanel(ind){
+  const itens = ind.itensSemPreco||[];
+  if(!itens.length) return '';
+  return `<div class="panel">
+    <h3>⚠️ Itens divergentes sem preço encontrado</h3>
+    <p class="panel-sub">${irFmtInt(ind.itensSemPrecoTotal||itens.length)} itens divergiram em peça mas não têm preço na SIGEQ278/ZBIQ0051 (ou o componente "N" não carrega valor do kit) — o valor divergente desses fica R$ 0,00 até corrigir a valoração na origem. Mostrando os ${itens.length} com mais peças divergentes.</p>
+    <div class="table-wrap table-scroll" style="max-height:320px;"><table class="table-dense">
+      <thead><tr><th>Item</th><th>Descrição</th><th>Peças Divergentes</th><th>Locais</th></tr></thead>
+      <tbody>${itens.map(i=>`<tr>
+        <td class="mono">${irEsc(i.item)}</td>
+        <td>${irEsc(i.nome||'—')}</td>
+        <td class="mono">${irFmtInt(i.pecasDivergentes)}</td>
+        <td class="mono">${irFmtInt(i.locais)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
 }
 const IR_META_DIARIA = 962;
 function irRenderCalendarioPanel(ind){
@@ -881,8 +903,8 @@ function irBuildAcuraciaCiclosSvg(rows, opts){
   const plotW = W-padL-padR, plotH = H-padT-padB;
   const n = Math.max(1, rows.length);
   const grupoW = plotW/n;
-  const barW = Math.min(26, grupoW*0.24);
-  const gap = 4;
+  const barW = Math.min(46, grupoW*0.26);
+  const gap = 6;
   const metaY = padT + plotH*(1-meta);
   let bars = '', labels = '', xLabels = '';
   rows.forEach((r,i)=>{
@@ -894,14 +916,14 @@ function irBuildAcuraciaCiclosSvg(rows, opts){
       const tem = s.v!==null && s.v!==undefined;
       const bh = tem ? Math.max(0,Math.min(1,s.v))*plotH : plotH*0.015;
       const by = padT+plotH-bh;
-      bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${tem?s.cor:cores.vazio}" rx="2"/>`;
-      if(tem) labels += `<text x="${(bx+barW/2).toFixed(1)}" y="${(by-5).toFixed(1)}" font-size="9.5" text-anchor="middle" fill="${cores.label}" font-weight="700">${(s.v*100).toFixed(1)}%</text>`;
+      bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${tem?s.cor:cores.vazio}" rx="3"/>`;
+      if(tem) labels += `<text x="${(bx+barW/2).toFixed(1)}" y="${(by-7).toFixed(1)}" font-size="13" text-anchor="middle" fill="${cores.label}" font-weight="800">${(s.v*100).toFixed(1)}%</text>`;
       bx += barW+gap;
     });
-    xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="12" text-anchor="middle" fill="${cores.axis}" font-weight="700">${irEsc(r.label)}</text>`;
+    xLabels += `<text x="${cx.toFixed(1)}" y="${H-10}" font-size="14" text-anchor="middle" fill="${cores.axis}" font-weight="800">${irEsc(r.label)}</text>`;
   });
   const metaLine = `<line x1="${padL}" y1="${metaY.toFixed(1)}" x2="${W-padR}" y2="${metaY.toFixed(1)}" stroke="${cores.meta}" stroke-width="1.5" stroke-dasharray="5 4"/>
-    <text x="${W-padR}" y="${(metaY-6).toFixed(1)}" font-size="11.5" text-anchor="end" fill="${cores.meta}" font-weight="700">Meta ${(meta*100).toFixed(0)}%</text>`;
+    <text x="${W-padR}" y="${(metaY-6).toFixed(1)}" font-size="13" text-anchor="end" fill="${cores.meta}" font-weight="700">Meta ${(meta*100).toFixed(0)}%</text>`;
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${metaLine}${bars}${labels}${xLabels}</svg>`;
 }
 function irRenderComparativoCiclosPanel(){
@@ -912,11 +934,18 @@ function irRenderComparativoCiclosPanel(){
     pecas: ind?ind.acuraciaPecas:null, locais: ind?ind.acuraciaLocal:null, valor: ind?ind.acuraciaValor:null
   }));
   let pecasContadas=0, pecasDivergentes=0, locaisContados=0, locaisDivergentes=0, valorContado=0, valorDivergente=0;
+  let temValorContado=false;
   for(const {ind} of pares){
     if(!ind) continue;
     pecasContadas += ind.pecasContadas||0; pecasDivergentes += ind.pecasDivergentes||0;
-    locaisContados += ind.locaisContadosTotal||0; locaisDivergentes += ind.locaisDivergentes||0;
-    valorContado += ind.valorFisicoTotal||0; valorDivergente += ind.valorDivergenteAbsoluto||0;
+    locaisContados += ind.locaisContadosTotal||0;
+    // locaisDivergentes é campo novo — ciclo processado antes dele existir cai no
+    // fallback (soma de "locais" do divergentesPorDia, já existia e é equivalente).
+    locaisDivergentes += ind.locaisDivergentes!=null ? ind.locaisDivergentes : (ind.divergentesPorDia||[]).reduce((s,d)=>s+(d.locais||0),0);
+    // valorFisicoTotal também é novo, sem fallback confiável — só soma quando existe,
+    // pra não mostrar R$ 0,00 como se fosse um valor real (ciclo precisa reprocessar).
+    if(ind.valorFisicoTotal!=null){ temValorContado = true; valorContado += ind.valorFisicoTotal; }
+    valorDivergente += ind.valorDivergenteAbsoluto||0;
   }
   return `<div class="panel">
     <h3>Comparativo de Acurácias entre Ciclos</h3>
@@ -930,7 +959,7 @@ function irRenderComparativoCiclosPanel(){
     <div class="kpi-blocks" style="margin-top:14px;">
       ${irKpiBlock('orange','📦','Peças', irKpiTile('📦', irFmtInt(pecasContadas), 'Contadas', '', 'todos os ciclos') + irKpiTile('⚠️', irFmtInt(pecasDivergentes), 'Divergentes', 'bad', ''))}
       ${irKpiBlock('blue','📍','Locais', irKpiTile('📍', irFmtInt(locaisContados), 'Contados', '', 'todos os ciclos') + irKpiTile('⚠️', irFmtInt(locaisDivergentes), 'Divergentes', 'bad', ''))}
-      ${irKpiBlock('black','💰','Valor', irKpiTile('💰', irFmtMoney(valorContado), 'Contado', '', 'todos os ciclos') + irKpiTile('⚠️', irFmtMoney(valorDivergente), 'Divergente', 'bad', ''))}
+      ${irKpiBlock('black','💰','Valor', irKpiTile('💰', temValorContado?irFmtMoney(valorContado):'—', 'Contado', '', temValorContado?'todos os ciclos':'reprocesse o ciclo pra habilitar') + irKpiTile('⚠️', irFmtMoney(valorDivergente), 'Divergente', 'bad', ''))}
     </div>
   </div>`;
 }
