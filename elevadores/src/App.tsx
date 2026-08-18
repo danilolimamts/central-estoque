@@ -108,7 +108,10 @@ function Icone({ nome }: { nome: Pagina | 'tema' | 'menu' | 'voltar' }) {
 }
 
 export default function App() {
-  const { dados, historico, carregando, erro, importar, carregarDemo, limpar } = useDados();
+  const {
+    dados, historico, ajustes, carregando, erro,
+    importar, carregarDemo, limpar, ajustarResponsavel, desfazerAjuste,
+  } = useDados();
   const [pagina, setPagina] = useState<Pagina>('geral');
   const [recolhido, setRecolhido] = useState(false);
   /* Abre no claro. O escuro entra so quando a pessoa clica: seguir a
@@ -330,7 +333,15 @@ export default function App() {
           ) : !dados ? (
             <Importar aoImportar={importar} aoVerExemplo={carregarDemo} erro={erro} />
           ) : paginaAtual === 'geral' ? (
-            <DashboardGeral componentes={dados.componentes} fotos={fotos} busca={busca} divergencias={dados.divergencias} />
+            <DashboardGeral
+              componentes={dados.componentes}
+              fotos={fotos}
+              busca={busca}
+              divergencias={dados.divergencias}
+              ajustes={ajustes}
+              aoAjustar={(a) => void ajustarResponsavel(a)}
+              aoDesfazer={(c) => void desfazerAjuste(c)}
+            />
           ) : paginaAtual === 'projeto' ? (
             <StatusProjeto
               acoes={acoes}

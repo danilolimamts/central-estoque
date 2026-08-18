@@ -13,6 +13,8 @@ import { auditarValoracao, resumirValoracao } from '../domain/valoracao';
 import { calcularMetricas, derivarAcoes } from '../domain/projeto';
 import { marcoDe, registrarMarco } from '../domain/historico';
 import type { Marco } from '../domain/historico';
+import { registrarAjuste, removerAjuste } from '../domain/ajustes';
+import type { AjusteResponsavel } from '../domain/ajustes';
 
 const store = localforage.createInstance({
   name: 'equalizacao_elevadores',
@@ -23,6 +25,10 @@ const CHAVE_DADOS = 'importacao';
 /* O historico fica em chave propria: trocar a planilha em uso nao pode
    apagar o que ja foi medido nas importacoes anteriores. */
 const CHAVE_HISTORICO = 'historico';
+/* Os ajustes de responsavel tambem ficam fora da importacao: eles sao
+   apuracao de quem trabalha o caso, e trocar a planilha do mes nao
+   pode apagar a decisao ja tomada sobre uma entrega. */
+const CHAVE_AJUSTES = 'ajustes_responsavel';
 
 export interface Importacao {
   componentes: Componente[];
@@ -85,6 +91,7 @@ async function guardarMarco(acoes: Acao[], arquivo: string, hoje: Date): Promise
 export function useDados() {
   const [dados, setDados] = useState<Importacao | null>(null);
   const [historico, setHistorico] = useState<Marco[]>([]);
+  const [ajustes, setAjustes] = useState<AjusteResponsavel[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -93,6 +100,10 @@ export function useDados() {
     void store
       .getItem<Marco[]>(CHAVE_HISTORICO)
       .then((h) => vivo && setHistorico(h ?? []))
+      .catch(() => undefined);
+    void store
+      .getItem<AjusteResponsavel[]>(CHAVE_AJUSTES)
+      .then((a) => vivo && setAjustes(a ?? []))
       .catch(() => undefined);
     store
       .getItem<Importacao>(CHAVE_DADOS)
@@ -191,7 +202,29 @@ export function useDados() {
     setDados(null);
   }, []);
 
-  return { dados, historico, carregando, erro, importar, carregarDemo, limpar };
+  /* Ajuste manual do responsavel por uma entrega. Grava antes de
+     devolver o controle: se o navegador nao deixar gravar, a tela
+     continua funcionando na sessao, como no resto do app. */
+  const ajustarResponsavel = useCallback(async (ajuste: AjusteResponsavel) => {
+    setAjustes((atuais) => {
+      const novo = registrarAjuste(atuais, ajuste);
+      void store.setItem(CHAVE_AJUSTES, novo).catch(() => undefined);
+      return novo;
+    });
+  }, []);
+
+  const desfazerAjuste = useCallback(async (caso: string) => {
+    setAjustes((atuais) => {
+      const novo = removerAjuste(atuais, caso);
+      void store.setItem(CHAVE_AJUSTES, novo).catch(() => undefined);
+      return novo;
+    });
+  }, []);
+
+  return {
+    dados, historico, ajustes, carregando, erro,
+    importar, carregarDemo, limpar, ajustarResponsavel, desfazerAjuste,
+  };
 }
 
 /* Derivados de equalizacao e valoracao a partir dos componentes. */

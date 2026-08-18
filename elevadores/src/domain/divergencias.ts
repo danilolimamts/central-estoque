@@ -220,11 +220,18 @@ export interface CorteResponsavel {
 }
 
 /* Sempre todos, inclusive os zerados: "fornecedor: 0" e a informacao
-   de que nenhum caso foi da marca neste periodo. */
-export function porResponsavel(lista: DivergenciaSAC[]): CorteResponsavel[] {
+   de que nenhum caso foi da marca neste periodo.
+
+   O resolvedor e opcional para a tela poder passar o responsavel que
+   vale de verdade, ja com os ajustes feitos a mao por cima do texto.
+   Sem ele, vale a leitura do Comentario. */
+export function porResponsavel(
+  lista: DivergenciaSAC[],
+  resolver: (d: DivergenciaSAC) => Responsavel = responsavelDe
+): CorteResponsavel[] {
   const total = lista.length;
   return (['CD', 'FORNECEDOR', 'ANUNCIO', 'CLIENTE', 'APURAR'] as const).map((responsavel) => {
-    const doTipo = lista.filter((d) => responsavelDe(d) === responsavel);
+    const doTipo = lista.filter((d) => resolver(d) === responsavel);
     return {
       responsavel,
       rotulo: ROTULO_RESPONSAVEL[responsavel],

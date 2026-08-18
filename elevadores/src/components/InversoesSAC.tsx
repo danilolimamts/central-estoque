@@ -10,7 +10,7 @@
    quem le precisa poder conferir - e o title de cada selo mostra o
    comentario que gerou a classificacao.
    ============================================================ */
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
 import {
   anosDisponiveis,
@@ -21,14 +21,17 @@ import {
   porCausa,
   porTransportadora,
   causaDe,
-  responsavelDe,
   porResponsavel,
   ROTULO_CAUSA,
   ROTULO_RESPONSAVEL,
   tipoDoProduto,
   totalizar,
 } from '../domain/divergencias';
-import type { DivergenciaSAC } from '../domain/divergencias';
+import type { DivergenciaSAC, Responsavel } from '../domain/divergencias';
+import {
+  ajusteDe, identificarCaso, mapaDeAjustes, responsavelFinal, ajustesAplicados,
+} from '../domain/ajustes';
+import type { AjusteResponsavel } from '../domain/ajustes';
 import { cores } from '../config/tokens';
 import { Grafico } from './charts/Grafico';
 import { Cartao, Selecao, Tabela, Td, Th, Vazio } from './ui';
@@ -62,7 +65,135 @@ function Numero({
   );
 }
 
-export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] }) {
+const RESPONSAVEIS: Responsavel[] = ['CD', 'FORNECEDOR', 'ANUNCIO', 'CLIENTE', 'APURAR'];
+
+/* Responsavel do caso, com a saida para corrigir a mao.
+
+   O texto do Comentario nem sempre conta a historia toda. Quando quem
+   apurou sabe de quem foi e o texto nao diz, esta celula e o lugar de
+   registrar - com o motivo junto, porque ajuste sem justificativa nao
+   se distingue de erro de digitacao. */
+function CelulaResponsavel({
+  d,
+  atual,
+  ajuste,
+  aoAjustar,
+  aoDesfazer,
+}: {
+  d: DivergenciaSAC;
+  atual: Responsavel;
+  ajuste?: AjusteResponsavel;
+  aoAjustar?: (a: AjusteResponsavel) => void;
+  aoDesfazer?: (caso: string) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [escolha, setEscolha] = useState<Responsavel>(atual);
+  const [motivo, setMotivo] = useState(ajuste?.motivo ?? '');
+  const caso = identificarCaso(d);
+  const editavel = aoAjustar != null;
+
+  const selo = (
+    <span
+      className={`eq-sac-selo r-${atual.toLowerCase()}${ajuste ? ' ajustado' : ''}`}
+      title={
+        ajuste
+          ? `Reclassificado à mão: ${ajuste.motivo || 'sem motivo informado'}`
+          : d.comentario || 'sem comentário do SAC'
+      }
+    >
+      {ROTULO_RESPONSAVEL[atual]}
+      {ajuste && <b title="Definido à mão, não pelo comentário"> ✎</b>}
+    </span>
+  );
+
+  if (!editavel) return selo;
+
+  if (!aberto) {
+    return (
+      <button
+        type="button"
+        className="eq-sac-resp-botao"
+        onClick={() => {
+          setEscolha(atual);
+          setMotivo(ajuste?.motivo ?? '');
+          setAberto(true);
+        }}
+        title="Clique para corrigir o responsável deste caso"
+      >
+        {selo}
+      </button>
+    );
+  }
+
+  return (
+    <div className="eq-sac-editor">
+      <span className="eq-sac-editor-caso">Entrega {caso}</span>
+      <select
+        value={escolha}
+        onChange={(e) => setEscolha(e.target.value as Responsavel)}
+        aria-label="Responsável pelo caso"
+      >
+        {RESPONSAVEIS.map((r) => (
+          <option key={r} value={r}>
+            {ROTULO_RESPONSAVEL[r]}
+          </option>
+        ))}
+      </select>
+      <input
+        value={motivo}
+        onChange={(e) => setMotivo(e.target.value)}
+        placeholder="Por quê? (ex.: fornecedor enviou o item errado)"
+        aria-label="Motivo do ajuste"
+      />
+      <div className="eq-sac-editor-acoes">
+        <button
+          type="button"
+          className="btn btn-orange"
+          onClick={() => {
+            aoAjustar({ caso, responsavel: escolha, motivo: motivo.trim(), em: new Date().toISOString() });
+            setAberto(false);
+          }}
+        >
+          Salvar
+        </button>
+        {ajuste && aoDesfazer && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              aoDesfazer(caso);
+              setAberto(false);
+            }}
+            title="Volta a classificar pelo comentário do SAC"
+          >
+            Voltar ao automático
+          </button>
+        )}
+        <button type="button" className="btn btn-secondary" onClick={() => setAberto(false)}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function InversoesSAC({
+  divergencias,
+  ajustes = [],
+  aoAjustar,
+  aoDesfazer,
+}: {
+  divergencias: DivergenciaSAC[];
+  /* Reclassificacoes feitas a mao, que vencem a leitura do texto. */
+  ajustes?: AjusteResponsavel[];
+  aoAjustar?: (a: AjusteResponsavel) => void;
+  aoDesfazer?: (caso: string) => void;
+}) {
+  const mapa = useMemo(() => mapaDeAjustes(ajustes), [ajustes]);
+  const quemResponde = useCallback(
+    (d: DivergenciaSAC) => responsavelFinal(d, mapa),
+    [mapa]
+  );
   const inversoes = useMemo(() => inversoesDeBase(divergencias), [divergencias]);
   const anos = useMemo(() => anosDisponiveis(inversoes), [inversoes]);
   const [ano, setAno] = useState<string>('');
@@ -73,7 +204,15 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
   const meses = useMemo(() => porMes(inversoes, anoAtivo), [inversoes, anoAtivo]);
   const transportadoras = useMemo(() => porTransportadora(doAnoEscolhido), [doAnoEscolhido]);
   const causas = useMemo(() => porCausa(doAnoEscolhido), [doAnoEscolhido]);
-  const responsaveis = useMemo(() => porResponsavel(doAnoEscolhido), [doAnoEscolhido]);
+  const responsaveis = useMemo(
+    () => porResponsavel(doAnoEscolhido, quemResponde),
+    [doAnoEscolhido, quemResponde]
+  );
+  /* Quantos casos do recorte em tela foram reclassificados a mao. */
+  const reclassificados = useMemo(
+    () => ajustesAplicados(doAnoEscolhido, mapa),
+    [doAnoEscolhido, mapa]
+  );
   /* Casos que entraram pela emissao do pedido por falta da data de
      saida na planilha. */
   const semSaida = useMemo(
@@ -82,8 +221,8 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
   );
   /* O numero que a operacao e cobrada: so o que sobrou para o CD. */
   const soDoCD = useMemo(
-    () => doAnoEscolhido.filter((d) => responsavelDe(d) === 'CD'),
-    [doAnoEscolhido]
+    () => doAnoEscolhido.filter((d) => quemResponde(d) === 'CD'),
+    [doAnoEscolhido, quemResponde]
   );
 
   /* Barras por mes, CD e lojas lado a lado, com o numero em cima de
@@ -176,7 +315,10 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
         `${soDoCD.length} apurado(s) como erro da operação · pela data de saída` +
         /* Quem le mes a mes precisa saber quantas linhas nao tem data
            de saida: elas entram pela emissao do pedido. */
-        (semSaida > 0 ? ` · ${semSaida} sem data de saída, contado(s) pelo pedido` : '')
+        (semSaida > 0 ? ` · ${semSaida} sem data de saída, contado(s) pelo pedido` : '') +
+        /* Ajuste a mao nunca em silencio: quem le o numero precisa
+           saber que ele nao saiu so do texto do SAC. */
+        (reclassificados > 0 ? ` · ${reclassificados} reclassificado(s) manualmente` : '')
       }
       acoes={
         anos.length > 1 ? (
@@ -329,12 +471,13 @@ export function InversoesSAC({ divergencias }: { divergencias: DivergenciaSAC[] 
                     </span>
                   </Td>
                   <Td>
-                    <span
-                      className={`eq-sac-selo r-${responsavelDe(d).toLowerCase()}`}
-                      title={d.comentario || 'sem comentário do SAC'}
-                    >
-                      {ROTULO_RESPONSAVEL[responsavelDe(d)]}
-                    </span>
+                    <CelulaResponsavel
+                      d={d}
+                      atual={quemResponde(d)}
+                      ajuste={ajusteDe(d, mapa)}
+                      aoAjustar={aoAjustar}
+                      aoDesfazer={aoDesfazer}
+                    />
                   </Td>
                   <Td>
                     <span className="tag tag-muted">{tipoDoProduto(d.produto)}</span>{' '}

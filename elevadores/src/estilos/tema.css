@@ -940,6 +940,16 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-sac-selo.r-cd{ background:#FFEDE7; color:var(--orange); }
 .eq-sac-selo.r-fornecedor{ background:var(--blue-light); color:var(--blue); }
 .eq-sac-selo.r-cliente{ background:var(--surface2); color:var(--ink-soft); }
+/* Caso reclassificado a mao: contorno tracejado para se distinguir de
+   longe do que veio do texto do SAC. */
+.eq-sac-selo.ajustado{ outline:1.5px dashed currentColor; outline-offset:1px; }
+.eq-sac-resp-botao{ background:none; border:none; padding:0; cursor:pointer; text-align:left; }
+.eq-sac-editor{ display:flex; flex-direction:column; gap:6px; min-width:230px; }
+.eq-sac-editor-caso{ font-size:10px; font-weight:700; text-transform:uppercase;
+  letter-spacing:.03em; color:var(--ink-soft); }
+.eq-sac-editor select, .eq-sac-editor input{ font-size:12px; padding:6px 8px; }
+.eq-sac-editor-acoes{ display:flex; flex-wrap:wrap; gap:6px; }
+.eq-sac-editor-acoes .btn{ padding:5px 10px; font-size:11.5px; }
 /* Anuncio tem selo proprio: nao e o CD, nao e a fabrica, e enquanto
    nao houver criterio para dividir esses casos eles precisam ser
    distinguiveis na tabela. */
