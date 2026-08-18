@@ -11,6 +11,7 @@ const IR = {
   prioridadeConfig:null,
   net410Legenda:[], // legenda de motivos da 410 (editável em Configurações)
   net410Ignorados:[], // itens ocultos da análise de distorção do NET (motivo já conhecido)
+  net410Padroes:[], // trechos da Observação WMS que escondem qualquer item que os carregue (ex.: "SALDO")
   netAuditoriaN:10, // quantos itens entram na "Gerar Auditoria" (top N por |saldo| do período atual)
   netAuditoriaGerada:null, // {geradoEm, mesLabel, linhas:[...]} — resultado da última geração
   files:{f390:null, f843:[null,null,null,null], fCong:[null,null,null,null], f278:[null,null,null,null], f051:[null,null,null,null]},
@@ -73,6 +74,7 @@ async function irInit(){
     IR.prioridadeConfig = await irSeedPrioridadeConfigIfEmpty();
     IR.net410Legenda = await irSeedNet410LegendaIfEmpty();
     IR.net410Ignorados = await irGetNet410IgnoradosAll();
+    IR.net410Padroes = await irSeedNet410PadroesIgnoradosIfEmpty();
     IR.ciclos = await irGetAllCiclos();
     if(IR.ciclos.length){
       IR.cicloAtivo = IR.ciclos.find(c=>c.status==='aberto') || IR.ciclos[0];
@@ -2235,6 +2237,34 @@ async function irIgnorarNet410Item(item, nome){
   irShowToast(`"${nome||item}" não vai mais aparecer nessa análise — gerenciar em Configurações.`);
   irRenderView();
 }
+// Um item entra na análise com qualquer movimento (Observação WMS) batendo com algum
+// padrão ignorado (ex.: "SALDO") — não precisa bater com TODOS os movimentos do item,
+// já que um único ajuste desse tipo já é motivo suficiente pra não confiar no saldo do
+// período todo pra esse item.
+function irItemTemPadraoIgnorado(item, padroes){
+  if(!padroes.length) return false;
+  const movs = item.movimentos||[];
+  return movs.some(mv=>{
+    const obs = String(mv.obsWms||'').toUpperCase();
+    return padroes.some(p=>obs.includes(p.padrao.toUpperCase()));
+  });
+}
+async function irAdicionarNet410Padrao(){
+  const input = document.getElementById('ir-net410-padrao-novo');
+  const texto = input ? input.value.trim() : '';
+  if(!texto){ irShowToast('Informe um trecho da Observação WMS.', true); return; }
+  await irSaveNet410PadraoIgnorado(texto);
+  IR.net410Padroes = await irGetNet410PadroesIgnoradosAll();
+  if(input) input.value = '';
+  irShowToast(`Itens com "${texto}" na Observação WMS não vão mais aparecer na análise do NET.`);
+  irRenderView();
+}
+async function irRemoverNet410PadraoUI(id){
+  await irRemoverNet410PadraoIgnorado(id);
+  IR.net410Padroes = await irGetNet410PadroesIgnoradosAll();
+  irShowToast('Padrão removido — itens com esse trecho voltam a aparecer na análise.');
+  irRenderView();
+}
 function irSetDivNetMes(mes){ IR.divNetMesSel = mes; IR.divNetDiaSel = null; irRenderView(); }
 function irSetDivNetDia(dia){ IR.divNetDiaSel = dia || null; irRenderView(); }
 function irToggleNetItensResto(uid, btn){
@@ -2312,11 +2342,12 @@ function irRenderNetDistorcaoPanel(){
   // saem da análise inteira — não só da lista, também da cobertura acumulada e da
   // movimentação bruta, senão eles continuariam pesando nos % mesmo escondidos.
   const ignoradosSet = new Set((IR.net410Ignorados||[]).map(i=>i.item));
+  const padroes = IR.net410Padroes||[];
 
   // Junta os itens positivos e negativos do mês, ordena por |saldo| — são os que
   // mais pesam na distorção do NET, seja puxando pra cima ou pra baixo.
   const todosOrdenados = [...(m.topItensPositivos||[]), ...(m.topItensNegativos||[])]
-    .filter(i=>!ignoradosSet.has(i.item))
+    .filter(i=>!ignoradosSet.has(i.item) && !irItemTemPadraoIgnorado(i, padroes))
     .sort((a,b)=>Math.abs(b.saldoValor)-Math.abs(a.saldoValor));
   // Cobertura acumulada usa a MOVIMENTAÇÃO BRUTA (soma de |saldo| de todos os itens),
   // não o NET do mês — quando dois itens grandes se cancelam (ex.: +19.452 de um lado,
@@ -2426,6 +2457,7 @@ function irRenderNetDistorcaoPanel(){
     ${dadosDesatualizados ? `<p class="field-hint" style="color:var(--danger);margin-bottom:12px;">⚠️ Alguns dados desse ano foram processados antes de Ganhos, Saldo no Ano e Quantidade existirem nessa análise — aparecem como "—" abaixo. Reimporte a QRY410 na aba <a href="#" onclick="irSwitchTab('importacao');return false;">Importação</a> pra atualizar.</p>` : ''}
     ${cancelamentoForte ? `<p class="field-hint" style="color:var(--orange);margin-bottom:12px;">⚠️ A movimentação bruta de ${irEsc(mesLabel)} (${irFmtMoney(totalMovimentoBruto)}) é bem maior que o NET final (${irFmtMoney(m.netAbs)}) — sinal de que ganhos e perdas grandes estão se cancelando. Vale checar se não é troca de contagem entre itens parecidos (ex.: mesma peça em cores/variações diferentes).</p>` : ''}
     ${ignoradosSet.size ? `<p class="field-hint" style="margin-bottom:12px;">${ignoradosSet.size} ${ignoradosSet.size===1?'item ignorado não aparece':'itens ignorados não aparecem'} nessa análise (motivo já conhecido) — <a href="#" onclick="irSwitchTab('configuracoes');return false;">gerenciar em Configurações</a>.</p>` : ''}
+    ${padroes.length ? `<p class="field-hint" style="margin-bottom:12px;">Itens com "${padroes.map(p=>irEsc(p.padrao)).join('", "')}" na Observação WMS não aparecem nessa análise — <a href="#" onclick="irSwitchTab('configuracoes');return false;">gerenciar em Configurações</a>.</p>` : ''}
     <div class="two-col" style="max-width:620px;margin-bottom:14px;grid-template-columns:1fr 1fr 1fr;">
       <div><label>Ano</label><select onchange="irSetNet410Ano(this.value)">
         ${IR.net410Anos.map(a=>`<option value="${a}" ${a===IR.net410AnoSel?'selected':''}>${a}</option>`).join('')}
@@ -2743,7 +2775,31 @@ function irRenderConfiguracoes(){
     <div class="form-actions"><button class="btn btn-primary" onclick="irSalvarPrioridadeConfig()">Salvar pesos</button></div>
   </div>
   ${irRenderNet410LegendaConfig()}
-  ${irRenderNet410IgnoradosConfig()}`;
+  ${irRenderNet410IgnoradosConfig()}
+  ${irRenderNet410PadroesConfig()}`;
+}
+// Padrões de Observação WMS (ex.: "SALDO") que escondem qualquer item que os carregue
+// da análise "Por que o NET está distorcido" — diferente do ignorado item por item,
+// vale pra qualquer item futuro que carregue esse mesmo tipo de ajuste.
+function irRenderNet410PadroesConfig(){
+  const lista = (IR.net410Padroes||[]).slice().sort((a,b)=>(a.criadoEm||'').localeCompare(b.criadoEm||''));
+  const row = (p)=>`<tr>
+    <td class="mono">${irEsc(p.padrao)}</td>
+    <td class="field-hint">${p.criadoEm ? new Date(p.criadoEm).toLocaleDateString('pt-BR') : '—'}</td>
+    <td><button class="btn-link" onclick="irRemoverNet410PadraoUI('${irEsc(p.id)}')">Remover</button></td>
+  </tr>`;
+  return `<div class="panel">
+    <h3>Padrões de Observação ignorados na análise do NET</h3>
+    <p class="field-hint" style="margin-bottom:12px;">Qualquer item com esse trecho na Observação WMS de algum movimento fica fora da análise "Por que o NET está distorcido", em qualquer mês — útil pra tipos de ajuste recorrentes (ex.: "SALDO INCLUIDO INDEVIDAMENTE...") que aparecem em itens diferentes com o tempo.</p>
+    <div class="form-actions" style="margin-bottom:12px;">
+      <input type="text" id="ir-net410-padrao-novo" placeholder="Ex.: SALDO" style="max-width:280px;">
+      <button class="btn btn-secondary" onclick="irAdicionarNet410Padrao()">Adicionar padrão</button>
+    </div>
+    ${lista.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Trecho da Observação</th><th>Adicionado em</th><th></th></tr></thead>
+      <tbody>${lista.map(row).join('')}</tbody>
+    </table></div>` : `<p class="field-hint">Nenhum padrão cadastrado.</p>`}
+  </div>`;
 }
 // Itens ignorados na análise "Por que o NET está distorcido" — marcados manualmente
 // no painel de Divergências quando o motivo já é conhecido. Aqui dá pra ver a lista
