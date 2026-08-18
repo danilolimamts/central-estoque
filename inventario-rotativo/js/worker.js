@@ -280,11 +280,23 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     // "Contado" de verdade só quando o local E o inventário foram liquidados — sessões
     // Canceladas (ex.: reabertas depois) não contam como contagem válida.
     if(situacaoLocal!=='Liquidado' || situacaoInventario!=='Liquidado') continue;
+    const dataSituacao = isoDateTime(parseDateVal(getVal(row, r843.dataSituacao)));
+    // O QRY0843 às vezes vem com sobra de linhas de fora da janela do ciclo (ex.: uma
+    // auditoria liquidada do ciclo anterior ainda no export). Sem isolar pela data do
+    // ciclo (Abertura–Término Previsto), essas linhas contaminavam a acurácia do ciclo
+    // atual com dado de outro ciclo — a mesma origem do bug de saldo inflado corrigido
+    // isolando por Id Inventario, só que pra fora da janela em vez de duplicado dentro
+    // dela. Fica de fora tudo que não caiu dentro do período oficial do ciclo.
+    const diaSituacao = dataSituacao.slice(0,10);
+    if(diaSituacao){
+      if(dataAbertura && diaSituacao<dataAbertura) continue;
+      if(dataPrevistaTermino && diaSituacao>dataPrevistaTermino) continue;
+    }
     contagens.push({
       id: cicloId+'|'+local+'|'+item+'|'+idConferencia+'|'+idx843,
       cicloId, inventario: String(getVal(row, r843.inventario) ?? '').trim(), local,
       descricaoLocal: String(getVal(row, r843.descricaoLocal) ?? '').trim(),
-      dataSituacao: isoDateTime(parseDateVal(getVal(row, r843.dataSituacao))),
+      dataSituacao,
       dataInicioContagem: isoDateTime(parseDateVal(getVal(row, r843.dataInicioContagem))),
       dataFimContagem: isoDateTime(parseDateVal(getVal(row, r843.dataFimContagem))),
       obsInventario, situacaoInventario, situacaoLocal,
