@@ -14,6 +14,8 @@ import {
   casosDesconsiderados,
   foiDesconsiderado,
   migrarAjustes,
+  forasDaPlanilha,
+  origemDaExclusao,
   FORA,
 } from '../src/domain/ajustes';
 import type { AjusteCaso } from '../src/domain/ajustes';
@@ -28,7 +30,7 @@ function div(p: Partial<DivergenciaSAC> = {}): DivergenciaSAC {
     motivo: 'Diferente do comprado', submotivo: 'Divergência operacional CD',
     comentario: 'Cliente recebeu a base no tamanho incorreto.',
     transportadora: 'TERMACO', estado: 'São Paulo', canal: 'TELEVENDAS',
-    valor: 1000, data: new Date(Date.UTC(2026, 4, 4)), dataPelaSaida: true,
+    valor: 1000, data: new Date(Date.UTC(2026, 4, 4)), dataPelaSaida: true, considerar: true,
     ...p,
   };
 }
@@ -197,5 +199,74 @@ describe('ajuste gravado no formato antigo continua valendo', () => {
   it('lixo gravado nao vira ajuste nem quebra a leitura', () => {
     expect(migrarAjustes(null)).toEqual([]);
     expect(migrarAjustes([{ caso: '' }, { motivo: 'sem caso' }, 7])).toEqual([]);
+  });
+});
+
+describe('coluna "Considerar ?" da planilha', () => {
+  it('so um Nao explicito tira o caso: vazio conta como Sim', () => {
+    /* A coluna e preenchida a mao e vai ter lacuna. Sumir com
+       devolucao por celula em branco seria apagar o indicador em
+       silencio, sem ninguem perceber. */
+    const lista = [
+      div({ entrega: 'A', considerar: true }),
+      div({ entrega: 'B', considerar: false }),
+      div({ entrega: 'C', considerar: true }),
+    ];
+    const fora = forasDaPlanilha(lista);
+    expect([...fora]).toEqual(['B']);
+    expect(casosConsiderados(lista, mapaDeAjustes([]), fora).map((d) => d.entrega))
+      .toEqual(['A', 'C']);
+  });
+
+  it('um Nao tira a entrega inteira, com os dois produtos', () => {
+    /* A coluna marca um despacho; despacho com dois produtos gera
+       duas linhas. Tirar so uma deixaria o total sem fechar com a
+       planilha, sem ninguem saber por que. */
+    const lista = [
+      div({ entrega: '999', produto: 'BASE PARA ELEVADOR', considerar: false }),
+      div({ entrega: '999', produto: 'COLUNA PARA ELEVADOR', considerar: true }),
+      div({ entrega: '111', considerar: true }),
+    ];
+    const fora = forasDaPlanilha(lista);
+    expect(casosConsiderados(lista, mapaDeAjustes([]), fora)).toHaveLength(1);
+    expect(casosDesconsiderados(lista, mapaDeAjustes([]), fora)).toHaveLength(2);
+  });
+
+  it('sem entrega, a marcacao vale pelo pedido', () => {
+    const lista = [div({ entrega: '', pedido: 'PED-1', considerar: false })];
+    expect([...forasDaPlanilha(lista)]).toEqual(['PED-1']);
+  });
+
+  it('a planilha e o ajuste do painel somam, nao competem', () => {
+    const lista = [
+      div({ entrega: 'A', considerar: false }),
+      div({ entrega: 'B', considerar: true }),
+      div({ entrega: 'C', considerar: true }),
+    ];
+    const mapa = mapaDeAjustes([ajuste({ caso: 'B', decisao: FORA })]);
+    const fora = forasDaPlanilha(lista);
+    expect(casosConsiderados(lista, mapa, fora).map((d) => d.entrega)).toEqual(['C']);
+  });
+
+  it('a tela sabe dizer de onde veio a exclusao', () => {
+    /* As duas se corrigem em lugares diferentes: uma na planilha,
+       outra no proprio painel. */
+    const lista = [div({ entrega: 'A', considerar: false }), div({ entrega: 'B' })];
+    const mapa = mapaDeAjustes([ajuste({ caso: 'B', decisao: FORA })]);
+    const fora = forasDaPlanilha(lista);
+    expect(origemDaExclusao(lista[0], mapa, fora)).toBe('PLANILHA');
+    expect(origemDaExclusao(lista[1], mapa, fora)).toBe('AJUSTE');
+    expect(origemDaExclusao(div({ entrega: 'Z' }), mapa, fora)).toBeNull();
+  });
+
+  it('a planilha manda quando as duas discordam', () => {
+    /* Marcado como Nao na planilha e reclassificado no painel: a
+       planilha e o registro compartilhado, entao ela vence e a tela
+       diz para corrigir la. */
+    const lista = [div({ entrega: 'A', considerar: false })];
+    const mapa = mapaDeAjustes([ajuste({ caso: 'A', decisao: 'CD' })]);
+    const fora = forasDaPlanilha(lista);
+    expect(origemDaExclusao(lista[0], mapa, fora)).toBe('PLANILHA');
+    expect(casosConsiderados(lista, mapa, fora)).toHaveLength(0);
   });
 });

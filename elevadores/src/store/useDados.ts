@@ -70,6 +70,10 @@ function reidratarDivergencias(lista: DivergenciaSAC[] | undefined): Divergencia
     ...d,
     data: typeof d.data === 'string' ? new Date(d.data) : d.data,
     dataPelaSaida: d.dataPelaSaida === true,
+    /* Importacao anterior a coluna "Considerar ?" nao tem o campo.
+       Ausencia vale como Sim: o painel nao pode sumir com devolucao
+       por causa de um dado que nem existia quando ela foi lida. */
+    considerar: d.considerar !== false,
   }));
 }
 

@@ -5,7 +5,7 @@
    para poder cruzar com o item pai da equalizacao.
    ============================================================ */
 import type { DivergenciaSAC } from '../domain/divergencias';
-import { origemDaFilial } from '../domain/divergencias';
+import { origemDaFilial, semAcento } from '../domain/divergencias';
 import { montarObjetos, criarSeletor, paraTexto, paraNumero, converterData } from './utilData';
 
 /* Campo de data em branco na planilha nao chega vazio: chega como a
@@ -19,6 +19,18 @@ const PRIMEIRO_ANO_VALIDO = 2000;
 export function dataDaPlanilha(v: unknown): Date | null {
   const d = converterData(v);
   return d != null && d.getUTCFullYear() >= PRIMEIRO_ANO_VALIDO ? d : null;
+}
+
+/* Coluna "Considerar ?": so um Nao explicito tira o caso do painel.
+
+   Tudo o mais conta como Sim - vazio, zero, formula que ainda nao
+   resolveu, texto que ninguem previu. E deliberado: a coluna e
+   preenchida a mao e vai ter lacuna. Sumir com devolucao por causa de
+   celula em branco seria apagar o indicador em silencio, e quem le o
+   painel nao teria como perceber. */
+export function considerarDaPlanilha(v: unknown): boolean {
+  const t = semAcento(v);
+  return !(t === 'nao' || t === 'n' || t === 'false');
 }
 
 /* "929051 - RAMPA PARA ALINHAMENTO..." vira codigo e descricao. */
@@ -70,6 +82,7 @@ export function lerDivergencias(aoa: unknown[][]): DivergenciaSAC[] {
       valor,
       data: dataSaida ?? dataPedido,
       dataPelaSaida: dataSaida != null,
+      considerar: considerarDaPlanilha(s('Considerar ?', 'Considerar?', 'Considerar')),
     });
   }
   return saida;

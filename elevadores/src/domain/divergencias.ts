@@ -40,6 +40,12 @@ export interface DivergenciaSAC {
      saida. A tela avisa, porque as duas datas nao significam a mesma
      coisa e misturar sem dizer distorce a leitura mes a mes. */
   dataPelaSaida: boolean;
+  /* Coluna "Considerar ?" da planilha: Nao tira o caso do painel.
+
+     Vazio conta como Sim de proposito. Lacuna de preenchimento nao
+     pode apagar devolucao do indicador em silencio - o custo de errar
+     para menos e alguem ser cobrado por um numero que nao existe. */
+  considerar: boolean;
 }
 
 /* Motivos que nao sao responsabilidade do CD:

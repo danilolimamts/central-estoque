@@ -31,6 +31,7 @@ import type { DivergenciaSAC, Responsavel } from '../domain/divergencias';
 import {
   ajusteDe, identificarCaso, mapaDeAjustes, responsavelFinal,
   casosConsiderados, casosDesconsiderados, reclassificadosEmTela, FORA,
+  forasDaPlanilha, origemDaExclusao,
 } from '../domain/ajustes';
 import type { AjusteCaso, Decisao } from '../domain/ajustes';
 import { cores } from '../config/tokens';
@@ -205,11 +206,18 @@ export function InversoesSAC({
     [mapa]
   );
   const detectados = useMemo(() => inversoesDeBase(divergencias), [divergencias]);
-  /* Tudo que a tela mostra sai daqui: o caso desconsiderado nao pode
-     sobreviver em nenhum canto do cartao. Filtrar so na tabela
-     deixaria o grafico e os totais contando o que a pessoa mandou
-     tirar - que e pior do que nao ter a funcao. */
-  const inversoes = useMemo(() => casosConsiderados(detectados, mapa), [detectados, mapa]);
+  /* Entregas que a propria planilha marcou para nao considerar, pela
+     coluna "Considerar ?".
+
+     Tudo que a tela mostra sai da lista ja filtrada: o caso tirado nao
+     pode sobreviver em nenhum canto do cartao. Filtrar so a tabela e
+     deixar o grafico e os totais contando seria pior do que nao ter a
+     funcao, porque pareceria resolvido. */
+  const foraNaPlanilha = useMemo(() => forasDaPlanilha(detectados), [detectados]);
+  const inversoes = useMemo(
+    () => casosConsiderados(detectados, mapa, foraNaPlanilha),
+    [detectados, mapa, foraNaPlanilha]
+  );
   const anos = useMemo(() => anosDisponiveis(detectados), [detectados]);
   const [ano, setAno] = useState<string>('');
   const anoAtivo = Number(ano) || anos[0] || new Date().getFullYear();
@@ -232,8 +240,8 @@ export function InversoesSAC({
      abaixo da tabela: decisao escondida sem rastro vira numero que
      ninguem consegue explicar depois. */
   const foraDoPainel = useMemo(
-    () => casosDesconsiderados(doAno(detectados, anoAtivo), mapa),
-    [detectados, anoAtivo, mapa]
+    () => casosDesconsiderados(doAno(detectados, anoAtivo), mapa, foraNaPlanilha),
+    [detectados, anoAtivo, mapa, foraNaPlanilha]
   );
   /* Casos que entraram pela emissao do pedido por falta da data de
      saida na planilha. */
@@ -531,6 +539,8 @@ export function InversoesSAC({
                 {foraDoPainel.map((d, i) => {
                   const caso = identificarCaso(d);
                   const a = ajusteDe(d, mapa);
+                  const origem = origemDaExclusao(d, mapa, foraNaPlanilha);
+                  const daPlanilha = origem === 'PLANILHA';
                   return (
                     <div key={`${caso}-${i}`} className="eq-sac-fora-item">
                       <div>
@@ -539,13 +549,22 @@ export function InversoesSAC({
                           {d.produto.slice(0, 46)}
                           {d.produto.length > 46 ? '…' : ''}
                         </span>
+                        {/* De onde veio a decisao: as duas se corrigem
+                            em lugares diferentes. */}
+                        <span className={`tag${daPlanilha ? '' : ' tag-muted'}`}>
+                          {daPlanilha ? 'Planilha · Considerar? = Não' : 'Ajuste no painel'}
+                        </span>
                         <span className="eq-sac-fora-motivo">
-                          {a?.motivo || 'sem motivo informado'}
+                          {daPlanilha ? '' : a?.motivo || 'sem motivo informado'}
                         </span>
                       </div>
                       <div className="eq-sac-fora-lado">
                         <span className="mono">{formatarReal(d.valor)}</span>
-                        {aoDesfazer && (
+                        {/* Exclusao vinda da planilha se desfaz na
+                            planilha: o botao aqui daria a impressao de
+                            resolver e seria desfeito na importacao
+                            seguinte. */}
+                        {aoDesfazer && !daPlanilha && (
                           <button
                             type="button"
                             className="btn btn-secondary"
@@ -554,6 +573,11 @@ export function InversoesSAC({
                           >
                             Voltar a contar
                           </button>
+                        )}
+                        {daPlanilha && (
+                          <span title="Para voltar a contar, mude a coluna Considerar ? para Sim e importe de novo">
+                            muda na planilha
+                          </span>
                         )}
                       </div>
                     </div>

@@ -33,7 +33,7 @@ function div(p: Partial<DivergenciaSAC> = {}): DivergenciaSAC {
     produto: 'BASE PARA ELEVADOR', motivo: 'Diferente do comprado',
     submotivo: 'Divergência operacional CD', comentario: 'Cliente recebeu a base no tamanho incorreto.',
     transportadora: 'TERMACO', estado: 'São Paulo', canal: 'TELEVENDAS',
-    valor: 1000, data: new Date(Date.UTC(2026, 4, 4)), dataPelaSaida: true,
+    valor: 1000, data: new Date(Date.UTC(2026, 4, 4)), dataPelaSaida: true, considerar: true,
     ...p,
   };
 }
@@ -509,5 +509,45 @@ describe('de quem foi a divergencia', () => {
 
   it('lista vazia nao divide por zero', () => {
     expect(porResponsavel([]).every((r) => r.quantidade === 0 && r.pct === 0)).toBe(true);
+  });
+});
+
+describe('coluna "Considerar ?" na leitura da aba', () => {
+  const cab = [
+    'Pedido', 'Filial Envio', 'Produto', 'Motivo', 'Submotivo', 'Comentário',
+    'Transportadora', 'Estado', 'Valor Devolução', 'Data Emissão Pedido', 'Canal_Agrupado',
+    'Considerar ?',
+  ];
+  const linha = (marcacao: unknown) => [
+    '260710-1', 'CD_CAJAMAR', '4484433 - BASE 4T', 'Diferente do comprado',
+    'Divergência operacional CD', 'base no tamanho incorreto', 'TERMACO', 'SP',
+    -100, new Date(Date.UTC(2026, 0, 15)), 'TELEVENDAS', marcacao,
+  ];
+
+  it('Sim considera; Nao nao considera', () => {
+    expect(lerDivergencias([cab, linha('Sim')])[0].considerar).toBe(true);
+    expect(lerDivergencias([cab, linha('Não')])[0].considerar).toBe(false);
+  });
+
+  it('acento, caixa e espaco nao mudam a leitura', () => {
+    for (const nao of ['nao', 'NÃO', ' Não ', 'N']) {
+      expect(lerDivergencias([cab, linha(nao)])[0].considerar).toBe(false);
+    }
+    for (const sim of ['sim', 'SIM', ' Sim ']) {
+      expect(lerDivergencias([cab, linha(sim)])[0].considerar).toBe(true);
+    }
+  });
+
+  it('vazio, zero e texto inesperado contam como Sim', () => {
+    /* Lacuna de preenchimento nao pode apagar devolucao do painel. */
+    for (const vago of ['', null, 0, '-', 'talvez']) {
+      expect(lerDivergencias([cab, linha(vago)])[0].considerar).toBe(true);
+    }
+  });
+
+  it('planilha sem a coluna considera tudo', () => {
+    const semColuna = cab.slice(0, -1);
+    const lidas = lerDivergencias([semColuna, linha('ignorado').slice(0, -1)]);
+    expect(lidas[0].considerar).toBe(true);
   });
 });

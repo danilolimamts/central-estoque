@@ -251,5 +251,9 @@ export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
     /* Um caso do exemplo sem data de saida, para a tela mostrar como
        ela avisa quando cai na emissao do pedido. */
     dataPelaSaida: i !== 5,
+    /* Um caso contado do exemplo vem marcado como "Considerar ? =
+       Nao" na planilha, para a tela mostrar como ela avisa. O indice
+       8 nao serviria: e arrependimento, que ja fica de fora. */
+    considerar: i !== 6,
   }));
 }

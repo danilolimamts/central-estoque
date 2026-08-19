@@ -59,8 +59,46 @@ export function ajusteDe(d: DivergenciaSAC, ajustes: MapaAjustes): AjusteCaso | 
   return ajustes.get(identificarCaso(d));
 }
 
-export function foiDesconsiderado(d: DivergenciaSAC, ajustes: MapaAjustes): boolean {
-  return ajusteDe(d, ajustes)?.decisao === FORA;
+/* Entregas que a planilha mandou nao considerar.
+
+   A decisao e da entrega, nao da linha: a coluna "Considerar ?" marca
+   um despacho, e um despacho com dois produtos divergentes gera duas
+   linhas. Um "Nao" em qualquer uma tira a entrega inteira - marcar
+   uma linha e deixar a irma contando seria pior do que nao marcar
+   nada, porque o total nao fecharia com a planilha e ninguem saberia
+   por que. */
+export function forasDaPlanilha(lista: DivergenciaSAC[]): Set<string> {
+  const fora = new Set<string>();
+  for (const d of lista) {
+    if (d.considerar === false) fora.add(identificarCaso(d));
+  }
+  return fora;
+}
+
+/* De onde veio a exclusao. A tela mostra, porque as duas origens sao
+   corrigidas em lugares diferentes: uma na planilha, outra no proprio
+   painel. */
+export type OrigemDaExclusao = 'PLANILHA' | 'AJUSTE';
+
+export function origemDaExclusao(
+  d: DivergenciaSAC,
+  ajustes: MapaAjustes,
+  daPlanilha?: Set<string>
+): OrigemDaExclusao | null {
+  /* A planilha vem primeiro: ela e o registro compartilhado, e quem
+     abrir o painel em outra maquina vai ver a mesma coisa. O ajuste
+     no navegador vale so aqui. */
+  if (daPlanilha?.has(identificarCaso(d))) return 'PLANILHA';
+  if (ajusteDe(d, ajustes)?.decisao === FORA) return 'AJUSTE';
+  return null;
+}
+
+export function foiDesconsiderado(
+  d: DivergenciaSAC,
+  ajustes: MapaAjustes,
+  daPlanilha?: Set<string>
+): boolean {
+  return origemDaExclusao(d, ajustes, daPlanilha) != null;
 }
 
 /* O responsavel que vale: o ajustado a mao, quando existir; senao o
@@ -77,9 +115,10 @@ export function responsavelFinal(d: DivergenciaSAC, ajustes: MapaAjustes): Respo
    daqui, para nao existir numero que ignore a decisao tomada. */
 export function casosConsiderados(
   lista: DivergenciaSAC[],
-  ajustes: MapaAjustes
+  ajustes: MapaAjustes,
+  daPlanilha?: Set<string>
 ): DivergenciaSAC[] {
-  return lista.filter((d) => !foiDesconsiderado(d, ajustes));
+  return lista.filter((d) => !foiDesconsiderado(d, ajustes, daPlanilha));
 }
 
 /* Os que foram tirados. A tela lista para que a decisao possa ser
@@ -87,9 +126,10 @@ export function casosConsiderados(
    ninguem consegue explicar depois. */
 export function casosDesconsiderados(
   lista: DivergenciaSAC[],
-  ajustes: MapaAjustes
+  ajustes: MapaAjustes,
+  daPlanilha?: Set<string>
 ): DivergenciaSAC[] {
-  return lista.filter((d) => foiDesconsiderado(d, ajustes));
+  return lista.filter((d) => foiDesconsiderado(d, ajustes, daPlanilha));
 }
 
 /* Grava o ajuste. Reajustar o mesmo caso substitui o anterior: vale

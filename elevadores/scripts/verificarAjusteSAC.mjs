@@ -44,6 +44,15 @@ const sac = pagina.locator('.panel', { hasText: 'Inversões e faltas' }).first()
 await sac.scrollIntoViewIfNeeded();
 await pagina.waitForTimeout(400);
 
+/* A coluna "Considerar ?" da planilha tira o caso sozinha, sem
+   ninguem mexer no painel. O exemplo traz um caso assim. */
+const daPlanilha = sac.locator('.eq-sac-fora-item', { hasText: 'Considerar? = Não' });
+if ((await daPlanilha.count()) === 0) {
+  problemas.push('o caso marcado como Nao na planilha nao foi tirado do painel');
+} else if ((await daPlanilha.first().locator('button').count()) > 0) {
+  problemas.push('exclusao vinda da planilha nao pode oferecer desfazer no painel');
+}
+
 /* Quantos casos o painel atribui ao CD antes de qualquer ajuste. */
 const contarCD = async () =>
   Number(
