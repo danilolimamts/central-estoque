@@ -22,6 +22,7 @@ import {
   doAno,
   anosDisponiveis,
   variacaoMensal,
+  evolucaoDeInversoes,
 } from '../src/domain/divergencias';
 import type { DivergenciaSAC } from '../src/domain/divergencias';
 import { lerDivergencias, separarProduto } from '../src/parsers/lerDivergencias';
@@ -549,5 +550,59 @@ describe('coluna "Considerar ?" na leitura da aba', () => {
     const semColuna = cab.slice(0, -1);
     const lidas = lerDivergencias([semColuna, linha('ignorado').slice(0, -1)]);
     expect(lidas[0].considerar).toBe(true);
+  });
+});
+
+describe('evolução das inversões ao longo do ano', () => {
+  const em = (mes: number, qtd: number, valor = 1000) =>
+    Array.from({ length: qtd }, (_, i) =>
+      div({ entrega: `${mes}-${i}`, valor, data: new Date(Date.UTC(2026, mes, 10)) })
+    );
+
+  /* jan 1, fev 3, mar 0, abr 2, mai 0, jun 0 — e hoje é 20/06. */
+  const lista = [...em(0, 1), ...em(1, 3), ...em(3, 2)];
+  const hoje = new Date(Date.UTC(2026, 5, 20));
+  const e = evolucaoDeInversoes(lista, 2026, hoje);
+
+  it('conta só até o mês de hoje: o que não aconteceu não é conquista', () => {
+    /* Sem isso, jul a dez entrariam como meses zerados e o painel
+       anunciaria seis meses sem inversão em junho. */
+    expect(e.ateOMes).toBe(5);
+    expect(e.mesesZerados).toBe(3); // mar, mai, jun
+    expect(e.totalCasos).toBe(6);
+  });
+
+  it('mede a sequência atual sem inversão, terminando no mês de hoje', () => {
+    /* mai e jun fecharam em zero; abr teve caso e corta a sequência. */
+    expect(e.sequenciaZerada).toBe(2);
+  });
+
+  it('acha o pico para medir a queda contra ele', () => {
+    expect(e.pico?.mes).toBe(1);
+    expect(e.pico?.total.quantidade).toBe(3);
+  });
+
+  it('caso no mês seguinte quebra a sequência', () => {
+    const comJunho = evolucaoDeInversoes([...lista, ...em(5, 1)], 2026, hoje);
+    expect(comJunho.sequenciaZerada).toBe(0);
+    expect(comJunho.mesesZerados).toBe(2);
+  });
+
+  it('ano passado conta os doze meses; ano futuro, nenhum', () => {
+    expect(evolucaoDeInversoes([], 2025, hoje).ateOMes).toBe(11);
+    const futuro = evolucaoDeInversoes([], 2027, hoje);
+    expect(futuro.ateOMes).toBe(-1);
+    expect(futuro.mesesZerados).toBe(0);
+    expect(futuro.sequenciaZerada).toBe(0);
+  });
+
+  it('ano inteiro sem nenhum caso não quebra o pico', () => {
+    const limpo = evolucaoDeInversoes([], 2026, hoje);
+    expect(limpo.pico).toBeNull();
+    expect(limpo.sequenciaZerada).toBe(6);
+  });
+
+  it('soma o valor devolvido no ano', () => {
+    expect(e.totalValor).toBe(6000);
   });
 });

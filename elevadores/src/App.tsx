@@ -341,6 +341,7 @@ export default function App() {
               ajustes={ajustes}
               aoAjustar={(a) => void ajustarResponsavel(a)}
               aoDesfazer={(c) => void desfazerAjuste(c)}
+              hoje={hoje}
             />
           ) : paginaAtual === 'projeto' ? (
             <StatusProjeto
@@ -350,6 +351,8 @@ export default function App() {
               historico={historico}
               demonstracao={!!dados?.demonstracao}
               componentes={dados.componentes}
+              divergencias={dados.divergencias}
+              ajustes={ajustes}
             />
           ) : (
             <Elevadores componentes={dados.componentes} fotos={fotos} busca={busca} />

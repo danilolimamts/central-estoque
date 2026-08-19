@@ -9,6 +9,9 @@ import { useMemo, useRef, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
 import type { Acao, Componente, MetricasProjeto } from '../domain/tipos';
 import { SaudeDoEstoque } from '../components/SaudeDoEstoque';
+import { EvolucaoInversoes } from '../components/EvolucaoInversoes';
+import type { DivergenciaSAC } from '../domain/divergencias';
+import type { AjusteCaso } from '../domain/ajustes';
 import {
   calcularMetricas, montarMatriz, planoPorAcao, totalDoPlano, situacaoDe, acoesUnicas,
   resumirGanhos, ganhosDaAcao, GANHOS,
@@ -120,55 +123,6 @@ const ROTULO_SITUACAO = {
   andamento: 'Em andamento',
   pendente: 'Pendentes',
 } as const;
-
-function Legenda() {
-  return (
-    <div className="eq-legenda">
-      {(['concluida', 'andamento', 'pendente'] as const).map((k) => (
-        <span key={k}>
-          <i style={{ background: ESCALA[k] }} />
-          {ROTULO_SITUACAO[k]}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-/* Avanco de cada frente, em barra empilhada. Responde "quem esta
-   andando e quem parou" sem precisar ler a tabela inteira. */
-function AvancoPorFrente({ acoes }: { acoes: Acao[] }) {
-  const linhas = useMemo(() => planoPorAcao(acoes), [acoes]);
-  if (linhas.length === 0) return null;
-
-  return (
-    <Cartao titulo="Avanço por frente" descricao="cada barra é um plan action, na ordem do plano">
-      <div className="eq-frentes">
-        {linhas.map((l) => (
-          <div key={l.proposta} className="eq-frente">
-            <div className="eq-frente-nome" title={l.proposta}>
-              {l.proposta}
-            </div>
-            <div className="eq-frente-barra">
-              {(['concluida', 'andamento', 'pendente'] as const).map((k) => {
-                const qtd = k === 'concluida' ? l.concluidas : k === 'andamento' ? l.emAndamento : l.pendentes;
-                if (qtd === 0) return null;
-                return (
-                  <span
-                    key={k}
-                    style={{ width: `${(qtd / l.atividades) * 100}%`, background: ESCALA[k] }}
-                    title={`${ROTULO_SITUACAO[k]}: ${qtd} de ${l.atividades}`}
-                  />
-                );
-              })}
-            </div>
-            <div className="eq-frente-pct">{l.pctConcluido}%</div>
-          </div>
-        ))}
-      </div>
-      <Legenda />
-    </Cartao>
-  );
-}
 
 /* Entregas por semana: mostra se o time esta entregando em ritmo
    constante ou em picos. */
@@ -853,6 +807,8 @@ export function StatusProjeto({
   historico = [],
   demonstracao = false,
   componentes = [],
+  divergencias = [],
+  ajustes = [],
 }: {
   acoes: Acao[];
   hoje: Date;
@@ -864,6 +820,9 @@ export function StatusProjeto({
   /* Base do estoque. Nao aparece nesta tela: serve so para a saude do
      estoque entrar no boletim, junto do andamento do projeto. */
   componentes?: Componente[];
+  /* Devolucoes do SAC: entram aqui como medida de resultado do plano. */
+  divergencias?: DivergenciaSAC[];
+  ajustes?: AjusteCaso[];
 }) {
   const [responsavel, setResponsavel] = useState('');
   const [proposta, setProposta] = useState('');
@@ -974,7 +933,11 @@ export function StatusProjeto({
             {explicarVariacao(variacao)}
           </p>
         </Cartao>
-        <AvancoPorFrente acoes={filtradas} />
+        {/* No lugar do avanco por frente: o resultado na operacao.
+            Quantas acoes fecharam diz que o time trabalhou; a inversao
+            caindo a zero diz que a operacao melhorou, que e o ganho
+            que a reuniao quer ver. */}
+        <EvolucaoInversoes divergencias={divergencias} ajustes={ajustes} hoje={hoje} />
       </div>
 
       <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>

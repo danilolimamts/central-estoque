@@ -41,10 +41,22 @@ await pagina.getByRole('button', { name: /status/i }).first().click();
 await pagina.waitForTimeout(600);
 
 /* ---- 3. cartoes que sairam ---- */
-for (const titulo of ['Evolução do projeto', 'Projeção de término', 'Funil do plano']) {
+for (const titulo of ['Evolução do projeto', 'Projeção de término', 'Funil do plano', 'Avanço por frente']) {
   if (await pagina.getByText(titulo, { exact: true }).count()) {
     problemas.push(`o cartao "${titulo}" deveria ter saido da tela`);
   }
+}
+
+/* No lugar do avanco por frente entra o resultado na operacao. */
+const evol = pagina.locator('.panel', { hasText: 'Evolução das inversões' }).first();
+if ((await evol.count()) === 0) {
+  problemas.push('o cartao de evolucao das inversoes nao entrou no status do projeto');
+} else {
+  const texto = await evol.innerText();
+  if (!/sem invers[ãa]o/i.test(texto)) {
+    problemas.push('a evolucao nao mostra a sequencia de meses sem inversao');
+  }
+  await evol.screenshot({ path: join(SAIDA, 'evolucao-inversoes.png') });
 }
 
 /* ---- 2. a linha de escopo saiu da legenda do grafico ---- */

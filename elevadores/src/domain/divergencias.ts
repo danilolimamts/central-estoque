@@ -330,6 +330,66 @@ export function porMes(lista: DivergenciaSAC[], ano: number): MesDivergencia[] {
   });
 }
 
+/* ============================================================
+   Evolucao das inversoes ao longo do ano.
+
+   E a leitura de resultado do projeto: o plano existe para o CD parar
+   de mandar base trocada, entao a curva caindo - e o mes fechando em
+   zero - e o ganho, nao a lista de acoes concluidas.
+
+   Mes que ainda nao aconteceu nao e mes zerado. Contar dezembro como
+   conquista em agosto seria inventar resultado, e e o tipo de numero
+   que a diretoria derruba na primeira pergunta.
+   ============================================================ */
+export interface EvolucaoInversoes {
+  meses: MesDivergencia[];
+  /* Ultimo mes ja decorrido do ano em tela, de 0 a 11. */
+  ateOMes: number;
+  /* Mes de maior volume, para medir a queda contra ele. */
+  pico: MesDivergencia | null;
+  /* Meses seguidos sem nenhum caso, terminando no ultimo decorrido. */
+  sequenciaZerada: number;
+  /* Meses decorridos que fecharam sem nenhum caso. */
+  mesesZerados: number;
+  totalCasos: number;
+  totalValor: number;
+}
+
+export function evolucaoDeInversoes(
+  lista: DivergenciaSAC[],
+  ano: number,
+  hoje: Date
+): EvolucaoInversoes {
+  const meses = porMes(lista, ano);
+  /* No ano corrente, so ate o mes de hoje. Em ano passado, o ano
+     inteiro; em ano futuro, nada decorrido ainda. */
+  const anoDeHoje = hoje.getUTCFullYear();
+  const ateOMes = ano < anoDeHoje ? 11 : ano > anoDeHoje ? -1 : hoje.getUTCMonth();
+
+  const decorridos = meses.slice(0, ateOMes + 1);
+  const comCaso = decorridos.filter((m) => m.total.quantidade > 0);
+  const pico = comCaso.reduce<MesDivergencia | null>(
+    (melhor, m) => (melhor == null || m.total.quantidade > melhor.total.quantidade ? m : melhor),
+    null
+  );
+
+  let sequenciaZerada = 0;
+  for (let i = decorridos.length - 1; i >= 0; i--) {
+    if (decorridos[i].total.quantidade > 0) break;
+    sequenciaZerada++;
+  }
+
+  return {
+    meses,
+    ateOMes,
+    pico,
+    sequenciaZerada,
+    mesesZerados: decorridos.filter((m) => m.total.quantidade === 0).length,
+    totalCasos: decorridos.reduce((s, m) => s + m.total.quantidade, 0),
+    totalValor: decorridos.reduce((s, m) => s + m.total.valor, 0),
+  };
+}
+
 export interface LinhaTransportadora {
   transportadora: string;
   quantidade: number;

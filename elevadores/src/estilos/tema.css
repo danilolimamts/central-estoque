@@ -961,6 +961,14 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-sac-fora-motivo{ font-style:italic; }
 .eq-sac-fora-lado{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
 .eq-sac-fora-lado .btn{ padding:4px 9px; font-size:11px; }
+
+/* Numeros de resultado do cartao de evolucao: e o que a reuniao le
+   antes do grafico. */
+.eq-evol-numeros{ display:flex; flex-wrap:wrap; gap:26px; margin-bottom:14px; }
+.eq-evol-numeros > div{ display:flex; flex-direction:column; gap:1px; }
+.eq-evol-numeros b{ font-size:28px; font-weight:800; line-height:1.05;
+  font-variant-numeric:tabular-nums; }
+.eq-evol-numeros span{ font-size:11.5px; color:var(--ink-soft); }
 /* Anuncio tem selo proprio: nao e o CD, nao e a fabrica, e enquanto
    nao houver criterio para dividir esses casos eles precisam ser
    distinguiveis na tabela. */

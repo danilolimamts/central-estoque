@@ -15,6 +15,7 @@ import type { ChartConfiguration } from 'chart.js';
 import {
   anosDisponiveis,
   doAno,
+  evolucaoDeInversoes,
   formatarReal,
   inversoesDeBase,
   porMes,
@@ -193,8 +194,11 @@ export function InversoesSAC({
   ajustes = [],
   aoAjustar,
   aoDesfazer,
+  hoje = new Date(),
 }: {
   divergencias: DivergenciaSAC[];
+  /* Serve para separar mes zerado de mes que ainda nao chegou. */
+  hoje?: Date;
   /* Reclassificacoes feitas a mao, que vencem a leitura do texto. */
   ajustes?: AjusteCaso[];
   aoAjustar?: (a: AjusteCaso) => void;
@@ -230,6 +234,12 @@ export function InversoesSAC({
   const responsaveis = useMemo(
     () => porResponsavel(doAnoEscolhido, quemResponde),
     [doAnoEscolhido, quemResponde]
+  );
+  /* Ate onde o ano ja andou: mes futuro nao pode ser lido como mes
+     zerado. */
+  const evolucao = useMemo(
+    () => evolucaoDeInversoes(inversoes, anoAtivo, hoje),
+    [inversoes, anoAtivo, hoje]
   );
   /* Quantos casos do recorte em tela tiveram o responsavel trocado. */
   const reclassificados = useMemo(
@@ -309,18 +319,23 @@ export function InversoesSAC({
             grid: { display: false },
             ticks: {
               font: { size: 12 },
-              /* Duas linhas: o mes e, embaixo, quanto custou. */
+              /* Duas linhas: o mes e, embaixo, quanto custou.
+
+                 O mes zerado tambem mostra o valor, escrito R$ 0. E
+                 justamente o que o projeto quer provar, e sem o
+                 numero ele parece mes sem dado. Mes que ainda nao
+                 aconteceu fica so com o nome: nao e conquista. */
               callback(_v, i) {
                 const m = meses[i];
                 if (!m) return '';
-                return m.total.quantidade > 0 ? [m.rotulo, formatarReal(m.total.valor)] : m.rotulo;
+                return m.mes <= evolucao.ateOMes ? [m.rotulo, formatarReal(m.total.valor)] : m.rotulo;
               },
             },
           },
         },
       },
     }),
-    [meses]
+    [meses, evolucao.ateOMes]
   );
 
   if (divergencias.length === 0) {
