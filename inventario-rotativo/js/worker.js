@@ -319,44 +319,22 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     });
   }
   post('progress', {stage:'Calculando convergência por local...', pct:50});
-  const porLocalBruto = new Map();
+  // Um local pode ser contado mais de uma vez no MESMO ciclo com um "Id Inventario"
+  // diferente — não só o caso de sobra de auditoria antiga (já filtrado pela janela do
+  // ciclo acima), mas também uma recontagem legítima: local com contagem errada, reaberto
+  // com um Id Inventario novo pra corrigir. Cada (local + Id Inventario) é uma "visita"
+  // independente — a Rodada 1/final de uma visita nunca se mistura com a de outra, e o
+  // resultado das duas soma na acurácia (pedido explícito do usuário: as duas contagens
+  // são reais e devem contar).
+  const porVisitaBruto = new Map(); // chave "local|inventario" -> linhas
+  const localDaVisita = new Map(); // chave -> local físico (pra agregar de volta)
   for(const c of contagens){
-    if(!porLocalBruto.has(c.local)) porLocalBruto.set(c.local, []);
-    porLocalBruto.get(c.local).push(c);
+    const chave = c.local+'|'+(c.inventario||'');
+    if(!porVisitaBruto.has(chave)){ porVisitaBruto.set(chave, []); localDaVisita.set(chave, c.local); }
+    porVisitaBruto.get(chave).push(c);
   }
-  // Um local pode aparecer em mais de um "Id Inventario" dentro do mesmo arquivo — ex.:
-  // uma auditoria antiga já liquidada que sobrou no export, junto com o inventário
-  // rotativo atual. Sem isolar por Id Inventario, a Rodada 1 (sistema) podia vir de uma
-  // sessão e a rodada final (física) de outra completamente diferente, misturando duas
-  // auditorias na mesma divergência — inflando o saldo do item bem acima do que bate com
-  // um relatório isolado por auditoria (ex.: QRY0144). Fica só com o Id Inventario
-  // dominante daquele local (mais linhas; empate = data de situação mais recente).
-  const porLocal = new Map();
-  for(const [local, listaBruta] of porLocalBruto){
-    const porInventario = new Map();
-    for(const c of listaBruta){
-      const inv = c.inventario || '';
-      if(!porInventario.has(inv)) porInventario.set(inv, []);
-      porInventario.get(inv).push(c);
-    }
-    let lista = listaBruta;
-    if(porInventario.size>1){
-      let melhorRows = null;
-      for(const rows of porInventario.values()){
-        if(!melhorRows) { melhorRows = rows; continue; }
-        if(rows.length>melhorRows.length) { melhorRows = rows; continue; }
-        if(rows.length===melhorRows.length){
-          const maxAtual = rows.reduce((s,r)=>r.dataSituacao>s?r.dataSituacao:s, '');
-          const maxMelhor = melhorRows.reduce((s,r)=>r.dataSituacao>s?r.dataSituacao:s, '');
-          if(maxAtual>maxMelhor) melhorRows = rows;
-        }
-      }
-      lista = melhorRows;
-    }
-    porLocal.set(local, lista);
-  }
-  const statusPorLocal = new Map(); // local -> {status, rodadas}
-  for(const [local, lista] of porLocal){
+  const statusPorVisita = new Map(); // chave -> {status, rodadas}
+  for(const [chave, lista] of porVisitaBruto){
     const rodadas = Array.from(new Set(lista.map(c=>c.idConferencia))).sort((a,b)=>a-b);
     const maxRodada = rodadas[rodadas.length-1] || 0;
     let status = 'em_contagem';
@@ -376,18 +354,27 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       else if(maxRodada>=5) status = 'encerrado_sem_convergencia';
       else status = 'em_contagem';
     }
-    statusPorLocal.set(local, {status, rodadas: maxRodada});
+    statusPorVisita.set(chave, {status, rodadas: maxRodada});
   }
-  // Peças físicas por local + divergências — tudo derivado só da QRY0843, sem QRY0114.
-  // Por item dentro do local: a Rodada 1 é a quantidade SISTÊMICA (registrada por quem
-  // abre o inventário — confirmado com o usuário), e a última rodada em que o item foi
-  // de fato recontado é a quantidade FÍSICA final. A diferença entre as duas é a
-  // divergência do item, valorada pela SIGEQ278/ZBIQ0051 (não mais pela QRY0114).
-  // A rodada final varia por ITEM, não só por local: um item pode ter parado de ser
-  // recontado antes da última rodada do local (ex.: já bateu e não precisou repetir).
-  const pecasFisicasPorLocal = new Map();
+  // Status do LOCAL físico (usado por locaisConcluidos/andamentoCiclo/KPI de locais) =
+  // o melhor status entre as visitas dele — se a recontagem convergiu, o local está
+  // concluído, mesmo que a contagem original (errada) nunca tivesse batido sozinha.
+  const STATUS_PRIORIDADE = {convergido:3, encerrado_sem_convergencia:2, em_contagem:1};
+  const statusPorLocal = new Map(); // local -> {status, rodadas}
+  for(const [chave, st] of statusPorVisita){
+    const local = localDaVisita.get(chave);
+    const atual = statusPorLocal.get(local);
+    if(!atual || STATUS_PRIORIDADE[st.status]>STATUS_PRIORIDADE[atual.status]) statusPorLocal.set(local, st);
+  }
+  // Peças físicas + divergências — tudo derivado só da QRY0843, sem QRY0114. Por item
+  // dentro de CADA VISITA: a Rodada 1 é a quantidade SISTÊMICA e a última rodada em que
+  // o item foi de fato recontado é a quantidade FÍSICA final — nunca soma rodada, nunca
+  // mistura visita diferente. A divergência de cada visita concluída soma na acurácia do
+  // local (peças físicas e divergência dobram se o local tiver 2 visitas concluídas).
+  const pecasFisicasPorLocal = new Map(); // local físico -> soma de todas as visitas
   const divergencias = [];
-  for(const [local, lista] of porLocal){
+  for(const [chave, lista] of porVisitaBruto){
+    const local = localDaVisita.get(chave);
     const porItem = new Map(); // item -> {sistema, final, rodadaFinal, itemNome}
     for(const c of lista){
       if(!c.item) continue; // local vazio, sem item nesta linha
@@ -398,7 +385,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       if(c.itemNome) g.itemNome = c.itemNome;
     }
     let totalFisico = 0;
-    const st = statusPorLocal.get(local) || {status:'em_contagem', rodadas:0};
+    const st = statusPorVisita.get(chave) || {status:'em_contagem', rodadas:0};
     for(const [item, g] of porItem){
       totalFisico += g.final;
       const sistema = g.sistema ?? 0;
@@ -412,7 +399,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       // é uma lacuna de dado, então não deve aparecer no diagnóstico de "sem preço".
       const componenteSemValor = (valoracaoPorComponente.get(item)||{}).inInterface==='N';
       divergencias.push({
-        id: cicloId+'|'+local+'|'+item,
+        id: cicloId+'|'+chave+'|'+item,
         cicloId, local, item, itemNome,
         qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
         precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
@@ -420,7 +407,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
         diagnostico: diferenca!==0 ? 'divergente' : 'correto', componenteSemValor
       });
     }
-    pecasFisicasPorLocal.set(local, totalFisico);
+    pecasFisicasPorLocal.set(local, (pecasFisicasPorLocal.get(local)||0) + totalFisico);
   }
 
   post('progress', {stage:'Calculando prioridade de auditoria...', pct:78});
