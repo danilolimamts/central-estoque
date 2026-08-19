@@ -1,15 +1,24 @@
 /* ============================================================
-   Reclassificacao manual das divergencias do SAC.
+   Ajustes manuais das divergencias do SAC.
 
    O responsavel de cada caso e deduzido do texto do Comentario. O
    texto nem sempre conta a historia toda: ha caso em que quem apurou
-   sabe de quem foi, e o comentario nao diz. Sem uma saida para isso o
-   painel obriga a conviver com um numero que quem le sabe estar
-   errado - e indicador em que a pessoa nao confia deixa de ser usado.
+   sabe o que aconteceu e o comentario nao diz. Sem uma saida para
+   isso o painel obriga a conviver com um numero que quem le sabe
+   estar errado - e indicador em que a pessoa nao confia deixa de ser
+   usado.
 
-   Aqui fica o ajuste feito a mao: uma entrega, o responsavel que
-   passa a valer e o motivo. Ele vence a leitura do texto, e nunca em
-   silencio - a tela marca a linha e conta quantos ajustes existem.
+   Duas decisoes cabem aqui, e elas sao diferentes:
+
+   - trocar o responsavel: o caso continua no painel, contado, mas na
+     gaveta de quem de fato respondeu por ele;
+   - desconsiderar: o caso sai do painel inteiro. Serve para o que nao
+     foi culpa do CD nem diretamente nem indiretamente, e que so
+     polui a leitura da operacao.
+
+   As duas ficam registradas com motivo, e a tela nunca as aplica em
+   silencio: numero corrigido sem rastro e indistinguivel de numero
+   errado.
 
    O ajuste vale por entrega (ou pelo pedido, quando nao houve
    entrega), que e como a operacao se refere ao caso. Uma entrega com
@@ -19,12 +28,17 @@
 import type { DivergenciaSAC, Responsavel } from './divergencias';
 import { responsavelDe } from './divergencias';
 
-export interface AjusteResponsavel {
+/* FORA tira o caso do painel; o resto so troca a gaveta. */
+export const FORA = 'FORA';
+export type Decisao = Responsavel | typeof FORA;
+
+export interface AjusteCaso {
   /* Entrega, ou pedido quando a devolucao nao virou entrega. */
   caso: string;
-  responsavel: Responsavel;
-  /* Por que foi mudado. Fica na tela e no Excel: ajuste sem
-     justificativa e indistinguivel de erro de digitacao. */
+  decisao: Decisao;
+  /* Por que foi mexido. Fica na tela junto do caso: ajuste sem
+     justificativa nao se distingue de erro de digitacao daqui a um
+     mes. */
   motivo: string;
   em: string; // ISO
 }
@@ -35,39 +49,91 @@ export function identificarCaso(d: Pick<DivergenciaSAC, 'entrega' | 'pedido'>): 
   return String(d.entrega ?? '').trim() || String(d.pedido ?? '').trim();
 }
 
-export type MapaAjustes = Map<string, AjusteResponsavel>;
+export type MapaAjustes = Map<string, AjusteCaso>;
 
-export function mapaDeAjustes(lista: AjusteResponsavel[]): MapaAjustes {
+export function mapaDeAjustes(lista: AjusteCaso[]): MapaAjustes {
   return new Map(lista.map((a) => [a.caso, a]));
 }
 
-/* O responsavel que vale: o ajustado a mao, quando existir; senao o
-   que saiu do texto. */
-export function responsavelFinal(d: DivergenciaSAC, ajustes: MapaAjustes): Responsavel {
-  return ajustes.get(identificarCaso(d))?.responsavel ?? responsavelDe(d);
+export function ajusteDe(d: DivergenciaSAC, ajustes: MapaAjustes): AjusteCaso | undefined {
+  return ajustes.get(identificarCaso(d));
 }
 
-export function ajusteDe(d: DivergenciaSAC, ajustes: MapaAjustes): AjusteResponsavel | undefined {
-  return ajustes.get(identificarCaso(d));
+export function foiDesconsiderado(d: DivergenciaSAC, ajustes: MapaAjustes): boolean {
+  return ajusteDe(d, ajustes)?.decisao === FORA;
+}
+
+/* O responsavel que vale: o ajustado a mao, quando existir; senao o
+   que saiu do texto. Caso desconsiderado nao deveria chegar aqui -
+   ele e filtrado antes -, mas se chegar continua valendo o texto, e
+   nao um responsavel inventado. */
+export function responsavelFinal(d: DivergenciaSAC, ajustes: MapaAjustes): Responsavel {
+  const decisao = ajusteDe(d, ajustes)?.decisao;
+  return decisao != null && decisao !== FORA ? decisao : responsavelDe(d);
+}
+
+/* Os casos que o painel conta. Tudo que a tela mostra - totais,
+   grafico por mes, transportadoras, causas e responsaveis - sai
+   daqui, para nao existir numero que ignore a decisao tomada. */
+export function casosConsiderados(
+  lista: DivergenciaSAC[],
+  ajustes: MapaAjustes
+): DivergenciaSAC[] {
+  return lista.filter((d) => !foiDesconsiderado(d, ajustes));
+}
+
+/* Os que foram tirados. A tela lista para que a decisao possa ser
+   conferida e desfeita: caso escondido sem rastro vira numero que
+   ninguem consegue explicar depois. */
+export function casosDesconsiderados(
+  lista: DivergenciaSAC[],
+  ajustes: MapaAjustes
+): DivergenciaSAC[] {
+  return lista.filter((d) => foiDesconsiderado(d, ajustes));
 }
 
 /* Grava o ajuste. Reajustar o mesmo caso substitui o anterior: vale
    sempre a ultima decisao de quem apurou. */
-export function registrarAjuste(
-  lista: AjusteResponsavel[],
-  novo: AjusteResponsavel
-): AjusteResponsavel[] {
+export function registrarAjuste(lista: AjusteCaso[], novo: AjusteCaso): AjusteCaso[] {
   return [...lista.filter((a) => a.caso !== novo.caso), novo];
 }
 
-/* Desfaz o ajuste: o caso volta a ser classificado pelo texto. */
-export function removerAjuste(lista: AjusteResponsavel[], caso: string): AjusteResponsavel[] {
+/* Desfaz: o caso volta a ser classificado pelo texto e a contar. */
+export function removerAjuste(lista: AjusteCaso[], caso: string): AjusteCaso[] {
   return lista.filter((a) => a.caso !== caso);
 }
 
-/* Quantos ajustes valem para a lista em tela. Ajuste de caso que nao
-   esta no recorte atual nao conta: o numero tem que bater com o que a
-   pessoa esta vendo. */
-export function ajustesAplicados(lista: DivergenciaSAC[], ajustes: MapaAjustes): number {
-  return lista.filter((d) => ajustes.has(identificarCaso(d))).length;
+/* Quantos casos do recorte em tela tiveram o responsavel trocado a
+   mao. Desconsiderados nao entram: eles tem contagem propria, e somar
+   os dois esconderia a diferenca entre "mudou de dono" e "saiu". */
+export function reclassificadosEmTela(
+  lista: DivergenciaSAC[],
+  ajustes: MapaAjustes
+): number {
+  return lista.filter((d) => {
+    const a = ajusteDe(d, ajustes);
+    return a != null && a.decisao !== FORA;
+  }).length;
+}
+
+/* Formato anterior, quando o ajuste so sabia trocar o responsavel.
+   Importacao ja gravada volta com o campo antigo; converter na
+   leitura evita perder decisao que a pessoa ja tomou. */
+interface AjusteAntigo {
+  caso: string;
+  responsavel?: Responsavel;
+  decisao?: Decisao;
+  motivo?: string;
+  em?: string;
+}
+
+export function migrarAjustes(lista: unknown): AjusteCaso[] {
+  if (!Array.isArray(lista)) return [];
+  return lista.flatMap((bruto) => {
+    const a = bruto as AjusteAntigo;
+    const caso = String(a?.caso ?? '').trim();
+    const decisao = a?.decisao ?? a?.responsavel;
+    if (!caso || !decisao) return [];
+    return [{ caso, decisao, motivo: String(a.motivo ?? ''), em: String(a.em ?? '') }];
+  });
 }

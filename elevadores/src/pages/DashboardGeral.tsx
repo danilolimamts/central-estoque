@@ -9,7 +9,7 @@ import { ItensPorFornecedor } from '../components/ItensPorFornecedor';
 import { InversoesSAC } from '../components/InversoesSAC';
 import { SaudeDoEstoque } from '../components/SaudeDoEstoque';
 import type { DivergenciaSAC } from '../domain/divergencias';
-import type { AjusteResponsavel } from '../domain/ajustes';
+import type { AjusteCaso } from '../domain/ajustes';
 import type { ChartConfiguration } from 'chart.js';
 import type { Componente, Conjunto, Valoracao } from '../domain/tipos';
 import { agruparConjuntos, resumirEqualizacao } from '../domain/equalizacao';
@@ -223,8 +223,8 @@ export function DashboardGeral({
   /* Devolucoes registradas pelo SAC (aba Divergencias SAC). */
   divergencias?: DivergenciaSAC[];
   /* Reclassificacoes de responsavel feitas a mao. */
-  ajustes?: AjusteResponsavel[];
-  aoAjustar?: (a: AjusteResponsavel) => void;
+  ajustes?: AjusteCaso[];
+  aoAjustar?: (a: AjusteCaso) => void;
   aoDesfazer?: (caso: string) => void;
 }) {
   const conjuntos = useMemo(() => agruparConjuntos(componentes), [componentes]);

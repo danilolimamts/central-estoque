@@ -29,9 +29,10 @@ import {
 } from '../domain/divergencias';
 import type { DivergenciaSAC, Responsavel } from '../domain/divergencias';
 import {
-  ajusteDe, identificarCaso, mapaDeAjustes, responsavelFinal, ajustesAplicados,
+  ajusteDe, identificarCaso, mapaDeAjustes, responsavelFinal,
+  casosConsiderados, casosDesconsiderados, reclassificadosEmTela, FORA,
 } from '../domain/ajustes';
-import type { AjusteResponsavel } from '../domain/ajustes';
+import type { AjusteCaso, Decisao } from '../domain/ajustes';
 import { cores } from '../config/tokens';
 import { Grafico } from './charts/Grafico';
 import { Cartao, Selecao, Tabela, Td, Th, Vazio } from './ui';
@@ -65,7 +66,16 @@ function Numero({
   );
 }
 
-const RESPONSAVEIS: Responsavel[] = ['CD', 'FORNECEDOR', 'ANUNCIO', 'CLIENTE', 'APURAR'];
+/* As decisoes que a celula oferece. "Desconsiderar" vem por ultimo e
+   separado: ela nao troca a gaveta, tira o caso do painel. */
+const DECISOES: { valor: Decisao; rotulo: string }[] = [
+  { valor: 'CD', rotulo: ROTULO_RESPONSAVEL.CD },
+  { valor: 'FORNECEDOR', rotulo: ROTULO_RESPONSAVEL.FORNECEDOR },
+  { valor: 'ANUNCIO', rotulo: ROTULO_RESPONSAVEL.ANUNCIO },
+  { valor: 'CLIENTE', rotulo: ROTULO_RESPONSAVEL.CLIENTE },
+  { valor: 'APURAR', rotulo: ROTULO_RESPONSAVEL.APURAR },
+  { valor: FORA, rotulo: 'Desconsiderar — não entra no painel' },
+];
 
 /* Responsavel do caso, com a saida para corrigir a mao.
 
@@ -82,12 +92,12 @@ function CelulaResponsavel({
 }: {
   d: DivergenciaSAC;
   atual: Responsavel;
-  ajuste?: AjusteResponsavel;
-  aoAjustar?: (a: AjusteResponsavel) => void;
+  ajuste?: AjusteCaso;
+  aoAjustar?: (a: AjusteCaso) => void;
   aoDesfazer?: (caso: string) => void;
 }) {
   const [aberto, setAberto] = useState(false);
-  const [escolha, setEscolha] = useState<Responsavel>(atual);
+  const [escolha, setEscolha] = useState<Decisao>(atual);
   const [motivo, setMotivo] = useState(ajuste?.motivo ?? '');
   const caso = identificarCaso(d);
   const editavel = aoAjustar != null;
@@ -130,12 +140,12 @@ function CelulaResponsavel({
       <span className="eq-sac-editor-caso">Entrega {caso}</span>
       <select
         value={escolha}
-        onChange={(e) => setEscolha(e.target.value as Responsavel)}
+        onChange={(e) => setEscolha(e.target.value as Decisao)}
         aria-label="Responsável pelo caso"
       >
-        {RESPONSAVEIS.map((r) => (
-          <option key={r} value={r}>
-            {ROTULO_RESPONSAVEL[r]}
+        {DECISOES.map((o) => (
+          <option key={o.valor} value={o.valor}>
+            {o.rotulo}
           </option>
         ))}
       </select>
@@ -150,7 +160,7 @@ function CelulaResponsavel({
           type="button"
           className="btn btn-orange"
           onClick={() => {
-            aoAjustar({ caso, responsavel: escolha, motivo: motivo.trim(), em: new Date().toISOString() });
+            aoAjustar({ caso, decisao: escolha, motivo: motivo.trim(), em: new Date().toISOString() });
             setAberto(false);
           }}
         >
@@ -185,8 +195,8 @@ export function InversoesSAC({
 }: {
   divergencias: DivergenciaSAC[];
   /* Reclassificacoes feitas a mao, que vencem a leitura do texto. */
-  ajustes?: AjusteResponsavel[];
-  aoAjustar?: (a: AjusteResponsavel) => void;
+  ajustes?: AjusteCaso[];
+  aoAjustar?: (a: AjusteCaso) => void;
   aoDesfazer?: (caso: string) => void;
 }) {
   const mapa = useMemo(() => mapaDeAjustes(ajustes), [ajustes]);
@@ -194,8 +204,13 @@ export function InversoesSAC({
     (d: DivergenciaSAC) => responsavelFinal(d, mapa),
     [mapa]
   );
-  const inversoes = useMemo(() => inversoesDeBase(divergencias), [divergencias]);
-  const anos = useMemo(() => anosDisponiveis(inversoes), [inversoes]);
+  const detectados = useMemo(() => inversoesDeBase(divergencias), [divergencias]);
+  /* Tudo que a tela mostra sai daqui: o caso desconsiderado nao pode
+     sobreviver em nenhum canto do cartao. Filtrar so na tabela
+     deixaria o grafico e os totais contando o que a pessoa mandou
+     tirar - que e pior do que nao ter a funcao. */
+  const inversoes = useMemo(() => casosConsiderados(detectados, mapa), [detectados, mapa]);
+  const anos = useMemo(() => anosDisponiveis(detectados), [detectados]);
   const [ano, setAno] = useState<string>('');
   const anoAtivo = Number(ano) || anos[0] || new Date().getFullYear();
 
@@ -208,10 +223,17 @@ export function InversoesSAC({
     () => porResponsavel(doAnoEscolhido, quemResponde),
     [doAnoEscolhido, quemResponde]
   );
-  /* Quantos casos do recorte em tela foram reclassificados a mao. */
+  /* Quantos casos do recorte em tela tiveram o responsavel trocado. */
   const reclassificados = useMemo(
-    () => ajustesAplicados(doAnoEscolhido, mapa),
+    () => reclassificadosEmTela(doAnoEscolhido, mapa),
     [doAnoEscolhido, mapa]
+  );
+  /* Os que sairam do painel, no mesmo ano em tela. Ficam listados
+     abaixo da tabela: decisao escondida sem rastro vira numero que
+     ninguem consegue explicar depois. */
+  const foraDoPainel = useMemo(
+    () => casosDesconsiderados(doAno(detectados, anoAtivo), mapa),
+    [detectados, anoAtivo, mapa]
   );
   /* Casos que entraram pela emissao do pedido por falta da data de
      saida na planilha. */
@@ -318,7 +340,8 @@ export function InversoesSAC({
         (semSaida > 0 ? ` · ${semSaida} sem data de saída, contado(s) pelo pedido` : '') +
         /* Ajuste a mao nunca em silencio: quem le o numero precisa
            saber que ele nao saiu so do texto do SAC. */
-        (reclassificados > 0 ? ` · ${reclassificados} reclassificado(s) manualmente` : '')
+        (reclassificados > 0 ? ` · ${reclassificados} reclassificado(s) manualmente` : '') +
+        (foraDoPainel.length > 0 ? ` · ${foraDoPainel.length} desconsiderado(s)` : '')
       }
       acoes={
         anos.length > 1 ? (
@@ -494,6 +517,51 @@ export function InversoesSAC({
               ))}
             </tbody>
           </Tabela>
+
+          {/* Os casos tirados do painel. Ficam listados de proposito:
+              numero corrigido sem rastro e indistinguivel de numero
+              errado, e daqui a um mes ninguem lembra por que a conta
+              nao fecha com a planilha. */}
+          {foraDoPainel.length > 0 && (
+            <>
+              <h4 className="eq-sac-titulo">
+                Desconsiderados em {anoAtivo} ({foraDoPainel.length}) — fora de todos os números acima
+              </h4>
+              <div className="eq-sac-fora">
+                {foraDoPainel.map((d, i) => {
+                  const caso = identificarCaso(d);
+                  const a = ajusteDe(d, mapa);
+                  return (
+                    <div key={`${caso}-${i}`} className="eq-sac-fora-item">
+                      <div>
+                        <span className="mono">{caso}</span>
+                        <span className="eq-sac-fora-produto" title={d.produto}>
+                          {d.produto.slice(0, 46)}
+                          {d.produto.length > 46 ? '…' : ''}
+                        </span>
+                        <span className="eq-sac-fora-motivo">
+                          {a?.motivo || 'sem motivo informado'}
+                        </span>
+                      </div>
+                      <div className="eq-sac-fora-lado">
+                        <span className="mono">{formatarReal(d.valor)}</span>
+                        {aoDesfazer && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => aoDesfazer(caso)}
+                            title="Volta a contar este caso no painel"
+                          >
+                            Voltar a contar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </>
       )}
     </Cartao>

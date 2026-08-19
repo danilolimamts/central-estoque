@@ -13,8 +13,8 @@ import { auditarValoracao, resumirValoracao } from '../domain/valoracao';
 import { calcularMetricas, derivarAcoes } from '../domain/projeto';
 import { marcoDe, registrarMarco } from '../domain/historico';
 import type { Marco } from '../domain/historico';
-import { registrarAjuste, removerAjuste } from '../domain/ajustes';
-import type { AjusteResponsavel } from '../domain/ajustes';
+import { migrarAjustes, registrarAjuste, removerAjuste } from '../domain/ajustes';
+import type { AjusteCaso } from '../domain/ajustes';
 
 const store = localforage.createInstance({
   name: 'equalizacao_elevadores',
@@ -91,7 +91,7 @@ async function guardarMarco(acoes: Acao[], arquivo: string, hoje: Date): Promise
 export function useDados() {
   const [dados, setDados] = useState<Importacao | null>(null);
   const [historico, setHistorico] = useState<Marco[]>([]);
-  const [ajustes, setAjustes] = useState<AjusteResponsavel[]>([]);
+  const [ajustes, setAjustes] = useState<AjusteCaso[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -102,8 +102,10 @@ export function useDados() {
       .then((h) => vivo && setHistorico(h ?? []))
       .catch(() => undefined);
     void store
-      .getItem<AjusteResponsavel[]>(CHAVE_AJUSTES)
-      .then((a) => vivo && setAjustes(a ?? []))
+      .getItem<unknown>(CHAVE_AJUSTES)
+      /* migrarAjustes aceita o formato antigo, de quando o ajuste so
+         sabia trocar o responsavel. */
+      .then((a) => vivo && setAjustes(migrarAjustes(a)))
       .catch(() => undefined);
     store
       .getItem<Importacao>(CHAVE_DADOS)
@@ -205,7 +207,7 @@ export function useDados() {
   /* Ajuste manual do responsavel por uma entrega. Grava antes de
      devolver o controle: se o navegador nao deixar gravar, a tela
      continua funcionando na sessao, como no resto do app. */
-  const ajustarResponsavel = useCallback(async (ajuste: AjusteResponsavel) => {
+  const ajustarResponsavel = useCallback(async (ajuste: AjusteCaso) => {
     setAjustes((atuais) => {
       const novo = registrarAjuste(atuais, ajuste);
       void store.setItem(CHAVE_AJUSTES, novo).catch(() => undefined);

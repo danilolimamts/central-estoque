@@ -9,9 +9,14 @@ import {
   ajusteDe,
   registrarAjuste,
   removerAjuste,
-  ajustesAplicados,
+  reclassificadosEmTela,
+  casosConsiderados,
+  casosDesconsiderados,
+  foiDesconsiderado,
+  migrarAjustes,
+  FORA,
 } from '../src/domain/ajustes';
-import type { AjusteResponsavel } from '../src/domain/ajustes';
+import type { AjusteCaso } from '../src/domain/ajustes';
 import { origemDaFilial, porResponsavel } from '../src/domain/divergencias';
 import type { DivergenciaSAC } from '../src/domain/divergencias';
 
@@ -28,9 +33,9 @@ function div(p: Partial<DivergenciaSAC> = {}): DivergenciaSAC {
   };
 }
 
-function ajuste(p: Partial<AjusteResponsavel> = {}): AjusteResponsavel {
+function ajuste(p: Partial<AjusteCaso> = {}): AjusteCaso {
   return {
-    caso: '123930639', responsavel: 'FORNECEDOR',
+    caso: '123930639', decisao: 'FORNECEDOR',
     motivo: 'fornecedor enviou o item errado ao CD',
     em: '2026-08-18T20:00:00.000Z',
     ...p,
@@ -85,9 +90,9 @@ describe('o ajuste vence a leitura do texto', () => {
 describe('gravar e desfazer', () => {
   it('reajustar o mesmo caso substitui, nao empilha', () => {
     const um = registrarAjuste([], ajuste());
-    const dois = registrarAjuste(um, ajuste({ responsavel: 'CLIENTE', motivo: 'cliente pediu errado' }));
+    const dois = registrarAjuste(um, ajuste({ decisao: 'CLIENTE', motivo: 'cliente pediu errado' }));
     expect(dois).toHaveLength(1);
-    expect(dois[0].responsavel).toBe('CLIENTE');
+    expect(dois[0].decisao).toBe('CLIENTE');
   });
 
   it('ajustes de casos diferentes convivem', () => {
@@ -130,6 +135,67 @@ describe('o painel conta com o ajuste aplicado', () => {
     /* Ajuste de caso fora do recorte nao entra na conta: o numero
        precisa bater com o que a pessoa esta vendo. */
     const mapa = mapaDeAjustes([ajuste(), ajuste({ caso: 'fora-do-recorte' })]);
-    expect(ajustesAplicados(lista, mapa)).toBe(1);
+    expect(reclassificadosEmTela(lista, mapa)).toBe(1);
+  });
+});
+
+describe('desconsiderar: o caso sai do painel inteiro', () => {
+  const lista = [div(), div({ entrega: '777', pedido: '260711-1', valor: 500 })];
+  const mapa = mapaDeAjustes([ajuste({ decisao: FORA, motivo: 'não foi culpa do CD' })]);
+
+  it('some da lista que o painel conta', () => {
+    const contados = casosConsiderados(lista, mapa);
+    expect(contados).toHaveLength(1);
+    expect(contados[0].entrega).toBe('777');
+  });
+
+  it('nao entra em nenhuma gaveta de responsavel', () => {
+    /* Desconsiderar e diferente de trocar de dono: o caso nao pode
+       reaparecer no fornecedor nem em "a apurar". */
+    const quebra = porResponsavel(
+      casosConsiderados(lista, mapa),
+      (d) => responsavelFinal(d, mapa)
+    );
+    expect(quebra.reduce((s, r) => s + r.quantidade, 0)).toBe(1);
+  });
+
+  it('fica listado a parte, para a decisao poder ser conferida', () => {
+    const fora = casosDesconsiderados(lista, mapa);
+    expect(fora).toHaveLength(1);
+    expect(fora[0].entrega).toBe('123930639');
+    expect(ajusteDe(fora[0], mapa)?.motivo).toBe('não foi culpa do CD');
+  });
+
+  it('nao conta como reclassificado: sao decisoes diferentes', () => {
+    /* Somar os dois esconderia a diferenca entre "mudou de dono" e
+       "saiu do painel". */
+    expect(reclassificadosEmTela(lista, mapa)).toBe(0);
+    expect(foiDesconsiderado(lista[0], mapa)).toBe(true);
+    expect(foiDesconsiderado(lista[1], mapa)).toBe(false);
+  });
+
+  it('desfazer devolve o caso para a conta', () => {
+    const semAjuste = mapaDeAjustes(removerAjuste([ajuste({ decisao: FORA })], '123930639'));
+    expect(casosConsiderados(lista, semAjuste)).toHaveLength(2);
+    expect(casosDesconsiderados(lista, semAjuste)).toHaveLength(0);
+  });
+});
+
+describe('ajuste gravado no formato antigo continua valendo', () => {
+  it('o campo responsavel vira decisao', () => {
+    /* A primeira versao so sabia trocar o responsavel. Perder a
+       decisao ja tomada por causa de uma troca de campo seria
+       apagar trabalho de quem apurou. */
+    const migrados = migrarAjustes([
+      { caso: '123930639', responsavel: 'FORNECEDOR', motivo: 'veio errado', em: '2026-08-18T20:00:00.000Z' },
+    ]);
+    expect(migrados).toHaveLength(1);
+    expect(migrados[0].decisao).toBe('FORNECEDOR');
+    expect(responsavelFinal(div(), mapaDeAjustes(migrados))).toBe('FORNECEDOR');
+  });
+
+  it('lixo gravado nao vira ajuste nem quebra a leitura', () => {
+    expect(migrarAjustes(null)).toEqual([]);
+    expect(migrarAjustes([{ caso: '' }, { motivo: 'sem caso' }, 7])).toEqual([]);
   });
 });

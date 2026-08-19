@@ -1,7 +1,13 @@
-/* Confere a reclassificacao manual do responsavel no cartao do SAC:
-   clicar no selo abre o editor, salvar muda a gaveta do caso, o numero
-   de "erro da operacao" cai junto, o ajuste aparece marcado e sobrevive
-   ao recarregar a pagina. */
+/* Confere os ajustes manuais no cartao do SAC, nas duas decisoes:
+
+   - trocar o responsavel: o caso muda de gaveta, fica marcado na
+     tabela e sobrevive ao recarregar a pagina;
+   - desconsiderar: o caso sai do total e de todas as gavetas, aparece
+     na lista de auditoria com o motivo, e volta a contar quando
+     desfeito.
+
+   O segundo caso e o que mais importa vigiar: filtrar so a tabela e
+   deixar o grafico contando seria pior do que nao ter a funcao. */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -104,6 +110,54 @@ if ((await voltar.count()) === 0) {
   }
 }
 
+/* ---- desconsiderar: o caso tem que sumir de TODOS os numeros ---- */
+const totalCasos = async () => {
+  const t = await sac2.locator('.eq-sac-numero.destaque b').first().innerText();
+  return Number(t.trim());
+};
+const totalAntes = await totalCasos();
+const somaResp = async () => {
+  const ns = await sac2.locator('.eq-sac-resp-item b').allInnerTexts();
+  return ns.reduce((s, n) => s + Number(n.trim() || 0), 0);
+};
+const respAntes = await somaResp();
+
+await sac2.locator('.eq-sac-resp-botao').first().click();
+await pagina.waitForTimeout(250);
+const ed = sac2.locator('.eq-sac-editor').first();
+await ed.locator('select').selectOption('FORA');
+await ed.locator('input').fill('não foi culpa do CD, item errado veio de fora');
+await ed.getByRole('button', { name: 'Salvar' }).click();
+await pagina.waitForTimeout(500);
+
+const totalDepois = await totalCasos();
+if (totalDepois !== totalAntes - 1) {
+  problemas.push(`desconsiderar nao tirou do total: ${totalAntes} -> ${totalDepois}`);
+}
+const respDepois = await somaResp();
+if (respDepois !== respAntes - 1) {
+  problemas.push(`o caso desconsiderado sobrou em alguma gaveta: ${respAntes} -> ${respDepois}`);
+}
+
+const fora = sac2.locator('.eq-sac-fora-item');
+if ((await fora.count()) === 0) {
+  problemas.push('o caso desconsiderado nao aparece na lista de auditoria');
+} else if (!/culpa do CD/i.test(await fora.first().innerText())) {
+  problemas.push('a lista de desconsiderados nao mostra o motivo');
+}
+const sub = await sac2.locator('.panel-sub').first().innerText();
+if (!/desconsiderado\(s\)/i.test(sub)) {
+  problemas.push(`o cartao nao avisa que ha caso fora da conta: "${sub}"`);
+}
+await sac2.locator('.eq-sac-fora').first().screenshot({ path: join(SAIDA, 'sac-desconsiderado.png') });
+
+/* Voltar a contar devolve o caso a todos os numeros. */
+await fora.first().getByRole('button', { name: 'Voltar a contar' }).click();
+await pagina.waitForTimeout(500);
+if ((await totalCasos()) !== totalAntes) {
+  problemas.push('voltar a contar nao devolveu o caso ao total');
+}
+
 await navegador.close();
 servidor.close();
 
@@ -111,4 +165,4 @@ if (problemas.length > 0) {
   console.error('PROBLEMAS:\n' + problemas.map((p) => ` - ${p}`).join('\n'));
   process.exit(1);
 }
-console.log('Ajuste de responsavel: muda a gaveta, marca a linha, persiste e desfaz.');
+console.log('Ajustes do SAC: troca de gaveta e desconsideracao saem de todos os numeros, com rastro e desfazer.');
