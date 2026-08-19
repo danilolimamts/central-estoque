@@ -499,6 +499,25 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   const acuraciaPecas = clamp01(totalPecasFisicas>0 ? 1-(totalDiferencaAbs/totalPecasFisicas) : 1);
   const totalItensContados = divergencias.length;
 
+  // Quebra da Acurácia Peças por status do local (convergido / ainda em contagem /
+  // encerrado sem convergência) — local "em_contagem" entra no cálculo geral com a
+  // última rodada que ele tem até agora, mesmo sem ter fechado ainda, o que pode
+  // deixar o número instável enquanto o ciclo avança. Serve pra diagnosticar se a
+  // acurácia "estranha" vem de local já fechado (divergência real) ou de local ainda
+  // balançando entre rodadas (ainda não é o número final).
+  const porStatusMap = new Map(); // status -> {locais:Set, pecasFisicas, diferencaAbs}
+  for(const d of divergencias){
+    if(!porStatusMap.has(d.statusLocal)) porStatusMap.set(d.statusLocal, {locais:new Set(), pecasFisicas:0, diferencaAbs:0});
+    const g = porStatusMap.get(d.statusLocal);
+    g.locais.add(d.local);
+    g.pecasFisicas += d.qtdeFisica;
+    g.diferencaAbs += Math.abs(d.diferenca);
+  }
+  const acuraciaPecasPorStatus = Array.from(porStatusMap.entries()).map(([status,g])=>({
+    status, locais: g.locais.size, pecasFisicas: g.pecasFisicas, diferencaAbs: g.diferencaAbs,
+    acuracia: clamp01(g.pecasFisicas>0 ? 1-(g.diferencaAbs/g.pecasFisicas) : 1)
+  }));
+
   // "AIR" (X1) é tratado como um local normal, no mesmo padrão de qualquer outro —
   // entra em Acurácia Valor, na quebra por Rua e por Log sem nenhuma exclusão especial
   // (pedido explícito do usuário: "AIR local é como se fosse um local normal").
@@ -724,7 +743,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     locaisCongelados, locaisContadosTotal, locaisConcluidos, locaisPendentes, locaisEmContagem, locaisNaoIniciados,
     andamentoCiclo, acuraciaPecas, acuraciaLocal, acuraciaValor, meta: IR_META_ACURACIA,
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
-    locaisDivergentes: locaisComDivergencia.size, valorFisicoTotal: totalVlFisico,
+    locaisDivergentes: locaisComDivergencia.size, valorFisicoTotal: totalVlFisico, acuraciaPecasPorStatus,
     itensSemPreco, itensSemPrecoTotal: semPrecoPorItem.size,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
