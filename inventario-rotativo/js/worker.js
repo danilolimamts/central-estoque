@@ -491,13 +491,23 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
 
   const clamp01 = (n)=>Math.max(0, Math.min(1, n));
 
-  // Denominador da Acurácia Peças = peças físicas totais nos locais congelados (última
+  // Acurácia Peças/Valor e Divergência Peças/Valor só podem considerar locais já
+  // CONCLUÍDOS (rodadas bateram = "convergido", ou encerrado após 5 rodadas sem bater
+  // = "encerrado_sem_convergencia" — mesmo critério já usado em locaisConcluidos/
+  // andamentoCiclo). Local pendente/em contagem/em recontagem ainda pode mudar de
+  // rodada no próximo reprocessamento, então não é um número final — incluir ele
+  // nesses indicadores media divergência real (de local fechado) com instabilidade
+  // temporária (de local que ainda está sendo trabalhado), distorcendo o resultado.
+  const LOCAIS_CONCLUIDO = new Set(['convergido','encerrado_sem_convergencia']);
+  const divergenciasConcluidas = divergencias.filter(d=>LOCAIS_CONCLUIDO.has(d.statusLocal));
+
+  // Denominador da Acurácia Peças = peças físicas totais dos locais concluídos (última
   // rodada de contagem por local, derivada só da QRY0843: Rodada 1 sistêmica x rodada
-  // final física).
-  const totalPecasFisicas = congelados.reduce((s,l)=>s+(pecasFisicasPorLocal.get(l.idLocal)||0), 0);
-  const totalDiferencaAbs = divergencias.reduce((s,d)=>s+Math.abs(d.diferenca),0);
+  // final física — nunca soma rodada, sempre a última).
+  const totalPecasFisicas = divergenciasConcluidas.reduce((s,d)=>s+d.qtdeFisica,0);
+  const totalDiferencaAbs = divergenciasConcluidas.reduce((s,d)=>s+Math.abs(d.diferenca),0);
   const acuraciaPecas = clamp01(totalPecasFisicas>0 ? 1-(totalDiferencaAbs/totalPecasFisicas) : 1);
-  const totalItensContados = divergencias.length;
+  const totalItensContados = divergenciasConcluidas.length;
 
   // Quebra da Acurácia Peças por status do local (convergido / ainda em contagem /
   // encerrado sem convergência) — local "em_contagem" entra no cálculo geral com a
@@ -523,10 +533,10 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   // (pedido explícito do usuário: "AIR local é como se fosse um local normal").
   // Acurácia Valor: valorado pela SIGEQ278 (preço de custo) cruzada com a ZBIQ0051
   // (S/N do componente no kit) — não mais pela QRY0114.
-  const totalVlFisico = divergencias.reduce((s,d)=>s+d.vlFisico,0);
-  const totalVlDivergenciaAbs = divergencias.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
+  const totalVlFisico = divergenciasConcluidas.reduce((s,d)=>s+d.vlFisico,0);
+  const totalVlDivergenciaAbs = divergenciasConcluidas.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
   const acuraciaValor = clamp01(totalVlFisico>0 ? 1-(totalVlDivergenciaAbs/totalVlFisico) : 1);
-  const valorDivergenteLiquido = divergencias.reduce((s,d)=>s+d.vlDivergencia,0);
+  const valorDivergenteLiquido = divergenciasConcluidas.reduce((s,d)=>s+d.vlDivergencia,0);
   const valorDivergenteAbsoluto = totalVlDivergenciaAbs;
 
   // Itens que divergiram em peça mas cujo preço não foi encontrado na SIGEQ278/ZBIQ0051
@@ -559,7 +569,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   locaisPendentes = locaisCongelados - locaisConcluidos;
   const andamentoCiclo = locaisCongelados>0 ? locaisConcluidos/locaisCongelados : 0;
 
-  const itensDivergentes = divergencias.filter(d=>d.diferenca!==0).length;
+  const itensDivergentes = divergenciasConcluidas.filter(d=>d.diferenca!==0).length;
 
   let qtdRecontagens = 0;
   for(const [, st] of statusPorLocal) if(st.rodadas>2) qtdRecontagens++;
