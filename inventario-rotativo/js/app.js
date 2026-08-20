@@ -1074,6 +1074,9 @@ function irRenderStatusInventarioPanel(ind){
   return `<div class="panel">
     <h3>Status do Inventário</h3>
     <p class="panel-sub">Percentual de locais concluídos em relação ao total orçado do ciclo.</p>
+    <div class="form-actions" style="margin:0 0 12px;">
+      <button class="btn-link" onclick="irExportarLocaisPendentesCsv()">📤 Exportar locais pendentes de contagem (${irFmtInt(total-concluidos)})</button>
+    </div>
     <div class="status-donut-row">
       ${irDonutSvg(pct)}
       <div class="status-donut-stats">
@@ -2581,6 +2584,34 @@ function irExportDivergenciasCsv(){
   const csv = '﻿'+header+'\n'+lines.join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'divergencias_ciclo_'+IR.cicloAtivo.numero+'.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+// Locais pendentes de contagem no ciclo VIGENTE — mesmo critério de "concluído" usado
+// em todo o resto do app (locaisConcluidos/andamentoCiclo): concluído = pelo menos uma
+// visita (local + Id Inventario) com status convergido ou encerrado_sem_convergencia.
+// Local sem nenhuma contagem ainda (nunca tocado) também entra como pendente, já que
+// simplesmente não aparece em IR.divergencias.
+function irExportarLocaisPendentesCsv(){
+  if(!IR.cicloAtivo){ irShowToast('Nenhum ciclo ativo.', true); return; }
+  const LOCAIS_CONCLUIDO = new Set(['convergido','encerrado_sem_convergencia']);
+  const concluidosSet = new Set(
+    (IR.divergencias||[]).filter(d=>LOCAIS_CONCLUIDO.has(d.statusLocal)).map(d=>d.local)
+  );
+  const pendentes = (IR.locais||[])
+    .filter(l=>!concluidosSet.has(l.idLocal))
+    .sort((a,b)=>a.idLocal.localeCompare(b.idLocal, undefined, {numeric:true}));
+  if(!pendentes.length){ irShowToast('Nenhum local pendente — ciclo 100% concluído.'); return; }
+  const header = 'Local;Descrição';
+  const lines = pendentes.map(l=>{
+    const desc = '"'+String(l.descricao||'').replace(/"/g,'""')+'"';
+    return l.idLocal+';'+desc;
+  });
+  const csv = '﻿'+header+'\n'+lines.join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'locais_pendentes_ciclo_'+IR.cicloAtivo.numero+'.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 /* ============================================================
