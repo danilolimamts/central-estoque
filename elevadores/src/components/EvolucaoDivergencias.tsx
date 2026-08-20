@@ -1,38 +1,44 @@
 /* ============================================================
-   Evolucao das inversoes: o resultado do projeto.
+   Evolucao das divergencias: o resultado do projeto.
+
+   Divergencia, e nao inversao: item trocado e so uma das causas, e
+   peca faltando conta igual. Chamar o conjunto pelo nome de uma parte
+   dele fazia o cartao parecer medir menos do que mede.
 
    O painel de status media o plano - quantas acoes fecharam. Isso diz
    se o time trabalhou, nao se a operacao melhorou. Este cartao mede o
-   que o plano existe para mudar: elevador voltando por base trocada
-   ou peca faltando, e quanto isso custou.
+   que o plano existe para mudar: elevador voltando por erro do CD, e
+   quanto isso custou.
 
-   A leitura e a linha caindo ate o zero. Por isso mes zerado aparece
-   com o valor escrito R$ 0, e nao em branco: e ele que sustenta a
-   frase "fechamos o mes sem nenhuma inversao".
+   Tres leituras, da mais rapida para a mais detalhada: a manchete do
+   mes fechado, os numeros do ano e a curva; e embaixo o mes a mes,
+   que responde "quanto ganhamos" em vez de so "como esta indo".
 
-   Mes que ainda nao aconteceu fica fora do desenho. Contar dezembro
-   como mes zerado em agosto seria inventar resultado.
+   Mes que ainda nao aconteceu fica fora de tudo. Contar dezembro como
+   mes zerado em agosto seria inventar resultado.
    ============================================================ */
 import { useMemo, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
 import {
   anosDisponiveis,
+  comparativoMensal,
   doAno,
-  evolucaoDeInversoes,
+  evolucaoDeDivergencias,
   formatarReal,
-  inversoesDeBase,
+  ganhoDoMes,
+  divergenciasDoCD,
 } from '../domain/divergencias';
-import type { DivergenciaSAC } from '../domain/divergencias';
+import type { ComparativoMes, DivergenciaSAC } from '../domain/divergencias';
 import { casosConsiderados, forasDaPlanilha, mapaDeAjustes } from '../domain/ajustes';
 import type { AjusteCaso } from '../domain/ajustes';
 import { cores } from '../config/tokens';
 import { Grafico } from './charts/Grafico';
-import { Cartao, Selecao, Vazio } from './ui';
+import { Cartao, Selecao, Tabela, Td, Th, Vazio } from './ui';
 
 const COR_VALOR = cores.laranja.base;
 const COR_CASOS = cores.navy.base;
 
-export function EvolucaoInversoes({
+export function EvolucaoDivergencias({
   divergencias,
   ajustes = [],
   hoje = new Date(),
@@ -42,17 +48,17 @@ export function EvolucaoInversoes({
   hoje?: Date;
 }) {
   const mapa = useMemo(() => mapaDeAjustes(ajustes), [ajustes]);
-  const inversoes = useMemo(() => {
-    const detectados = inversoesDeBase(divergencias);
+  const casos = useMemo(() => {
+    const detectados = divergenciasDoCD(divergencias);
     return casosConsiderados(detectados, mapa, forasDaPlanilha(detectados));
   }, [divergencias, mapa]);
 
-  const anos = useMemo(() => anosDisponiveis(inversoes), [inversoes]);
+  const anos = useMemo(() => anosDisponiveis(casos), [casos]);
   const [ano, setAno] = useState<string>('');
   const anoAtivo = Number(ano) || anos[0] || hoje.getUTCFullYear();
   const e = useMemo(
-    () => evolucaoDeInversoes(inversoes, anoAtivo, hoje),
-    [inversoes, anoAtivo, hoje]
+    () => evolucaoDeDivergencias(casos, anoAtivo, hoje),
+    [casos, anoAtivo, hoje]
   );
 
   /* So os meses ja decorridos entram na linha. O resto do ano fica
@@ -67,7 +73,7 @@ export function EvolucaoInversoes({
         labels: e.meses.map((m) => m.rotulo),
         datasets: [
           {
-            label: 'Custo das inversões',
+            label: 'Custo das divergências',
             data: e.meses.map((m) => ateAqui(m.total.valor, m.mes)),
             borderColor: COR_VALOR,
             backgroundColor: 'rgba(250,70,22,.14)',
@@ -135,7 +141,7 @@ export function EvolucaoInversoes({
               afterBody: (itens) => {
                 const m = e.meses[itens[0]?.dataIndex ?? 0];
                 if (!m) return '';
-                if (m.total.quantidade === 0) return '\nMês fechado sem nenhuma inversão.';
+                if (m.total.quantidade === 0) return '\nMês fechado sem nenhuma divergência.';
                 return `\nCD: ${m.cd.quantidade} · Lojas: ${m.lojas.quantidade}`;
               },
             },
@@ -161,16 +167,22 @@ export function EvolucaoInversoes({
     [e]
   );
 
-  if (inversoes.length === 0) {
+  if (casos.length === 0) {
     return (
-      <Cartao titulo="Evolução das inversões" descricao="o resultado do projeto na operação">
+      <Cartao titulo="Evolução das divergências" descricao="o resultado do projeto na operação">
         <Vazio icone="📉">
-          Sem casos de inversão ou peça faltando na base importada. A evolução aparece assim que a
+          Sem divergência do CD na base importada. A evolução aparece assim que a
           aba <b>Divergencias SAC</b> tiver casos.
         </Vazio>
       </Cartao>
     );
   }
+
+  const comparativo = comparativoMensal(e);
+  /* O ultimo mes fechado: e dele que sai a manchete. O mes corrente
+     esta pela metade e compara-lo com um mes inteiro pintaria uma
+     queda que ainda nao aconteceu. */
+  const fechado = ganhoDoMes(comparativo);
 
   /* A queda contra o pico do ano: e a frase que a reuniao repete. */
   const ultimo = e.ateOMes >= 0 ? e.meses[e.ateOMes] : null;
@@ -181,21 +193,30 @@ export function EvolucaoInversoes({
 
   return (
     <Cartao
-      titulo="Evolução das inversões"
-      descricao="o que o projeto mudou na operação · custo e quantidade por mês"
+      titulo="Evolução das divergências"
+      descricao="o que o projeto mudou na operação · mês a mês, em casos e em reais"
       acoes={
         anos.length > 1 ? (
           <Selecao valor={ano} aoMudar={setAno} opcoes={anos.map(String)} rotuloTodos={String(anoAtivo)} />
         ) : undefined
       }
     >
+      {/* A manchete do cartao: uma frase, o mes fechado, para quem
+          abre o e-mail no celular e nao vai ler o grafico. */}
+      {fechado && fechado.deltaValor != null && (
+        <div className={`eq-evol-manchete${fechado.deltaValor <= 0 ? ' ganho' : ' piora'}`}>
+          <b>{fechado.rotulo.toUpperCase()}</b>
+          <span>{lerMes(fechado)}</span>
+        </div>
+      )}
+
       <div className="eq-evol-numeros">
         <div>
           <b style={{ color: e.sequenciaZerada > 0 ? cores.semantico.verde : 'var(--ink)' }}>
             {e.sequenciaZerada}
           </b>
           <span>
-            {e.sequenciaZerada === 1 ? 'mês seguido sem inversão' : 'meses seguidos sem inversão'}
+            {e.sequenciaZerada === 1 ? 'mês seguido sem divergência' : 'meses seguidos sem divergência'}
           </span>
         </div>
         <div>
@@ -222,10 +243,96 @@ export function EvolucaoInversoes({
       <Grafico
         config={config}
         altura={300}
-        rotulo="Custo e quantidade de inversões por mês, ao longo do ano"
+        rotulo="Custo e quantidade de divergências por mês, ao longo do ano"
       />
+
+      {/* O comparativo mes a mes. A curva mostra a tendencia; e a
+          tabela que responde "quanto ganhamos", que e o que vai para
+          o e-mail. */}
+      {comparativo.length > 1 && (
+        <>
+          <h4 className="eq-sac-titulo">Mês a mês — o ganho de cada mês contra o anterior</h4>
+          <Tabela>
+            <thead>
+              <tr>
+                <Th>Mês</Th>
+                <Th alinha="right">Divergências</Th>
+                <Th alinha="right">Custo</Th>
+                <Th alinha="right">vs. mês anterior</Th>
+                <Th>Leitura</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparativo.map((m) => {
+                /* Queda e ganho: verde. Alta e piora: laranja. */
+                const caiu = m.deltaValor != null && m.deltaValor < 0;
+                const subiu = m.deltaValor != null && m.deltaValor > 0;
+                const cor = caiu ? cores.semantico.verde : subiu ? COR_VALOR : 'var(--ink-soft)';
+                return (
+                  <tr key={m.mes} className={m.zerado ? 'eq-mom-zerado' : undefined}>
+                    <Td>
+                      <b>{m.rotulo}</b>
+                    </Td>
+                    <Td alinha="right" numerico>
+                      {m.zerado ? (
+                        <b style={{ color: cores.semantico.verde }}>0</b>
+                      ) : (
+                        m.casos
+                      )}
+                    </Td>
+                    <Td alinha="right" numerico>{formatarReal(m.valor)}</Td>
+                    <Td alinha="right" numerico>
+                      {m.deltaValor == null ? (
+                        <span style={{ color: 'var(--ink-soft)' }}>—</span>
+                      ) : (
+                        <b style={{ color: cor }}>
+                          {caiu ? '▼' : subiu ? '▲' : ''} {formatarReal(Math.abs(m.deltaValor))}
+                          {m.pctValor != null && (
+                            <i style={{ fontStyle: 'normal', fontWeight: 400, marginLeft: 5 }}>
+                              ({m.pctValor > 0 ? '+' : ''}
+                              {m.pctValor.toFixed(0)}%)
+                            </i>
+                          )}
+                        </b>
+                      )}
+                    </Td>
+                    <Td>
+                      <span style={{ color: cor, fontSize: 11.5 }}>{lerMes(m)}</span>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Tabela>
+        </>
+      )}
     </Cartao>
   );
+}
+
+/* A frase de cada linha, escrita como a reuniao fala. Evita a tabela
+   virar so numero: quem le no e-mail precisa entender sem legenda. */
+function lerMes(m: ComparativoMes): string {
+  if (m.deltaValor == null) return 'primeiro mês do ano, sem base de comparação';
+  if (m.zerado) {
+    /* Compara com a ultima vez que houve divergencia, e nao com o mes
+       anterior: o segundo mes limpo seguido tem diferenca zero contra
+       o anterior, e leria como "estavel" bem na hora em que o
+       resultado esta melhor. */
+    if (m.referencia) {
+      return `sem nenhuma divergência · ${formatarReal(m.referencia.valor)} a menos que ${m.referencia.rotulo}, último mês com caso`;
+    }
+    return 'fechou sem nenhuma divergência';
+  }
+  if (m.deltaValor < 0) {
+    const menos = m.deltaCasos != null && m.deltaCasos < 0 ? `${Math.abs(m.deltaCasos)} caso(s) a menos · ` : '';
+    return `${menos}${formatarReal(Math.abs(m.deltaValor))} economizados`;
+  }
+  if (m.deltaValor > 0) {
+    const mais = m.deltaCasos != null && m.deltaCasos > 0 ? `${m.deltaCasos} caso(s) a mais · ` : '';
+    return `${mais}${formatarReal(m.deltaValor)} de piora`;
+  }
+  return 'estável em relação ao mês anterior';
 }
 
 /* Reexportado para o painel poder contar os casos do ano sem repetir
@@ -235,7 +342,7 @@ export function casosDoAno(
   ajustes: AjusteCaso[],
   ano: number
 ): DivergenciaSAC[] {
-  const detectados = inversoesDeBase(divergencias);
+  const detectados = divergenciasDoCD(divergencias);
   const mapa = mapaDeAjustes(ajustes);
   return doAno(casosConsiderados(detectados, mapa, forasDaPlanilha(detectados)), ano);
 }

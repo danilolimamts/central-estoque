@@ -48,15 +48,27 @@ for (const titulo of ['Evolução do projeto', 'Projeção de término', 'Funil 
 }
 
 /* No lugar do avanco por frente entra o resultado na operacao. */
-const evol = pagina.locator('.panel', { hasText: 'Evolução das inversões' }).first();
+const evol = pagina.locator('.panel', { hasText: 'Evolução das divergências' }).first();
 if ((await evol.count()) === 0) {
-  problemas.push('o cartao de evolucao das inversoes nao entrou no status do projeto');
+  problemas.push('o cartao de evolucao das divergencias nao entrou no status do projeto');
 } else {
   const texto = await evol.innerText();
-  if (!/sem invers[ãa]o/i.test(texto)) {
-    problemas.push('a evolucao nao mostra a sequencia de meses sem inversao');
+  if (!/sem diverg[êe]ncia/i.test(texto)) {
+    problemas.push('a evolucao nao mostra a sequencia de meses sem divergencia');
   }
-  await evol.screenshot({ path: join(SAIDA, 'evolucao-inversoes.png') });
+  /* O comparativo mes a mes e o que responde "quanto ganhamos". */
+  if (!/m[êe]s a m[êe]s/i.test(texto)) {
+    problemas.push('o comparativo mes a mes nao apareceu no cartao');
+  }
+  if (!/vs\. m[êe]s anterior/i.test(texto)) {
+    problemas.push('a tabela do comparativo nao traz a coluna de variacao');
+  }
+  /* O cartao nao pode mais falar em inversao como se fosse o todo. */
+  const tituloEvol = await evol.locator('h3').first().innerText();
+  if (/invers/i.test(tituloEvol)) {
+    problemas.push(`o cartao ainda chama o conjunto de inversao: "${tituloEvol}"`);
+  }
+  await evol.screenshot({ path: join(SAIDA, 'evolucao-divergencias.png') });
 }
 
 /* ---- 2. a linha de escopo saiu da legenda do grafico ---- */

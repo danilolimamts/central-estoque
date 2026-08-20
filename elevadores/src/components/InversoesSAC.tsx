@@ -15,9 +15,9 @@ import type { ChartConfiguration } from 'chart.js';
 import {
   anosDisponiveis,
   doAno,
-  evolucaoDeInversoes,
+  evolucaoDeDivergencias,
   formatarReal,
-  inversoesDeBase,
+  divergenciasDoCD,
   porMes,
   porCausa,
   porTransportadora,
@@ -209,7 +209,7 @@ export function InversoesSAC({
     (d: DivergenciaSAC) => responsavelFinal(d, mapa),
     [mapa]
   );
-  const detectados = useMemo(() => inversoesDeBase(divergencias), [divergencias]);
+  const detectados = useMemo(() => divergenciasDoCD(divergencias), [divergencias]);
   /* Entregas que a propria planilha marcou para nao considerar, pela
      coluna "Considerar ?".
 
@@ -238,7 +238,7 @@ export function InversoesSAC({
   /* Ate onde o ano ja andou: mes futuro nao pode ser lido como mes
      zerado. */
   const evolucao = useMemo(
-    () => evolucaoDeInversoes(inversoes, anoAtivo, hoje),
+    () => evolucaoDeDivergencias(inversoes, anoAtivo, hoje),
     [inversoes, anoAtivo, hoje]
   );
   /* Quantos casos do recorte em tela tiveram o responsavel trocado. */

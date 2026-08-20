@@ -9,7 +9,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
 import type { Acao, Componente, MetricasProjeto } from '../domain/tipos';
 import { SaudeDoEstoque } from '../components/SaudeDoEstoque';
-import { EvolucaoInversoes } from '../components/EvolucaoInversoes';
+import { EvolucaoDivergencias } from '../components/EvolucaoDivergencias';
 import type { DivergenciaSAC } from '../domain/divergencias';
 import type { AjusteCaso } from '../domain/ajustes';
 import {
@@ -937,7 +937,7 @@ export function StatusProjeto({
             Quantas acoes fecharam diz que o time trabalhou; a inversao
             caindo a zero diz que a operacao melhorou, que e o ganho
             que a reuniao quer ver. */}
-        <EvolucaoInversoes divergencias={divergencias} ajustes={ajustes} hoje={hoje} />
+        <EvolucaoDivergencias divergencias={divergencias} ajustes={ajustes} hoje={hoje} />
       </div>
 
       <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>

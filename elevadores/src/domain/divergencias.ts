@@ -248,7 +248,12 @@ export function porResponsavel(
   });
 }
 
-export function inversoesDeBase(lista: DivergenciaSAC[]): DivergenciaSAC[] {
+/* Os casos que o painel conta: divergencia que e do CD, seja item
+   trocado ou peca faltando. O nome fala em divergencia, e nao em
+   inversao, porque inversao e so uma das causas - chamar o conjunto
+   pelo nome de uma parte dele fez o painel inteiro parecer medir
+   menos do que mede. */
+export function divergenciasDoCD(lista: DivergenciaSAC[]): DivergenciaSAC[] {
   return lista.filter(ehCulpaDoCD);
 }
 
@@ -331,17 +336,20 @@ export function porMes(lista: DivergenciaSAC[], ano: number): MesDivergencia[] {
 }
 
 /* ============================================================
-   Evolucao das inversoes ao longo do ano.
+   Evolucao das divergencias ao longo do ano.
 
    E a leitura de resultado do projeto: o plano existe para o CD parar
-   de mandar base trocada, entao a curva caindo - e o mes fechando em
+   de errar na expedicao, entao a curva caindo - e o mes fechando em
    zero - e o ganho, nao a lista de acoes concluidas.
+
+   Divergencia, e nao inversao: item trocado e so uma das causas, e
+   peca faltando conta igual. O grafico soma as duas.
 
    Mes que ainda nao aconteceu nao e mes zerado. Contar dezembro como
    conquista em agosto seria inventar resultado, e e o tipo de numero
    que a diretoria derruba na primeira pergunta.
    ============================================================ */
-export interface EvolucaoInversoes {
+export interface EvolucaoDivergencias {
   meses: MesDivergencia[];
   /* Ultimo mes ja decorrido do ano em tela, de 0 a 11. */
   ateOMes: number;
@@ -355,11 +363,11 @@ export interface EvolucaoInversoes {
   totalValor: number;
 }
 
-export function evolucaoDeInversoes(
+export function evolucaoDeDivergencias(
   lista: DivergenciaSAC[],
   ano: number,
   hoje: Date
-): EvolucaoInversoes {
+): EvolucaoDivergencias {
   const meses = porMes(lista, ano);
   /* No ano corrente, so ate o mes de hoje. Em ano passado, o ano
      inteiro; em ano futuro, nada decorrido ainda. */
@@ -388,6 +396,80 @@ export function evolucaoDeInversoes(
     totalCasos: decorridos.reduce((s, m) => s + m.total.quantidade, 0),
     totalValor: decorridos.reduce((s, m) => s + m.total.valor, 0),
   };
+}
+
+/* ============================================================
+   Comparativo mes a mes (MoM).
+
+   A curva mostra a tendencia; ela nao responde "quanto ganhamos".
+   Aqui cada mes decorrido e comparado com o anterior, em caso e em
+   real, e a queda vira o ganho do mes - que e a frase que a gerencia
+   quer ouvir: "junho fechou sem divergencia, R$ X a menos que maio".
+
+   O primeiro mes do ano nao tem contra o que comparar, e isso fica
+   explicito com nulo em vez de zero: variacao de zero e diferente de
+   nao ter variacao.
+   ============================================================ */
+export interface ComparativoMes {
+  mes: number;
+  rotulo: string;
+  casos: number;
+  valor: number;
+  /* Negativo e queda, que aqui e ganho. Nulo no primeiro mes. */
+  deltaCasos: number | null;
+  deltaValor: number | null;
+  /* Variacao percentual do valor. Nula quando o mes anterior fechou
+     em zero: nao ha divisao por zero que signifique alguma coisa. */
+  pctValor: number | null;
+  /* Mes fechado sem nenhuma divergencia. */
+  zerado: boolean;
+  /* Ultimo mes anterior que teve caso.
+
+     Serve para o mes zerado nao ser lido como "estavel" quando vem
+     depois de outro zerado: a diferenca contra o mes anterior e zero,
+     mas o ganho existe e e contra a ultima vez que houve divergencia.
+     Sem isso o segundo mes limpo seguido aparece como se nada tivesse
+     acontecido - justamente quando o resultado esta melhor. */
+  referencia: { rotulo: string; valor: number; casos: number } | null;
+}
+
+export function comparativoMensal(evolucao: EvolucaoDivergencias): ComparativoMes[] {
+  const decorridos = evolucao.meses.slice(0, evolucao.ateOMes + 1);
+  return decorridos.map((m, i) => {
+    const anterior = i > 0 ? decorridos[i - 1] : null;
+    const deltaValor = anterior ? m.total.valor - anterior.total.valor : null;
+    const comCaso = decorridos.slice(0, i).filter((x) => x.total.quantidade > 0);
+    const ultimoComCaso = comCaso[comCaso.length - 1] ?? null;
+    return {
+      mes: m.mes,
+      rotulo: m.rotulo,
+      casos: m.total.quantidade,
+      valor: m.total.valor,
+      deltaCasos: anterior ? m.total.quantidade - anterior.total.quantidade : null,
+      deltaValor,
+      pctValor:
+        anterior && anterior.total.valor > 0
+          ? (deltaValor! / anterior.total.valor) * 100
+          : null,
+      zerado: m.total.quantidade === 0,
+      referencia: ultimoComCaso
+        ? {
+            rotulo: ultimoComCaso.rotulo,
+            valor: ultimoComCaso.total.valor,
+            casos: ultimoComCaso.total.quantidade,
+          }
+        : null,
+    };
+  });
+}
+
+/* Frase pronta do ultimo mes fechado, para o cartao e para o e-mail.
+
+   O mes corrente nao serve: comparar um mes pela metade com um mes
+   inteiro sempre pinta uma queda que ainda nao aconteceu. */
+export function ganhoDoMes(comparativo: ComparativoMes[]): ComparativoMes | null {
+  /* O ultimo da lista e o mes corrente, ainda em andamento. */
+  return comparativo.length >= 2 ? comparativo[comparativo.length - 2] : null;
 }
 
 export interface LinhaTransportadora {

@@ -14,7 +14,7 @@ import {
   porResponsavel,
   ehProdutoDeElevador,
   tipoDoProduto,
-  inversoesDeBase,
+  divergenciasDoCD,
   origemDaFilial,
   totalizar,
   porMes,
@@ -22,7 +22,9 @@ import {
   doAno,
   anosDisponiveis,
   variacaoMensal,
-  evolucaoDeInversoes,
+  evolucaoDeDivergencias,
+  comparativoMensal,
+  ganhoDoMes,
 } from '../src/domain/divergencias';
 import type { DivergenciaSAC } from '../src/domain/divergencias';
 import { lerDivergencias, separarProduto } from '../src/parsers/lerDivergencias';
@@ -281,7 +283,7 @@ describe('leitura da aba', () => {
     expect(lidas[0].origem).toBe('CD');
     expect(lidas[0].itemProduto).toBe('4484433');
     expect(lidas[0].data?.toISOString().slice(0, 10)).toBe('2026-05-04');
-    expect(inversoesDeBase(lidas)).toHaveLength(1);
+    expect(divergenciasDoCD(lidas)).toHaveLength(1);
   });
 
   it('a data do painel e a saida da mercadoria, nao a emissao do pedido', () => {
@@ -562,7 +564,7 @@ describe('evolução das inversões ao longo do ano', () => {
   /* jan 1, fev 3, mar 0, abr 2, mai 0, jun 0 — e hoje é 20/06. */
   const lista = [...em(0, 1), ...em(1, 3), ...em(3, 2)];
   const hoje = new Date(Date.UTC(2026, 5, 20));
-  const e = evolucaoDeInversoes(lista, 2026, hoje);
+  const e = evolucaoDeDivergencias(lista, 2026, hoje);
 
   it('conta só até o mês de hoje: o que não aconteceu não é conquista', () => {
     /* Sem isso, jul a dez entrariam como meses zerados e o painel
@@ -583,26 +585,94 @@ describe('evolução das inversões ao longo do ano', () => {
   });
 
   it('caso no mês seguinte quebra a sequência', () => {
-    const comJunho = evolucaoDeInversoes([...lista, ...em(5, 1)], 2026, hoje);
+    const comJunho = evolucaoDeDivergencias([...lista, ...em(5, 1)], 2026, hoje);
     expect(comJunho.sequenciaZerada).toBe(0);
     expect(comJunho.mesesZerados).toBe(2);
   });
 
   it('ano passado conta os doze meses; ano futuro, nenhum', () => {
-    expect(evolucaoDeInversoes([], 2025, hoje).ateOMes).toBe(11);
-    const futuro = evolucaoDeInversoes([], 2027, hoje);
+    expect(evolucaoDeDivergencias([], 2025, hoje).ateOMes).toBe(11);
+    const futuro = evolucaoDeDivergencias([], 2027, hoje);
     expect(futuro.ateOMes).toBe(-1);
     expect(futuro.mesesZerados).toBe(0);
     expect(futuro.sequenciaZerada).toBe(0);
   });
 
   it('ano inteiro sem nenhum caso não quebra o pico', () => {
-    const limpo = evolucaoDeInversoes([], 2026, hoje);
+    const limpo = evolucaoDeDivergencias([], 2026, hoje);
     expect(limpo.pico).toBeNull();
     expect(limpo.sequenciaZerada).toBe(6);
   });
 
   it('soma o valor devolvido no ano', () => {
     expect(e.totalValor).toBe(6000);
+  });
+});
+
+describe('comparativo mês a mês (MoM)', () => {
+  const em = (mes: number, qtd: number, valor = 1000) =>
+    Array.from({ length: qtd }, (_, i) =>
+      div({ entrega: `${mes}-${i}`, valor, data: new Date(Date.UTC(2026, mes, 10)) })
+    );
+  const hoje = new Date(Date.UTC(2026, 5, 20));
+  /* jan 1 (R$1.000), fev 3 (R$3.000), mar 0, abr 2 (R$2.000), mai 0, jun 0 */
+  const c = comparativoMensal(
+    evolucaoDeDivergencias([...em(0, 1), ...em(1, 3), ...em(3, 2)], 2026, hoje)
+  );
+
+  it('só os meses decorridos entram', () => {
+    expect(c).toHaveLength(6);
+    expect(c.map((m) => m.rotulo)).toEqual(['jan', 'fev', 'mar', 'abr', 'mai', 'jun']);
+  });
+
+  it('o primeiro mês fica sem variação, e isso é nulo, não zero', () => {
+    /* Zero significaria "não mudou nada", que é outra afirmação. */
+    expect(c[0].deltaValor).toBeNull();
+    expect(c[0].deltaCasos).toBeNull();
+    expect(c[0].pctValor).toBeNull();
+  });
+
+  it('queda vem negativa, alta vem positiva', () => {
+    expect(c[1].deltaCasos).toBe(2); // jan 1 -> fev 3
+    expect(c[1].deltaValor).toBe(2000);
+    expect(c[2].deltaCasos).toBe(-3); // fev 3 -> mar 0
+    expect(c[2].deltaValor).toBe(-3000);
+    expect(c[2].pctValor).toBeCloseTo(-100, 5);
+  });
+
+  it('mês zerado depois de outro zerado guarda a última vez que houve caso', () => {
+    /* mai e jun vêm depois de abr. Sem essa referência, jun teria
+       variação zero contra mai e leria como "estável" bem na hora em
+       que o resultado está melhor. */
+    expect(c[4].zerado).toBe(true); // mai
+    expect(c[4].referencia?.rotulo).toBe('abr');
+    expect(c[5].zerado).toBe(true); // jun
+    expect(c[5].deltaValor).toBe(0);
+    expect(c[5].referencia?.rotulo).toBe('abr');
+    expect(c[5].referencia?.valor).toBe(2000);
+  });
+
+  it('mês anterior zerado não vira divisão por zero', () => {
+    /* mai fechou em zero; jun também. Percentual sobre zero não
+       significa nada, então vem nulo. */
+    expect(c[5].pctValor).toBeNull();
+  });
+
+  it('o primeiro mês não tem referência anterior', () => {
+    expect(c[0].referencia).toBeNull();
+  });
+
+  it('o ganho reportado é o do último mês fechado, não o do mês corrente', () => {
+    /* Junho está pela metade em 20/06: compará-lo com um mês inteiro
+       pintaria uma queda que ainda não aconteceu. */
+    expect(ganhoDoMes(c)?.rotulo).toBe('mai');
+  });
+
+  it('com um mês só não há o que comparar', () => {
+    const um = comparativoMensal(
+      evolucaoDeDivergencias(em(0, 1), 2026, new Date(Date.UTC(2026, 0, 15)))
+    );
+    expect(um).toHaveLength(1);
+    expect(ganhoDoMes(um)).toBeNull();
   });
 });
