@@ -557,7 +557,6 @@ function irRenderDashboard(){
     <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
-    ${irRenderAcuraciaPecasPorStatusPanel(ind)}
     <div class="bi-grid-2">
       ${irRenderSaudeEstoquePanel(ind)}
       ${irRenderStatusInventarioPanel(ind)}
@@ -602,30 +601,6 @@ function irRenderItensSemPrecoPanel(ind){
 // Quebra da Acurácia Peças por status do local — diagnóstico pra separar divergência
 // real (local já convergido/fechado) de instabilidade temporária (local ainda em
 // contagem, que muda de rodada a cada reprocessamento e ainda não é o número final).
-const IR_STATUS_LOCAL_LABEL = {
-  convergido: 'Convergido (fechado)',
-  em_contagem: 'Ainda em contagem',
-  encerrado_sem_convergencia: 'Encerrado sem convergência (5+ rodadas)'
-};
-function irRenderAcuraciaPecasPorStatusPanel(ind){
-  const linhas = ind.acuraciaPecasPorStatus||[];
-  if(!linhas.length) return '';
-  const ordenadas = linhas.slice().sort((a,b)=>b.pecasFisicas-a.pecasFisicas);
-  return `<div class="panel">
-    <h3>Acurácia Peças por status do local</h3>
-    <p class="panel-sub">A Acurácia Peças geral mistura local já fechado (divergência real) com local ainda em contagem (número ainda pode mudar de rodada). Use essa quebra pra ver de onde vem o número final.</p>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Status do local</th><th>Locais</th><th>Peças Físicas</th><th>Peças Divergentes</th><th>Acurácia</th></tr></thead>
-      <tbody>${ordenadas.map(l=>`<tr>
-        <td>${irEsc(IR_STATUS_LOCAL_LABEL[l.status]||l.status)}</td>
-        <td class="mono">${irFmtInt(l.locais)}</td>
-        <td class="mono">${irFmtInt(l.pecasFisicas)}</td>
-        <td class="mono">${irFmtInt(l.diferencaAbs)}</td>
-        <td class="mono" style="font-weight:700;color:${l.acuracia>=ind.meta?'var(--success)':'var(--danger)'};">${irFmtPct(l.acuracia)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>
-  </div>`;
-}
 const IR_META_DIARIA = 962;
 function irRenderCalendarioPanel(ind){
   const rows = ind.contadosPorDia||[];
@@ -2592,9 +2567,11 @@ function irExportDivergenciasCsv(){
 // tem NENHUMA linha liquidada — quem ninguém foi contar ainda. Não confundir com
 // "concluído" (usado na Acurácia), que exige convergência das rodadas, não só contagem.
 function irLocaisPendentesContagem(){
-  // Toda linha em IR.divergencias já passou pelo filtro Liquidado/Liquidado no worker.js
-  // — bastar aparecer aqui, com qualquer status, já significa "foi contado".
-  const contadosSet = new Set((IR.divergencias||[]).map(d=>d.local));
+  // Usa IR.contagens, não IR.divergencias — local confirmado VAZIO (Liquidado, sem
+  // nenhum item) é um local válido e contado, mas não gera nenhuma linha em
+  // divergencias (o loop que monta divergencias pula linha sem item). Usar só
+  // divergencias marcava esses locais como "pendente" por engano, mesmo já contados.
+  const contadosSet = new Set((IR.contagens||[]).map(c=>c.local));
   return (IR.locais||[])
     .filter(l=>!contadosSet.has(l.idLocal))
     .sort((a,b)=>a.idLocal.localeCompare(b.idLocal, undefined, {numeric:true}));
