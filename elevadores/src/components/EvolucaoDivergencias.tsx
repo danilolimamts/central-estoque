@@ -35,7 +35,6 @@ import { Grafico } from './charts/Grafico';
 import { Cartao, Selecao, Tabela, Td, Th, Vazio } from './ui';
 
 const COR_VALOR = cores.laranja.base;
-const COR_CASOS = cores.navy.base;
 
 export function EvolucaoDivergencias({
   divergencias,
@@ -81,67 +80,80 @@ export function EvolucaoDivergencias({
             pointRadius: 4,
             pointBackgroundColor: COR_VALOR,
             spanGaps: false,
-            yAxisID: 'y',
-          },
-          {
-            label: 'Elevadores devolvidos',
-            data: e.meses.map((m) => ateAqui(m.total.quantidade, m.mes)),
-            borderColor: COR_CASOS,
-            borderDash: [6, 4],
-            fill: false,
-            tension: 0.3,
-            pointRadius: 3,
-            spanGaps: false,
-            yAxisID: 'y1',
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        /* Folga em volta: o primeiro rotulo encostava na borda
-           esquerda e os de subida ingreme na propria linha. */
-        layout: { padding: { top: 28, left: 14, right: 14 } },
+        /* Folga em volta para o rotulo de duas linhas caber sem
+           encostar na borda nem no eixo. A lateral e larga porque o
+           rotulo do primeiro e do ultimo mes fica centrado no ponto, e
+           metade dele passaria por cima dos valores do eixo. */
+        layout: { padding: { top: 34, bottom: 10, left: 52, right: 52 } },
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 12 } },
-          /* O valor fica escrito em cima do ponto, inclusive o R$ 0:
-             o painel e projetado em reuniao, onde ninguem passa o
-             cursor. */
+          legend: { display: false },
+          /* Um rotulo por mes, com as duas informacoes: quanto custou e
+             quantos elevadores voltaram.
+
+             Antes a quantidade era uma segunda linha tracejada. Ela
+             seguia quase o mesmo desenho da linha de valor - mais caso
+             e mais dinheiro andam juntos - entao repetia a forma e
+             ainda passava por cima dos rotulos. Virou numero dentro do
+             proprio rotulo: a informacao continua, o cruzamento some. */
           datalabels: {
-            display: (c) => c.datasetIndex === 0 && c.dataset.data[c.dataIndex] != null,
-            /* No fundo de um vale a linha passa por cima do rotulo se
-               ele ficar em cima. Ponto mais baixo que os dois vizinhos
-               leva o rotulo para baixo; o resto continua em cima. */
+            display: (c) => c.dataset.data[c.dataIndex] != null,
             align: (c) => {
               const dados = c.dataset.data as (number | null)[];
               const v = dados[c.dataIndex];
               const antes = dados[c.dataIndex - 1];
               const depois = dados[c.dataIndex + 1];
               if (typeof v !== 'number') return 'top';
-              /* Zero fica em cima mesmo sendo o ponto mais baixo: e o
-                 numero que o cartao existe para mostrar, e embaixo ele
-                 cairia sobre o eixo. */
+              /* Zero e o menor ponto possivel: embaixo ele cairia sobre
+                 o eixo, entao fica sempre em cima. */
               if (v === 0) return 'top';
-              const vizinhos = [antes, depois].filter((n): n is number => typeof n === 'number');
-              /* Ponta da linha tem um vizinho so; ainda assim vale a
-                 mesma regra, senao o primeiro mes fica com o rotulo
-                 atravessado pela subida. */
-              return vizinhos.length > 0 && vizinhos.every((n) => n > v) ? 'bottom' : 'top';
+              /* Ponta da linha fica em cima: embaixo, o rotulo do
+                 primeiro mes caia sobre os valores do eixo. */
+              if (typeof antes !== 'number' || typeof depois !== 'number') return 'top';
+              /* No fundo de um vale o rotulo em cima seria atravessado
+                 pelos dois bracos da curva. */
+              return antes > v && depois > v ? 'bottom' : 'top';
             },
-            offset: 8,
+            offset: 7,
             clamp: true,
+            /* Fundo solido atras do texto.
+
+               Sem ele, qualquer rotulo que caisse sobre a curva, sobre
+               o eixo ou sobre o vizinho ficava ilegivel - e nao ha
+               alinhamento que de conta de todos os casos ao mesmo
+               tempo. A cor sai do tema na hora de desenhar, entao
+               acompanha claro e escuro. */
+            backgroundColor: () =>
+              getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#fff',
+            borderRadius: 5,
+            padding: { top: 3, bottom: 3, left: 6, right: 6 },
+            /* Rotulo vizinho nao pode ficar por cima do outro: quando
+               nao couber, o plugin esconde o de menor prioridade. */
+            overlap: false,
+            textAlign: 'center',
             font: { weight: 700, size: 11 },
             color: (c) => ((c.dataset.data[c.dataIndex] as number) === 0 ? cores.semantico.verde : COR_VALOR),
-            formatter: (v: number) => (v === 0 ? 'R$ 0' : formatarReal(v)),
+            formatter: (v: number, c) => {
+              const m = e.meses[c.dataIndex];
+              const qtd = m?.total.quantidade ?? 0;
+              if (v === 0) return ['R$ 0', '0 elevador'];
+              return [formatarReal(v), `${qtd} ${qtd === 1 ? 'elevador' : 'elevadores'}`];
+            },
           },
           tooltip: {
             callbacks: {
+              label: (c) => `Custo: ${formatarReal(Number(c.parsed.y))}`,
               afterBody: (itens) => {
                 const m = e.meses[itens[0]?.dataIndex ?? 0];
                 if (!m) return '';
-                if (m.total.quantidade === 0) return '\nMês fechado sem nenhuma divergência.';
-                return `\nCD: ${m.cd.quantidade} · Lojas: ${m.lojas.quantidade}`;
+                if (m.total.quantidade === 0) return 'Mês fechado sem nenhuma divergência.';
+                return `${m.total.quantidade} elevador(es) · CD: ${m.cd.quantidade} · Lojas: ${m.lojas.quantidade}`;
               },
             },
           },
@@ -149,15 +161,10 @@ export function EvolucaoDivergencias({
         scales: {
           y: {
             beginAtZero: true,
+            /* Folga no topo para o maior valor nao encostar na borda. */
+            grace: '18%',
             title: { display: true, text: 'R$ devolvido' },
             ticks: { callback: (v) => formatarReal(Number(v)) },
-          },
-          y1: {
-            beginAtZero: true,
-            position: 'right',
-            grid: { drawOnChartArea: false },
-            ticks: { precision: 0 },
-            title: { display: true, text: 'Elevadores' },
           },
           x: { grid: { display: false } },
         },

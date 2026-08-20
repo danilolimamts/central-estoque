@@ -66,7 +66,12 @@ export function dadosDoBoletim(
 }
 
 /* Faixa da marca no topo da imagem. Vai por HTML mesmo, para nascer
-   com as fontes e o tema da pagina, igual ao resto do boletim. */
+   com as fontes e o tema da pagina, igual ao resto do boletim.
+
+   Score e selo de saude sairam daqui. Eles resumiam o andamento do
+   plano em uma nota, e o cartao logo abaixo ja mostra a mesma coisa
+   com o detalhe - repetir no topo so dava duas versoes do mesmo
+   numero. O resumo em texto do e-mail continua trazendo os dois. */
 function montarCabecalho(doc: Document, dados: DadosBoletim): HTMLElement {
   const faixa = doc.createElement('div');
   faixa.className = 'eq-boletim-topo';
@@ -77,11 +82,6 @@ function montarCabecalho(doc: Document, dados: DadosBoletim): HTMLElement {
       <span>${dados.subtitulo}</span>
     </div>
     <div class="eq-boletim-selos">
-      <div class="eq-boletim-score">
-        <b>${dados.score}</b>
-        <span>score</span>
-      </div>
-      <div class="eq-boletim-saude" style="background:${dados.saudeCor}">${dados.saudeRotulo}</div>
       <time>${dados.data}</time>
     </div>`;
   return faixa;

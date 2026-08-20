@@ -592,12 +592,6 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-boletim-titulo strong{ color:#fff; font-size:19px; font-weight:800; }
 .eq-boletim-titulo span{ color:#B9C0E6; font-size:12.5px; margin-top:2px; }
 .eq-boletim-selos{ margin-left:auto; display:flex; align-items:center; gap:12px; }
-.eq-boletim-score{ display:flex; align-items:baseline; gap:5px; background:rgba(255,255,255,.12);
-  padding:6px 13px; border-radius:8px; }
-.eq-boletim-score b{ color:#fff; font-size:22px; font-weight:800; line-height:1; }
-.eq-boletim-score span{ color:#B9C0E6; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
-.eq-boletim-saude{ color:#fff; font-size:12px; font-weight:800; padding:7px 14px; border-radius:100px;
-  text-transform:uppercase; letter-spacing:.04em; }
 .eq-boletim-selos time{ color:#fff; font-size:13px; font-weight:700; }
 .eq-boletim-pe{ padding:14px 22px 18px; font-size:11px; color:var(--ink-soft); }
 /* Rotulo de uma linha so, cortado com reticencias: na tela o navegador
