@@ -6,7 +6,7 @@
    dados do cabecalho e o resumo em texto que vai no corpo do e-mail.
    ============================================================ */
 import { describe, it, expect } from 'vitest';
-import { dadosDoBoletim, nomeDoArquivo, textoBoletim, CLASSE_FORA } from '../src/export/boletimStatus';
+import { dadosDoBoletim, nomeDoArquivo, textoBoletim, CLASSE_FORA, coletarCss } from '../src/export/boletimStatus';
 import { calcularMetricas, derivarAcoes } from '../src/domain/projeto';
 import type { Acao } from '../src/domain/tipos';
 
@@ -140,5 +140,38 @@ describe('resumo em texto para o corpo do e-mail', () => {
 describe('marcacao do que sai da imagem', () => {
   it('a classe e estavel: a pagina e o modal dependem dela', () => {
     expect(CLASSE_FORA).toBe('fora-do-boletim');
+  });
+});
+
+describe('estilos embutidos na captura', () => {
+  /* Uma folha de estilo falsa, no formato que o navegador entrega. */
+  const folha = (regras: string[]): CSSStyleSheet =>
+    ({ cssRules: regras.map((cssText) => ({ cssText })) } as unknown as CSSStyleSheet);
+
+  const lista = (folhas: CSSStyleSheet[]): StyleSheetList =>
+    folhas as unknown as StyleSheetList;
+
+  it('junta as regras de todas as folhas da página', () => {
+    const css = coletarCss(lista([folha(['.a{color:red}']), folha(['.b{color:blue}'])]));
+    expect(css).toContain('.a{color:red}');
+    expect(css).toContain('.b{color:blue}');
+  });
+
+  it('folha de outra origem não derruba a captura', () => {
+    /* A do Google Fonts bloqueia cssRules. Antes disso ser tratado, a
+       exceção interrompia a leitura e o clone ficava sem estilo
+       nenhum - a imagem saía como texto solto. */
+    const bloqueada = {
+      get cssRules(): CSSRuleList {
+        throw new DOMException('cross-origin', 'SecurityError');
+      },
+    } as unknown as CSSStyleSheet;
+
+    const css = coletarCss(lista([bloqueada, folha(['.c{color:green}'])]));
+    expect(css).toContain('.c{color:green}');
+  });
+
+  it('página sem folha nenhuma devolve vazio, e não quebra', () => {
+    expect(coletarCss(lista([]))).toBe('');
   });
 });

@@ -83,16 +83,26 @@ const medidas = await pagina.evaluate(() => {
      pode ser uma chapa de fundo cinza. */
   let pintados = 0;
   let navy = 0;
+  /* Cartao branco sobre o fundo cinza. Se o CSS nao chegar no clone,
+     some tudo: cartao, cor e coluna. A faixa da marca continua navy
+     mesmo assim, entao so contar navy nao pegava o problema - foi
+     exatamente essa a falha que passou batido. */
+  let brancos = 0;
   for (let i = 0; i < d.length; i += 4 * 53) {
     const [r, g, b] = [d[i], d[i + 1], d[i + 2]];
     if (r !== 241 || g !== 242 || b !== 246) pintados++;
     if (b > 90 && b - r > 60 && r < 90) navy++;
+    if (r > 248 && g > 248 && b > 248) brancos++;
   }
   return {
     largura: canvas.width,
     altura: canvas.height,
     pintados,
     navy,
+    brancos,
+    amostras: Math.ceil(d.length / (4 * 53)),
+    /* Prova de que as regras entraram no clone. */
+    cssInline: !!document.querySelector('style[data-boletim]') || 'so no clone',
     modalCabe: modal.bottom <= window.innerHeight + 1 && modal.top >= -1,
     botoes: acoes.map((b) => b.textContent.trim()),
     png: canvas.toDataURL('image/png'),
@@ -104,6 +114,15 @@ if (medidas.altura < medidas.largura) {
 }
 if (medidas.pintados < 500) problemas.push(`a imagem saiu quase vazia: ${medidas.pintados} amostras`);
 if (medidas.navy < 50) problemas.push(`sem o navy da marca na imagem: ${medidas.navy} amostras`);
+/* O painel e feito de cartoes brancos: eles ocupam a maior parte da
+   imagem. Pouco branco significa captura sem estilo. */
+const pctBranco = (medidas.brancos / medidas.amostras) * 100;
+if (pctBranco < 25) {
+  problemas.push(
+    `a imagem saiu sem os cartoes: so ${pctBranco.toFixed(0)}% de branco. ` +
+      'Provavel CSS que nao chegou no clone do html2canvas.'
+  );
+}
 if (!medidas.modalCabe) problemas.push('o modal passou da altura da janela');
 for (const esperado of ['Copiar boletim', 'Baixar imagem', 'Copiar texto', 'Abrir no e-mail']) {
   if (!medidas.botoes.includes(esperado)) problemas.push(`botao ausente: ${esperado}`);

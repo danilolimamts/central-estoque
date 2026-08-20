@@ -95,6 +95,40 @@ function montarRodape(doc: Document): HTMLElement {
   return pe;
 }
 
+/* Le as regras de todas as folhas de estilo da pagina viva.
+
+   O html2canvas desenha o clone dentro de um iframe e copia o <head>
+   junto - inclusive a tag <link> do CSS. So que o iframe busca esse
+   arquivo de novo, e a captura nao espera: se a resposta demorar um
+   instante, a imagem sai sem estilo nenhum. Foi o que aconteceu no
+   site publicado, onde o CSS e um arquivo separado; em servidor local
+   ele chega rapido demais para o problema aparecer.
+
+   Copiando as regras para dentro do clone, a imagem para de depender
+   de qualquer busca de rede. Folha de outra origem (a do Google
+   Fonts) nao deixa ler cssRules e e ignorada - as fontes ja vem pelo
+   proprio <link> copiado. */
+export function coletarCss(folhas: StyleSheetList): string {
+  const regras: string[] = [];
+  for (const folha of Array.from(folhas)) {
+    try {
+      for (const regra of Array.from(folha.cssRules)) regras.push(regra.cssText);
+    } catch {
+      /* Folha de outra origem: sem acesso as regras, segue sem ela. */
+    }
+  }
+  return regras.join('\n');
+}
+
+function inlinarEstilos(doc: Document): void {
+  const css = coletarCss(document.styleSheets);
+  if (!css) return;
+  const tag = doc.createElement('style');
+  tag.setAttribute('data-boletim', 'estilos-inline');
+  tag.textContent = css;
+  doc.head.appendChild(tag);
+}
+
 /* Captura o painel. O clone recebe a faixa da marca, perde o que esta
    marcado para sair e ganha largura fixa, para o boletim nao depender
    do tamanho da janela de quem gerou. */
@@ -104,6 +138,9 @@ export async function gerarBoletim(
   opcoes: { escala?: number; largura?: number } = {}
 ): Promise<HTMLCanvasElement> {
   const largura = opcoes.largura ?? 1180;
+  /* Espera as fontes antes de medir o texto. Sem isto a captura pode
+     sair com a fonte de sistema, e a largura de cada rotulo muda. */
+  await document.fonts?.ready?.catch?.(() => undefined);
   return html2canvas(alvo, {
     backgroundColor: FUNDO,
     scale: opcoes.escala ?? 2,
@@ -111,6 +148,7 @@ export async function gerarBoletim(
     logging: false,
     windowWidth: largura,
     onclone: (doc: Document, clone: HTMLElement) => {
+      inlinarEstilos(doc);
       clone.querySelectorAll(`.${CLASSE_FORA}`).forEach((e) => e.remove());
       /* Tirar a classe basta: o display:none vem dela. */
       clone.querySelectorAll(`.${CLASSE_SO_BOLETIM}`).forEach((e) => e.classList.remove(CLASSE_SO_BOLETIM));
