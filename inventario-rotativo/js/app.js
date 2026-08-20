@@ -1075,7 +1075,7 @@ function irRenderStatusInventarioPanel(ind){
     <h3>Status do Inventário</h3>
     <p class="panel-sub">Percentual de locais concluídos em relação ao total orçado do ciclo.</p>
     <div class="form-actions" style="margin:0 0 12px;">
-      <button class="btn-link" onclick="irExportarLocaisPendentesCsv()">📤 Exportar locais pendentes de contagem (${irFmtInt(total-concluidos)})</button>
+      <button class="btn-link" onclick="irExportarLocaisPendentesCsv()">📤 Exportar locais pendentes de contagem (${irFmtInt(irLocaisPendentesContagem().length)})</button>
     </div>
     <div class="status-donut-row">
       ${irDonutSvg(pct)}
@@ -2585,20 +2585,23 @@ function irExportDivergenciasCsv(){
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'divergencias_ciclo_'+IR.cicloAtivo.numero+'.csv'; a.click(); URL.revokeObjectURL(a.href);
 }
-// Locais pendentes de contagem no ciclo VIGENTE — mesmo critério de "concluído" usado
-// em todo o resto do app (locaisConcluidos/andamentoCiclo): concluído = pelo menos uma
-// visita (local + Id Inventario) com status convergido ou encerrado_sem_convergencia.
-// Local sem nenhuma contagem ainda (nunca tocado) também entra como pendente, já que
-// simplesmente não aparece em IR.divergencias.
+// Locais pendentes de CONTAGEM no ciclo VIGENTE — cruza a Base Congelada com a
+// QRY0843: se existe qualquer linha do local com Situação Local e Situação Inventário
+// = Liquidado, o local foi contado (entrou em campo, teve rodada liquidada), mesmo que
+// ainda não tenha convergido (rodadas ainda divergindo). "Pendente" aqui é só quem não
+// tem NENHUMA linha liquidada — quem ninguém foi contar ainda. Não confundir com
+// "concluído" (usado na Acurácia), que exige convergência das rodadas, não só contagem.
+function irLocaisPendentesContagem(){
+  // Toda linha em IR.divergencias já passou pelo filtro Liquidado/Liquidado no worker.js
+  // — bastar aparecer aqui, com qualquer status, já significa "foi contado".
+  const contadosSet = new Set((IR.divergencias||[]).map(d=>d.local));
+  return (IR.locais||[])
+    .filter(l=>!contadosSet.has(l.idLocal))
+    .sort((a,b)=>a.idLocal.localeCompare(b.idLocal, undefined, {numeric:true}));
+}
 function irExportarLocaisPendentesCsv(){
   if(!IR.cicloAtivo){ irShowToast('Nenhum ciclo ativo.', true); return; }
-  const LOCAIS_CONCLUIDO = new Set(['convergido','encerrado_sem_convergencia']);
-  const concluidosSet = new Set(
-    (IR.divergencias||[]).filter(d=>LOCAIS_CONCLUIDO.has(d.statusLocal)).map(d=>d.local)
-  );
-  const pendentes = (IR.locais||[])
-    .filter(l=>!concluidosSet.has(l.idLocal))
-    .sort((a,b)=>a.idLocal.localeCompare(b.idLocal, undefined, {numeric:true}));
+  const pendentes = irLocaisPendentesContagem();
   if(!pendentes.length){ irShowToast('Nenhum local pendente — ciclo 100% concluído.'); return; }
   const header = 'Local;Descrição';
   const lines = pendentes.map(l=>{
