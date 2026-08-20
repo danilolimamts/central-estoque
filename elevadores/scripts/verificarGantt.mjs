@@ -60,8 +60,12 @@ if ((await evol.count()) === 0) {
   if (!/m[êe]s a m[êe]s/i.test(texto)) {
     problemas.push('o comparativo mes a mes nao apareceu no cartao');
   }
-  if (!/vs\. m[êe]s anterior/i.test(texto)) {
+  if (!/varia[çc][ãa]o/i.test(texto)) {
     problemas.push('a tabela do comparativo nao traz a coluna de variacao');
+  }
+  /* A leitura pedida e porcentagem, nao frase. */
+  if (!/-?\d+%/.test(texto)) {
+    problemas.push('o comparativo nao mostra a variacao em porcentagem');
   }
   /* O cartao nao pode mais falar em inversao como se fosse o todo. */
   const tituloEvol = await evol.locator('h3').first().innerText();

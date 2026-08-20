@@ -977,6 +977,11 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-evol-manchete.piora{ border-left-color:var(--orange); background:#FFEDE7; }
 .eq-evol-manchete b{ font-size:13px; font-weight:800; letter-spacing:.04em; color:var(--ink); }
 .eq-evol-manchete span{ font-size:13px; color:var(--ink); }
+.eq-evol-manchete strong{ font-size:20px; font-weight:800; color:var(--success);
+  font-variant-numeric:tabular-nums; }
+.eq-evol-manchete.piora strong{ color:var(--orange); }
+/* A porcentagem e a coluna que a gerencia le primeiro. */
+.eq-mom-pct{ font-size:14px; font-variant-numeric:tabular-nums; }
 :root[data-theme="dark"] .eq-evol-manchete.piora{ background:rgba(250,70,22,.14); }
 
 /* Mes que fechou em zero: a linha inteira ganha peso, e o ganho que

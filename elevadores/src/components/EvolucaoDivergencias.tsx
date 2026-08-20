@@ -22,7 +22,6 @@ import type { ChartConfiguration } from 'chart.js';
 import {
   anosDisponiveis,
   comparativoMensal,
-  doAno,
   evolucaoDeDivergencias,
   formatarReal,
   ganhoDoMes,
@@ -206,7 +205,13 @@ export function EvolucaoDivergencias({
       {fechado && fechado.deltaValor != null && (
         <div className={`eq-evol-manchete${fechado.deltaValor <= 0 ? ' ganho' : ' piora'}`}>
           <b>{fechado.rotulo.toUpperCase()}</b>
-          <span>{lerMes(fechado)}</span>
+          <strong>{pctDaVariacao(fechado)}</strong>
+          <span>
+            {fechado.casos} divergência(s) · {formatarReal(fechado.valor)}
+            {fechado.referencia && fechado.zerado
+              ? ` · último mês com caso: ${fechado.referencia.rotulo}`
+              : ''}
+          </span>
         </div>
       )}
 
@@ -251,15 +256,16 @@ export function EvolucaoDivergencias({
           o e-mail. */}
       {comparativo.length > 1 && (
         <>
-          <h4 className="eq-sac-titulo">Mês a mês — o ganho de cada mês contra o anterior</h4>
+          <h4 className="eq-sac-titulo">Mês a mês — variação contra o mês anterior</h4>
           <Tabela>
             <thead>
               <tr>
                 <Th>Mês</Th>
                 <Th alinha="right">Divergências</Th>
                 <Th alinha="right">Custo</Th>
-                <Th alinha="right">vs. mês anterior</Th>
-                <Th>Leitura</Th>
+                <Th alinha="right">Variação</Th>
+                <Th alinha="right">Δ casos</Th>
+                <Th alinha="right">Δ custo</Th>
               </tr>
             </thead>
             <tbody>
@@ -274,30 +280,36 @@ export function EvolucaoDivergencias({
                       <b>{m.rotulo}</b>
                     </Td>
                     <Td alinha="right" numerico>
-                      {m.zerado ? (
-                        <b style={{ color: cores.semantico.verde }}>0</b>
-                      ) : (
-                        m.casos
-                      )}
+                      {m.zerado ? <b style={{ color: cores.semantico.verde }}>0</b> : m.casos}
                     </Td>
                     <Td alinha="right" numerico>{formatarReal(m.valor)}</Td>
+                    {/* A porcentagem e a coluna que a gerencia le
+                        primeiro, entao vem em destaque e antes dos
+                        numeros absolutos. */}
+                    <Td alinha="right" numerico>
+                      <b className="eq-mom-pct" style={{ color: cor }} title={legendaDaVariacao(m)}>
+                        {pctDaVariacao(m)}
+                      </b>
+                    </Td>
+                    <Td alinha="right" numerico>
+                      {m.deltaCasos == null ? (
+                        <span style={{ color: 'var(--ink-soft)' }}>—</span>
+                      ) : (
+                        <span style={{ color: cor }}>
+                          {m.deltaCasos > 0 ? '+' : ''}
+                          {m.deltaCasos}
+                        </span>
+                      )}
+                    </Td>
                     <Td alinha="right" numerico>
                       {m.deltaValor == null ? (
                         <span style={{ color: 'var(--ink-soft)' }}>—</span>
                       ) : (
-                        <b style={{ color: cor }}>
-                          {caiu ? '▼' : subiu ? '▲' : ''} {formatarReal(Math.abs(m.deltaValor))}
-                          {m.pctValor != null && (
-                            <i style={{ fontStyle: 'normal', fontWeight: 400, marginLeft: 5 }}>
-                              ({m.pctValor > 0 ? '+' : ''}
-                              {m.pctValor.toFixed(0)}%)
-                            </i>
-                          )}
-                        </b>
+                        <span style={{ color: cor }}>
+                          {caiu ? '−' : subiu ? '+' : ''}
+                          {formatarReal(Math.abs(m.deltaValor))}
+                        </span>
                       )}
-                    </Td>
-                    <Td>
-                      <span style={{ color: cor, fontSize: 11.5 }}>{lerMes(m)}</span>
                     </Td>
                   </tr>
                 );
@@ -310,39 +322,25 @@ export function EvolucaoDivergencias({
   );
 }
 
-/* A frase de cada linha, escrita como a reuniao fala. Evita a tabela
-   virar so numero: quem le no e-mail precisa entender sem legenda. */
-function lerMes(m: ComparativoMes): string {
-  if (m.deltaValor == null) return 'primeiro mês do ano, sem base de comparação';
-  if (m.zerado) {
-    /* Compara com a ultima vez que houve divergencia, e nao com o mes
-       anterior: o segundo mes limpo seguido tem diferenca zero contra
-       o anterior, e leria como "estavel" bem na hora em que o
-       resultado esta melhor. */
-    if (m.referencia) {
-      return `sem nenhuma divergência · ${formatarReal(m.referencia.valor)} a menos que ${m.referencia.rotulo}, último mês com caso`;
-    }
-    return 'fechou sem nenhuma divergência';
-  }
-  if (m.deltaValor < 0) {
-    const menos = m.deltaCasos != null && m.deltaCasos < 0 ? `${Math.abs(m.deltaCasos)} caso(s) a menos · ` : '';
-    return `${menos}${formatarReal(Math.abs(m.deltaValor))} economizados`;
-  }
-  if (m.deltaValor > 0) {
-    const mais = m.deltaCasos != null && m.deltaCasos > 0 ? `${m.deltaCasos} caso(s) a mais · ` : '';
-    return `${mais}${formatarReal(m.deltaValor)} de piora`;
-  }
-  return 'estável em relação ao mês anterior';
+/* A variacao em porcentagem, que e a leitura pedida.
+
+   Mes zerado depois de outro zerado nao tem porcentagem contra o
+   anterior: a conta seria 0 sobre 0. Nesse caso a variacao sai contra
+   a ultima vez que houve divergencia, que e -100% e e o numero que
+   descreve o ganho de verdade. */
+function pctDaVariacao(m: ComparativoMes): string {
+  if (m.pctValor != null) return `${m.pctValor > 0 ? '+' : ''}${m.pctValor.toFixed(0)}%`;
+  if (m.zerado && m.referencia && m.referencia.valor > 0) return '−100%';
+  return '—';
 }
 
-/* Reexportado para o painel poder contar os casos do ano sem repetir
-   o filtro dos ajustes. */
-export function casosDoAno(
-  divergencias: DivergenciaSAC[],
-  ajustes: AjusteCaso[],
-  ano: number
-): DivergenciaSAC[] {
-  const detectados = divergenciasDoCD(divergencias);
-  const mapa = mapaDeAjustes(ajustes);
-  return doAno(casosConsiderados(detectados, mapa, forasDaPlanilha(detectados)), ano);
+/* O title explica de onde saiu a porcentagem quando ela nao vem do mes
+   imediatamente anterior. Sem isso o -100% de um mes zerado parece
+   errado para quem confere na tabela ao lado. */
+function legendaDaVariacao(m: ComparativoMes): string {
+  if (m.pctValor != null) return 'variação contra o mês anterior';
+  if (m.zerado && m.referencia) {
+    return `sem divergência; ${m.referencia.rotulo} foi o último mês com caso (${formatarReal(m.referencia.valor)})`;
+  }
+  return 'primeiro mês do ano, sem base de comparação';
 }

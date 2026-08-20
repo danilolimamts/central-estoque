@@ -53,6 +53,22 @@ if (saudeNaTela > 0 && saudeEscondida === 0) {
 }
 if (saudeEscondida === 0) problemas.push('a saude do estoque nao foi preparada para o boletim');
 
+/* O boletim reporta resultado. "Ganhos do projeto" e acompanhamento
+   interno do plano e fica so na tela; a evolucao das divergencias, que
+   e o resultado na operacao, precisa sair na imagem. */
+const ganhosFora = await pagina.locator(`.${'fora-do-boletim'} .panel`, { hasText: 'Ganhos do projeto' }).count();
+if (ganhosFora === 0) {
+  problemas.push('o cartao "Ganhos do projeto" nao foi marcado para sair do boletim');
+}
+const evolNaTela = await pagina.locator('.panel', { hasText: 'Evolução das divergências' }).count();
+if (evolNaTela === 0) {
+  problemas.push('a evolucao das divergencias sumiu da tela do projeto');
+} else if (
+  (await pagina.locator(`.${'fora-do-boletim'} .panel`, { hasText: 'Evolução das divergências' }).count()) > 0
+) {
+  problemas.push('a evolucao das divergencias foi marcada para sair do boletim, e ela e o reporte');
+}
+
 await pagina.getByRole('button', { name: 'Gerar boletim' }).click();
 await pagina.waitForSelector('.eq-previa-pagina canvas', { timeout: 20000 });
 await pagina.waitForTimeout(800);

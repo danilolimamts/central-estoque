@@ -933,16 +933,24 @@ export function StatusProjeto({
             {explicarVariacao(variacao)}
           </p>
         </Cartao>
-        {/* No lugar do avanco por frente: o resultado na operacao.
-            Quantas acoes fecharam diz que o time trabalhou; a inversao
-            caindo a zero diz que a operacao melhorou, que e o ganho
-            que a reuniao quer ver. */}
-        <EvolucaoDivergencias divergencias={divergencias} ajustes={ajustes} hoje={hoje} />
+        <EntregasPorSemana acoes={filtradas} />
       </div>
 
-      <div className="grid gap-4.5 lg:grid-cols-2" style={{ gap: 18 }}>
+      {/* No lugar do avanco por frente: o resultado na operacao.
+          Quantas acoes fecharam diz que o time trabalhou; a divergencia
+          caindo a zero diz que a operacao melhorou, que e o ganho que a
+          reuniao quer ver.
+
+          Ocupa a linha inteira. Dividindo espaco com o medidor, o
+          grafico ficava estreito demais e os rotulos de valor caiam uns
+          sobre os outros - justamente os numeros que o cartao existe
+          para mostrar. */}
+      <EvolucaoDivergencias divergencias={divergencias} ajustes={ajustes} hoje={hoje} />
+
+      {/* Fora do boletim: o e-mail reporta resultado, e esta leitura e
+          de acompanhamento interno do plano. */}
+      <div className={CLASSE_FORA}>
         <GanhosDoProjeto acoes={filtradas} />
-        <EntregasPorSemana acoes={filtradas} />
       </div>
 
       <Matriz acoes={filtradas} />
