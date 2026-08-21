@@ -364,16 +364,23 @@ Mede o resultado do projeto, não o andamento do plano.
 - **Mês que ainda não aconteceu fica fora de tudo.** Sem isso, o painel
   contaria jul–dez como meses zerados e anunciaria "seis meses sem
   divergência" em junho.
-- **A curva basta; não repita a mesma coisa em tabela.** Cada ponto do
-  gráfico já traz o valor e a quantidade escritos. Uma tabela de mês a mês
-  existiu embaixo do gráfico e foi retirada: dizia o mesmo, e a coluna de
-  variação ficava ilegível justamente nos meses bons (ver a regra do mês
-  zerado abaixo). A variação que importa está na manchete.
-- **A manchete usa o último mês fechado**, não o corrente: comparar um mês
-  pela metade com um mês inteiro pinta uma queda que não aconteceu.
-- **Mês zerado depois de outro zerado** não compara com o anterior (daria
-  0% e leria "estável" bem quando o resultado está melhor). Compara com a
-  última vez que houve divergência e vale −100%.
+- **Sem porcentagem neste cartão.** Esta é a regra mais importante da
+  seção, e custou três iterações para chegar nela. O volume é de um a três
+  casos por mês; nessa escala a variação percentual não descreve o
+  resultado, ela o exagera. De 1 caso para 2 vira "+100%"; de volta a 1
+  vira "−50%"; e um mês zerado depois de outro zerado não tem porcentagem
+  nenhuma contra o anterior (0 sobre 0), o que obriga a inventar uma regra
+  de comparação para produzir um número. **Não invente essa regra.**
+  Existiram no cartão, e todas foram retiradas: uma tabela de mês a mês com
+  coluna de variação, uma manchete com a variação do último mês fechado, e
+  um número de "queda contra o pico do ano".
+- **A curva já diz tudo.** Cada ponto traz o valor e a quantidade escritos
+  ao lado. Acima dela ficam só três números absolutos: meses seguidos sem
+  divergência, quantos dos meses decorridos fecharam em zero, e o total
+  devolvido no ano.
+- O painel é apresentado à diretoria. Número que parece armado custa a
+  confiança no painel inteiro, e um gráfico honesto convence mais do que um
+  "−100%" que não se sustenta se alguém perguntar de onde saiu.
 
 ---
 
@@ -405,7 +412,7 @@ de desconsiderados.
 | 1 | Filtros | ❌ |
 | 2 | Status do projeto — rosca de %, 3 números, variação vs. medição anterior | ✅ |
 | 3 | Entregas por semana — área SVG | ✅ |
-| 4 | **Evolução das divergências** — manchete + 4 números + linha | ✅ |
+| 4 | **Evolução das divergências** — 3 números + linha | ✅ |
 | 5 | Ganhos do projeto — 5 barras | ❌ |
 | 6 | Matriz Impacto × Esforço | ✅ |
 | 7 | Plano de ação — por PLAN ACTION | ✅ |

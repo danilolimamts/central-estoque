@@ -10,15 +10,18 @@
    que o plano existe para mudar: elevador voltando por erro do CD, e
    quanto isso custou.
 
-   Tres leituras, da mais rapida para a mais detalhada: a manchete do
-   mes fechado, os numeros do ano e a curva.
+   Duas leituras: os numeros do ano e a curva, com o valor e a
+   quantidade escritos em cada mes.
 
-   Ja houve tambem uma tabela de mes a mes embaixo. Ela repetia o que a
-   curva ja mostra - cada ponto do grafico traz o valor e a quantidade
-   escritos - e a coluna de variacao ficava ilegivel justamente quando
-   o resultado era bom: um mes zerado depois de outro zerado nao tem
-   porcentagem contra o anterior. A variacao que interessa, a do ultimo
-   mes fechado, continua na manchete.
+   O cartao ja teve uma tabela de mes a mes, uma manchete com a
+   variacao do ultimo mes fechado e a queda contra o pico do ano. Tudo
+   isso saiu, e por um motivo so: com um ou dois casos por mes, a
+   porcentagem nao descreve o resultado, ela o exagera. Um mes que sai
+   de 1 caso para 2 vira "+100%"; o seguinte, de volta a 1, vira
+   "-50%"; e um mes zerado depois de outro zerado precisava de uma
+   regra inventada para ter porcentagem. O grafico conta a mesma
+   historia sem precisar dessa moldura - e quem le confia mais no que
+   nao parece armado.
 
    Mes que ainda nao aconteceu fica fora de tudo. Contar dezembro como
    mes zerado em agosto seria inventar resultado.
@@ -27,13 +30,11 @@ import { useMemo, useState } from 'react';
 import type { ChartConfiguration } from 'chart.js';
 import {
   anosDisponiveis,
-  comparativoMensal,
   evolucaoDeDivergencias,
   formatarReal,
-  ganhoDoMes,
   divergenciasDoCD,
 } from '../domain/divergencias';
-import type { ComparativoMes, DivergenciaSAC } from '../domain/divergencias';
+import type { DivergenciaSAC } from '../domain/divergencias';
 import { casosConsiderados, forasDaPlanilha, mapaDeAjustes } from '../domain/ajustes';
 import type { AjusteCaso } from '../domain/ajustes';
 import { cores } from '../config/tokens';
@@ -190,19 +191,6 @@ export function EvolucaoDivergencias({
     );
   }
 
-  const comparativo = comparativoMensal(e);
-  /* O ultimo mes fechado: e dele que sai a manchete. O mes corrente
-     esta pela metade e compara-lo com um mes inteiro pintaria uma
-     queda que ainda nao aconteceu. */
-  const fechado = ganhoDoMes(comparativo);
-
-  /* A queda contra o pico do ano: e a frase que a reuniao repete. */
-  const ultimo = e.ateOMes >= 0 ? e.meses[e.ateOMes] : null;
-  const queda =
-    e.pico && e.pico.total.quantidade > 0 && ultimo
-      ? Math.round(((e.pico.total.quantidade - ultimo.total.quantidade) / e.pico.total.quantidade) * 100)
-      : null;
-
   return (
     <Cartao
       titulo="Evolução das divergências"
@@ -213,21 +201,6 @@ export function EvolucaoDivergencias({
         ) : undefined
       }
     >
-      {/* A manchete do cartao: uma frase, o mes fechado, para quem
-          abre o e-mail no celular e nao vai ler o grafico. */}
-      {fechado && fechado.deltaValor != null && (
-        <div className={`eq-evol-manchete${fechado.deltaValor <= 0 ? ' ganho' : ' piora'}`}>
-          <b>{fechado.rotulo.toUpperCase()}</b>
-          <strong>{pctDaVariacao(fechado)}</strong>
-          <span>
-            {fechado.casos} divergência(s) · {formatarReal(fechado.valor)}
-            {fechado.referencia && fechado.zerado
-              ? ` · último mês com caso: ${fechado.referencia.rotulo}`
-              : ''}
-          </span>
-        </div>
-      )}
-
       <div className="eq-evol-numeros">
         <div>
           <b style={{ color: e.sequenciaZerada > 0 ? cores.semantico.verde : 'var(--ink)' }}>
@@ -241,17 +214,6 @@ export function EvolucaoDivergencias({
           <b>{e.mesesZerados}</b>
           <span>de {e.ateOMes + 1} meses fecharam em zero</span>
         </div>
-        {queda != null && (
-          <div>
-            <b style={{ color: queda > 0 ? cores.semantico.verde : COR_VALOR }}>
-              {queda > 0 ? '−' : '+'}
-              {Math.abs(queda)}%
-            </b>
-            <span>
-              do pico de {e.pico!.total.quantidade} em {e.pico!.rotulo}
-            </span>
-          </div>
-        )}
         <div>
           <b style={{ color: COR_VALOR }}>{formatarReal(e.totalValor)}</b>
           <span>devolvido no ano, em {e.totalCasos} elevador(es)</span>
@@ -263,19 +225,6 @@ export function EvolucaoDivergencias({
         altura={300}
         rotulo="Custo e quantidade de divergências por mês, ao longo do ano"
       />
-
     </Cartao>
   );
-}
-
-/* A variacao em porcentagem, que e a leitura pedida.
-
-   Mes zerado depois de outro zerado nao tem porcentagem contra o
-   anterior: a conta seria 0 sobre 0. Nesse caso a variacao sai contra
-   a ultima vez que houve divergencia, que e -100% e e o numero que
-   descreve o ganho de verdade. */
-function pctDaVariacao(m: ComparativoMes): string {
-  if (m.pctValor != null) return `${m.pctValor > 0 ? '+' : ''}${m.pctValor.toFixed(0)}%`;
-  if (m.zerado && m.referencia && m.referencia.valor > 0) return '−100%';
-  return '—';
 }
