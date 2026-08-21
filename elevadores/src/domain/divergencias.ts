@@ -398,6 +398,19 @@ export function evolucaoDeDivergencias(
   };
 }
 
+/* Onde cai o inicio do projeto dentro do ano mostrado.
+
+   O retorno e a posicao na escala de meses do grafico: 2,5 e "meio de
+   marco". Fora do ano mostrado devolve nulo - o marco simplesmente nao
+   aparece, porque uma linha encostada na borda esquerda diria que o
+   projeto comecou em janeiro. */
+export function posicaoDoMarco(inicio: Date | null | undefined, ano: number): number | null {
+  if (!inicio || inicio.getUTCFullYear() !== ano) return null;
+  const mes = inicio.getUTCMonth();
+  const diasNoMes = new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate();
+  return mes + (inicio.getUTCDate() - 1) / diasNoMes;
+}
+
 export interface LinhaTransportadora {
   transportadora: string;
   quantidade: number;

@@ -15,6 +15,7 @@ import {
   ganhosDaAcao,
   resumirGanhos,
   acoesUnicas,
+  inicioDoProjeto,
 } from '../src/domain/projeto';
 import type { Acao } from '../src/domain/tipos';
 
@@ -268,5 +269,32 @@ describe('recorte concluida contra nao concluida', () => {
   it('a acao atrasada entra em nao concluida', () => {
     const atrasada = lista.find((a) => a.atrasada)!;
     expect(atrasada.concluida).toBe(false);
+  });
+});
+
+describe('início do projeto', () => {
+  const em = (mes: number, dia = 1) => new Date(Date.UTC(2026, mes, dia));
+
+  it('é a data de início mais antiga do plano, esteja ela em qualquer posição', () => {
+    /* A planilha não vem ordenada por data, então não basta pegar a
+       primeira linha. */
+    const inicio = inicioDoProjeto([
+      acao({ inicio: em(4, 10) }),
+      acao({ inicio: em(2, 3) }),
+      acao({ inicio: em(7, 1) }),
+    ]);
+    expect(inicio?.getTime()).toBe(em(2, 3).getTime());
+  });
+
+  it('ação sem data de início não conta', () => {
+    const inicio = inicioDoProjeto([acao({ inicio: null }), acao({ inicio: em(5, 20) })]);
+    expect(inicio?.getTime()).toBe(em(5, 20).getTime());
+  });
+
+  it('plano sem nenhuma data não inventa um início', () => {
+    /* Nulo faz o marco sumir do gráfico. Chutar uma data desenharia
+       uma virada que ninguém pode confirmar. */
+    expect(inicioDoProjeto([acao({ inicio: null })])).toBeNull();
+    expect(inicioDoProjeto([])).toBeNull();
   });
 });

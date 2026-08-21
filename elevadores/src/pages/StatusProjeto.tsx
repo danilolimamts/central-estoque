@@ -14,7 +14,7 @@ import type { DivergenciaSAC } from '../domain/divergencias';
 import type { AjusteCaso } from '../domain/ajustes';
 import {
   calcularMetricas, montarMatriz, planoPorAcao, totalDoPlano, situacaoDe, acoesUnicas,
-  resumirGanhos, ganhosDaAcao, GANHOS,
+  resumirGanhos, ganhosDaAcao, inicioDoProjeto, GANHOS,
 } from '../domain/projeto';
 import { cores } from '../config/tokens';
 import { Grafico } from '../components/charts/Grafico';
@@ -945,7 +945,14 @@ export function StatusProjeto({
           grafico ficava estreito demais e os rotulos de valor caiam uns
           sobre os outros - justamente os numeros que o cartao existe
           para mostrar. */}
-      <EvolucaoDivergencias divergencias={divergencias} ajustes={ajustes} hoje={hoje} />
+      {/* O inicio sai do plano inteiro, nao da selecao: filtrar por
+          responsavel nao muda a data em que o projeto comecou. */}
+      <EvolucaoDivergencias
+        divergencias={divergencias}
+        ajustes={ajustes}
+        inicio={inicioDoProjeto(acoes)}
+        hoje={hoje}
+      />
 
       {/* Fora do boletim: o e-mail reporta resultado, e esta leitura e
           de acompanhamento interno do plano. */}

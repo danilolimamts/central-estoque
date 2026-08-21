@@ -252,6 +252,22 @@ export function proximosPassos(acoes: Acao[], m: MetricasProjeto, pontos: PontoM
    avancou.
    ============================================================ */
 
+/* Quando o projeto comecou: a data de inicio mais antiga do plano.
+   Nao ha campo de "inicio do projeto" na planilha, e nao precisa
+   haver - o projeto comecou quando a primeira acao comecou.
+
+   Serve para marcar a virada no grafico de divergencias. Sem ela, a
+   queda depois de fevereiro e so um numero menor; com ela, da para ver
+   que a queda veio depois do projeto entrar. */
+export function inicioDoProjeto(acoes: Acao[]): Date | null {
+  let menor: Date | null = null;
+  for (const a of acoes) {
+    if (!a.inicio) continue;
+    if (!menor || a.inicio.getTime() < menor.getTime()) menor = a.inicio;
+  }
+  return menor;
+}
+
 export type SituacaoAcao = 'concluida' | 'andamento' | 'pendente';
 
 /* A situacao vem da coluna SITUACAO da planilha. So quando ela nao

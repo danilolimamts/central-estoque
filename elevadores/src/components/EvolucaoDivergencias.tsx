@@ -27,12 +27,14 @@
    mes zerado em agosto seria inventar resultado.
    ============================================================ */
 import { useMemo, useState } from 'react';
-import type { ChartConfiguration } from 'chart.js';
+import type { Chart, ChartConfiguration, Plugin } from 'chart.js';
 import {
   anosDisponiveis,
   evolucaoDeDivergencias,
   formatarReal,
+  posicaoDoMarco,
   divergenciasDoCD,
+  MESES,
 } from '../domain/divergencias';
 import type { DivergenciaSAC } from '../domain/divergencias';
 import { casosConsiderados, forasDaPlanilha, mapaDeAjustes } from '../domain/ajustes';
@@ -43,13 +45,86 @@ import { Cartao, Selecao, Vazio } from './ui';
 
 const COR_VALOR = cores.laranja.base;
 
+const COR_MARCO = cores.navy.base;
+
+/* Linha vertical no mes em que o projeto comecou.
+
+   E o contexto que faltava no cartao: a curva mostra a queda, mas nao
+   diz o que mudou naquele ponto. Com o marco, quem le o e-mail
+   enxerga o antes e o depois sem precisar de legenda.
+
+   A linha e desenhada antes dos dados, para passar por tras da curva.
+   A etiqueta vem depois, por cima de tudo, com fundo solido - e o
+   texto que nao pode ficar ilegivel. */
+function marcoDoInicio(pos: number, texto: string): Plugin {
+  return {
+    id: 'marcoDoInicio',
+    beforeDatasetsDraw(chart: Chart) {
+      const { ctx, chartArea: area, scales } = chart;
+      const x = scales.x?.getPixelForValue(pos);
+      if (x == null || x < area.left || x > area.right) return;
+      ctx.save();
+      ctx.strokeStyle = COR_MARCO;
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x, area.top);
+      ctx.lineTo(x, area.bottom);
+      ctx.stroke();
+      ctx.restore();
+    },
+    afterDatasetsDraw(chart: Chart) {
+      const { ctx, chartArea: area, scales } = chart;
+      const x = scales.x?.getPixelForValue(pos);
+      if (x == null || x < area.left || x > area.right) return;
+      ctx.save();
+      ctx.font = '700 10.5px Poppins, sans-serif';
+      const largura = ctx.measureText(texto).width + 14;
+      /* A etiqueta cai para o lado que tem espaco: encostada na borda
+         direita ela sairia do quadro. */
+      const paraEsquerda = x + largura + 6 > area.right;
+      const cx = paraEsquerda ? x - largura - 5 : x + 5;
+      /* Acima da area do grafico, dentro da folga do layout. La em
+         baixo a etiqueta caia sobre o rotulo de um mes zerado, que
+         mora rente ao eixo; aqui em cima o espaco e sempre livre,
+         porque os rotulos de valor ficam presos dentro da area. */
+      const cy = area.top - 21;
+      ctx.fillStyle =
+        getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#fff';
+      ctx.strokeStyle = COR_MARCO;
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.roundRect(cx, cy, largura, 17, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = COR_MARCO;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(texto, cx + 7, cy + 9);
+      ctx.restore();
+    },
+  };
+}
+
+/* "mai/2026", no mesmo vocabulario dos rotulos do eixo. O Intl daria
+   "mai. de 2026", que destoa dos meses logo abaixo. */
+function mesEAno(d: Date): string {
+  return `${MESES[d.getUTCMonth()]}/${d.getUTCFullYear()}`;
+}
+
 export function EvolucaoDivergencias({
   divergencias,
   ajustes = [],
+  inicio = null,
   hoje = new Date(),
 }: {
   divergencias: DivergenciaSAC[];
   ajustes?: AjusteCaso[];
+  /* Quando o projeto comecou. Vem do plano, nao da planilha de SAC. */
+  inicio?: Date | null;
   hoje?: Date;
 }) {
   const mapa = useMemo(() => mapaDeAjustes(ajustes), [ajustes]);
@@ -71,9 +146,15 @@ export function EvolucaoDivergencias({
      chegou conta uma historia que nao aconteceu. */
   const ateAqui = <T,>(v: T, mes: number): T | null => (mes <= e.ateOMes ? v : null);
 
+  const marco = posicaoDoMarco(inicio, anoAtivo);
+
   const config: ChartConfiguration = useMemo(
     () => ({
       type: 'line',
+      plugins:
+        marco != null && inicio
+          ? [marcoDoInicio(marco, `INÍCIO DO PROJETO · ${mesEAno(inicio)}`)]
+          : [],
       data: {
         labels: e.meses.map((m) => m.rotulo),
         datasets: [
@@ -177,7 +258,7 @@ export function EvolucaoDivergencias({
         },
       },
     }),
-    [e]
+    [e, marco, inicio]
   );
 
   if (casos.length === 0) {

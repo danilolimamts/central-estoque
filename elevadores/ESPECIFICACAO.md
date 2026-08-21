@@ -378,6 +378,15 @@ Mede o resultado do projeto, não o andamento do plano.
   ao lado. Acima dela ficam só três números absolutos: meses seguidos sem
   divergência, quantos dos meses decorridos fecharam em zero, e o total
   devolvido no ano.
+- **Marco do início do projeto na curva.** Uma linha vertical tracejada
+  com a etiqueta "INÍCIO DO PROJETO · mês/ano". A data é a **menor `inicio`
+  do plano inteiro** (`inicioDoProjeto`), não da seleção filtrada — filtrar
+  por responsável não muda quando o projeto começou. Sem esse marco a queda
+  é só um número menor; com ele o leitor vê o antes e o depois. Se o início
+  cair fora do ano mostrado, o marco não aparece: uma linha encostada na
+  borda esquerda diria que o projeto começou em janeiro. A etiqueta vai
+  **acima** da área do gráfico, na folga do layout — embaixo ela caía sobre
+  o rótulo dos meses zerados, que moram rente ao eixo.
 - O painel é apresentado à diretoria. Número que parece armado custa a
   confiança no painel inteiro, e um gráfico honesto convence mais do que um
   "−100%" que não se sustenta se alguém perguntar de onde saiu.

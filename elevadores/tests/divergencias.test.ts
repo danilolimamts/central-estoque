@@ -23,6 +23,7 @@ import {
   anosDisponiveis,
   variacaoMensal,
   evolucaoDeDivergencias,
+  posicaoDoMarco,
 } from '../src/domain/divergencias';
 import type { DivergenciaSAC } from '../src/domain/divergencias';
 import { lerDivergencias, separarProduto } from '../src/parsers/lerDivergencias';
@@ -607,3 +608,29 @@ describe('evolução das inversões ao longo do ano', () => {
   });
 });
 
+
+describe('marco do início do projeto no gráfico', () => {
+  const pos = posicaoDoMarco;
+
+  it('cai no mês certo, com a fração do dia', () => {
+    /* 16/03 num mês de 31 dias: março é o índice 2, e o dia 16 está a
+       metade do caminho para abril. */
+    expect(pos(new Date(Date.UTC(2026, 2, 16)), 2026)).toBeCloseTo(2 + 15 / 31, 5);
+  });
+
+  it('o primeiro dia do mês cai exatamente sobre o mês', () => {
+    expect(pos(new Date(Date.UTC(2026, 0, 1)), 2026)).toBe(0);
+  });
+
+  it('início em outro ano não marca nada no ano mostrado', () => {
+    /* O projeto começou em 2025: em 2026 não há virada para desenhar,
+       e uma linha na borda esquerda diria que começou em janeiro. */
+    expect(pos(new Date(Date.UTC(2025, 10, 3)), 2026)).toBeNull();
+    expect(pos(new Date(Date.UTC(2027, 0, 5)), 2026)).toBeNull();
+  });
+
+  it('sem data de início não há marco', () => {
+    expect(pos(null, 2026)).toBeNull();
+    expect(pos(undefined, 2026)).toBeNull();
+  });
+});
