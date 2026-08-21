@@ -529,18 +529,23 @@ function irRenderDashboard(){
   // + volume principal, + divergência/pendência. Os demais indicadores (itens
   // divergentes, recontagens, tempo médio etc.) continuam na aba Indicadores.
   const metaHint = `Meta: ${irFmtPct(ind.meta)}`;
+  // Taxa de recontagem = locais que tiveram trabalho de campo cancelado (contagem
+  // começou mas o local não fechou porque foi interrompido, ex.: precisava coletar)
+  // sobre o total de locais orçados do ciclo. Pedido explícito do usuário: aparecer
+  // em CADA bloco de acurácia, pra deixar claro o quanto disso pesa em cada frente.
+  const taxaRecontagemHint = `Recontagem/cancelamento: ${irFmtPct(ind.taxaCancelamento||0)}`;
   const blocoPecas = irKpiBlock('orange','📦','Peças',
-    irKpiTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint) +
+    irKpiTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint+' · '+taxaRecontagemHint) +
     irKpiTile('📦', irFmtInt(ind.pecasContadas), 'Peças Contadas', '', 'total físico') +
     irKpiTile('⚠️', irFmtInt(ind.pecasDivergentes), 'Peças Divergentes', 'bad', irFmtInt(ind.itensDivergentes)+' itens')
   );
   const blocoLocais = irKpiBlock('blue','📍','Locais',
-    irKpiTile('🎯', irFmtPct(ind.acuraciaLocal), 'Acurácia Local', ind.acuraciaLocal>=ind.meta?'good':'bad', metaHint) +
+    irKpiTile('🎯', irFmtPct(ind.acuraciaLocal), 'Acurácia Local', ind.acuraciaLocal>=ind.meta?'good':'bad', metaHint+' · '+taxaRecontagemHint) +
     irKpiTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
     irKpiTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
   );
   const blocoValor = irKpiBlock('black','💰','Valor',
-    irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
+    irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint+' · '+taxaRecontagemHint) +
     irKpiTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
     irKpiTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líquido)', '', 'ganho − perda')
   );
@@ -567,6 +572,7 @@ function irRenderDashboard(){
     ${irRenderContadosPorDiaPanel(ind)}
     ${irRenderDivergentesPorDiaPanel(ind)}
     ${irRenderItensSemPrecoPanel(ind)}
+    ${irRenderCancelamentoImpactoPanel(ind)}
     ${irRenderItemDivEscopoBar()}
     <div class="bi-grid-2">
       ${irRenderTopItensPanel(itemSaldo, 'pecas')}
@@ -576,6 +582,32 @@ function irRenderDashboard(){
     ${irRenderComparativoCiclosPanel(ind)}
     ${irRenderCalendarioPanel(ind)}
   `;
+}
+// Impacto de locais que tiveram trabalho de campo iniciado (Data Início Contagem
+// preenchida na 843) e terminaram CANCELADOS — o colaborador foi lá, começou a contar,
+// mas foi interrompido (ex.: precisava coletar) e o local não fechou naquela rodada.
+// Pedido explícito do usuário: quantificar o tempo perdido pra levar pra conversa com
+// quem pede a interrupção ("perdemos X horas porque pediram pra cancelar o local").
+function irRenderCancelamentoImpactoPanel(ind){
+  const tentativas = ind.tentativasCanceladas||0;
+  if(!tentativas) return '';
+  const comHorario = ind.sessoesComHorarioRegistrado||0;
+  return `<div class="panel">
+    <h3>⏱️ Impacto de cancelamentos (recontagem por interrupção)</h3>
+    <p class="panel-sub">Locais em que a contagem foi iniciada em campo mas a rodada terminou cancelada — não fechou porque foi interrompida (ex.: precisava coletar). Essas rodadas não entram em nenhum outro indicador de acurácia; aqui é só o custo da interrupção em si.</p>
+    <div class="kpi-blocks">
+      ${irKpiBlock('black','⏳','Cancelamentos',
+        irKpiTile('📍', irFmtInt(ind.locaisComCancelamento||0), 'Locais Afetados', '', 'com ≥1 cancelamento') +
+        irKpiTile('🔁', irFmtInt(tentativas), 'Tentativas Canceladas', '', 'sessões com início de campo') +
+        irKpiTile('📊', irFmtPct(ind.taxaCancelamento||0), 'Taxa', '', 'sobre locais orçados do ciclo')
+      )}
+      ${irKpiBlock('black','⏱️','Tempo Perdido',
+        irKpiTile('⏱️', ind.horasPerdidasCancelamento?irFmtNum(ind.horasPerdidasCancelamento,1)+'h':'—', 'Horas Perdidas', '', comHorario+' de '+tentativas+' com início e fim registrados') +
+        irKpiTile('📐', (comHorario && ind.horasPerdidasCancelamento)?irFmtNum((ind.horasPerdidasCancelamento*60)/comHorario,0)+' min':'—', 'Média por Tentativa', '', 'entre as com horário completo') +
+        irKpiTile('❓', irFmtInt(tentativas-comHorario), 'Sem Horário Completo', '', 'sem Data Fim Contagem')
+      )}
+    </div>
+  </div>`;
 }
 // Itens que divergiram em peça mas não tiveram preço encontrado na SIGEQ278/ZBIQ0051 —
 // o valor divergente desses fica R$ 0,00 mesmo com peça/local realmente divergente.
