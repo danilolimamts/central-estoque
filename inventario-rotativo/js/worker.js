@@ -50,10 +50,12 @@ function parseDateVal(v){
   return isNaN(d.getTime()) ? null : d;
 }
 function isSim(v){ return String(v||'').trim().toUpperCase()==='SIM'; }
-// Normaliza código de item pra cruzar QRY0843/SIGEQ278/ZBIQ0051 mesmo quando um export
-// guarda o código como texto com zero à esquerda (ex.: "02831399") e outro como número
-// puro (2831399) — sem isso o preço nunca batia pra esses itens (precoUnitarioDoItem
-// caía no fallback 0), zerando o valor divergente mesmo em dias com peça contada.
+// Normaliza código de item OU LOCAL pra cruzar QRY0843/Base Congelada/SIGEQ278/ZBIQ0051
+// mesmo quando um export guarda o código como texto com zero à esquerda (ex.:
+// "02831399") e outro como número puro (2831399) — sem isso o cruzamento falhava
+// silenciosamente: pra item, o preço nunca batia (precoUnitarioDoItem caía no fallback
+// 0, zerando o valor divergente); pra local, a Base Congelada e a QRY0843 nunca se
+// encontravam pro mesmo endereço físico, inflando "locais pendentes" bem acima do real.
 function irNormItemKey(v){
   const s = String(v ?? '').trim();
   if(s==='') return '';
@@ -251,7 +253,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
 
   post('progress', {stage:'Processando base congelada...', pct:20});
   const locais = rowsCong.map(row=>{
-    const idLocal = String(getVal(row, rCong.idLocal) ?? '').trim();
+    const idLocal = irNormItemKey(getVal(row, rCong.idLocal));
     return {
       id: cicloId+'|'+idLocal, cicloId, idLocal,
       descricao: String(getVal(row, rCong.descricao) ?? '').trim(),
@@ -278,7 +280,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   let idx843 = 0;
   for(const row of rows843){
     idx843++;
-    const local = String(getVal(row, r843.local) ?? '').trim();
+    const local = irNormItemKey(getVal(row, r843.local));
     const item = irNormItemKey(getVal(row, r843.item));
     const idConferencia = parseInt(parseNumber(getVal(row, r843.idConferencia)), 10) || 0;
     const obsInventario = String(getVal(row, r843.obsInventario) ?? '').trim();
