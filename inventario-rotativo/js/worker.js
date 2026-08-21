@@ -320,6 +320,50 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       qtFis: parseNumber(getVal(row, r843.qtFis))
     });
   }
+
+  post('progress', {stage:'Calculando impacto de cancelamentos...', pct:38});
+  // Rodada com trabalho de campo (Data Início Contagem preenchida) que terminou
+  // CANCELADA — colaborador foi lá, começou a contar, mas o local não fechou porque
+  // pediram pra ele parar (ex.: precisava coletar). Isso não entra em "contagens" (só
+  // Liquidado entra ali) e por isso nunca aparecia em indicador nenhum — é um pedido
+  // explícito do usuário pra medir o tempo perdido com esse tipo de interrupção.
+  // Chave por (local + Id Conferência), não por linha, pra não contar a mesma rodada
+  // várias vezes só porque ela tem uma linha por item.
+  const cancelamentosPorSessao = new Map(); // "local|idConferencia" -> {local, dataInicioContagem, dataFimContagem}
+  for(const row of rows843){
+    const local = irNormItemKey(getVal(row, r843.local));
+    if(!local) continue;
+    const obsInventario = String(getVal(row, r843.obsInventario) ?? '').trim();
+    if(!/^AIR/i.test(obsInventario)) continue;
+    const situacaoInventario = String(getVal(row, r843.situacaoInventario) ?? '').trim();
+    const situacaoLocal = String(getVal(row, r843.situacaoLocal) ?? '').trim();
+    if(situacaoLocal!=='Cancelado' && situacaoInventario!=='Cancelado') continue;
+    const dataInicioContagem = isoDateTime(parseDateVal(getVal(row, r843.dataInicioContagem)));
+    if(!dataInicioContagem) continue; // sem início registrado, sem evidência de trabalho de campo
+    const dataSituacao = isoDateTime(parseDateVal(getVal(row, r843.dataSituacao)));
+    const diaSituacao = (dataSituacao||dataInicioContagem).slice(0,10);
+    if(dataAbertura && diaSituacao<dataAbertura) continue;
+    if(dataPrevistaTermino && diaSituacao>dataPrevistaTermino) continue;
+    const idConferencia = parseInt(parseNumber(getVal(row, r843.idConferencia)), 10) || 0;
+    const chave = local+'|'+idConferencia;
+    if(!cancelamentosPorSessao.has(chave)){
+      cancelamentosPorSessao.set(chave, {
+        local, dataInicioContagem,
+        dataFimContagem: isoDateTime(parseDateVal(getVal(row, r843.dataFimContagem)))
+      });
+    }
+  }
+  const locaisComCancelamentoSet = new Set();
+  let tentativasCanceladas = 0, minutosPerdidosCancelamento = 0, sessoesComHorarioRegistrado = 0;
+  for(const s of cancelamentosPorSessao.values()){
+    locaisComCancelamentoSet.add(s.local);
+    tentativasCanceladas++;
+    if(s.dataFimContagem){
+      const ini = new Date(s.dataInicioContagem).getTime(), fim = new Date(s.dataFimContagem).getTime();
+      if(fim>ini){ minutosPerdidosCancelamento += (fim-ini)/60000; sessoesComHorarioRegistrado++; }
+    }
+  }
+
   post('progress', {stage:'Calculando convergência por local...', pct:50});
   // Um local pode ser contado mais de uma vez no MESMO ciclo com um "Id Inventario"
   // diferente — não só o caso de sobra de auditoria antiga (já filtrado pela janela do
@@ -443,7 +487,8 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   }
 
   post('progress', {stage:'Calculando indicadores...', pct:90});
-  const indicadores = calcularIndicadores({congelados: locais, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino});
+  const indicadores = calcularIndicadores({congelados: locais, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino,
+    locaisComCancelamento: locaisComCancelamentoSet.size, tentativasCanceladas, minutosPerdidosCancelamento, sessoesComHorarioRegistrado});
 
   post('progress', {stage:'Gravando dados no IndexedDB...', pct:95});
   await irClearCiclo(IR_STORES.locais, cicloId);
@@ -475,8 +520,13 @@ function isoDateTime(d){
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
 }
 
-function calcularIndicadores({congelados, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino}){
+function calcularIndicadores({congelados, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino,
+  locaisComCancelamento, tentativasCanceladas, minutosPerdidosCancelamento, sessoesComHorarioRegistrado}){
   const locaisCongelados = congelados.length;
+  // Taxa de recontagem/cancelamento: local que teve trabalho de campo cancelado (não
+  // fechou porque foi interrompido) sobre o total de locais orçados do ciclo.
+  const taxaCancelamento = locaisCongelados>0 ? (locaisComCancelamento||0)/locaisCongelados : 0;
+  const horasPerdidasCancelamento = (minutosPerdidosCancelamento||0)/60;
 
   const clamp01 = (n)=>Math.max(0, Math.min(1, n));
 
@@ -724,6 +774,8 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     andamentoCiclo, acuraciaPecas, acuraciaLocal, acuraciaValor, meta: IR_META_ACURACIA,
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
     locaisDivergentes: locaisComDivergencia.size, valorFisicoTotal: totalVlFisico,
+    locaisComCancelamento: locaisComCancelamento||0, tentativasCanceladas: tentativasCanceladas||0,
+    horasPerdidasCancelamento, sessoesComHorarioRegistrado: sessoesComHorarioRegistrado||0, taxaCancelamento,
     itensSemPreco, itensSemPrecoTotal: semPrecoPorItem.size,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
