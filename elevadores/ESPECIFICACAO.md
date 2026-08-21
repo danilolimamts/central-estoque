@@ -364,7 +364,11 @@ Mede o resultado do projeto, não o andamento do plano.
 - **Mês que ainda não aconteceu fica fora de tudo.** Sem isso, o painel
   contaria jul–dez como meses zerados e anunciaria "seis meses sem
   divergência" em junho.
-- Comparativo mês a mês com variação em porcentagem.
+- **A curva basta; não repita a mesma coisa em tabela.** Cada ponto do
+  gráfico já traz o valor e a quantidade escritos. Uma tabela de mês a mês
+  existiu embaixo do gráfico e foi retirada: dizia o mesmo, e a coluna de
+  variação ficava ilegível justamente nos meses bons (ver a regra do mês
+  zerado abaixo). A variação que importa está na manchete.
 - **A manchete usa o último mês fechado**, não o corrente: comparar um mês
   pela metade com um mês inteiro pinta uma queda que não aconteceu.
 - **Mês zerado depois de outro zerado** não compara com o anterior (daria
@@ -401,7 +405,7 @@ de desconsiderados.
 | 1 | Filtros | ❌ |
 | 2 | Status do projeto — rosca de %, 3 números, variação vs. medição anterior | ✅ |
 | 3 | Entregas por semana — área SVG | ✅ |
-| 4 | **Evolução das divergências** — manchete + 4 números + linha + tabela MoM | ✅ |
+| 4 | **Evolução das divergências** — manchete + 4 números + linha | ✅ |
 | 5 | Ganhos do projeto — 5 barras | ❌ |
 | 6 | Matriz Impacto × Esforço | ✅ |
 | 7 | Plano de ação — por PLAN ACTION | ✅ |

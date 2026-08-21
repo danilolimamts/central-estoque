@@ -11,8 +11,14 @@
    quanto isso custou.
 
    Tres leituras, da mais rapida para a mais detalhada: a manchete do
-   mes fechado, os numeros do ano e a curva; e embaixo o mes a mes,
-   que responde "quanto ganhamos" em vez de so "como esta indo".
+   mes fechado, os numeros do ano e a curva.
+
+   Ja houve tambem uma tabela de mes a mes embaixo. Ela repetia o que a
+   curva ja mostra - cada ponto do grafico traz o valor e a quantidade
+   escritos - e a coluna de variacao ficava ilegivel justamente quando
+   o resultado era bom: um mes zerado depois de outro zerado nao tem
+   porcentagem contra o anterior. A variacao que interessa, a do ultimo
+   mes fechado, continua na manchete.
 
    Mes que ainda nao aconteceu fica fora de tudo. Contar dezembro como
    mes zerado em agosto seria inventar resultado.
@@ -32,7 +38,7 @@ import { casosConsiderados, forasDaPlanilha, mapaDeAjustes } from '../domain/aju
 import type { AjusteCaso } from '../domain/ajustes';
 import { cores } from '../config/tokens';
 import { Grafico } from './charts/Grafico';
-import { Cartao, Selecao, Tabela, Td, Th, Vazio } from './ui';
+import { Cartao, Selecao, Vazio } from './ui';
 
 const COR_VALOR = cores.laranja.base;
 
@@ -258,73 +264,6 @@ export function EvolucaoDivergencias({
         rotulo="Custo e quantidade de divergências por mês, ao longo do ano"
       />
 
-      {/* O comparativo mes a mes. A curva mostra a tendencia; e a
-          tabela que responde "quanto ganhamos", que e o que vai para
-          o e-mail. */}
-      {comparativo.length > 1 && (
-        <>
-          <h4 className="eq-sac-titulo">Mês a mês — variação contra o mês anterior</h4>
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Mês</Th>
-                <Th alinha="right">Divergências</Th>
-                <Th alinha="right">Custo</Th>
-                <Th alinha="right">Variação</Th>
-                <Th alinha="right">Δ casos</Th>
-                <Th alinha="right">Δ custo</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparativo.map((m) => {
-                /* Queda e ganho: verde. Alta e piora: laranja. */
-                const caiu = m.deltaValor != null && m.deltaValor < 0;
-                const subiu = m.deltaValor != null && m.deltaValor > 0;
-                const cor = caiu ? cores.semantico.verde : subiu ? COR_VALOR : 'var(--ink-soft)';
-                return (
-                  <tr key={m.mes} className={m.zerado ? 'eq-mom-zerado' : undefined}>
-                    <Td>
-                      <b>{m.rotulo}</b>
-                    </Td>
-                    <Td alinha="right" numerico>
-                      {m.zerado ? <b style={{ color: cores.semantico.verde }}>0</b> : m.casos}
-                    </Td>
-                    <Td alinha="right" numerico>{formatarReal(m.valor)}</Td>
-                    {/* A porcentagem e a coluna que a gerencia le
-                        primeiro, entao vem em destaque e antes dos
-                        numeros absolutos. */}
-                    <Td alinha="right" numerico>
-                      <b className="eq-mom-pct" style={{ color: cor }} title={legendaDaVariacao(m)}>
-                        {pctDaVariacao(m)}
-                      </b>
-                    </Td>
-                    <Td alinha="right" numerico>
-                      {m.deltaCasos == null ? (
-                        <span style={{ color: 'var(--ink-soft)' }}>—</span>
-                      ) : (
-                        <span style={{ color: cor }}>
-                          {m.deltaCasos > 0 ? '+' : ''}
-                          {m.deltaCasos}
-                        </span>
-                      )}
-                    </Td>
-                    <Td alinha="right" numerico>
-                      {m.deltaValor == null ? (
-                        <span style={{ color: 'var(--ink-soft)' }}>—</span>
-                      ) : (
-                        <span style={{ color: cor }}>
-                          {caiu ? '−' : subiu ? '+' : ''}
-                          {formatarReal(Math.abs(m.deltaValor))}
-                        </span>
-                      )}
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Tabela>
-        </>
-      )}
     </Cartao>
   );
 }
@@ -339,15 +278,4 @@ function pctDaVariacao(m: ComparativoMes): string {
   if (m.pctValor != null) return `${m.pctValor > 0 ? '+' : ''}${m.pctValor.toFixed(0)}%`;
   if (m.zerado && m.referencia && m.referencia.valor > 0) return '−100%';
   return '—';
-}
-
-/* O title explica de onde saiu a porcentagem quando ela nao vem do mes
-   imediatamente anterior. Sem isso o -100% de um mes zerado parece
-   errado para quem confere na tabela ao lado. */
-function legendaDaVariacao(m: ComparativoMes): string {
-  if (m.pctValor != null) return 'variação contra o mês anterior';
-  if (m.zerado && m.referencia) {
-    return `sem divergência; ${m.referencia.rotulo} foi o último mês com caso (${formatarReal(m.referencia.valor)})`;
-  }
-  return 'primeiro mês do ano, sem base de comparação';
 }

@@ -974,13 +974,8 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-evol-manchete strong{ font-size:20px; font-weight:800; color:var(--success);
   font-variant-numeric:tabular-nums; }
 .eq-evol-manchete.piora strong{ color:var(--orange); }
-/* A porcentagem e a coluna que a gerencia le primeiro. */
-.eq-mom-pct{ font-size:14px; font-variant-numeric:tabular-nums; }
 :root[data-theme="dark"] .eq-evol-manchete.piora{ background:rgba(250,70,22,.14); }
 
-/* Mes que fechou em zero: a linha inteira ganha peso, e o ganho que
-   o cartao existe para mostrar. */
-.eq-mom-zerado td{ background:rgba(31,122,76,.07); }
 /* Anuncio tem selo proprio: nao e o CD, nao e a fabrica, e enquanto
    nao houver criterio para dividir esses casos eles precisam ser
    distinguiveis na tabela. */
