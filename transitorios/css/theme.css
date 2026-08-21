@@ -554,3 +554,40 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .rp-table-dense th:first-child, .rp-table-dense td:first-child{ text-align:left; }
 .rp-cols2{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 .rp-footer{ margin-top:28px; padding:14px 16px 0; border-top:1px solid #E4E7EE; font-size:9.5px; color:#9AA1B4; text-align:center; }
+
+/* ---------- MATRIZ DE AGING (transitório x faixa) ----------
+   É a tela central do módulo: reproduz o formato da planilha de origem,
+   mas com heatmap, totais e ordenação por criticidade. A primeira coluna
+   e o cabeçalho ficam fixos porque a matriz é larga e rola nos dois eixos. */
+.tr-matriz-wrap{ overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); }
+table.tr-matriz{ width:auto; min-width:100%; border-collapse:separate; border-spacing:0; font-size:12px; }
+table.tr-matriz thead th{
+  position:sticky; top:0; z-index:3; white-space:nowrap; padding:8px 10px; font-size:10.5px;
+}
+table.tr-matriz thead th:first-child{ left:0; z-index:4; text-align:left; }
+table.tr-matriz td{ padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+table.tr-matriz td.tr-cod{
+  position:sticky; left:0; z-index:1; background:var(--surface); border-right:1px solid var(--line);
+  text-align:left; min-width:190px;
+}
+table.tr-matriz tbody tr:hover td{ background:var(--blue-light); }
+table.tr-matriz tbody tr:hover td.tr-cod{ background:var(--blue-light); }
+.tr-cod-cod{ font-family:'SFMono-Regular',Consolas,monospace; font-weight:700; font-size:11.5px; }
+.tr-cod-nome{ font-size:9.5px; color:var(--ink-soft); }
+table.tr-matriz td.cel{ text-align:right; font-family:'SFMono-Regular',Consolas,monospace; }
+table.tr-matriz td.cel .cel-sub{ display:block; font-size:9px; opacity:.6; }
+table.tr-matriz td.cel.vazia{ color:var(--ink-soft); opacity:.35; }
+/* Linha divisória no corte de envelhecimento: à direita dela é o que está parado. */
+table.tr-matriz .tr-corte{ box-shadow:inset 3px 0 0 -1px var(--ink); }
+table.tr-matriz thead th.tr-corte{ box-shadow:inset 3px 0 0 -1px #fff; }
+table.tr-matriz td.tr-total{ font-weight:800; background:var(--surface2); }
+table.tr-matriz tfoot td{
+  position:sticky; bottom:0; z-index:2; font-weight:800; background:var(--surface2);
+  border-top:2px solid var(--line);
+}
+table.tr-matriz tfoot td:first-child{ left:0; z-index:3; }
+.tr-pct-bar{ display:flex; align-items:center; gap:6px; justify-content:flex-end; }
+.tr-pct-track{ width:44px; height:6px; border-radius:100px; background:var(--surface2); overflow:hidden; flex-shrink:0; }
+.tr-pct-fill{ height:100%; border-radius:100px; }
+.tr-legenda{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-top:12px; font-size:10.5px; color:var(--ink-soft); }
+.tr-legenda i{ display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
