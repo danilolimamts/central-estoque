@@ -357,6 +357,31 @@ O usuário pode, na própria tabela, **trocar o responsável** de um caso ou
 - Quando planilha e ajuste discordam, **a planilha manda** (é o registro
   compartilhado) e a tela diz para corrigir lá.
 
+### 5.9-b Divergências por fornecedor
+
+**A aba do SAC não tem coluna de fornecedor.** O fornecedor (`Fabricante`)
+mora na aba `Multiplos`. Então este agrupamento é um **cruzamento pelo
+código do produto**, não uma leitura direta:
+
+- `Item Produto` do SAC → `Item Vol. Múltiplo` (item pai) → `Fabricante`.
+  Se não achar, tenta `Item Componente` — devolução de peça solta (rampa,
+  base) não existe como item pai. **O item pai vence** quando o código
+  aparece nos dois: é ele que corresponde ao produto vendido.
+- **Produto fora da base mestre nunca some da conta.** Vai para "Não
+  identificado", com o número à vista e uma nota dizendo quantos casos são.
+  Descartar em silêncio faria o painel mostrar menos devolução do que
+  houve — o erro mais caro possível aqui.
+- "Não identificado" fica **sempre em último**, mesmo sendo o maior. No topo
+  pareceria o fornecedor que mais devolve.
+- Acima de 30% sem cadastro, a tela avisa que o ranking não representa o
+  total.
+- A participação é sobre **todos** os casos, incluindo os sem cadastro.
+  Calcular só sobre os identificados inflaria cada fornecedor.
+- **Não é a mesma pergunta que "de quem foi a culpa".** Isso é
+  `porResponsavel`, que tem seu próprio balde FORNECEDOR. Aqui a resposta é
+  "de qual fornecedor era o elevador que voltou". As duas não são
+  intercambiáveis.
+
 ### 5.10 Evolução das divergências
 
 Mede o resultado do projeto, não o andamento do plano.

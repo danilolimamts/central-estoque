@@ -233,7 +233,15 @@ export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
     entrega: i % 4 === 0 ? '' : `${1990000 + i}`,
     filial,
     origem: origemDaFilial(filial),
-    itemProduto: i === 12 ? '4655675' : '4484433',
+    /* O codigo precisa bater com o item pai da base mestre: e por ele
+       que a tela descobre o fornecedor do elevador devolvido. Com
+       codigo solto, todo caso caia em "Nao identificado" e o exemplo
+       nao mostrava a leitura por fornecedor.
+
+       O caso 12 fica de fora de proposito: e um acessorio, nao esta na
+       aba Multiplos, e serve para o exemplo mostrar tambem como a
+       lacuna de cadastro aparece. */
+    itemProduto: i === 12 ? '4655675' : (CODIGOS_COM_FOTO[i % CODIGOS_COM_FOTO.length] ?? '4484433'),
     produto:
       i === 12
         ? 'BORRACHA PARA SAPATA U PARA ELEVADOR 4000KG REH004'

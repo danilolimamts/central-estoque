@@ -35,6 +35,8 @@ import {
   forasDaPlanilha, origemDaExclusao,
 } from '../domain/ajustes';
 import type { AjusteCaso, Decisao } from '../domain/ajustes';
+import type { Componente } from '../domain/tipos';
+import { divergenciasPorFornecedor } from '../domain/divergenciasPorFornecedor';
 import { cores } from '../config/tokens';
 import { Grafico } from './charts/Grafico';
 import { Cartao, Selecao, Tabela, Td, Th, Vazio } from './ui';
@@ -191,12 +193,16 @@ function CelulaResponsavel({
 
 export function InversoesSAC({
   divergencias,
+  componentes = [],
   ajustes = [],
   aoAjustar,
   aoDesfazer,
   hoje = new Date(),
 }: {
   divergencias: DivergenciaSAC[];
+  /* Base mestre: e dela que sai o fornecedor de cada produto. A aba do
+     SAC nao tem essa coluna. */
+  componentes?: Componente[];
   /* Serve para separar mes zerado de mes que ainda nao chegou. */
   hoje?: Date;
   /* Reclassificacoes feitas a mao, que vencem a leitura do texto. */
@@ -231,6 +237,10 @@ export function InversoesSAC({
   const meses = useMemo(() => porMes(inversoes, anoAtivo), [inversoes, anoAtivo]);
   const transportadoras = useMemo(() => porTransportadora(doAnoEscolhido), [doAnoEscolhido]);
   const causas = useMemo(() => porCausa(doAnoEscolhido), [doAnoEscolhido]);
+  const fornecedores = useMemo(
+    () => divergenciasPorFornecedor(doAnoEscolhido, componentes),
+    [doAnoEscolhido, componentes]
+  );
   const responsaveis = useMemo(
     () => porResponsavel(doAnoEscolhido, quemResponde),
     [doAnoEscolhido, quemResponde]
@@ -428,6 +438,58 @@ export function InversoesSAC({
             altura={250}
             rotulo={`Erros do CD por mês em ${anoAtivo}, separando CD de lojas, com o valor devolvido`}
           />
+
+          {/* De qual fornecedor era o elevador que voltou.
+
+              Nao e o mesmo que "de quem foi a culpa": isso continua em
+              "Responsavel apurado pelo SAC", logo acima. Aqui o
+              fornecedor vem do cruzamento do codigo do produto com a
+              base mestre, porque a aba do SAC nao traz essa coluna. */}
+          <h4 className="eq-sac-titulo">Divergências por fornecedor</h4>
+          {componentes.length === 0 ? (
+            <Vazio icone="🏭">
+              Importe a aba <b>Multiplos</b> para cruzar o produto devolvido com o
+              fornecedor. A aba do SAC não traz essa coluna.
+            </Vazio>
+          ) : fornecedores.linhas.length === 0 ? (
+            <Vazio icone="🏭">Nenhum caso no ano escolhido.</Vazio>
+          ) : (
+            <>
+              <Tabela>
+                <thead>
+                  <tr>
+                    <Th>Fornecedor</Th>
+                    <Th alinha="right">Casos</Th>
+                    <Th alinha="right">Participação</Th>
+                    <Th alinha="right">Custo</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fornecedores.linhas.map((f) => (
+                    <tr key={f.fornecedor} className={f.semCadastro ? 'eq-sac-sem-cadastro' : undefined}>
+                      <Td>{f.semCadastro ? <i>{f.fornecedor}</i> : f.fornecedor}</Td>
+                      <Td alinha="right" numerico>{f.quantidade}</Td>
+                      <Td alinha="right" numerico>{f.pct.toFixed(0)}%</Td>
+                      <Td alinha="right" numerico>{formatarReal(f.valor)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tabela>
+              {/* O tamanho da lacuna fica escrito. Sem isso, um ranking
+                  montado sobre metade dos casos pareceria completo. */}
+              {fornecedores.semCadastro > 0 && (
+                <p className="eq-sac-nota">
+                  {fornecedores.semCadastro} de {fornecedores.total} caso(s) ({fornecedores.pctSemCadastro.toFixed(0)}%)
+                  ficaram sem fornecedor: o código do produto devolvido não foi
+                  encontrado na aba <b>Multiplos</b>, ou o item está lá sem
+                  fabricante preenchido.
+                  {fornecedores.pctSemCadastro >= 30 && (
+                    <> <b>Acima de um terço dos casos, o ranking acima não representa o total.</b></>
+                  )}
+                </p>
+              )}
+            </>
+          )}
 
           <h4 className="eq-sac-titulo">Índice por transportadora</h4>
           {transportadoras.length === 0 ? (

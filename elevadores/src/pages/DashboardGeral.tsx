@@ -352,6 +352,7 @@ export function DashboardGeral({
 
       <InversoesSAC
         divergencias={divergencias}
+        componentes={componentes}
         ajustes={ajustes}
         aoAjustar={aoAjustar}
         aoDesfazer={aoDesfazer}

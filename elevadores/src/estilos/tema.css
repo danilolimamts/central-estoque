@@ -898,6 +898,13 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-sac-titulo{ margin:20px 0 10px; font-size:12.5px; font-weight:800; color:var(--ink);
   text-transform:uppercase; letter-spacing:.04em; }
 
+/* Ressalva embaixo de uma tabela: o tamanho da lacuna de cadastro.
+   Discreta, mas nao escondida - quem le o ranking precisa saber sobre
+   quantos casos ele foi montado. */
+.eq-sac-nota{ margin:8px 2px 0; font-size:11.5px; line-height:1.5; color:var(--ink-soft); }
+/* Linha do "Nao identificado": e uma lacuna, nao um fornecedor. */
+.eq-sac-sem-cadastro td{ color:var(--ink-soft); background:rgba(91,94,107,.06); }
+
 /* Carimbo do build no pe do menu. Fica discreto, mas sempre visivel:
    e o que responde "estou vendo a versao nova?" sem abrir o inspetor. */
 .eq-versao{ margin-top:8px; text-align:center; font-size:9.5px; letter-spacing:.02em;
