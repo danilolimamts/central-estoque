@@ -429,15 +429,13 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     const st = statusPorVisita.get(chave) || {status:'em_contagem', rodadas:0};
     for(const [item, g] of porItem){
       totalFisico += g.final;
-      // Item sem NENHUMA linha na Rodada 1 desta visita (não foi listado pela contagem
-      // inicial, só apareceu numa rodada posterior) não tem baseline sistêmica confiável
-      // pra virar divergência — assumir sistema=0 nesse caso inventava uma "divergência"
-      // do tamanho da física inteira (ex.: item com física final 419 aparecia como
-      // +419 de saldo, mesmo a QRY0144 mostrando Diferença 0 na mesma data). Sem uma
-      // Rodada 1 real pra comparar, trata como correto (não distorce o KPI) e sinaliza
-      // via semBaselineSistema pro usuário investigar a origem (item pulado na Rodada 1).
+      // REGRA: Rodada 1 é sempre a quantidade sistêmica, a última rodada é a física,
+      // diferença = física − sistema. Sem exceção — se o item não tem linha na Rodada 1
+      // (não foi listado na contagem inicial), sistema = 0, igual a qualquer outro caso
+      // onde o dado não existe. semBaselineSistema só sinaliza esses itens pro painel de
+      // diagnóstico (pra investigar por que foram pulados na Rodada 1); não altera o cálculo.
       const semBaselineSistema = g.sistema === null;
-      const sistema = semBaselineSistema ? g.final : g.sistema;
+      const sistema = g.sistema ?? 0;
       const diferenca = g.final - sistema;
       const precoUnitario = precoUnitarioDoItem(item);
       // A QRY0843 às vezes vem sem "Item Nome" preenchido — nesse caso usa o nome
