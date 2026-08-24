@@ -640,15 +640,16 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
       vlFisicoTotal: totalVlFisico
     };
   }
-  function agruparPor(campo, rotuloVazio, baseCongelados){
+  function agruparPor(campo, rotuloVazio, baseCongelados, divsFonte){
     const base = baseCongelados || congelados;
+    const fonte = divsFonte || divergencias;
     const chaves = Array.from(new Set(base.map(l=>l[campo] || rotuloVazio)));
     return chaves.map(chave=>{
       const locaisDoGrupo = base.filter(l=>(l[campo]||rotuloVazio)===chave);
       const idsGrupo = new Set(locaisDoGrupo.map(l=>l.idLocal));
       const locaisOrcados = locaisDoGrupo.length;
       const locaisContados = locaisDoGrupo.filter(l=>locaisContadosSet.has(l.idLocal)).length;
-      const divsGrupo = divergencias.filter(d=>idsGrupo.has(d.local));
+      const divsGrupo = fonte.filter(d=>idsGrupo.has(d.local));
       return {
         chave, locaisOrcados, locaisContados,
         pctContado: locaisOrcados>0 ? locaisContados/locaisOrcados : 0,
@@ -659,6 +660,11 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   // AIR entra na quebra por Rua normalmente, como qualquer outro local (sem exclusão).
   const porRua = agruparPor('x1', '(sem rua)');
   const porLog = agruparPor('grupoClasse', '(sem log)');
+  // Tabela "Acurácia por Log" segue a MESMA regra do KPI "Acurácia Peças/Valor" do
+  // topo: só locais concluídos (convergido/encerrado_sem_convergencia) entram na
+  // conta. Local ainda em contagem pode mudar de rodada no próximo reprocessamento,
+  // então misturar ele aqui distorcia o número em relação ao KPI principal.
+  const porLogConcluido = agruparPor('grupoClasse', '(sem log)', null, divergenciasConcluidas);
 
   // Locais distintos contados por dia. Cada local é contado UMA ÚNICA VEZ, no dia da
   // sua "Data Situação" na rodada final (maior Id Conferência) — esse é o campo que a
@@ -779,7 +785,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensSemPreco, itensSemPrecoTotal: semPrecoPorItem.size,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, divergentesPorDia,
+    rankingProdutividade, porRua, porLog, porLogConcluido, contadosPorDia, porDiaRua, divergentesPorDia,
     topItensPositivos, topItensNegativos, topItensPositivosValor, topItensNegativosValor
   };
 }
