@@ -434,7 +434,15 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     const st = statusPorVisita.get(chave) || {status:'em_contagem', rodadas:0};
     for(const [item, g] of porItem){
       totalFisico += g.final;
-      const sistema = g.sistema ?? 0;
+      // Item sem NENHUMA linha na Rodada 1 desta visita (não foi listado pela contagem
+      // inicial, só apareceu numa rodada posterior) não tem baseline sistêmica confiável
+      // pra virar divergência — assumir sistema=0 nesse caso inventava uma "divergência"
+      // do tamanho da física inteira (ex.: item com física final 419 aparecia como
+      // +419 de saldo, mesmo a QRY0144 mostrando Diferença 0 na mesma data). Sem uma
+      // Rodada 1 real pra comparar, trata como correto (não distorce o KPI) e sinaliza
+      // via semBaselineSistema pro usuário investigar a origem (item pulado na Rodada 1).
+      const semBaselineSistema = g.sistema === null;
+      const sistema = semBaselineSistema ? g.final : g.sistema;
       const diferenca = g.final - sistema;
       const precoUnitario = precoUnitarioDoItem(item);
       // A QRY0843 às vezes vem sem "Item Nome" preenchido — nesse caso usa o nome
@@ -450,7 +458,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
         qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
         precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
         statusLocal: st.status, rodadasLocal: st.rodadas,
-        diagnostico: diferenca!==0 ? 'divergente' : 'correto', componenteSemValor
+        diagnostico: diferenca!==0 ? 'divergente' : 'correto', componenteSemValor, semBaselineSistema
       });
     }
     pecasFisicasPorLocal.set(local, (pecasFisicasPorLocal.get(local)||0) + totalFisico);
@@ -572,6 +580,21 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     g.locais++;
   }
   const itensSemPreco = Array.from(semPrecoPorItem.values()).sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes).slice(0,30);
+
+  // Itens que apareceram numa visita SEM linha na Rodada 1 (pulados na contagem
+  // inicial, só surgiram numa recontagem) — sem baseline sistêmica, o app não inventa
+  // divergência (trata como correto), mas fica registrado aqui pro usuário investigar
+  // por que o item não foi listado na Rodada 1 daquele local.
+  const semBaselinePorItem = new Map();
+  for(const d of divergencias){
+    if(!d.semBaselineSistema) continue;
+    let g = semBaselinePorItem.get(d.item);
+    if(!g){ g = {item:d.item, nome:d.itemNome, pecasFisicas:0, locais:0}; semBaselinePorItem.set(d.item, g); }
+    g.pecasFisicas += d.qtdeFisica;
+    g.locais++;
+  }
+  const itensSemBaseline = Array.from(semBaselinePorItem.values()).sort((a,b)=>b.pecasFisicas-a.pecasFisicas).slice(0,30);
+  const itensSemBaselineTotal = semBaselinePorItem.size;
 
   // Acurácia Local (Posições) é medida sobre os locais CONTADOS (liquidados), não sobre
   // o total orçado do CD — mesma regra da Acurácia Peças ("1 − divergência ÷ total contado").
@@ -783,6 +806,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     locaisComCancelamento: locaisComCancelamento||0, tentativasCanceladas: tentativasCanceladas||0,
     horasPerdidasCancelamento, sessoesComHorarioRegistrado: sessoesComHorarioRegistrado||0, taxaCancelamento,
     itensSemPreco, itensSemPrecoTotal: semPrecoPorItem.size,
+    itensSemBaseline, itensSemBaselineTotal,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
     rankingProdutividade, porRua, porLog, porLogConcluido, contadosPorDia, porDiaRua, divergentesPorDia,
