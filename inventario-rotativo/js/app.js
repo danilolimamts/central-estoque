@@ -572,7 +572,6 @@ function irRenderDashboard(){
     ${irRenderContadosPorDiaPanel(ind)}
     ${irRenderDivergentesPorDiaPanel(ind)}
     ${irRenderItensSemPrecoPanel(ind)}
-    ${irRenderItensSemBaselinePanel(ind)}
     ${irRenderCancelamentoImpactoPanel(ind)}
     ${irRenderItemDivEscopoBar()}
     <div class="bi-grid-2">
@@ -629,26 +628,6 @@ function irRenderItensSemPrecoPanel(ind){
         <td class="mono">${irEsc(i.item)}</td>
         <td>${irEsc(i.nome||'—')}</td>
         <td class="mono">${irFmtInt(i.pecasDivergentes)}</td>
-        <td class="mono">${irFmtInt(i.locais)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>
-  </div>`;
-}
-// Itens que só apareceram numa recontagem (sem linha na Rodada 1 daquele local) — sem
-// baseline sistêmica pra comparar, o app não inventa divergência do tamanho da física
-// inteira. Diagnóstico pro usuário investigar por que o item foi pulado na Rodada 1.
-function irRenderItensSemBaselinePanel(ind){
-  const itens = ind.itensSemBaseline||[];
-  if(!itens.length) return '';
-  return `<div class="panel">
-    <h3>⚠️ Itens sem Rodada 1 registrada</h3>
-    <p class="panel-sub">${irFmtInt(ind.itensSemBaselineTotal||itens.length)} itens só apareceram numa recontagem do local (sem nenhuma linha na Rodada 1 da 843) — sem baseline sistêmica pra comparar, o app assume que bateu (não soma como divergência), pra não inflar o saldo com a física inteira do item. Vale investigar por que o item foi pulado na Rodada 1. Mostrando os ${itens.length} com mais peças físicas.</p>
-    <div class="table-wrap table-scroll" style="max-height:320px;"><table class="table-dense">
-      <thead><tr><th>Item</th><th>Descrição</th><th>Peças Físicas</th><th>Locais</th></tr></thead>
-      <tbody>${itens.map(i=>`<tr>
-        <td class="mono">${irEsc(i.item)}</td>
-        <td>${irEsc(i.nome||'—')}</td>
-        <td class="mono">${irFmtInt(i.pecasFisicas)}</td>
         <td class="mono">${irFmtInt(i.locais)}</td>
       </tr>`).join('')}</tbody>
     </table></div>

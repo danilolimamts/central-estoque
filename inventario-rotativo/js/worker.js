@@ -430,11 +430,9 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     for(const [item, g] of porItem){
       totalFisico += g.final;
       // REGRA: Rodada 1 é sempre a quantidade sistêmica, a última rodada é a física,
-      // diferença = física − sistema. Sem exceção — se o item não tem linha na Rodada 1
-      // (não foi listado na contagem inicial), sistema = 0, igual a qualquer outro caso
-      // onde o dado não existe. semBaselineSistema só sinaliza esses itens pro painel de
-      // diagnóstico (pra investigar por que foram pulados na Rodada 1); não altera o cálculo.
-      const semBaselineSistema = g.sistema === null;
+      // diferença = física − sistema. Sem exceção — se o item não tem linha na Rodada 1,
+      // é porque o sistema não tinha esse item ali (sistema=0) e só o físico existia no
+      // local: uma sobra real encontrada, não um dado ausente pra tratar como bug.
       const sistema = g.sistema ?? 0;
       const diferenca = g.final - sistema;
       const precoUnitario = precoUnitarioDoItem(item);
@@ -451,7 +449,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
         qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
         precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
         statusLocal: st.status, rodadasLocal: st.rodadas,
-        diagnostico: diferenca!==0 ? 'divergente' : 'correto', componenteSemValor, semBaselineSistema
+        diagnostico: diferenca!==0 ? 'divergente' : 'correto', componenteSemValor
       });
     }
     pecasFisicasPorLocal.set(local, (pecasFisicasPorLocal.get(local)||0) + totalFisico);
@@ -573,21 +571,6 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     g.locais++;
   }
   const itensSemPreco = Array.from(semPrecoPorItem.values()).sort((a,b)=>b.pecasDivergentes-a.pecasDivergentes).slice(0,30);
-
-  // Itens que apareceram numa visita SEM linha na Rodada 1 (pulados na contagem
-  // inicial, só surgiram numa recontagem) — sem baseline sistêmica, o app não inventa
-  // divergência (trata como correto), mas fica registrado aqui pro usuário investigar
-  // por que o item não foi listado na Rodada 1 daquele local.
-  const semBaselinePorItem = new Map();
-  for(const d of divergencias){
-    if(!d.semBaselineSistema) continue;
-    let g = semBaselinePorItem.get(d.item);
-    if(!g){ g = {item:d.item, nome:d.itemNome, pecasFisicas:0, locais:0}; semBaselinePorItem.set(d.item, g); }
-    g.pecasFisicas += d.qtdeFisica;
-    g.locais++;
-  }
-  const itensSemBaseline = Array.from(semBaselinePorItem.values()).sort((a,b)=>b.pecasFisicas-a.pecasFisicas).slice(0,30);
-  const itensSemBaselineTotal = semBaselinePorItem.size;
 
   // Acurácia Local (Posições) é medida sobre os locais CONTADOS (liquidados), não sobre
   // o total orçado do CD — mesma regra da Acurácia Peças ("1 − divergência ÷ total contado").
@@ -800,7 +783,6 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     locaisComCancelamento: locaisComCancelamento||0, tentativasCanceladas: tentativasCanceladas||0,
     horasPerdidasCancelamento, sessoesComHorarioRegistrado: sessoesComHorarioRegistrado||0, taxaCancelamento,
     itensSemPreco, itensSemPrecoTotal: semPrecoPorItem.size,
-    itensSemBaseline, itensSemBaselineTotal,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
     rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, divergentesPorDia,
