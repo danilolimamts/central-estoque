@@ -1010,7 +1010,7 @@ function irRenderComparativoCiclosPanel(){
   const pares = IR.comparativoCiclos;
   if(!pares || pares.length<1) return '';
   const rows = pares.map(({ciclo,ind})=>({
-    label:'Ciclo '+ciclo.numero,
+    label: irCicloLabel(ciclo),
     pecas: ind?ind.acuraciaPecas:null, locais: ind?ind.acuraciaLocal:null, valor: ind?ind.acuraciaValor:null
   }));
   let pecasContadas=0, pecasDivergentes=0, locaisContados=0, locaisDivergentes=0, valorContado=0, valorDivergente=0;
@@ -1037,9 +1037,18 @@ function irRenderComparativoCiclosPanel(){
       <span><span class="cmp-dot" style="background:#1D1F2A;"></span>Valor</span>
     </div>
     <div class="kpi-blocks" style="margin-top:14px;">
-      ${irKpiBlock('orange','📦','Peças', irKpiTile('📦', irFmtInt(pecasContadas), 'Contadas', '', 'todos os ciclos') + irKpiTile('⚠️', irFmtInt(pecasDivergentes), 'Divergentes', 'bad', ''))}
-      ${irKpiBlock('blue','📍','Locais', irKpiTile('📍', irFmtInt(locaisContados), 'Contados', '', 'todos os ciclos') + irKpiTile('⚠️', irFmtInt(locaisDivergentes), 'Divergentes', 'bad', ''))}
-      ${irKpiBlock('black','💰','Valor', irKpiTile('💰', temValorContado?irFmtMoney(valorContado):'—', 'Contado', '', temValorContado?'todos os ciclos':'reprocesse o ciclo pra habilitar') + irKpiTile('⚠️', irFmtMoney(valorDivergente), 'Divergente', 'bad', ''))}
+      ${irKpiBlock('orange','📦','Peças',
+        irKpiTile('🎯', pecasContadas>0?irFmtPct(1-pecasDivergentes/pecasContadas):'—', 'Acurácia Geral', '', 'todos os ciclos') +
+        irKpiTile('📦', irFmtInt(pecasContadas), 'Contadas', '', 'todos os ciclos') +
+        irKpiTile('⚠️', irFmtInt(pecasDivergentes), 'Divergentes', 'bad', ''))}
+      ${irKpiBlock('blue','📍','Locais',
+        irKpiTile('🎯', locaisContados>0?irFmtPct(1-locaisDivergentes/locaisContados):'—', 'Acurácia Geral', '', 'todos os ciclos') +
+        irKpiTile('📍', irFmtInt(locaisContados), 'Contados', '', 'todos os ciclos') +
+        irKpiTile('⚠️', irFmtInt(locaisDivergentes), 'Divergentes', 'bad', ''))}
+      ${irKpiBlock('black','💰','Valor',
+        irKpiTile('🎯', temValorContado&&valorContado>0?irFmtPct(1-valorDivergente/valorContado):'—', 'Acurácia Geral', '', temValorContado?'todos os ciclos':'reprocesse o ciclo pra habilitar') +
+        irKpiTile('💰', temValorContado?irFmtMoney(valorContado):'—', 'Contado', '', '') +
+        irKpiTile('⚠️', irFmtMoney(valorDivergente), 'Divergente', 'bad', ''))}
     </div>
   </div>`;
 }
