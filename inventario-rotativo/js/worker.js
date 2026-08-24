@@ -379,28 +379,23 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     if(!porVisitaBruto.has(chave)){ porVisitaBruto.set(chave, []); localDaVisita.set(chave, c.local); }
     porVisitaBruto.get(chave).push(c);
   }
+  // Toda visita aqui já passou pelo filtro de Liquidado na ingestão da 843 (só entra
+  // linha com Situação Local E Situação Inventário = Liquidado — ver o continue lá em
+  // cima). Ou seja, ela já está FECHADA pelo WMS, mesmo que tenha levado várias rodadas
+  // pra chegar lá. Antes o app também exigia que a última rodada "batesse" com a
+  // penúltima pra virar "concluída" (senão ficava "em_contagem" pra sempre) — isso
+  // criava um problema real: quando uma contagem errada era corrigida por uma
+  // recontagem num Id Inventario NOVO (visita separada), essa recontagem raramente
+  // tinha 2 rodadas internas batendo, então ficava excluída da Acurácia/NET pra sempre,
+  // e só a rodada errada original (já convergida sozinha) entrava — sobrando um saldo
+  // fantasma que já tinha sido corrigido na prática (ex.: +64 sem o -64 que cancelava).
+  // Pedido explícito do usuário: "desconsidere locais em aberto, somente se estiver
+  // liquidado" — Liquidado já é suficiente, não precisa mais bater rodada a rodada.
   const statusPorVisita = new Map(); // chave -> {status, rodadas}
   for(const [chave, lista] of porVisitaBruto){
     const rodadas = Array.from(new Set(lista.map(c=>c.idConferencia))).sort((a,b)=>a-b);
     const maxRodada = rodadas[rodadas.length-1] || 0;
-    let status = 'em_contagem';
-    if(maxRodada <= 1){
-      status = 'em_contagem';
-    } else {
-      const atual = lista.filter(c=>c.idConferencia===maxRodada);
-      const anterior = lista.filter(c=>c.idConferencia===maxRodada-1);
-      const mapAtual = new Map(atual.map(c=>[c.item, c.qtFis]));
-      const mapAnterior = new Map(anterior.map(c=>[c.item, c.qtFis]));
-      const todosItens = new Set([...mapAtual.keys(), ...mapAnterior.keys()]);
-      let bateu = todosItens.size>0;
-      for(const it of todosItens){
-        if((mapAtual.get(it)??null) !== (mapAnterior.get(it)??null)){ bateu = false; break; }
-      }
-      if(bateu) status = 'convergido';
-      else if(maxRodada>=5) status = 'encerrado_sem_convergencia';
-      else status = 'em_contagem';
-    }
-    statusPorVisita.set(chave, {status, rodadas: maxRodada});
+    statusPorVisita.set(chave, {status:'convergido', rodadas: maxRodada});
   }
   // Status do LOCAL físico (usado por locaisConcluidos/andamentoCiclo/KPI de locais) =
   // o melhor status entre as visitas dele — se a recontagem convergiu, o local está
