@@ -476,7 +476,12 @@ function irUpdateProgressUI410(){
    DASHBOARD EXECUTIVO
    ============================================================ */
 function irKpiTile(icon, val, label, cls, hint){
-  return `<div class="kpi-tile"><div class="kt-icon">${icon}</div><div class="num mono ${cls||''}">${val}</div><div class="label">${label}</div>${hint?`<div class="meta-hint">${hint}</div>`:''}</div>`;
+  // Valores longos (ex.: "R$ 114.927.853,46") quebravam no meio do número com o
+  // tamanho de fonte padrão — reduz a fonte quando o texto passa de um limiar, em vez
+  // de deixar o overflow-wrap partir dígitos no meio.
+  const tamanho = String(val).replace(/<[^>]*>/g,'').length;
+  const numCls = tamanho>14 ? 'num-sm' : (tamanho>10 ? 'num-md' : '');
+  return `<div class="kpi-tile"><div class="kt-icon">${icon}</div><div class="num mono ${numCls} ${cls||''}">${val}</div><div class="label">${label}</div>${hint?`<div class="meta-hint">${hint}</div>`:''}</div>`;
 }
 function irKpiBlock(theme, icon, title, tilesHtml){
   return `<div class="kpi-block theme-${theme}">
