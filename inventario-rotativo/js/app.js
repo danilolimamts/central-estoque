@@ -606,6 +606,9 @@ function irRenderCancelamentoImpactoPanel(ind){
         irKpiTile('📐', (comHorario && ind.horasPerdidasCancelamento)?irFmtNum((ind.horasPerdidasCancelamento*60)/comHorario,0)+' min':'—', 'Média por Tentativa', '', 'entre as com horário completo') +
         irKpiTile('❓', irFmtInt(tentativas-comHorario), 'Sem Horário Completo', '', 'sem Data Fim Contagem')
       )}
+      ${irKpiBlock('black','🧑','Custo em Pessoas',
+        irKpiTile('📅', ind.horasPerdidasCancelamento?irFmtNum(ind.horasPerdidasCancelamento/8,1)+' dias':'—', 'Dias de Produtividade Perdidos', '', 'jornada de 8h/dia')
+      )}
     </div>
   </div>`;
 }
@@ -685,13 +688,13 @@ function irCalNavMonth(delta){
   irRenderView();
 }
 function irRenderLogTablePanel(ind){
-  const rows = irFiltrarLogsValidos(ind.porLog);
+  const rows = irFiltrarLogsValidos(ind.porLogConcluido||ind.porLog);
   if(!rows.length) return '';
   const rowsComTotal = [...rows, irCalcLogTotal(rows)];
   const meta = ind.meta;
   return `<div class="panel">
     <h3>Acurácia por Log</h3>
-    <p class="panel-sub">Locais orçados x contados (Grupo Classe da base congelada), peças e acurácias por log. Só LOG 1, 2, 3 e 6 — os demais ainda têm base congelada pra corrigir.</p>
+    <p class="panel-sub">Locais orçados x contados (Grupo Classe da base congelada), peças e acurácias por log — só locais CONCLUÍDOS (mesma regra do KPI "Acurácia Peças/Valor" do topo). Só LOG 1, 2, 3 e 6 — os demais ainda têm base congelada pra corrigir.</p>
     <div class="table-wrap"><table>
       <thead><tr>
         <th>Log</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Divergentes</th>
@@ -732,26 +735,42 @@ function irRenderPorRuaPanel(ind){
   const rows = (ind.porRua||[]).filter(r=>r.chave!=='(sem rua)').slice().sort((a,b)=>a.chave.localeCompare(b.chave));
   if(!rows.length) return '';
   const meta = ind.meta;
+  // Pendente aqui usa a mesma regra do módulo de Inventário: local sem NENHUMA linha
+  // Liquidada na 843 ainda, cruzado pela rua (X1) da base congelada.
+  const rowsComPendentes = rows.map(r=>({...r, locaisPendentes: irLocaisPendentesContagem(r.chave).length}));
+  const totalPendentes = rowsComPendentes.reduce((s,r)=>s+r.locaisPendentes,0);
   return `<div class="panel">
     <h3>Resumo por Setor</h3>
     <p class="panel-sub">Locais orçados x contados (coluna X1 da base congelada), peças e acurácias por rua.</p>
     <div class="table-wrap"><table>
       <thead><tr>
         <th>Rua</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Divergentes</th>
+        <th>Locais Pendentes</th>
         <th>Peças Contadas</th><th>Peças Divergentes</th>
         <th>Acurácia Peças</th><th>Posições</th><th>Valores</th>
       </tr></thead>
-      <tbody>${rows.map(r=>`<tr>
+      <tbody>${rowsComPendentes.map(r=>`<tr>
         <td class="mono">${irEsc(r.chave)}</td>
         <td class="mono">${irFmtInt(r.locaisOrcados)}</td>
         <td class="mono">${irFmtInt(r.locaisContados)}</td>
         <td class="mono">${irFmtInt(r.locaisDivergentes)}</td>
+        <td class="mono">${irFmtInt(r.locaisPendentes)}${r.locaisPendentes>0?` <button class="btn-link" style="padding:0;font-size:12px;" onclick="irExportarLocaisPendentesCsv('${irEsc(r.chave)}')" title="Exportar locais pendentes desta rua">📤</button>`:''}</td>
         <td class="mono">${irFmtInt(r.pecasContadas)}</td>
         <td class="mono">${irFmtInt(r.pecasDivergentes)}</td>
         <td class="mono" style="${irHeatStyle(r.acuraciaPecas, meta)}">${irFmtPct(r.acuraciaPecas)}</td>
         <td class="mono" style="${irHeatStyle(r.acuraciaPosicoes, meta)}">${irFmtPct(r.acuraciaPosicoes)}</td>
         <td class="mono" style="${irHeatStyle(r.acuraciaValor, meta)}">${irFmtPct(r.acuraciaValor)}</td>
       </tr>`).join('')}</tbody>
+      <tfoot><tr style="font-weight:700;border-top:2px solid var(--line);">
+        <td class="mono">TOTAL</td>
+        <td class="mono">${irFmtInt(rowsComPendentes.reduce((s,r)=>s+r.locaisOrcados,0))}</td>
+        <td class="mono">${irFmtInt(rowsComPendentes.reduce((s,r)=>s+r.locaisContados,0))}</td>
+        <td class="mono">${irFmtInt(rowsComPendentes.reduce((s,r)=>s+r.locaisDivergentes,0))}</td>
+        <td class="mono">${irFmtInt(totalPendentes)}</td>
+        <td class="mono">${irFmtInt(rowsComPendentes.reduce((s,r)=>s+r.pecasContadas,0))}</td>
+        <td class="mono">${irFmtInt(rowsComPendentes.reduce((s,r)=>s+r.pecasDivergentes,0))}</td>
+        <td colspan="3"></td>
+      </tr></tfoot>
     </table></div>
   </div>`;
 }
@@ -1081,9 +1100,6 @@ function irRenderStatusInventarioPanel(ind){
   return `<div class="panel">
     <h3>Status do Inventário</h3>
     <p class="panel-sub">Percentual de locais concluídos em relação ao total orçado do ciclo.</p>
-    <div class="form-actions" style="margin:0 0 12px;">
-      <button class="btn-link" onclick="irExportarLocaisPendentesCsv()">📤 Exportar locais pendentes de contagem (${irFmtInt(irLocaisPendentesContagem().length)})</button>
-    </div>
     <div class="status-donut-row">
       ${irDonutSvg(pct)}
       <div class="status-donut-stats">
@@ -1219,9 +1235,18 @@ function irRenderRuasMaisDivergentesPanel(ind){
 // Calcula o saldo líquido por item (peças e valor) direto das divergências carregadas
 // do ciclo ativo — não depende de campos cacheados nos indicadores, então funciona
 // mesmo em ciclos processados antes desses campos existirem (sem precisar reprocessar).
+// Mesma regra de "locais concluídos" usada nos KPIs de Acurácia (worker.js) — local
+// ainda em contagem/recontagem pode mudar de rodada no próximo reprocessamento, então
+// não é um saldo final. Sem esse filtro, "Itens mais Divergentes" somava rodadas
+// intermediárias do mesmo local (cada recontagem reabre e reconta o item do zero),
+// inflando o saldo de itens muito recontados bem acima do que a QRY0144 mostra.
+const IR_LOCAIS_CONCLUIDO = new Set(['convergido','encerrado_sem_convergencia']);
+function irSoLocaisConcluidos(divergencias){
+  return (divergencias||[]).filter(d=>IR_LOCAIS_CONCLUIDO.has(d.statusLocal));
+}
 function irCalcItemSaldo(divergencias){
   const map = new Map();
-  for(const d of divergencias||[]){
+  for(const d of irSoLocaisConcluidos(divergencias)){
     if(d.diferenca===0) continue;
     let g = map.get(d.item);
     if(!g){ g = {item:d.item, descricao:d.itemNome, saldoQtd:0, saldoValor:0}; map.set(d.item, g); }
@@ -2598,20 +2623,22 @@ function irExportDivergenciasCsv(){
 // ainda não tenha convergido (rodadas ainda divergindo). "Pendente" aqui é só quem não
 // tem NENHUMA linha liquidada — quem ninguém foi contar ainda. Não confundir com
 // "concluído" (usado na Acurácia), que exige convergência das rodadas, não só contagem.
-function irLocaisPendentesContagem(){
+// rua (opcional) filtra pela coluna X1 da base congelada, usado pelo botão por
+// setor em "Resumo por Setor" — ordenado por DESCRIÇÃO do local, não pelo código.
+function irLocaisPendentesContagem(rua){
   // Usa IR.contagens, não IR.divergencias — local confirmado VAZIO (Liquidado, sem
   // nenhum item) é um local válido e contado, mas não gera nenhuma linha em
   // divergencias (o loop que monta divergencias pula linha sem item). Usar só
   // divergencias marcava esses locais como "pendente" por engano, mesmo já contados.
   const contadosSet = new Set((IR.contagens||[]).map(c=>c.local));
-  return (IR.locais||[])
-    .filter(l=>!contadosSet.has(l.idLocal))
-    .sort((a,b)=>a.idLocal.localeCompare(b.idLocal, undefined, {numeric:true}));
+  let base = (IR.locais||[]).filter(l=>!contadosSet.has(l.idLocal));
+  if(rua) base = base.filter(l=>l.x1===rua);
+  return base.sort((a,b)=>String(a.descricao||'').localeCompare(String(b.descricao||''), undefined, {numeric:true}));
 }
-function irExportarLocaisPendentesCsv(){
+function irExportarLocaisPendentesCsv(rua){
   if(!IR.cicloAtivo){ irShowToast('Nenhum ciclo ativo.', true); return; }
-  const pendentes = irLocaisPendentesContagem();
-  if(!pendentes.length){ irShowToast('Nenhum local pendente — ciclo 100% concluído.'); return; }
+  const pendentes = irLocaisPendentesContagem(rua);
+  if(!pendentes.length){ irShowToast('Nenhum local pendente'+(rua?' na rua '+rua:'')+'.'); return; }
   const header = 'Local;Descrição';
   const lines = pendentes.map(l=>{
     const desc = '"'+String(l.descricao||'').replace(/"/g,'""')+'"';
@@ -2621,7 +2648,7 @@ function irExportarLocaisPendentesCsv(){
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'locais_pendentes_ciclo_'+IR.cicloAtivo.numero+'.csv';
+  a.download = 'locais_pendentes_ciclo_'+IR.cicloAtivo.numero+(rua?'_'+rua:'')+'.csv';
   a.click();
   URL.revokeObjectURL(a.href);
 }
