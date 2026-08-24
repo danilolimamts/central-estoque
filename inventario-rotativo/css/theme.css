@@ -270,7 +270,9 @@ button{ font-family:inherit; cursor:pointer; }
 .kpi-block.theme-black .kt-icon{ background:radial-gradient(circle at 32% 28%, #CBCDD6, #E3E4E9); }
 .kpi-block.theme-neutral .kt-icon{ background:radial-gradient(circle at 32% 28%, #E8E9EC, var(--surface2)); }
 .kpi-block.theme-purple .kt-icon{ background:radial-gradient(circle at 32% 28%, #E4D9F7, #C9B6EA); }
-.kpi-tile .num{ font-family:'SFMono-Regular',Consolas,monospace; font-size:17px; font-weight:800; color:var(--ink); line-height:1.2; overflow-wrap:break-word; }
+.kpi-tile .num{ font-family:'SFMono-Regular',Consolas,monospace; font-size:17px; font-weight:800; color:var(--ink); line-height:1.2; overflow-wrap:break-word; word-break:keep-all; }
+.kpi-tile .num.num-md{ font-size:14px; }
+.kpi-tile .num.num-sm{ font-size:12px; }
 .kpi-tile .num.bad{ color:var(--danger); } .kpi-tile .num.good{ color:var(--success); }
 .kpi-tile .label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-top:5px; }
 .kpi-tile .meta-hint{ font-size:9px; color:var(--ink-soft); margin-top:3px; }
