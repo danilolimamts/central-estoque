@@ -709,7 +709,7 @@ function irCalNavMonth(delta){
   irRenderView();
 }
 function irRenderLogTablePanel(ind){
-  const rows = irFiltrarLogsValidos(ind.porLogConcluido||ind.porLog);
+  const rows = irFiltrarLogsValidos(ind.porLog);
   if(!rows.length) return '';
   const rowsComTotal = [...rows, irCalcLogTotal(rows)];
   const meta = ind.meta;
@@ -763,6 +763,9 @@ function irRenderPorRuaPanel(ind){
   return `<div class="panel">
     <h3>Resumo por Setor</h3>
     <p class="panel-sub">Locais orçados x contados (coluna X1 da base congelada), peças e acurácias por rua.</p>
+    ${totalPendentes>0?`<div class="form-actions" style="margin:0 0 12px;">
+      <button class="btn-link" onclick="irExportarLocaisPendentesCsv()">📤 Exportar todos os locais pendentes (${irFmtInt(totalPendentes)})</button>
+    </div>`:''}
     <div class="table-wrap"><table>
       <thead><tr>
         <th>Rua</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Divergentes</th>
@@ -775,7 +778,7 @@ function irRenderPorRuaPanel(ind){
         <td class="mono">${irFmtInt(r.locaisOrcados)}</td>
         <td class="mono">${irFmtInt(r.locaisContados)}</td>
         <td class="mono">${irFmtInt(r.locaisDivergentes)}</td>
-        <td class="mono">${irFmtInt(r.locaisPendentes)}${r.locaisPendentes>0?` <button class="btn-link" style="padding:0;font-size:12px;" onclick="irExportarLocaisPendentesCsv('${irEsc(r.chave)}')" title="Exportar locais pendentes desta rua">📤</button>`:''}</td>
+        <td class="mono">${irFmtInt(r.locaisPendentes)}</td>
         <td class="mono">${irFmtInt(r.pecasContadas)}</td>
         <td class="mono">${irFmtInt(r.pecasDivergentes)}</td>
         <td class="mono" style="${irHeatStyle(r.acuraciaPecas, meta)}">${irFmtPct(r.acuraciaPecas)}</td>

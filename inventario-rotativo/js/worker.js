@@ -644,50 +644,51 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
   // relatórios de referência do usuário. "Posições" aqui é medida sobre os locais
   // já contados no grupo (não sobre o total congelado), igual ao relatório de origem.
   const locaisContadosSet = new Set(Array.from(statusPorLocal.keys()));
-  function calcAcuraciasSubset(divs, locaisDoGrupo, baseLocais){
-    const totalPecasGrupo = locaisDoGrupo.reduce((s,l)=>s+(pecasFisicasPorLocal.get(l.idLocal)||0), 0);
-    const totalDiferencaAbs = divs.reduce((s,d)=>s+Math.abs(d.diferenca),0);
+  // Peças/Valor usam SÓ locais concluídos (mesmo denominador do KPI do topo:
+  // divergenciasConcluidas, não pecasFisicasPorLocal — que somava a física de local
+  // ainda em contagem no denominador, mesmo com o numerador já restrito, distorcendo
+  // o percentual). Posições/Locais Divergentes continuam sobre TODOS os locais já
+  // contados (qualquer status), igual à Acurácia Local do topo — local em recontagem
+  // que ainda diverge é uma posição divergente de verdade até fechar.
+  function calcAcuraciasSubset(divsTodos, divsConcluidos, baseLocais){
+    const totalPecasGrupo = divsConcluidos.reduce((s,d)=>s+d.qtdeFisica,0);
+    const totalDiferencaAbs = divsConcluidos.reduce((s,d)=>s+Math.abs(d.diferenca),0);
     const acuraciaPecas = clamp01(totalPecasGrupo>0 ? 1-(totalDiferencaAbs/totalPecasGrupo) : 1);
-    const totalVlFisico = divs.reduce((s,d)=>s+d.vlFisico,0);
-    const totalVlDivergenciaAbs = divs.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
+    const totalVlFisico = divsConcluidos.reduce((s,d)=>s+d.vlFisico,0);
+    const totalVlDivergenciaAbs = divsConcluidos.reduce((s,d)=>s+Math.abs(d.vlDivergencia),0);
     const acuraciaValor = clamp01(totalVlFisico>0 ? 1-(totalVlDivergenciaAbs/totalVlFisico) : 1);
-    const locaisComDivergencia = new Set(divs.filter(d=>d.diferenca!==0).map(d=>d.local));
+    const locaisComDivergencia = new Set(divsTodos.filter(d=>d.diferenca!==0).map(d=>d.local));
     const acuraciaPosicoes = clamp01(baseLocais>0 ? 1-(locaisComDivergencia.size/baseLocais) : 1);
     return {
       acuraciaPecas, acuraciaValor, acuraciaPosicoes,
       pecasContadas: totalPecasGrupo, pecasDivergentes: totalDiferencaAbs,
-      itensContados: divs.length,
+      itensContados: divsConcluidos.length,
       locaisDivergentes: locaisComDivergencia.size,
-      valorDivergenteLiquido: divs.reduce((s,d)=>s+d.vlDivergencia,0),
+      valorDivergenteLiquido: divsConcluidos.reduce((s,d)=>s+d.vlDivergencia,0),
       valorDivergenteAbsoluto: totalVlDivergenciaAbs,
       vlFisicoTotal: totalVlFisico
     };
   }
-  function agruparPor(campo, rotuloVazio, baseCongelados, divsFonte){
+  function agruparPor(campo, rotuloVazio, baseCongelados){
     const base = baseCongelados || congelados;
-    const fonte = divsFonte || divergencias;
     const chaves = Array.from(new Set(base.map(l=>l[campo] || rotuloVazio)));
     return chaves.map(chave=>{
       const locaisDoGrupo = base.filter(l=>(l[campo]||rotuloVazio)===chave);
       const idsGrupo = new Set(locaisDoGrupo.map(l=>l.idLocal));
       const locaisOrcados = locaisDoGrupo.length;
       const locaisContados = locaisDoGrupo.filter(l=>locaisContadosSet.has(l.idLocal)).length;
-      const divsGrupo = fonte.filter(d=>idsGrupo.has(d.local));
+      const divsGrupoTodos = divergencias.filter(d=>idsGrupo.has(d.local));
+      const divsGrupoConcluidos = divergenciasConcluidas.filter(d=>idsGrupo.has(d.local));
       return {
         chave, locaisOrcados, locaisContados,
         pctContado: locaisOrcados>0 ? locaisContados/locaisOrcados : 0,
-        ...calcAcuraciasSubset(divsGrupo, locaisDoGrupo, locaisContados)
+        ...calcAcuraciasSubset(divsGrupoTodos, divsGrupoConcluidos, locaisContados)
       };
     }).sort((a,b)=>b.locaisOrcados-a.locaisOrcados);
   }
   // AIR entra na quebra por Rua normalmente, como qualquer outro local (sem exclusão).
   const porRua = agruparPor('x1', '(sem rua)');
   const porLog = agruparPor('grupoClasse', '(sem log)');
-  // Tabela "Acurácia por Log" segue a MESMA regra do KPI "Acurácia Peças/Valor" do
-  // topo: só locais concluídos (convergido/encerrado_sem_convergencia) entram na
-  // conta. Local ainda em contagem pode mudar de rodada no próximo reprocessamento,
-  // então misturar ele aqui distorcia o número em relação ao KPI principal.
-  const porLogConcluido = agruparPor('grupoClasse', '(sem log)', null, divergenciasConcluidas);
 
   // Locais distintos contados por dia. Cada local é contado UMA ÚNICA VEZ, no dia da
   // sua "Data Situação" na rodada final (maior Id Conferência) — esse é o campo que a
@@ -809,7 +810,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensSemBaseline, itensSemBaselineTotal,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade, porRua, porLog, porLogConcluido, contadosPorDia, porDiaRua, divergentesPorDia,
+    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, divergentesPorDia,
     topItensPositivos, topItensNegativos, topItensPositivosValor, topItensNegativosValor
   };
 }
