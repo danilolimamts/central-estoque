@@ -546,8 +546,8 @@ function irRenderDashboard(){
   );
   const blocoValor = irKpiBlock('black','💰','Valor',
     irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint+' · '+taxaRecontagemHint) +
-    irKpiTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
-    irKpiTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líquido)', '', 'ganho − perda')
+    irKpiTile('💰', irFmtMoney(ind.valorFisicoTotal), 'Valor Contado', '', 'total físico') +
+    irKpiTile('⚠️', irFmtMoney(ind.valorDivergenteAbsoluto), 'Valor Divergente', 'bad', 'soma absoluta')
   );
   const blocoCiclo = irKpiBlock('neutral','🔄','Ciclo',
     irKpiTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
@@ -1406,8 +1406,8 @@ function irGerarRelatorioEmail(){
   );
   const blocoValor = rpBlock('black','💰','Valor',
     rpTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint) +
-    rpTile('💸', irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente (abs.)', 'bad', 'soma absoluta') +
-    rpTile('🧮', irFmtMoney(ind.valorDivergenteLiquido), 'Divergente (líq.)', '', 'ganho − perda do ciclo')
+    rpTile('💰', irFmtMoney(ind.valorFisicoTotal), 'Valor Contado', '', 'total físico') +
+    rpTile('⚠️', irFmtMoney(ind.valorDivergenteAbsoluto), 'Valor Divergente', 'bad', 'soma absoluta')
   );
   const blocoCiclo = rpBlock('neutral','🔄','Ciclo',
     rpTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
