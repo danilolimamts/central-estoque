@@ -41,15 +41,6 @@ function irEsc(v){ if(v===undefined||v===null) return ''; return String(v).repla
 function irFmtInt(n){ return Math.round(n||0).toLocaleString('pt-BR'); }
 function irFmtNum(n, dec){ return (n||0).toLocaleString('pt-BR', {minimumFractionDigits:dec||0, maximumFractionDigits:dec===undefined?2:dec}); }
 function irFmtMoney(n){ return (n||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'}); }
-// Versão curta (R$12,3K / R$1,2M) — usada só nos rótulos do gráfico de tendência,
-// onde o valor completo ("R$ 126.079,44") não cabe ao lado de 7 outros rótulos.
-function irFmtMoneyShort(n){
-  n = n||0;
-  const abs = Math.abs(n);
-  if(abs>=1000000) return 'R$'+(n/1000000).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'M';
-  if(abs>=1000) return 'R$'+(n/1000).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'K';
-  return irFmtMoney(n);
-}
 function irFmtPct(n){ return ((n||0)*100).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1})+'%'; }
 function irFmtDate(s){ if(!s) return '—'; const d = new Date(s); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR'); }
 /* Ano do ciclo, derivado da data de abertura — usado pra não confundir
@@ -557,14 +548,13 @@ function irAndamentoPorDia(ind, n){
 }
 // Mini-gráfico de linha (7 dias) usado em cada card de KPI do Dashboard — área
 // preenchida, ponto de hoje em destaque com o valor, e o dia embaixo de cada ponto.
-// Rotula TODOS os 7 dias — o gráfico agora ocupa a largura inteira do cartão (título
-// migrou pra linha de cima), então sobra espaço horizontal suficiente pra isso.
+// Rotula só pontos alternados (evita colidir os rótulos num espaço pequeno).
 function irKpiSparklineSvg(points, opts){
   opts = opts || {};
   const color = opts.color || 'currentColor';
   const fmt = opts.fmt || irFmtInt;
   if(!points || points.length<2) return '<div class="kpi-spark-empty">Sem histórico suficiente ainda</div>';
-  const W = 600, H = 92, padX = 14, baseline = 62, top = 20;
+  const W = 260, H = 58, padX = 8, baseline = 40, top = 8;
   const n = points.length;
   const vals = points.map(p=>p.valor);
   const min = Math.min(...vals), max = Math.max(...vals);
@@ -575,23 +565,24 @@ function irKpiSparklineSvg(points, opts){
   const line = xs.map((x,i)=> (i===0?'M':'L')+x.toFixed(1)+','+ys[i].toFixed(1)).join(' ');
   const area = line+` L${xs[n-1].toFixed(1)},${baseline} L${xs[0].toFixed(1)},${baseline} Z`;
   const gid = 'spk'+Math.random().toString(36).slice(2,9);
+  // Rotula só 1º, meio e o penúltimo (o último já vira o rótulo em destaque) — com
+  // poucos pontos (3 labels + o de destaque) sobra espaço de sobra pra não colidir,
+  // já que o valor real varia a cada ciclo (não dá pra afinar posição igual mockup).
   let labels = '';
-  for(let i=0;i<n;i++){
-    const isLast = i===n-1;
-    const anchor = i===0 ? 'start' : (isLast ? 'end' : 'middle');
-    // Zigue-zague vertical (rótulos ímpares sobem mais) — dá espaço extra quando dois
-    // dias seguidos têm valores parecidos e ficariam colados um no outro.
-    const ly = Math.max(15, ys[i] - 8 - (i%2 && !isLast ? 10 : 0));
-    const cls = isLast ? 'kpi-spark-lbl-last' : 'kpi-spark-lbl';
-    labels += `<text x="${xs[i].toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" class="${cls} mono"${isLast?` fill="${color}"`:''}>${irEsc(fmt(points[i].valor))}</text>`;
+  const idxLabels = new Set([0, Math.floor((n-1)/2)]);
+  for(const i of idxLabels){
+    if(i>=n-1) continue;
+    const anchor = i===0 ? 'start' : 'middle';
+    const ly = Math.max(9, ys[i]-5);
+    labels += `<text x="${xs[i].toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" class="kpi-spark-lbl mono">${irEsc(fmt(points[i].valor))}</text>`;
   }
   const dayAxis = points.map((p,i)=>{
     const day = String(p.dia||'').slice(8,10)||'—';
     const isLast = i===n-1;
     const anchor = i===0?'start':(isLast?'end':'middle');
-    return `<text x="${xs[i].toFixed(1)}" y="${H-6}" text-anchor="${anchor}" class="kpi-spark-day mono${isLast?' last':''}"${isLast?` fill="${color}"`:''}>${day}</text>`;
+    return `<text x="${xs[i].toFixed(1)}" y="${H-5}" text-anchor="${anchor}" class="kpi-spark-day mono${isLast?' last':''}"${isLast?` fill="${color}"`:''}>${day}</text>`;
   }).join('');
-  const lastX = xs[n-1];
+  const lastX = xs[n-1], lastY = Math.max(9, ys[n-1]-4);
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" class="kpi-spark-svg">
     <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="${color}" stop-opacity=".22"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/>
@@ -600,26 +591,26 @@ function irKpiSparklineSvg(points, opts){
     <path d="${area}" fill="url(#${gid})"/>
     <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     ${labels}
-    <circle cx="${lastX.toFixed(1)}" cy="${ys[n-1].toFixed(1)}" r="4" fill="${color}"/>
+    <circle cx="${lastX.toFixed(1)}" cy="${ys[n-1].toFixed(1)}" r="3.2" fill="${color}"/>
+    <text x="${(W-2)}" y="${lastY.toFixed(1)}" text-anchor="end" class="kpi-spark-lbl-last mono" fill="${color}">${irEsc(fmt(points[n-1].valor))}</text>
     <g>${dayAxis}</g>
   </svg>`;
 }
 function irKpi2Card(theme, iconKey, title, numTxt, numCls, metaHtml, sparkTitle, sparkSvg, miniTilesHtml){
-  // Título do gráfico fica numa linha própria, acima, e o gráfico ocupa a largura
-  // inteira do cartão — sem isso, dividir a largura com o número (à esquerda) não
-  // sobrava espaço suficiente pros 7 rótulos de dado sem colidir.
   return `<div class="kpi2-card kpi2-theme-${theme}">
     <div class="kpi2-head">
       <span class="kpi2-title">${title}</span>
       <div class="kpi2-icon">${IR_KPI_ICONS[iconKey]}</div>
     </div>
-    <div class="kpi2-top">
-      <div class="kpi2-num ${numCls||''}">${numTxt}</div>
-      <div class="kpi2-meta">${metaHtml}</div>
-    </div>
-    <div class="kpi2-spark-block">
-      <div class="kpi2-spark-head">${sparkTitle}</div>
-      ${sparkSvg}
+    <div class="kpi2-body">
+      <div class="kpi2-left">
+        <div class="kpi2-num ${numCls||''}">${numTxt}</div>
+        <div class="kpi2-meta">${metaHtml}</div>
+      </div>
+      <div class="kpi2-right">
+        <div class="kpi2-spark-head">${sparkTitle}</div>
+        ${sparkSvg}
+      </div>
     </div>
     <div class="kpi2-divider"></div>
     <div class="kpi2-mini-row">${miniTilesHtml}</div>
@@ -645,7 +636,7 @@ function irRenderDashboard(){
   const taxaRecontagemHint = `Recontagem/cancelamento: ${irFmtPct(ind.taxaCancelamento||0)}`;
   const sparkPecas = irKpiSparklineSvg(irUltimosPontos(ind.divergentesPorDia, 'pecas', 7), {color:'var(--orange)', fmt:irFmtInt});
   const sparkLocais = irKpiSparklineSvg(irUltimosPontos(ind.divergentesPorDia, 'locais', 7), {color:'var(--blue)', fmt:irFmtInt});
-  const sparkValor = irKpiSparklineSvg(irUltimosPontos(ind.divergentesPorDia, 'valor', 7), {color:'#1D1F2A', fmt:irFmtMoneyShort});
+  const sparkValor = irKpiSparklineSvg(irUltimosPontos(ind.divergentesPorDia, 'valor', 7), {color:'#1D1F2A', fmt:irFmtMoney});
   const sparkCiclo = irKpiSparklineSvg(irAndamentoPorDia(ind, 7), {color:'#6B7280', fmt:irFmtPct});
   const blocoPecas = irKpi2Card('peca', 'peca', 'Peças', irFmtPct(ind.acuraciaPecas), ind.acuraciaPecas>=ind.meta?'good':'bad',
     metaHint+'<br>'+taxaRecontagemHint, 'Peças divergentes por dia', sparkPecas,
