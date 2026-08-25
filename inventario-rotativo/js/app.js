@@ -2164,6 +2164,8 @@ function irExportarRankingImagem(){
           <td>${irFmtNum(r.tempoMedioMin,1)}</td>
         </tr>`).join('')}</tbody>
       </table></div>
+      ${rpSectionTitle('⏰','Locais por colaborador, hora a hora','janela 06h–22h de expediente')}
+      <div class="rp-panel">${irBuildProdMatrizRpTable(p)}</div>
       <p class="rp-footer">Gerado automaticamente pelo módulo Inventário.</p>
     </div>
   </div>`;
