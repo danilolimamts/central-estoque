@@ -186,19 +186,43 @@ function irRenderCycleBadge(){
   const badge = document.getElementById('cycleBadge');
   if(!badge) return;
   if(!IR.ciclos.length){ badge.innerHTML = 'Nenhum ciclo ativo'; return; }
-  if(IR.ciclos.length===1){
-    const c = IR.ciclos[0];
-    badge.innerHTML = `${irCicloLabel(c)} — ${c.status==='aberto'?'Aberto':'Encerrado'}`;
-    return;
-  }
+  // Sempre em dropdown, mesmo com um único ciclo — assim o seletor não "aparece do
+  // nada" quando o segundo ciclo for processado.
   const ordenados = IR.ciclos.slice().sort((a,b)=>b.numero-a.numero);
   badge.innerHTML = `<select id="cycleFilterSelect" onchange="irFiltrarCiclo(this.value)" title="Filtrar por ciclo">
     ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id ? 'selected' : ''}>${irCicloLabel(c)} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
   </select>`;
+  irRenderMonthFilter();
+}
+// Filtro de mês do topbar — lista os meses que o ciclo ativo realmente tem contagem
+// (derivado de contadosPorDia), e aplica o intervalo do mês escolhido no mesmo
+// prodFilters.de/ate que a aba Produtividade já usa. "Todos" limpa o filtro.
+function irRenderMonthFilter(){
+  const sel = document.getElementById('monthFilterSelect');
+  if(!sel) return;
+  const dias = ((IR.indicadores||{}).contadosPorDia)||[];
+  const meses = Array.from(new Set(dias.map(d=>String(d.dia).slice(0,7)))).sort();
+  const atual = IR.prodFilters.de ? String(IR.prodFilters.de).slice(0,7) : '';
+  sel.innerHTML = `<option value="">Todos</option>` + meses.map(m=>{
+    const nome = new Date(m+'-01T00:00:00').toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
+    return `<option value="${m}" ${m===atual?'selected':''}>${irEsc(nome.charAt(0).toUpperCase()+nome.slice(1))}</option>`;
+  }).join('');
+}
+function irSetMonthFilter(mes){
+  if(!mes){ IR.prodFilters.de = ''; IR.prodFilters.ate = ''; }
+  else{
+    const [ano, m] = mes.split('-').map(Number);
+    IR.prodFilters.de = mes+'-01';
+    IR.prodFilters.ate = mes+'-'+String(new Date(ano, m, 0).getDate()).padStart(2,'0');
+  }
+  irRenderView();
 }
 async function irFiltrarCiclo(cicloId){
   IR.cicloAtivo = IR.ciclos.find(c=>c.id===cicloId);
   IR.calMesIdx = null;
+  // Meses disponíveis mudam junto com o ciclo — limpa o filtro pra não deixar um mês
+  // do ciclo anterior aplicado (e inexistente) no novo.
+  IR.prodFilters.de = ''; IR.prodFilters.ate = '';
   await irLoadCicloData(cicloId);
   irRenderCycleBadge();
   irRenderView();
@@ -490,23 +514,6 @@ function irKpiBlock(theme, icon, title, tilesHtml){
   </div>`;
 }
 const IR_INDICADORES_VERSION = 8; // mantido em sincronia com worker.js
-/* Barra de filtros do Dashboard, no estilo Power BI: ciclo + período de data num só
-   lugar, com um chip pra escolher em quais painéis o filtro de data se aplica (hoje só
-   a Produtividade responde a data — os demais KPIs/gráficos são do ciclo inteiro). */
-function irRenderDashCicloBar(){
-  const ordenados = IR.ciclos.slice().sort((a,b)=>b.numero-a.numero);
-  // Sempre em dropdown, mesmo com um único ciclo — facilita quando novos ciclos forem
-  // processados (não precisa a lista "aparecer" de repente, já fica pronta).
-  const cicloSelect = `<select id="dashCicloSelect" onchange="irFiltrarCiclo(this.value)">
-    ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id?'selected':''}>${irEsc(irCicloLabel(c))} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
-  </select>`;
-  return `<div class="panel dash-filter-bar">
-    <div class="dash-filter-group">
-      <label>Ciclo</label>
-      ${cicloSelect}
-    </div>
-  </div>`;
-}
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
 function irRenderDashDateFilterBar(){
@@ -560,7 +567,6 @@ function irRenderDashboard(){
     irKpiTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
   );
   return `
-    ${irRenderDashCicloBar()}
     <div class="form-actions" style="margin:0 0 12px;">
       <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>

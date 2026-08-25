@@ -59,12 +59,22 @@
       <button class="mobile-menu-btn" onclick="irToggleSidebar()" title="Abrir menu" aria-label="Abrir menu">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <div>
+      <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="topbar-logo">
+      <div class="topbar-titles">
         <h1 id="tabTitle">Dashboard Executivo</h1>
         <p id="tabSubtitle">Visão geral do ciclo ativo.</p>
       </div>
       <input class="global-search" id="globalSearch" type="text" placeholder="Pesquisa global (item, local, colaborador)...">
-      <div class="cycle-badge" id="cycleBadge">Nenhum ciclo ativo</div>
+      <div class="topbar-filters">
+        <div class="tb-filter">
+          <label>Ciclo</label>
+          <div id="cycleBadge">Nenhum ciclo ativo</div>
+        </div>
+        <div class="tb-filter">
+          <label>Mês</label>
+          <select id="monthFilterSelect" onchange="irSetMonthFilter(this.value)"><option value="">Todos</option></select>
+        </div>
+      </div>
     </div>
     <div class="page-scroll">
       <div id="viewRoot"><p class="field-hint">Carregando...</p></div>
