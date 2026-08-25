@@ -524,101 +524,6 @@ function irRenderDashDateFilterBar(){
     </div>
   </div>`;
 }
-// Ícones de linha (estilo KPI/gauge) pros 4 blocos do topo do Dashboard — trocou os
-// emojis por ícones monocromáticos de traço fino, pedido explícito do usuário.
-const IR_KPI_ICONS = {
-  peca: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.2v9.6L12 21l-8-4.2V7.2L12 3z"/><path d="M4 7.2L12 11l8-3.8"/><path d="M12 11v10"/></svg>',
-  local: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>',
-  valor: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l3.2-4.4"/><circle cx="12" cy="16" r="1.1" fill="currentColor" stroke="none"/><path d="M9 20h6"/></svg>',
-  ciclo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg>'
-};
-// Últimos N pontos de uma série {dia, ...} do worker (ind.divergentesPorDia já vem
-// ordenado ascendente por dia) — usado pra alimentar o mini-gráfico de cada bloco.
-function irUltimosPontos(serie, campo, n){
-  return (serie||[]).slice(-(n||7)).map(d=>({dia:d.dia, valor:d[campo]||0}));
-}
-// Andamento acumulado por dia (% de locais concluídos), derivado de contadosPorDia
-// (locais fechados naquele dia) — não existe like isso pronto no worker, então soma
-// aqui mesmo. Aproximado: soma corrida desde o primeiro dia com registro.
-function irAndamentoPorDia(ind, n){
-  const rows = ind.contadosPorDia || [];
-  let cum = 0;
-  const serie = rows.map(r=>{ cum += r.total||0; return {dia:r.dia, valor: ind.locaisCongelados>0 ? cum/ind.locaisCongelados : 0}; });
-  return serie.slice(-(n||7));
-}
-// Mini-gráfico de linha (7 dias) usado em cada card de KPI do Dashboard — área
-// preenchida, ponto de hoje em destaque com o valor, e o dia embaixo de cada ponto.
-// Rotula só pontos alternados (evita colidir os rótulos num espaço pequeno).
-function irKpiSparklineSvg(points, opts){
-  opts = opts || {};
-  const color = opts.color || 'currentColor';
-  const fmt = opts.fmt || irFmtInt;
-  if(!points || points.length<2) return '<div class="kpi-spark-empty">Sem histórico suficiente ainda</div>';
-  const W = 260, H = 58, padX = 8, baseline = 40, top = 8;
-  const n = points.length;
-  const vals = points.map(p=>p.valor);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const range = (max-min) || 1;
-  const stepX = (W - padX*2) / (n-1);
-  const xs = points.map((p,i)=> padX + i*stepX);
-  const ys = points.map(p=> baseline - ((p.valor-min)/range) * (baseline-top));
-  const line = xs.map((x,i)=> (i===0?'M':'L')+x.toFixed(1)+','+ys[i].toFixed(1)).join(' ');
-  const area = line+` L${xs[n-1].toFixed(1)},${baseline} L${xs[0].toFixed(1)},${baseline} Z`;
-  const gid = 'spk'+Math.random().toString(36).slice(2,9);
-  // Rotula só 1º, meio e o penúltimo (o último já vira o rótulo em destaque) — com
-  // poucos pontos (3 labels + o de destaque) sobra espaço de sobra pra não colidir,
-  // já que o valor real varia a cada ciclo (não dá pra afinar posição igual mockup).
-  let labels = '';
-  const idxLabels = new Set([0, Math.floor((n-1)/2)]);
-  for(const i of idxLabels){
-    if(i>=n-1) continue;
-    const anchor = i===0 ? 'start' : 'middle';
-    const ly = Math.max(9, ys[i]-5);
-    labels += `<text x="${xs[i].toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" class="kpi-spark-lbl mono">${irEsc(fmt(points[i].valor))}</text>`;
-  }
-  const dayAxis = points.map((p,i)=>{
-    const day = String(p.dia||'').slice(8,10)||'—';
-    const isLast = i===n-1;
-    const anchor = i===0?'start':(isLast?'end':'middle');
-    return `<text x="${xs[i].toFixed(1)}" y="${H-5}" text-anchor="${anchor}" class="kpi-spark-day mono${isLast?' last':''}"${isLast?` fill="${color}"`:''}>${day}</text>`;
-  }).join('');
-  const lastX = xs[n-1], lastY = Math.max(9, ys[n-1]-4);
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" class="kpi-spark-svg">
-    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${color}" stop-opacity=".22"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/>
-    </linearGradient></defs>
-    <line x1="0" y1="${baseline}" x2="${W}" y2="${baseline}" class="kpi-spark-base"/>
-    <path d="${area}" fill="url(#${gid})"/>
-    <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    ${labels}
-    <circle cx="${lastX.toFixed(1)}" cy="${ys[n-1].toFixed(1)}" r="3.2" fill="${color}"/>
-    <text x="${(W-2)}" y="${lastY.toFixed(1)}" text-anchor="end" class="kpi-spark-lbl-last mono" fill="${color}">${irEsc(fmt(points[n-1].valor))}</text>
-    <g>${dayAxis}</g>
-  </svg>`;
-}
-function irKpi2Card(theme, iconKey, title, numTxt, numCls, metaHtml, sparkTitle, sparkSvg, miniTilesHtml){
-  return `<div class="kpi2-card kpi2-theme-${theme}">
-    <div class="kpi2-head">
-      <span class="kpi2-title">${title}</span>
-      <div class="kpi2-icon">${IR_KPI_ICONS[iconKey]}</div>
-    </div>
-    <div class="kpi2-body">
-      <div class="kpi2-left">
-        <div class="kpi2-num ${numCls||''}">${numTxt}</div>
-        <div class="kpi2-meta">${metaHtml}</div>
-      </div>
-      <div class="kpi2-right">
-        <div class="kpi2-spark-head">${sparkTitle}</div>
-        ${sparkSvg}
-      </div>
-    </div>
-    <div class="kpi2-divider"></div>
-    <div class="kpi2-mini-row">${miniTilesHtml}</div>
-  </div>`;
-}
-function irKpi2Mini(val, label, warn){
-  return `<div class="kpi2-mini${warn?' warn':''}"><div class="v mono">${val}</div><div class="l">${label}</div></div>`;
-}
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
@@ -634,33 +539,32 @@ function irRenderDashboard(){
   // sobre o total de locais orçados do ciclo. Pedido explícito do usuário: aparecer
   // em CADA bloco de acurácia, pra deixar claro o quanto disso pesa em cada frente.
   const taxaRecontagemHint = `Recontagem/cancelamento: ${irFmtPct(ind.taxaCancelamento||0)}`;
-  const sparkPecas = irKpiSparklineSvg(irUltimosPontos(ind.divergentesPorDia, 'pecas', 7), {color:'var(--orange)', fmt:irFmtInt});
-  const sparkLocais = irKpiSparklineSvg(irUltimosPontos(ind.divergentesPorDia, 'locais', 7), {color:'var(--blue)', fmt:irFmtInt});
-  const sparkValor = irKpiSparklineSvg(irUltimosPontos(ind.divergentesPorDia, 'valor', 7), {color:'#1D1F2A', fmt:irFmtMoney});
-  const sparkCiclo = irKpiSparklineSvg(irAndamentoPorDia(ind, 7), {color:'#6B7280', fmt:irFmtPct});
-  const blocoPecas = irKpi2Card('peca', 'peca', 'Peças', irFmtPct(ind.acuraciaPecas), ind.acuraciaPecas>=ind.meta?'good':'bad',
-    metaHint+'<br>'+taxaRecontagemHint, 'Peças divergentes por dia', sparkPecas,
-    irKpi2Mini(irFmtInt(ind.pecasContadas), 'Contadas') + irKpi2Mini(irFmtInt(ind.pecasDivergentes), 'Divergentes', true)
+  const blocoPecas = irKpiBlock('orange','📦','Peças',
+    irKpiTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint+' · '+taxaRecontagemHint) +
+    irKpiTile('📦', irFmtInt(ind.pecasContadas), 'Peças Contadas', '', 'total físico') +
+    irKpiTile('⚠️', irFmtInt(ind.pecasDivergentes), 'Peças Divergentes', 'bad', irFmtInt(ind.itensDivergentes)+' itens')
   );
-  const blocoLocais = irKpi2Card('local', 'local', 'Locais', irFmtPct(ind.acuraciaLocal), ind.acuraciaLocal>=ind.meta?'good':'bad',
-    metaHint+'<br>'+taxaRecontagemHint, 'Locais divergentes por dia', sparkLocais,
-    irKpi2Mini(irFmtInt(ind.locaisConcluidos), 'Concluídos') + irKpi2Mini(irFmtInt(ind.locaisPendentes), 'Pendentes', true)
+  const blocoLocais = irKpiBlock('blue','📍','Locais',
+    irKpiTile('🎯', irFmtPct(ind.acuraciaLocal), 'Acurácia Local', ind.acuraciaLocal>=ind.meta?'good':'bad', metaHint+' · '+taxaRecontagemHint) +
+    irKpiTile('✅', irFmtInt(ind.locaisConcluidos), 'Concluídos', '', 'de '+irFmtInt(ind.locaisContadosTotal)+' contados') +
+    irKpiTile('⏳', irFmtInt(ind.locaisPendentes), 'Pendentes', 'bad', irFmtInt(ind.qtdRecontagens)+' recontagens')
   );
-  const blocoValor = irKpi2Card('valor', 'valor', 'Valor', irFmtPct(ind.acuraciaValor), ind.acuraciaValor>=ind.meta?'good':'bad',
-    metaHint+'<br>'+taxaRecontagemHint, 'Valor divergente por dia (abs.)', sparkValor,
-    irKpi2Mini(irFmtMoney(ind.valorFisicoTotal), 'Contado') + irKpi2Mini(irFmtMoney(ind.valorDivergenteAbsoluto), 'Divergente', true)
+  const blocoValor = irKpiBlock('black','💰','Valor',
+    irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint+' · '+taxaRecontagemHint) +
+    irKpiTile('💰', irFmtMoney(ind.valorFisicoTotal), 'Valor Contado', '', 'total físico') +
+    irKpiTile('⚠️', irFmtMoney(ind.valorDivergenteAbsoluto), 'Valor Divergente', 'bad', 'soma absoluta')
   );
-  const blocoCiclo = irKpi2Card('ciclo', 'ciclo', 'Ciclo', irFmtPct(ind.andamentoCiclo), '',
-    irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)+' locais orçados', 'Andamento por dia', sparkCiclo,
-    irKpi2Mini(ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), 'Dias Restantes') +
-    irKpi2Mini(irFmtPct(ind.eficiencia), 'Eficiência')
+  const blocoCiclo = irKpiBlock('neutral','🔄','Ciclo',
+    irKpiTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
+    irKpiTile('📅', ind.diasRestantes===null?'—':irFmtInt(ind.diasRestantes), 'Dias Restantes', '', 'dias úteis · exclui feriados') +
+    irKpiTile('⚡', irFmtPct(ind.eficiencia), 'Eficiência', ind.eficiencia>=0.8?'good':(ind.eficiencia<0.5?'bad':''), 'qualidade x velocidade')
   );
   return `
     ${irRenderDashCicloBar()}
     <div class="form-actions" style="margin:0 0 12px;">
       <button class="btn btn-secondary" onclick="irGerarRelatorioEmail()">📧 Preparar boletim para enviar por e-mail</button>
     </div>
-    <div class="kpi2-grid">
+    <div class="kpi-blocks">
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
     <div class="bi-grid-2">
