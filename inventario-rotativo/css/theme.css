@@ -481,6 +481,37 @@ table.table-dense tbody td{ padding:3px 10px; font-size:12.5px; }
 .rank-key{ display:flex; justify-content:space-between; gap:8px; margin-bottom:3px; }
 .rank-bar-track{ background:var(--surface2); border-radius:100px; height:6px; overflow:hidden; }
 .rank-bar-fill{ height:100%; background:var(--blue); border-radius:100px; }
+.rank-pos{ text-align:center; font-size:13px; }
+
+/* ---------- PÓDIO (top 3 do ranking de produtividade) ---------- */
+.panel-head-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+.panel-head-row h3{ margin:0; }
+.podio{ display:flex; align-items:flex-end; justify-content:center; gap:14px; margin:6px 0 20px; flex-wrap:wrap; }
+.podio-card{
+  flex:1 1 0; min-width:150px; max-width:250px; text-align:center; border-radius:var(--radius-lg);
+  border:1px solid var(--line); background:var(--surface); padding:16px 14px 18px; position:relative;
+  border-top:4px solid var(--podio-cor);
+  box-shadow:0 8px 18px -12px rgba(20,24,40,.28);
+}
+.podio-card.campeao{ padding-top:22px; padding-bottom:26px; box-shadow:0 12px 26px -12px rgba(20,24,40,.4); }
+.podio-card.ouro{ --podio-cor:#D9A400; }
+.podio-card.prata{ --podio-cor:#8E99A8; }
+.podio-card.bronze{ --podio-cor:#B5763A; }
+.podio-medalha{ font-size:30px; line-height:1; margin-bottom:6px; }
+.podio-card.campeao .podio-medalha{ font-size:40px; }
+.podio-pos{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--podio-cor); }
+.podio-nome{ font-size:13.5px; font-weight:700; color:var(--ink); margin:4px 0 8px; overflow-wrap:break-word; }
+.podio-num{ font-size:26px; font-weight:800; color:var(--ink); line-height:1; }
+.podio-card.campeao .podio-num{ font-size:32px; }
+.podio-lbl{ font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-top:3px; }
+.podio-sub{ font-size:10.5px; color:var(--ink-soft); margin-top:6px; }
+/* Dentro do export de imagem (.rp-page) a paleta é sempre clara e fixa — o resto do
+   boletim já é assim. Sem isso, exportar no modo escuro geraria cards pretos dentro
+   de uma página branca. */
+.rp-page .podio{ margin:0 0 20px; }
+.rp-page .podio-card{ background:#fff; border-color:#C9CEDB; box-shadow:0 3px 10px rgba(16,24,40,.10); }
+.rp-page .podio-nome, .rp-page .podio-num{ color:#1D1F2A; }
+.rp-page .podio-lbl, .rp-page .podio-sub{ color:#6B7280; }
 
 /* ---------- HEATMAP ---------- */
 .heatmap{ display:grid; gap:3px; }

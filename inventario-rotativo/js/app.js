@@ -2083,9 +2083,13 @@ function irRenderProdutividade(){
       ${irRenderProdMatriz(p)}
     </div>
     <div class="panel">
-      <h3>Ranking de colaboradores (por locais contados)</h3>
+      <div class="panel-head-row">
+        <h3>Ranking de colaboradores (por locais contados)</h3>
+        <button class="btn btn-secondary" onclick="irExportarRankingImagem()">🖼️ Exportar ranking (imagem)</button>
+      </div>
+      ${irRenderPodio(p.ranking)}
       <div class="rank-list">${p.ranking.map((r,i)=>`<div class="rank-item">
-        <span class="rank-pos">${i+1}</span>
+        <span class="rank-pos">${irMedalha(i)}</span>
         <div class="rank-bar-wrap">
           <div class="rank-key"><span>${irEsc(r.usuario)}</span><span class="mono">${r.locais} locais · ${r.itens} itens · ${r.horasAtivas}h ativas · ${irFmtNum(r.tempoMedioMin,1)} min/contagem</span></div>
           <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${(r.locais/maxLocais*100).toFixed(0)}%;"></div></div>
@@ -2093,6 +2097,77 @@ function irRenderProdutividade(){
       </div>`).join('') || '<p class="field-hint">Sem contagens registradas.</p>'}</div>
     </div>
   `;
+}
+// Medalha pros 3 primeiros do ranking; do 4º em diante volta pro número da posição.
+function irMedalha(i){
+  return i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : (i+1);
+}
+const IR_PODIO_META = [
+  {medalha:'🥇', titulo:'1º lugar', cls:'ouro'},
+  {medalha:'🥈', titulo:'2º lugar', cls:'prata'},
+  {medalha:'🥉', titulo:'3º lugar', cls:'bronze'}
+];
+/* Pódio dos 3 primeiros colaboradores por locais contados. Ordem visual 2º–1º–3º
+   (como pódio de verdade), com o 1º no degrau mais alto. Abaixo de 3 colaboradores
+   no período, mostra só quem existe, sem inventar posição vazia. */
+function irRenderPodio(ranking){
+  if(!ranking || !ranking.length) return '';
+  const top = ranking.slice(0,3);
+  const ordemVisual = top.length===3 ? [1,0,2] : top.map((_,i)=>i);
+  return `<div class="podio">${ordemVisual.map(i=>{
+    const r = top[i], m = IR_PODIO_META[i];
+    return `<div class="podio-card ${m.cls} ${i===0?'campeao':''}">
+      <div class="podio-medalha">${m.medalha}</div>
+      <div class="podio-pos">${m.titulo}</div>
+      <div class="podio-nome">${irEsc(String(r.usuario).replace(/^MECA_/,''))}</div>
+      <div class="podio-num mono">${irFmtInt(r.locais)}</div>
+      <div class="podio-lbl">locais contados</div>
+      <div class="podio-sub mono">${irFmtInt(r.itens)} itens · ${irFmtInt(r.pecas||0)} peças</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+/* Exporta só o ranking (pódio + lista completa) como imagem, respeitando o mesmo
+   filtro de data/abertura da aba. Reusa o pipeline de captura do boletim. */
+function irExportarRankingImagem(){
+  const c = IR.cicloAtivo;
+  if(!c){ irShowToast('Sem ciclo ativo.', true); return; }
+  const p = irCalcProdutividade(irProdContagensFiltradas());
+  if(!p.ranking.length){ irShowToast('Sem contagens no período selecionado.', true); return; }
+  const maxLocais = Math.max(1, ...p.ranking.map(r=>r.locais));
+  const periodoTxt = (IR.prodFilters.de||IR.prodFilters.ate)
+    ? `Período: ${IR.prodFilters.de?irFmtDate(IR.prodFilters.de):'início'} a ${IR.prodFilters.ate?irFmtDate(IR.prodFilters.ate):'hoje'}`
+    : 'Ciclo inteiro';
+  const html = `<div class="rp-page">
+    <div class="rp-hero">
+      <div class="rp-hero-top">
+        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <div class="rp-hero-status">${irEsc(periodoTxt)}</div>
+      </div>
+      <div class="rp-hero-badge">Ranking da Equipe</div>
+      <h1>${irEsc(irCicloLabel(c))}</h1>
+      <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
+      <div class="rp-hero-meta"><span>Gerado em ${new Date().toLocaleString('pt-BR')}</span></div>
+    </div>
+    <div class="rp-body">
+      ${rpSectionTitle('🏆','Pódio','os 3 colaboradores com mais locais contados no período')}
+      ${irRenderPodio(p.ranking)}
+      ${rpSectionTitle('📋','Ranking completo','por locais contados')}
+      <div class="rp-panel"><table class="rp-table rp-table-dense">
+        <thead><tr><th>#</th><th>Colaborador</th><th>Locais</th><th>Itens</th><th>Peças</th><th>Horas ativas</th><th>Min/contagem</th></tr></thead>
+        <tbody>${p.ranking.map((r,i)=>`<tr>
+          <td style="font-weight:700;">${irMedalha(i)}</td>
+          <td>${irEsc(String(r.usuario).replace(/^MECA_/,''))}</td>
+          <td style="font-weight:700;">${irFmtInt(r.locais)}</td>
+          <td>${irFmtInt(r.itens)}</td>
+          <td>${irFmtInt(r.pecas||0)}</td>
+          <td>${irFmtInt(r.horasAtivas)}h</td>
+          <td>${irFmtNum(r.tempoMedioMin,1)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      <p class="rp-footer">Gerado automaticamente pelo módulo Inventário.</p>
+    </div>
+  </div>`;
+  irBaixarBoletimImagem(html, `Ranking_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
 }
 /* Tabela da matriz colaborador x hora no formato de imagem (rp-table), pro botão
    "Compartilhar produtividade" — mesma matriz de irRenderProdMatriz, mas com o
