@@ -386,6 +386,21 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     if(!porVisitaBruto.has(chave)){ porVisitaBruto.set(chave, []); localDaVisita.set(chave, c.local); }
     porVisitaBruto.get(chave).push(c);
   }
+  // A Rodada 1 é AUTOMÁTICA: quando o inventário do local é aberto, o WMS congela a
+  // quantidade sistêmica e grava a rodada 1 sozinho — ninguém foi lá contar nada. Uma
+  // visita que só tem rodada 1 (aberta e depois liquidada, sem nenhuma rodada física)
+  // portanto NÃO é um local contado. Sem esse corte, estrutura inteira que ninguém
+  // contou no ciclo (BLO, ESC, BAS, BRA, MZP...) aparecia como "contada", inflando
+  // locais contados/concluídos e escondendo pendente real. O resto do app já tratava a
+  // rodada 1 assim (produtividade, contados por dia, tempo médio) — só a conta de
+  // contados/pendentes estava fora do padrão.
+  let visitasSemContagemFisica = 0;
+  for(const [chave, lista] of Array.from(porVisitaBruto)){
+    if(lista.some(c=>c.idConferencia>=2)) continue;
+    porVisitaBruto.delete(chave);
+    localDaVisita.delete(chave);
+    visitasSemContagemFisica++;
+  }
   // Toda visita aqui já passou pelo filtro de Liquidado na ingestão da 843 (só entra
   // linha com Situação Local E Situação Inventário = Liquidado — ver o continue lá em
   // cima). Ou seja, ela já está FECHADA pelo WMS, mesmo que tenha levado várias rodadas
@@ -509,7 +524,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     totalLocaisCongelados: indicadores.locaisCongelados,
     totalContagens: contagens.length,
     totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length,
-    linhasSemDataDescartadas
+    linhasSemDataDescartadas, visitasSemContagemFisica
   });
 
   post('progress', {stage:'Concluído.', pct:100});
