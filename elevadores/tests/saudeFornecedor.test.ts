@@ -139,3 +139,60 @@ describe('ordem e total', () => {
     expect(linhas[0].pctDescasado).toBe(0);
   });
 });
+
+/* A linha do fornecedor junta 2 t e 4 t, e isso levantou a duvida
+   legitima de que modelos com kits de tamanhos diferentes estariam se
+   contaminando - um kit de tres pecas puxando para descasado um kit de
+   duas que esta inteiro.
+
+   Nao acontece: a montagem e feita item pai a item pai, e a linha do
+   fornecedor so soma resultados ja prontos. Estes testes fixam isso,
+   porque e o tipo de coisa que uma refatoracao futura quebra em
+   silencio e ninguem percebe ate a reuniao. */
+describe('a conta é por modelo; a linha do fornecedor só soma', () => {
+  const ACME: Componente[] = [
+    // 2 t: kit de duas pecas, 10 e 10.
+    comp({ itemVolMultiplo: 'M2', toneladaFixa: '2 t', itemComponente: 'B2', componenteBaseColuna: 'BASE', cd: 10, fabricante: 'ACME' }),
+    comp({ itemVolMultiplo: 'M2', toneladaFixa: '2 t', itemComponente: 'C2', componenteBaseColuna: 'COLUNA', cd: 10, fabricante: 'ACME' }),
+    // 4 t: kit maior, com duas colunas diferentes e uma bomba.
+    comp({ itemVolMultiplo: 'M4', toneladaFixa: '4 t', itemComponente: 'B4', componenteBaseColuna: 'BASE', cd: 10, fabricante: 'ACME' }),
+    comp({ itemVolMultiplo: 'M4', toneladaFixa: '4 t', itemComponente: 'C4A', componenteBaseColuna: 'COLUNA', cd: 10, fabricante: 'ACME' }),
+    comp({ itemVolMultiplo: 'M4', toneladaFixa: '4 t', itemComponente: 'C4B', componenteBaseColuna: 'COLUNA', cd: 10, fabricante: 'ACME' }),
+    comp({ itemVolMultiplo: 'M4', toneladaFixa: '4 t', itemComponente: 'BP4', componenteBaseColuna: 'BOMBA', cd: 10, fabricante: 'ACME' }),
+  ];
+
+  it('kits de tamanhos diferentes, os dois casados, dão fornecedor 100%', () => {
+    const s = saudePorFornecedor(listarPorFornecedor(ACME))[0];
+    expect(s.completos).toBe(20);
+    expect(s.potencial).toBe(20);
+    expect(s.descasados).toBe(0);
+    expect(s.pctCompleto).toBe(100);
+  });
+
+  it('folga no modelo de 4 t não contamina o de 2 t', () => {
+    const s = saudePorFornecedor(
+      listarPorFornecedor(ACME.map((c) => (c.itemComponente === 'C4A' ? { ...c, cd: 15 } : c)))
+    )[0];
+    /* O 2 t continua com os seus 10 montáveis e 10 de potencial; só o
+       4 t abre os 5 de diferença. */
+    expect(s.completos).toBe(20);
+    expect(s.potencial).toBe(25);
+    expect(s.descasados).toBe(5);
+    expect(s.itensDescasados).toBe(1);
+  });
+
+  it('base de 2 t nunca casa com coluna de 4 t', () => {
+    /* Se a conta juntasse tudo por fornecedor, estas 8 bases de 2 t
+       fechariam elevador com as 8 colunas de 4 t. */
+    const s = saudePorFornecedor(
+      listarPorFornecedor([
+        comp({ itemVolMultiplo: 'S2', toneladaFixa: '2 t', itemComponente: 'SB2', componenteBaseColuna: 'BASE', cd: 8, fabricante: 'ACME' }),
+        comp({ itemVolMultiplo: 'S4', toneladaFixa: '4 t', itemComponente: 'SC4', componenteBaseColuna: 'COLUNA', cd: 8, fabricante: 'ACME' }),
+      ])
+    )[0];
+    /* Cada um fecha o próprio kit, que é o que a planilha declara.
+       Nenhuma peça de 2 t entrou em elevador de 4 t. */
+    expect(s.completos).toBe(16);
+    expect(s.itensDescasados).toBe(0);
+  });
+});
