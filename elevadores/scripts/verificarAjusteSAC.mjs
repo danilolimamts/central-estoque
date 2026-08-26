@@ -53,11 +53,13 @@ if ((await daPlanilha.count()) === 0) {
   problemas.push('exclusao vinda da planilha nao pode oferecer desfazer no painel');
 }
 
-/* Quantos casos o painel atribui ao CD antes de qualquer ajuste. */
-const contarCD = async () =>
-  Number(
-    (await sac.locator('.eq-sac-resp-item.r-cd b').first().innerText()).trim()
-  );
+/* Quantos casos o painel atribui ao CD antes de qualquer ajuste.
+
+   O selo de cada linha da tabela detalhada e a contagem que sobrou:
+   os quadros de responsavel no topo do cartao foram retirados. Contar
+   pelos selos e ate melhor - mede o que a tabela mostra de verdade,
+   nao um agregado calculado a parte. */
+const contarCD = async () => sac.locator('.eq-sac-selo.r-cd').count();
 const antes = await contarCD();
 if (!Number.isFinite(antes) || antes === 0) {
   problemas.push(`o exemplo precisa ter caso do CD para o teste valer: ${antes}`);
@@ -112,24 +114,38 @@ if ((await voltar.count()) === 0) {
 } else {
   await voltar.click();
   await pagina.waitForTimeout(400);
-  const cd = Number((await sac2.locator('.eq-sac-resp-item.r-cd b').first().innerText()).trim());
+  const cd = await sac2.locator('.eq-sac-selo.r-cd').count();
   if (cd !== antes) problemas.push(`desfazer nao devolveu o caso ao CD: ${cd} != ${antes}`);
   if ((await sac2.locator('.eq-sac-selo.ajustado').count()) !== 0) {
     problemas.push('a marca do ajuste ficou depois de desfazer');
   }
 }
 
-/* ---- desconsiderar: o caso tem que sumir de TODOS os numeros ---- */
-const totalCasos = async () => {
-  const t = await sac2.locator('.eq-sac-numero.destaque b').first().innerText();
-  return Number(t.trim());
+/* ---- desconsiderar: o caso tem que sumir de TODOS os numeros ----
+
+   Os quadros de total e de responsavel sairam do cartao, entao a
+   conferencia passou a usar os agregados que sobraram: a coluna
+   Casos das tabelas por fornecedor e por transportadora. Sao os
+   lugares onde um caso desconsiderado poderia sobreviver em silencio,
+   que e exatamente o que este teste existe para impedir. */
+const somaCasosDaTabela = async (titulo) => {
+  const tabela = sac2.locator('table').filter({ hasText: 'Casos' }).nth(titulo);
+  const linhas = await tabela.locator('tbody tr').all();
+  let soma = 0;
+  for (const l of linhas) {
+    const c = await l.locator('td').nth(1).innerText();
+    soma += Number(c.replace(/\D/g, '') || 0);
+  }
+  return soma;
 };
+/* 0 = por fornecedor, 1 = por transportadora. */
+const totalCasos = () => somaCasosDaTabela(0);
 const totalAntes = await totalCasos();
-const somaResp = async () => {
-  const ns = await sac2.locator('.eq-sac-resp-item b').allInnerTexts();
-  return ns.reduce((s, n) => s + Number(n.trim() || 0), 0);
-};
+const somaResp = () => somaCasosDaTabela(1);
 const respAntes = await somaResp();
+if (totalAntes === 0 || respAntes === 0) {
+  problemas.push(`as tabelas de agregado vieram vazias: ${totalAntes} / ${respAntes}`);
+}
 
 await sac2.locator('.eq-sac-resp-botao').first().click();
 await pagina.waitForTimeout(250);
@@ -141,11 +157,11 @@ await pagina.waitForTimeout(500);
 
 const totalDepois = await totalCasos();
 if (totalDepois !== totalAntes - 1) {
-  problemas.push(`desconsiderar nao tirou do total: ${totalAntes} -> ${totalDepois}`);
+  problemas.push(`desconsiderar nao tirou da tabela por fornecedor: ${totalAntes} -> ${totalDepois}`);
 }
 const respDepois = await somaResp();
 if (respDepois !== respAntes - 1) {
-  problemas.push(`o caso desconsiderado sobrou em alguma gaveta: ${respAntes} -> ${respDepois}`);
+  problemas.push(`o caso desconsiderado sobrou na tabela por transportadora: ${respAntes} -> ${respDepois}`);
 }
 
 const fora = sac2.locator('.eq-sac-fora-item');

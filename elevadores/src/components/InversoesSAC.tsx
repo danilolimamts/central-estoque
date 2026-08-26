@@ -1,32 +1,35 @@
 /* ============================================================
    Inversoes e faltas apontadas pelo SAC.
 
-   Duas leituras, porque sao perguntas diferentes: O QUE aconteceu
-   (item trocado ou peca faltando) e DE QUEM foi (operacao do CD,
-   fornecedor ou cliente). So a segunda diz quem age.
+   O cartao e o DETALHE das devolucoes: por fornecedor, por
+   transportadora e caso a caso. A leitura de resultado - quanto caiu,
+   mes a mes - mora no cartao "Evolucao das divergencias", no Status do
+   Projeto, e nao se repete aqui.
 
-   A tabela do fim lista caso a caso de proposito: as duas leituras
-   saem do texto do Comentario, nao de uma coluna da planilha, entao
-   quem le precisa poder conferir - e o title de cada selo mostra o
-   comentario que gerou a classificacao.
+   O topo ja teve tres numeros grandes (CD, lojas, total), os quadros
+   de responsavel apurado, os selos de causa e um grafico de barras por
+   mes. Tudo saiu junto: o grafico repetia a curva do outro cartao, e
+   os quadros de responsavel e de causa davam ares de apuracao a uma
+   classificacao que sai de texto livre. Como numero grande no topo do
+   cartao, eles pareciam medida; na coluna da tabela, ao lado do
+   comentario que os gerou, aparecem pelo que sao.
+
+   A tabela do fim lista caso a caso de proposito: a classificacao sai
+   do texto do Comentario, nao de uma coluna da planilha, entao quem le
+   precisa poder conferir - e o title de cada selo mostra o comentario
+   que gerou a classificacao.
    ============================================================ */
 import { useCallback, useMemo, useState } from 'react';
-import type { ChartConfiguration } from 'chart.js';
 import {
   anosDisponiveis,
   doAno,
-  evolucaoDeDivergencias,
   formatarReal,
   divergenciasDoCD,
-  porMes,
-  porCausa,
   porTransportadora,
   causaDe,
-  porResponsavel,
   ROTULO_CAUSA,
   ROTULO_RESPONSAVEL,
   tipoDoProduto,
-  totalizar,
 } from '../domain/divergencias';
 import type { DivergenciaSAC, Responsavel } from '../domain/divergencias';
 import {
@@ -38,37 +41,12 @@ import type { AjusteCaso, Decisao } from '../domain/ajustes';
 import type { Componente } from '../domain/tipos';
 import { divergenciasPorFornecedor } from '../domain/divergenciasPorFornecedor';
 import { cores } from '../config/tokens';
-import { Grafico } from './charts/Grafico';
 import { Cartao, Selecao, Tabela, Td, Th, Vazio } from './ui';
 
+/* Selo de origem na tabela detalhada: navy para o CD, laranja para
+   loja. */
 const COR_CD = cores.navy.base;
 const COR_LOJA = cores.laranja.base;
-
-function Numero({
-  rotulo,
-  quantidade,
-  valor,
-  cor,
-  destaque,
-}: {
-  rotulo: string;
-  quantidade: number;
-  valor: number;
-  cor: string;
-  destaque?: boolean;
-}) {
-  return (
-    <div className={`eq-sac-numero${destaque ? ' destaque' : ''}`}>
-      {/* Tira colorida no topo: identifica a origem de longe, que e
-          como o painel e lido quando projetado em reuniao. */}
-      <span className="eq-sac-tira" style={{ background: cor }} />
-      <span className="eq-sac-rotulo">{rotulo}</span>
-      <b style={{ color: cor }}>{quantidade}</b>
-      <span className="eq-sac-unidade">{quantidade === 1 ? 'elevador' : 'elevadores'}</span>
-      <span className="eq-sac-valor">{formatarReal(valor)}</span>
-    </div>
-  );
-}
 
 /* As decisoes que a celula oferece. "Desconsiderar" vem por ultimo e
    separado: ela nao troca a gaveta, tira o caso do painel. */
@@ -197,14 +175,11 @@ export function InversoesSAC({
   ajustes = [],
   aoAjustar,
   aoDesfazer,
-  hoje = new Date(),
 }: {
   divergencias: DivergenciaSAC[];
   /* Base mestre: e dela que sai o fornecedor de cada produto. A aba do
      SAC nao tem essa coluna. */
   componentes?: Componente[];
-  /* Serve para separar mes zerado de mes que ainda nao chegou. */
-  hoje?: Date;
   /* Reclassificacoes feitas a mao, que vencem a leitura do texto. */
   ajustes?: AjusteCaso[];
   aoAjustar?: (a: AjusteCaso) => void;
@@ -233,23 +208,10 @@ export function InversoesSAC({
   const anoAtivo = Number(ano) || anos[0] || new Date().getFullYear();
 
   const doAnoEscolhido = useMemo(() => doAno(inversoes, anoAtivo), [inversoes, anoAtivo]);
-  const totais = useMemo(() => totalizar(doAnoEscolhido), [doAnoEscolhido]);
-  const meses = useMemo(() => porMes(inversoes, anoAtivo), [inversoes, anoAtivo]);
   const transportadoras = useMemo(() => porTransportadora(doAnoEscolhido), [doAnoEscolhido]);
-  const causas = useMemo(() => porCausa(doAnoEscolhido), [doAnoEscolhido]);
   const fornecedores = useMemo(
     () => divergenciasPorFornecedor(doAnoEscolhido, componentes),
     [doAnoEscolhido, componentes]
-  );
-  const responsaveis = useMemo(
-    () => porResponsavel(doAnoEscolhido, quemResponde),
-    [doAnoEscolhido, quemResponde]
-  );
-  /* Ate onde o ano ja andou: mes futuro nao pode ser lido como mes
-     zerado. */
-  const evolucao = useMemo(
-    () => evolucaoDeDivergencias(inversoes, anoAtivo, hoje),
-    [inversoes, anoAtivo, hoje]
   );
   /* Quantos casos do recorte em tela tiveram o responsavel trocado. */
   const reclassificados = useMemo(
@@ -273,79 +235,6 @@ export function InversoesSAC({
   const soDoCD = useMemo(
     () => doAnoEscolhido.filter((d) => quemResponde(d) === 'CD'),
     [doAnoEscolhido, quemResponde]
-  );
-
-  /* Barras por mes, CD e lojas lado a lado, com o numero em cima de
-     cada uma: o painel e projetado em reuniao, onde ninguem passa o
-     cursor para descobrir o valor.
-
-     O valor em reais desce para o eixo, embaixo do nome do mes. Como
-     linha ele disputava espaco com o rotulo das barras e os dois se
-     sobrepunham justamente nos meses que importam. */
-  const configMes: ChartConfiguration = useMemo(
-    () => ({
-      type: 'bar',
-      data: {
-        labels: meses.map((m) => m.rotulo),
-        datasets: [
-          { label: 'CD', data: meses.map((m) => m.cd.quantidade), backgroundColor: COR_CD, borderRadius: 4 },
-          { label: 'Lojas', data: meses.map((m) => m.lojas.quantidade), backgroundColor: COR_LOJA, borderRadius: 4 },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        layout: { padding: { top: 20 } },
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } },
-          datalabels: {
-            /* Zero nao vira rotulo: onze zeros na tela cansam a leitura
-               e escondem os meses que importam. */
-            display: (c) => Number(c.dataset.data[c.dataIndex] ?? 0) > 0,
-            anchor: 'end',
-            align: 'end',
-            offset: 1,
-            font: { weight: 700, size: 15 },
-            color: (c) => (c.datasetIndex === 0 ? COR_CD : COR_LOJA),
-          },
-          tooltip: {
-            callbacks: {
-              footer: (itens) => {
-                const m = meses[itens[0]?.dataIndex ?? 0];
-                return m ? `Valor devolvido: ${formatarReal(m.total.valor)}` : '';
-              },
-            },
-          },
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { precision: 0, font: { size: 12 } },
-            title: { display: true, text: 'Elevadores', font: { size: 12 } },
-            grace: '30%',
-          },
-          x: {
-            grid: { display: false },
-            ticks: {
-              font: { size: 12 },
-              /* Duas linhas: o mes e, embaixo, quanto custou.
-
-                 O mes zerado tambem mostra o valor, escrito R$ 0. E
-                 justamente o que o projeto quer provar, e sem o
-                 numero ele parece mes sem dado. Mes que ainda nao
-                 aconteceu fica so com o nome: nao e conquista. */
-              callback(_v, i) {
-                const m = meses[i];
-                if (!m) return '';
-                return m.mes <= evolucao.ateOMes ? [m.rotulo, formatarReal(m.total.valor)] : m.rotulo;
-              },
-            },
-          },
-        },
-      },
-    }),
-    [meses, evolucao.ateOMes]
   );
 
   if (divergencias.length === 0) {
@@ -391,54 +280,17 @@ export function InversoesSAC({
         <Vazio icone="🔎">Nenhuma inversão ou falta em {anoAtivo}.</Vazio>
       ) : (
         <>
-          <div className="eq-sac-numeros">
-            <Numero rotulo="CD" quantidade={totais.cd.quantidade} valor={totais.cd.valor} cor={COR_CD} />
-            <Numero rotulo="Lojas" quantidade={totais.lojas.quantidade} valor={totais.lojas.valor} cor={COR_LOJA} />
-            <Numero
-              rotulo={`Total ${anoAtivo}`}
-              quantidade={totais.total.quantidade}
-              valor={totais.total.valor}
-              cor={cores.dark.base}
-              destaque
-            />
-          </div>
+          {/* Os tres numeros do topo, o responsavel apurado, a causa e
+              o grafico de barras por mes sairam daqui.
 
-          {/* De quem foi. Vem antes da causa porque muda o dono da
-              acao: conferencia no CD, tratativa com a marca ou
-              orientacao na venda. */}
-          <h4 className="eq-sac-titulo">Responsável apurado pelo SAC</h4>
-          <div className="eq-sac-resp">
-            {responsaveis.map((r) => (
-              <div
-                key={r.responsavel}
-                className={`eq-sac-resp-item r-${r.responsavel.toLowerCase()}${r.quantidade === 0 ? ' vazio' : ''}`}
-              >
-                <span className="eq-sac-resp-rot">{r.rotulo}</span>
-                <b>{r.quantidade}</b>
-                <span className="eq-sac-resp-pct">{r.pct.toFixed(0)}% · {formatarReal(r.valor)}</span>
-              </div>
-            ))}
-          </div>
-
-          <h4 className="eq-sac-titulo">O que aconteceu</h4>
-          <div className="eq-sac-causas">
-            {causas.map((c) => (
-              <div key={c.causa} className="eq-sac-causa">
-                <span className={`eq-sac-selo ${c.causa === 'INVERSAO' ? 'inv' : 'falta'}`}>
-                  {c.rotulo}
-                </span>
-                <b>{c.quantidade}</b>
-                <span className="eq-sac-causa-valor">{formatarReal(c.valor)}</span>
-              </div>
-            ))}
-          </div>
-
-          <Grafico
-            config={configMes}
-            altura={250}
-            rotulo={`Erros do CD por mês em ${anoAtivo}, separando CD de lojas, com o valor devolvido`}
-          />
-
+              Os quatro contavam a mesma historia que o cartao
+              "Evolucao das divergencias" ja conta no Status do Projeto,
+              e com menos qualidade: o grafico de barras repetia a
+              curva, e os selos de responsavel e de causa vinham da
+              leitura do texto livre do SAC - a parte estimada, exposta
+              como se fosse apuracao. Sobraram as tabelas, que sao o
+              detalhe que ninguem tem em outro lugar: fornecedor,
+              transportadora e o caso a caso conferivel. */}
           {/* De qual fornecedor era o elevador que voltou.
 
               Nao e o mesmo que "de quem foi a culpa": isso continua em

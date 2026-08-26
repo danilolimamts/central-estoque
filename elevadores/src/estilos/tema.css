@@ -881,20 +881,6 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 
 
 /* Inversoes de base apontadas pelo SAC. */
-.eq-sac-numeros{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:20px; }
-.eq-sac-numero{ position:relative; flex:1; min-width:170px; display:flex; flex-direction:column;
-  padding:18px 18px 16px; border:1px solid var(--line); border-radius:var(--radius-lg);
-  background:var(--surface); overflow:hidden;
-  box-shadow:0 1px 3px rgba(20,24,40,.06); }
-.eq-sac-numero.destaque{ background:var(--paper); border-color:var(--ink-soft); }
-.eq-sac-tira{ position:absolute; inset:0 0 auto 0; height:4px; }
-.eq-sac-rotulo{ font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.07em;
-  color:var(--ink-soft); }
-.eq-sac-numero b{ font-size:44px; font-weight:800; line-height:1; margin-top:8px;
-  letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
-.eq-sac-unidade{ font-size:11px; color:var(--ink-soft); margin-top:3px; }
-.eq-sac-valor{ font-size:16px; font-weight:800; color:var(--ink); margin-top:10px;
-  padding-top:9px; border-top:1px solid var(--line); font-variant-numeric:tabular-nums; }
 .eq-sac-titulo{ margin:20px 0 10px; font-size:12.5px; font-weight:800; color:var(--ink);
   text-transform:uppercase; letter-spacing:.04em; }
 
@@ -911,33 +897,13 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
   color:rgba(255,255,255,.45); font-family:'SFMono-Regular',Consolas,monospace; }
 .sidebar.collapsed .eq-versao{ display:none; }
 
-/* Quebra por causa do erro do CD. */
-.eq-sac-causas{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
-.eq-sac-causa{ display:flex; align-items:baseline; gap:9px; padding:9px 14px;
-  border:1px solid var(--line); border-radius:100px; background:var(--paper); }
-.eq-sac-causa b{ font-size:18px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums; }
-.eq-sac-causa-valor{ font-size:11.5px; color:var(--ink-soft); font-weight:600; }
+/* Selos da tabela detalhada: causa e responsavel, caso a caso. */
 .eq-sac-selo{ display:inline-block; font-size:10px; font-weight:800; padding:3px 9px;
   border-radius:100px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
 .eq-sac-selo.inv{ background:#FFEDE7; color:var(--orange); }
 .eq-sac-selo.falta{ background:var(--blue-light); color:var(--blue); }
 :root[data-theme="dark"] .eq-sac-selo.falta{ color:#AEBBEA; }
 
-/* Responsavel apurado: quem age no caso. */
-.eq-sac-resp{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
-.eq-sac-resp-item{ flex:1; min-width:135px; display:flex; flex-direction:column; gap:2px;
-  padding:11px 14px; border:1px solid var(--line); border-left-width:4px; border-radius:8px;
-  background:var(--paper); }
-.eq-sac-resp-item.vazio{ opacity:.5; }
-.eq-sac-resp-item.r-cd{ border-left-color:var(--orange); }
-.eq-sac-resp-item.r-fornecedor{ border-left-color:var(--blue); }
-.eq-sac-resp-item.r-cliente{ border-left-color:var(--gray-500); }
-.eq-sac-resp-item.r-apurar{ border-left-color:var(--warning, #B8860B); }
-.eq-sac-resp-rot{ font-size:10px; font-weight:800; text-transform:uppercase;
-  letter-spacing:.05em; color:var(--ink-soft); }
-.eq-sac-resp-item b{ font-size:24px; font-weight:800; color:var(--ink); line-height:1.1;
-  font-variant-numeric:tabular-nums; }
-.eq-sac-resp-pct{ font-size:10.5px; color:var(--ink-soft); }
 .eq-sac-selo.r-cd{ background:#FFEDE7; color:var(--orange); }
 .eq-sac-selo.r-fornecedor{ background:var(--blue-light); color:var(--blue); }
 .eq-sac-selo.r-cliente{ background:var(--surface2); color:var(--ink-soft); }

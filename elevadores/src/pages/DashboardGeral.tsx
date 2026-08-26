@@ -215,10 +215,8 @@ export function DashboardGeral({
   ajustes = [],
   aoAjustar,
   aoDesfazer,
-  hoje = new Date(),
 }: {
   componentes: Componente[];
-  hoje?: Date;
   fotos: Map<string, string>;
   /* Texto da busca da barra de topo, que vale para todas as telas. */
   busca?: string;
@@ -356,7 +354,6 @@ export function DashboardGeral({
         ajustes={ajustes}
         aoAjustar={aoAjustar}
         aoDesfazer={aoDesfazer}
-        hoje={hoje}
       />
 
       <PlanoDeAcao conjuntos={conjuntos} buscaGlobal={buscaGlobal} />

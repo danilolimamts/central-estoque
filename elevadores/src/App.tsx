@@ -341,7 +341,6 @@ export default function App() {
               ajustes={ajustes}
               aoAjustar={(a) => void ajustarResponsavel(a)}
               aoDesfazer={(c) => void desfazerAjuste(c)}
-              hoje={hoje}
             />
           ) : paginaAtual === 'projeto' ? (
             <StatusProjeto
