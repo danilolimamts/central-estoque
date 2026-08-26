@@ -125,6 +125,17 @@ export default function App() {
      serve para caber mais na tela ou aumentar para ler de longe. */
   const [zoom, setZoom] = useState(100);
 
+  /* O zoom fica escrito no <html> para os graficos saberem dele.
+
+     O canvas e imagem: o CSS zoom estica o que ja foi desenhado, e o
+     resultado sai borrado enquanto o texto ao lado continua nitido. O
+     Chart.js nao tem como perceber isso sozinho - a largura em pixels
+     de layout nao muda - entao o wrapper Grafico observa este atributo
+     e redesenha na resolucao certa. */
+  useEffect(() => {
+    document.documentElement.dataset.zoom = String(zoom);
+  }, [zoom]);
+
   const hoje = useMemo(() => new Date(), []);
   const acoes = useAcoes(dados?.acoes, hoje);
 
