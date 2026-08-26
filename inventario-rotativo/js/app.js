@@ -2730,7 +2730,10 @@ function irLocaisPendentesContagem(rua){
   // nenhum item) é um local válido e contado, mas não gera nenhuma linha em
   // divergencias (o loop que monta divergencias pula linha sem item). Usar só
   // divergencias marcava esses locais como "pendente" por engano, mesmo já contados.
-  const contadosSet = new Set((IR.contagens||[]).map(c=>c.local));
+  // Só rodada FÍSICA (idConferencia >= 2) conta como "local contado". A rodada 1 é o
+  // congelamento automático do sistema na abertura do inventário — local que só tem
+  // rodada 1 foi aberto e liquidado sem ninguém contar, então continua pendente.
+  const contadosSet = new Set((IR.contagens||[]).filter(c=>c.idConferencia>=2).map(c=>c.local));
   let base = (IR.locais||[]).filter(l=>!contadosSet.has(l.idLocal));
   if(rua) base = base.filter(l=>l.x1===rua);
   return base.sort((a,b)=>String(a.descricao||'').localeCompare(String(b.descricao||''), undefined, {numeric:true}));
