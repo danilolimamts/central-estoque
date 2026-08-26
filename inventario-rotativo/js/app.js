@@ -612,6 +612,10 @@ function irRenderCancelamentoImpactoPanel(ind){
         irKpiTile('🔁', irFmtInt(tentativas), 'Tentativas Canceladas', '', 'sessões com início de campo') +
         irKpiTile('📊', irFmtPct(ind.taxaCancelamento||0), 'Taxa', '', 'sobre locais orçados do ciclo')
       )}
+      ${irKpiBlock('black','🚧','Como foi cancelado',
+        irKpiTile('✋', irFmtInt(ind.locaisCanceladosInterrompidos||0), 'Interrompidos no Meio', '', 'começou a contar, cancelou antes de bater') +
+        irKpiTile('💥', irFmtInt(ind.locaisCanceladosAposBater||0), 'Bateram e Cancelamos', 'bad', 'contagem pronta, jogada fora')
+      )}
       ${irKpiBlock('black','⏱️','Tempo Perdido',
         irKpiTile('⏱️', ind.horasPerdidasCancelamento?irFmtNum(ind.horasPerdidasCancelamento,1)+'h':'—', 'Horas Perdidas', '', comHorario+' de '+tentativas+' com início e fim registrados') +
         irKpiTile('📐', (comHorario && ind.horasPerdidasCancelamento)?irFmtNum((ind.horasPerdidasCancelamento*60)/comHorario,0)+' min':'—', 'Média por Tentativa', '', 'entre as com horário completo') +

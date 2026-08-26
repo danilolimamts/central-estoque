@@ -337,6 +337,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   // Chave por (local + Id Conferência), não por linha, pra não contar a mesma rodada
   // várias vezes só porque ela tem uma linha por item.
   const cancelamentosPorSessao = new Map(); // "local|idConferencia" -> {local, dataInicioContagem, dataFimContagem}
+  const visitasCanceladas = new Map(); // "local|inventario" -> {local, rodadas:Map(rodada -> Map(item -> qt))}
   for(const row of rows843){
     const local = irNormItemKey(getVal(row, r843.local));
     if(!local) continue;
@@ -359,6 +360,15 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
         dataFimContagem: isoDateTime(parseDateVal(getVal(row, r843.dataFimContagem)))
       });
     }
+    // Guarda as quantidades por item de cada rodada da visita cancelada, pra depois
+    // saber se as rodadas chegaram a BATER antes do cancelamento (ver abaixo).
+    const inv = String(getVal(row, r843.inventario) ?? '').trim();
+    const chaveVisita = local+'|'+inv;
+    if(!visitasCanceladas.has(chaveVisita)) visitasCanceladas.set(chaveVisita, {local, rodadas:new Map()});
+    const vc = visitasCanceladas.get(chaveVisita);
+    if(!vc.rodadas.has(idConferencia)) vc.rodadas.set(idConferencia, new Map());
+    const item = irNormItemKey(getVal(row, r843.item));
+    if(item) vc.rodadas.get(idConferencia).set(item, parseNumber(getVal(row, r843.qtFis)));
   }
   const locaisComCancelamentoSet = new Set();
   let tentativasCanceladas = 0, minutosPerdidosCancelamento = 0, sessoesComHorarioRegistrado = 0;
@@ -370,6 +380,35 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       if(fim>ini){ minutosPerdidosCancelamento += (fim-ini)/60000; sessoesComHorarioRegistrado++; }
     }
   }
+  // Separa o cancelamento em dois tipos, porque o custo dos dois é bem diferente:
+  //  - INTERROMPIDO: começou a contar e cancelaram antes das rodadas baterem. Perdeu-se
+  //    o tempo da contagem, mas o local ainda precisaria ser recontado de qualquer jeito.
+  //  - CANCELADO DEPOIS DE BATER: as rodadas já tinham fechado (última bateu com a
+  //    anterior) e mesmo assim o local foi cancelado — o trabalho estava PRONTO e foi
+  //    jogado fora. É o desperdício mais caro, e o que interessa levar pra conversa.
+  // "Bateu" usa o mesmo critério de convergência de sempre: as duas últimas rodadas da
+  // visita têm exatamente os mesmos itens e as mesmas quantidades.
+  const locaisCanceladosAposBater = new Set();
+  const locaisCanceladosInterrompidos = new Set();
+  for(const v of visitasCanceladas.values()){
+    const rodadas = Array.from(v.rodadas.keys()).sort((a,b)=>a-b);
+    let bateu = false;
+    if(rodadas.length>=2 && rodadas[rodadas.length-1]>=2){
+      const atual = v.rodadas.get(rodadas[rodadas.length-1]);
+      const anterior = v.rodadas.get(rodadas[rodadas.length-2]);
+      const itens = new Set([...atual.keys(), ...anterior.keys()]);
+      bateu = itens.size>0;
+      for(const it of itens){
+        if((atual.get(it) ?? null) !== (anterior.get(it) ?? null)){ bateu = false; break; }
+      }
+    }
+    if(bateu) locaisCanceladosAposBater.add(v.local);
+    else locaisCanceladosInterrompidos.add(v.local);
+  }
+  // Um local com várias visitas canceladas pode cair nos dois grupos — nesse caso ele
+  // conta como "após bater" (é o caso mais grave) e sai do grupo de interrompidos, pra
+  // os dois números somarem exatamente o total de locais afetados.
+  for(const l of locaisCanceladosAposBater) locaisCanceladosInterrompidos.delete(l);
 
   post('progress', {stage:'Calculando convergência por local...', pct:50});
   // Um local pode ser contado mais de uma vez no MESMO ciclo com um "Id Inventario"
@@ -509,7 +548,8 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
 
   post('progress', {stage:'Calculando indicadores...', pct:90});
   const indicadores = calcularIndicadores({congelados: locais, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino,
-    locaisComCancelamento: locaisComCancelamentoSet.size, tentativasCanceladas, minutosPerdidosCancelamento, sessoesComHorarioRegistrado});
+    locaisComCancelamento: locaisComCancelamentoSet.size, tentativasCanceladas, minutosPerdidosCancelamento, sessoesComHorarioRegistrado,
+    locaisCanceladosAposBater: locaisCanceladosAposBater.size, locaisCanceladosInterrompidos: locaisCanceladosInterrompidos.size});
 
   post('progress', {stage:'Gravando dados no IndexedDB...', pct:95});
   await irClearCiclo(IR_STORES.locais, cicloId);
@@ -543,7 +583,8 @@ function isoDateTime(d){
 }
 
 function calcularIndicadores({congelados, contagens, divergencias, statusPorLocal, pecasFisicasPorLocal, dataAbertura, dataPrevistaTermino,
-  locaisComCancelamento, tentativasCanceladas, minutosPerdidosCancelamento, sessoesComHorarioRegistrado}){
+  locaisComCancelamento, tentativasCanceladas, minutosPerdidosCancelamento, sessoesComHorarioRegistrado,
+  locaisCanceladosAposBater, locaisCanceladosInterrompidos}){
   const locaisCongelados = congelados.length;
   // Taxa de recontagem/cancelamento: local que teve trabalho de campo cancelado (não
   // fechou porque foi interrompido) sobre o total de locais orçados do ciclo.
@@ -804,6 +845,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensDivergentes, itensContados: totalItensContados, valorDivergenteLiquido, valorDivergenteAbsoluto,
     locaisDivergentes: locaisComDivergencia.size, valorFisicoTotal: totalVlFisico,
     locaisComCancelamento: locaisComCancelamento||0, tentativasCanceladas: tentativasCanceladas||0,
+    locaisCanceladosAposBater: locaisCanceladosAposBater||0, locaisCanceladosInterrompidos: locaisCanceladosInterrompidos||0,
     horasPerdidasCancelamento, sessoesComHorarioRegistrado: sessoesComHorarioRegistrado||0, taxaCancelamento,
     itensSemPreco, itensSemPrecoTotal: semPrecoPorItem.size,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
