@@ -277,7 +277,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
 
   post('progress', {stage:'Processando contagens (QRY0843)...', pct:35});
   const contagens = [];
-  let idx843 = 0;
+  let idx843 = 0, linhasSemDataDescartadas = 0;
   for(const row of rows843){
     idx843++;
     const local = irNormItemKey(getVal(row, r843.local));
@@ -296,24 +296,31 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     // Canceladas (ex.: reabertas depois) não contam como contagem válida.
     if(situacaoLocal!=='Liquidado' || situacaoInventario!=='Liquidado') continue;
     const dataSituacao = isoDateTime(parseDateVal(getVal(row, r843.dataSituacao)));
+    const dataInicioContagem = isoDateTime(parseDateVal(getVal(row, r843.dataInicioContagem)));
+    const dataFimContagem = isoDateTime(parseDateVal(getVal(row, r843.dataFimContagem)));
     // O QRY0843 às vezes vem com sobra de linhas de fora da janela do ciclo (ex.: uma
     // auditoria liquidada do ciclo anterior ainda no export). Sem isolar pela data do
     // ciclo (Abertura–Término Previsto), essas linhas contaminavam a acurácia do ciclo
     // atual com dado de outro ciclo — a mesma origem do bug de saldo inflado corrigido
     // isolando por Id Inventario, só que pra fora da janela em vez de duplicado dentro
     // dela. Fica de fora tudo que não caiu dentro do período oficial do ciclo.
-    const diaSituacao = dataSituacao.slice(0,10);
-    if(diaSituacao){
-      if(dataAbertura && diaSituacao<dataAbertura) continue;
-      if(dataPrevistaTermino && diaSituacao>dataPrevistaTermino) continue;
-    }
+    //
+    // A data de referência tem cadeia de fallback (Situação → Fim → Início) porque nem
+    // toda linha traz a Data Situação preenchida. Antes, quando nenhuma data parseava,
+    // o filtro de janela era PULADO e a linha entrava no ciclo atual de qualquer jeito —
+    // era assim que local contado só no ciclo anterior aparecia como "Contado" no ciclo
+    // vigente, inflando os contados e escondendo pendente de verdade. Agora é o contrário:
+    // sem nenhuma data utilizável não há como provar que a linha é deste ciclo, então ela
+    // fica de fora (e é contabilizada em linhasSemDataDescartadas, pra não sumir calada).
+    const diaRef = (dataSituacao || dataFimContagem || dataInicioContagem || '').slice(0,10);
+    if(!diaRef){ linhasSemDataDescartadas++; continue; }
+    if(dataAbertura && diaRef<dataAbertura) continue;
+    if(dataPrevistaTermino && diaRef>dataPrevistaTermino) continue;
     contagens.push({
       id: cicloId+'|'+local+'|'+item+'|'+idConferencia+'|'+idx843,
       cicloId, inventario: String(getVal(row, r843.inventario) ?? '').trim(), local,
       descricaoLocal: String(getVal(row, r843.descricaoLocal) ?? '').trim(),
-      dataSituacao,
-      dataInicioContagem: isoDateTime(parseDateVal(getVal(row, r843.dataInicioContagem))),
-      dataFimContagem: isoDateTime(parseDateVal(getVal(row, r843.dataFimContagem))),
+      dataSituacao, dataInicioContagem, dataFimContagem,
       obsInventario, situacaoInventario, situacaoLocal,
       usuario: String(getVal(row, r843.usuario) ?? '').trim(),
       idConferencia, item, itemNome: String(getVal(row, r843.itemNome) ?? '').trim(),
@@ -501,7 +508,8 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   await irSaveImportMeta(cicloId, {
     totalLocaisCongelados: indicadores.locaisCongelados,
     totalContagens: contagens.length,
-    totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length
+    totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length,
+    linhasSemDataDescartadas
   });
 
   post('progress', {stage:'Concluído.', pct:100});
