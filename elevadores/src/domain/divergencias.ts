@@ -398,6 +398,112 @@ export function evolucaoDeDivergencias(
   };
 }
 
+/* ============================================================
+   Impacto do projeto: o antes e o depois do mes em que ele comecou.
+
+   Duas decisoes mandam no resultado, e as duas sao para nao inflar o
+   ganho:
+
+   1. O MES DE INICIO NAO ENTRA EM NENHUM DOS DOIS LADOS. O projeto
+      comecou no meio dele; contar como "antes" empurraria um mes ja
+      trabalhado para o lado ruim, e contar como "depois" carregaria o
+      lado bom com dias em que nada tinha mudado ainda. Ele fica de
+      fora, e a tela diz que ficou.
+
+   2. A COMPARACAO E POR MEDIA MENSAL, nao por total. Os dois lados
+      quase nunca tem o mesmo numero de meses - quatro antes e tres
+      depois, por exemplo - e comparar totais nessa situacao inventa
+      uma queda que e so aritmetica.
+
+   Sem pelo menos um mes decorrido de cada lado nao ha comparacao, e a
+   funcao devolve nulo em vez de um numero fragil.
+   ============================================================ */
+export interface LadoDoProjeto {
+  meses: number;
+  casos: number;
+  valor: number;
+  casosMes: number;
+  valorMes: number;
+  /* Meses do lado que fecharam sem nenhum caso. */
+  zerados: number;
+}
+
+export interface ImpactoDoProjeto {
+  mesInicio: number;
+  antes: LadoDoProjeto;
+  depois: LadoDoProjeto;
+  /* O mes da virada, que ficou fora dos dois lados. */
+  viradaCasos: number;
+  viradaValor: number;
+  /* Queda da media mensal, em porcentagem. Negativo e queda. */
+  quedaValorPct: number | null;
+  quedaCasosPct: number | null;
+  /* Participacao de cada lado no custo do ano ate aqui, e a diferenca
+     entre elas em pontos percentuais. */
+  pctAntesDoAno: number;
+  pctDepoisDoAno: number;
+  pontosPercentuais: number;
+  /* Quanto teria sido devolvido nos meses de depois se o ritmo de
+     antes tivesse continuado, menos o que de fato foi. E projecao, e a
+     tela precisa dizer isso. */
+  valorEvitado: number;
+  casosEvitados: number;
+}
+
+export function impactoDoProjeto(
+  e: EvolucaoDivergencias,
+  inicio: Date | null | undefined,
+  ano: number
+): ImpactoDoProjeto | null {
+  if (!inicio || inicio.getUTCFullYear() !== ano) return null;
+  const mesInicio = inicio.getUTCMonth();
+  /* Precisa de mes decorrido dos dois lados: projeto que comecou em
+     janeiro nao tem "antes", e o que comecou no mes corrente ainda nao
+     tem "depois". */
+  if (mesInicio < 1 || mesInicio >= e.ateOMes) return null;
+
+  const somar = (de: number, ate: number): LadoDoProjeto => {
+    const fatia = e.meses.slice(de, ate + 1);
+    const casos = fatia.reduce((s, m) => s + m.total.quantidade, 0);
+    const valor = fatia.reduce((s, m) => s + m.total.valor, 0);
+    const meses = fatia.length;
+    return {
+      meses,
+      casos,
+      valor,
+      casosMes: meses > 0 ? casos / meses : 0,
+      valorMes: meses > 0 ? valor / meses : 0,
+      zerados: fatia.filter((m) => m.total.quantidade === 0).length,
+    };
+  };
+
+  const antes = somar(0, mesInicio - 1);
+  const depois = somar(mesInicio + 1, e.ateOMes);
+  const virada = e.meses[mesInicio];
+
+  const queda = (de: number, para: number): number | null =>
+    de > 0 ? ((para - de) / de) * 100 : null;
+
+  const totalAno = e.totalValor;
+  const pctAntesDoAno = totalAno > 0 ? (antes.valor / totalAno) * 100 : 0;
+  const pctDepoisDoAno = totalAno > 0 ? (depois.valor / totalAno) * 100 : 0;
+
+  return {
+    mesInicio,
+    antes,
+    depois,
+    viradaCasos: virada.total.quantidade,
+    viradaValor: virada.total.valor,
+    quedaValorPct: queda(antes.valorMes, depois.valorMes),
+    quedaCasosPct: queda(antes.casosMes, depois.casosMes),
+    pctAntesDoAno,
+    pctDepoisDoAno,
+    pontosPercentuais: pctDepoisDoAno - pctAntesDoAno,
+    valorEvitado: Math.max(0, antes.valorMes * depois.meses - depois.valor),
+    casosEvitados: Math.max(0, antes.casosMes * depois.meses - depois.casos),
+  };
+}
+
 /* Onde cai o inicio do projeto dentro do ano mostrado.
 
    O retorno e a posicao na escala de meses do grafico: 2,5 e "meio de

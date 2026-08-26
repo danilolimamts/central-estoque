@@ -33,10 +33,11 @@ import {
   evolucaoDeDivergencias,
   formatarReal,
   posicaoDoMarco,
+  impactoDoProjeto,
   divergenciasDoCD,
   MESES,
 } from '../domain/divergencias';
-import type { DivergenciaSAC } from '../domain/divergencias';
+import type { DivergenciaSAC, ImpactoDoProjeto as Impacto } from '../domain/divergencias';
 import { casosConsiderados, forasDaPlanilha, mapaDeAjustes } from '../domain/ajustes';
 import type { AjusteCaso } from '../domain/ajustes';
 import { cores } from '../config/tokens';
@@ -147,6 +148,7 @@ export function EvolucaoDivergencias({
   const ateAqui = <T,>(v: T, mes: number): T | null => (mes <= e.ateOMes ? v : null);
 
   const marco = posicaoDoMarco(inicio, anoAtivo);
+  const impacto = useMemo(() => impactoDoProjeto(e, inicio, anoAtivo), [e, inicio, anoAtivo]);
 
   const config: ChartConfiguration = useMemo(
     () => ({
@@ -282,6 +284,9 @@ export function EvolucaoDivergencias({
         ) : undefined
       }
     >
+      {/* Os numeros do ano a esquerda; o impacto do projeto a direita,
+          ocupando o vazio que sobrava ao lado deles. */}
+      <div className="eq-evol-topo">
       <div className="eq-evol-numeros">
         <div>
           <b style={{ color: e.sequenciaZerada > 0 ? cores.semantico.verde : 'var(--ink)' }}>
@@ -301,6 +306,9 @@ export function EvolucaoDivergencias({
         </div>
       </div>
 
+      {impacto && <ImpactoDoProjeto impacto={impacto} inicio={inicio!} />}
+      </div>
+
       <Grafico
         config={config}
         altura={300}
@@ -308,4 +316,91 @@ export function EvolucaoDivergencias({
       />
     </Cartao>
   );
+}
+
+/* ============================================================
+   Impacto do projeto: o antes e o depois, em quatro leituras.
+
+   E a resposta para "o que o projeto trouxe", e ela precisa aguentar
+   a pergunta seguinte: "de onde saiu esse numero?". Por isso cada
+   linha mostra o de-para ao lado da variacao - ninguem precisa
+   acreditar na porcentagem, ela esta escrita por extenso.
+
+   A comparacao e por media mensal porque os dois lados quase nunca
+   tem o mesmo tanto de mes. O mes em que o projeto comecou fica fora
+   dos dois, e o rodape avisa.
+   ============================================================ */
+function ImpactoDoProjeto({ impacto: i, inicio }: { impacto: Impacto; inicio: Date }) {
+  const real0 = (v: number) => formatarReal(Math.round(v));
+  const um = (v: number) => v.toFixed(1).replace('.', ',');
+
+  const linhas: { chave: string; delta: string; rotulo: string; de: string; para: string }[] = [];
+
+  if (i.quedaValorPct != null) {
+    linhas.push({
+      chave: 'valor',
+      delta: `${pct(i.quedaValorPct)}`,
+      rotulo: 'no custo por mês',
+      de: real0(i.antes.valorMes),
+      para: real0(i.depois.valorMes),
+    });
+  }
+  if (i.quedaCasosPct != null) {
+    linhas.push({
+      chave: 'pecas',
+      delta: `${pct(i.quedaCasosPct)}`,
+      rotulo: 'em elevadores por mês',
+      de: um(i.antes.casosMes),
+      para: um(i.depois.casosMes),
+    });
+  }
+  linhas.push({
+    chave: 'pp',
+    delta: `${i.pontosPercentuais > 0 ? '+' : '−'}${Math.abs(i.pontosPercentuais).toFixed(0)} pp`,
+    rotulo: 'de participação no custo do ano',
+    de: `${i.pctAntesDoAno.toFixed(0)}%`,
+    para: `${i.pctDepoisDoAno.toFixed(0)}%`,
+  });
+  linhas.push({
+    chave: 'pecas-abs',
+    delta: `${i.antes.casos - i.depois.casos > 0 ? '−' : '+'}${Math.abs(i.antes.casos - i.depois.casos)}`,
+    rotulo: 'elevadores, no total de cada lado',
+    de: `${i.antes.casos} em ${i.antes.meses} ${i.antes.meses === 1 ? 'mês' : 'meses'}`,
+    para: `${i.depois.casos} em ${i.depois.meses} ${i.depois.meses === 1 ? 'mês' : 'meses'}`,
+  });
+
+  return (
+    <div className="eq-impacto">
+      <h5>Impacto do projeto · antes × depois de {mesEAno(inicio)}</h5>
+      <ul>
+        {linhas.map((l) => (
+          <li key={l.chave}>
+            <b className={l.delta.startsWith('−') ? 'ganho' : 'piora'}>{l.delta}</b>
+            <span>{l.rotulo}</span>
+            <em>
+              {l.de} <span aria-hidden>→</span> {l.para}
+            </em>
+          </li>
+        ))}
+      </ul>
+      <p>
+        {/* A projecao vem por ultimo e dita como projecao. E o numero
+            mais forte da lista e o mais facil de contestar: ele supoe
+            que o ritmo anterior teria continuado. */}
+        Se o ritmo de antes tivesse seguido, os {i.depois.meses}{' '}
+        {i.depois.meses === 1 ? 'mês' : 'meses'} seguintes teriam custado cerca de{' '}
+        <b>{real0(i.antes.valorMes * i.depois.meses)}</b>. Custaram{' '}
+        <b>{real0(i.depois.valor)}</b> — <b className="ganho">{real0(i.valorEvitado)}</b> a menos.
+        <br />
+        {mesEAno(inicio)} é o mês em que o projeto começou e não entra em nenhum dos
+        dois lados ({i.viradaCasos} elevador(es), {real0(i.viradaValor)}).
+      </p>
+    </div>
+  );
+}
+
+/* Porcentagem com o sinal escrito: sem ele, "89%" nao diz se subiu ou
+   desceu. O menos e o tipografico, igual ao resto do painel. */
+function pct(v: number): string {
+  return `${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(0)}%`;
 }

@@ -412,6 +412,24 @@ Mede o resultado do projeto, não o andamento do plano.
   borda esquerda diria que o projeto começou em janeiro. A etiqueta vai
   **acima** da área do gráfico, na folga do layout — embaixo ela caía sobre
   o rótulo dos meses zerados, que moram rente ao eixo.
+- **Bloco "Impacto do projeto" (antes × depois).** Quatro leituras: queda
+  do custo por mês (%), queda de elevadores por mês (%), variação da
+  participação no custo do ano (pontos percentuais) e a diferença absoluta
+  em elevadores. Duas regras seguram o número de pé:
+  1. **O mês de início não entra em nenhum dos dois lados.** O projeto
+     começou no meio dele. Como "antes", empurraria um mês já trabalhado
+     para o lado ruim; como "depois", carregaria o lado bom com dias em que
+     nada tinha mudado. Fica de fora, e a tela diz que ficou, com os
+     números dele.
+  2. **A comparação é por média mensal, não por total.** Os dois lados
+     quase nunca têm o mesmo número de meses; comparar totais inventa uma
+     queda que é só aritmética.
+  Sem ao menos um mês decorrido de cada lado, `impactoDoProjeto` devolve
+  nulo e o bloco não aparece — melhor ausente que frágil. O valor evitado é
+  projeção (supõe o ritmo anterior continuando) e vem escrito como tal, por
+  último. Piora nunca vira "economia negativa": o evitado tem piso zero.
+  Cada linha mostra o **de-para ao lado da variação**, para ninguém precisar
+  acreditar na porcentagem.
 - O painel é apresentado à diretoria. Número que parece armado custa a
   confiança no painel inteiro, e um gráfico honesto convence mais do que um
   "−100%" que não se sustenta se alguém perguntar de onde saiu.

@@ -24,6 +24,7 @@ import {
   variacaoMensal,
   evolucaoDeDivergencias,
   posicaoDoMarco,
+  impactoDoProjeto,
 } from '../src/domain/divergencias';
 import type { DivergenciaSAC } from '../src/domain/divergencias';
 import { lerDivergencias, separarProduto } from '../src/parsers/lerDivergencias';
@@ -632,5 +633,80 @@ describe('marco do início do projeto no gráfico', () => {
   it('sem data de início não há marco', () => {
     expect(pos(null, 2026)).toBeNull();
     expect(pos(undefined, 2026)).toBeNull();
+  });
+});
+
+describe('impacto do projeto (antes × depois)', () => {
+  const em = (mes: number, qtd: number, valor: number) =>
+    Array.from({ length: qtd }, (_, i) =>
+      div({ entrega: `${mes}-${i}`, valor, data: new Date(Date.UTC(2026, mes, 10)) })
+    );
+  /* jan 1x1000, fev 2x1000, mar 0, abr(virada) 4x1000, mai 1x1000, jun 0 */
+  const hoje = new Date(Date.UTC(2026, 5, 20));
+  const evo = evolucaoDeDivergencias(
+    [...em(0, 1, 1000), ...em(1, 2, 1000), ...em(3, 4, 1000), ...em(4, 1, 1000)],
+    2026,
+    hoje
+  );
+  const inicio = new Date(Date.UTC(2026, 3, 15)); // abril
+  const i = impactoDoProjeto(evo, inicio, 2026)!;
+
+  it('o mês de início não entra em nenhum dos dois lados', () => {
+    /* O projeto começou no meio dele: contar como "antes" empurraria
+       um mês já trabalhado para o lado ruim; como "depois", carregaria
+       o lado bom com dias em que nada tinha mudado. */
+    expect(i.antes.meses).toBe(3); // jan, fev, mar
+    expect(i.depois.meses).toBe(2); // mai, jun
+    expect(i.viradaCasos).toBe(4);
+    expect(i.viradaValor).toBe(4000);
+    expect(i.antes.casos + i.depois.casos + i.viradaCasos).toBe(evo.totalCasos);
+  });
+
+  it('compara média mensal, não total', () => {
+    /* 3 casos em 3 meses contra 1 caso em 2 meses. Pelo total seria
+       -67%; pela média, que é o certo, é -50%. */
+    expect(i.antes.casosMes).toBeCloseTo(1, 5);
+    expect(i.depois.casosMes).toBeCloseTo(0.5, 5);
+    expect(i.quedaCasosPct).toBeCloseTo(-50, 5);
+    expect(i.quedaValorPct).toBeCloseTo(-50, 5);
+  });
+
+  it('participação no custo do ano vem em pontos percentuais', () => {
+    /* 3000 antes e 1000 depois, de 8000 no ano: 37,5% e 12,5%. */
+    expect(i.pctAntesDoAno).toBeCloseTo(37.5, 5);
+    expect(i.pctDepoisDoAno).toBeCloseTo(12.5, 5);
+    expect(i.pontosPercentuais).toBeCloseTo(-25, 5);
+  });
+
+  it('o valor evitado supõe o ritmo anterior continuando', () => {
+    /* 1000/mês por 2 meses = 2000 esperados; custou 1000. */
+    expect(i.valorEvitado).toBeCloseTo(1000, 5);
+    expect(i.casosEvitados).toBeCloseTo(1, 5);
+  });
+
+  it('nunca reporta ganho negativo como se fosse ganho', () => {
+    /* Piora depois do projeto: o evitado é zero, não um número
+       negativo travestido de economia. */
+    const piorou = evolucaoDeDivergencias(
+      [...em(0, 1, 1000), ...em(3, 1, 1000), ...em(4, 5, 1000)],
+      2026,
+      hoje
+    );
+    const p = impactoDoProjeto(piorou, inicio, 2026)!;
+    expect(p.valorEvitado).toBe(0);
+    expect(p.quedaValorPct!).toBeGreaterThan(0);
+  });
+
+  it('projeto que começou em janeiro não tem antes, e não inventa um', () => {
+    expect(impactoDoProjeto(evo, new Date(Date.UTC(2026, 0, 10)), 2026)).toBeNull();
+  });
+
+  it('projeto que começou no mês corrente ainda não tem depois', () => {
+    expect(impactoDoProjeto(evo, new Date(Date.UTC(2026, 5, 2)), 2026)).toBeNull();
+  });
+
+  it('início em outro ano não compara nada', () => {
+    expect(impactoDoProjeto(evo, new Date(Date.UTC(2025, 3, 10)), 2026)).toBeNull();
+    expect(impactoDoProjeto(evo, null, 2026)).toBeNull();
   });
 });
