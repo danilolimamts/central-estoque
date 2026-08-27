@@ -25,6 +25,7 @@
    ============================================================ */
 import type { Componente } from './tipos';
 import type { DivergenciaSAC } from './divergencias';
+import { nomeDoFornecedor } from './fornecedores';
 
 /* Casos que nao acharam fornecedor na base mestre. Nome proprio para
    nunca ser confundido com um fornecedor de verdade. */
@@ -63,24 +64,32 @@ export interface ResumoFornecedorSAC {
   itensSemCadastro: ItemSemCadastro[];
 }
 
-/* Codigo do produto -> fabricante.
+/* Codigo do produto -> fornecedor.
 
    O item pai (o elevador) vem primeiro e vence: e ele que corresponde
    ao que foi vendido. O componente entra depois, para o caso de a
    devolucao ter sido de uma peca solta - uma rampa, uma base - que nao
-   aparece como item pai em lugar nenhum. */
+   aparece como item pai em lugar nenhum.
+
+   O nome sai de nomeDoFornecedor, o MESMO que as telas de estoque
+   usam: o fabricante manda, e a marca entra quando ele nao veio
+   preenchido. Antes aqui so o fabricante contava, e a diferenca era
+   invisivel e cara - item com fabricante em branco e marca preenchida
+   aparecia pelo nome da marca no estoque e caia em "Nao identificado"
+   nas divergencias. O mesmo produto, dois nomes, em dois cartoes da
+   mesma tela. */
 export function mapaDeFabricante(componentes: Componente[]): Map<string, string> {
   const mapa = new Map<string, string>();
-  for (const c of componentes) {
-    const codigo = c.itemVolMultiplo?.trim();
-    const fab = c.fabricante?.trim();
-    if (codigo && fab && !mapa.has(codigo)) mapa.set(codigo, fab);
-  }
-  for (const c of componentes) {
-    const codigo = c.itemComponente?.trim();
-    const fab = c.fabricante?.trim();
-    if (codigo && fab && !mapa.has(codigo)) mapa.set(codigo, fab);
-  }
+  const anotar = (codigo: string | undefined, c: Componente) => {
+    const chave = codigo?.trim();
+    if (!chave || mapa.has(chave)) return;
+    const nome = nomeDoFornecedor(c);
+    /* nomeDoFornecedor devolve o travessao quando nao ha nem fabricante
+       nem marca: isso e ausencia de cadastro, nao um fornecedor. */
+    if (nome && nome !== '—') mapa.set(chave, nome);
+  };
+  for (const c of componentes) anotar(c.itemVolMultiplo, c);
+  for (const c of componentes) anotar(c.itemComponente, c);
   return mapa;
 }
 

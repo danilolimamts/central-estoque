@@ -50,9 +50,24 @@ describe('mapa de fabricante', () => {
     expect(mapa.get('2031441')).toBe('BETA');
   });
 
-  it('item sem fabricante preenchido não entra no mapa', () => {
-    const mapa = mapaDeFabricante([comp({ itemVolMultiplo: '900', fabricante: '  ' })]);
-    expect(mapa.has('900')).toBe(false);
+  it('fabricante em branco cai na marca, igual às telas de estoque', () => {
+    /* Este era um defeito real, e do tipo silencioso: as telas de
+       estoque nomeiam o fornecedor com nomeDoFornecedor (fabricante, e
+       a marca quando ele falta), mas o cruzamento aqui só olhava o
+       fabricante. Item com fabricante vazio e marca FORTG aparecia
+       como FORTG no estoque e caía em "Não identificado" nas
+       divergências — o mesmo produto com dois nomes, em dois cartões
+       da mesma tela. */
+    const mapa = mapaDeFabricante([
+      comp({ itemVolMultiplo: '900', fabricante: '  ', marca: 'FORTG' }),
+    ]);
+    expect(mapa.get('900')).toBe('FORTG');
+  });
+
+  it('sem fabricante e sem marca continua fora do mapa', () => {
+    /* Ausência de cadastro não pode virar um fornecedor chamado "—". */
+    const mapa = mapaDeFabricante([comp({ itemVolMultiplo: '901', fabricante: '', marca: '' })]);
+    expect(mapa.has('901')).toBe(false);
   });
 });
 
