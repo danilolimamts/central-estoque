@@ -676,7 +676,7 @@ function irRenderDashboard(){
   `;
 }
 /* ============================================================
-   Evolução mensal — Peças, Locais e Valor (modelo "A3" aprovado)
+   Acurácia mensal — Peças, Locais e Valor (modelo "A3" aprovado)
    Por mês: duas colunas na MESMA escala (contado x divergente) e, no rodapé,
    uma faixa 95%→100% com a marca da meta mostrando a acurácia do mês.
    Cada métrica usa a cor padrão do Dashboard (Peças laranja, Locais azul,
@@ -743,7 +743,7 @@ function irBuildEvolucaoMensalSvg(rows, cfg, fmtVal){
           +  `<line x1="${mx.toFixed(1)}" x2="${mx.toFixed(1)}" y1="${accTop-3}" y2="${accTop+10}" class="mes-meta"/>`
           +  `<text x="${cx.toFixed(1)}" y="${accTop+27}" text-anchor="middle" class="mes-acc ${ok?'ok':'bad'}">${irFmtPct(r.acuracia)}</text>`;
   });
-  return `<div class="mes-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolução mensal de ${irEsc(cfg.titulo)}">
+  return `<div class="mes-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Acurácia mensal de ${irEsc(cfg.titulo)}">
     ${grid}${bars}
     <line x1="${padL}" x2="${W-padR}" y1="${baseY}" y2="${baseY}" class="mes-grid"/>
     <text x="${padL-9}" y="${accTop-8}" text-anchor="end" class="mes-band">ACURÁCIA</text>
@@ -764,7 +764,7 @@ function irRenderEvolucaoMensalPanel(ind){
   const meses = (ind && ind.porMes) || [];
   if(!meses.length){
     return `<div class="panel">
-      <h3>📅 Evolução mensal</h3>
+      <h3>📅 Acurácia mensal</h3>
       <p class="field-hint">Reprocesse o ciclo na Importação para habilitar a quebra por mês.</p>
     </div>`;
   }
@@ -788,7 +788,7 @@ function irRenderEvolucaoMensalPanel(ind){
     </table></div>
   </details>`;
   return `<div class="panel">
-    <h3>📅 Evolução mensal — Peças, Locais e Valor</h3>
+    <h3>📅 Acurácia mensal — Peças, Locais e Valor</h3>
     <p class="panel-sub">Cada mês tem a coluna do que foi contado e a do que divergiu (mesma escala), com a acurácia do mês na faixa abaixo. O mês de um local é o do fechamento da última rodada — mesma regra dos KPIs do topo (Peças e Valor só com locais concluídos; Locais com todos os contados).</p>
     ${irEvolucaoMensalBloco(dados.map(d=>d.pecas),  IR_MES_SERIES.pecas,  irFmtInt)}
     ${irEvolucaoMensalBloco(dados.map(d=>d.locais), IR_MES_SERIES.locais, irFmtInt)}
