@@ -41,6 +41,19 @@ function irEsc(v){ if(v===undefined||v===null) return ''; return String(v).repla
 function irFmtInt(n){ return Math.round(n||0).toLocaleString('pt-BR'); }
 function irFmtNum(n, dec){ return (n||0).toLocaleString('pt-BR', {minimumFractionDigits:dec||0, maximumFractionDigits:dec===undefined?2:dec}); }
 function irFmtMoney(n){ return (n||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'}); }
+// Formato compacto pros KPIs de valor: "R$121,3M" / "R$847,2K". Medido no navegador:
+// e o unico formato que cabe na tile do KPI sem estourar os ~93px uteis e sem o
+// auto-encolhimento de fonte entrar em acao (R$ 121.336.999,05 precisa de 174px a 17px).
+// O valor exato continua disponivel no hint logo abaixo e na aba Indicadores.
+function irFmtMoneyCompact(n){
+  n = n||0;
+  const abs = Math.abs(n);
+  if(abs>=1000000) return 'R$'+(n/1000000).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'M';
+  if(abs>=1000) return 'R$'+(n/1000).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'K';
+  return 'R$'+n.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0});
+}
+// Valor cheio, sem centavos — usado no hint, onde cabe texto maior.
+function irFmtMoneyInt(n){ return (n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}); }
 function irFmtPct(n){ return ((n||0)*100).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1})+'%'; }
 function irFmtDate(s){ if(!s) return '—'; const d = new Date(s); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR'); }
 /* Ano do ciclo, derivado da data de abertura — usado pra não confundir
@@ -245,7 +258,34 @@ function irRenderView(){
   if(IR.currentTab==='divergencias') irMountDivergenciasScroll();
   if(IR.currentTab==='auditoria') irMountAuditoriaScroll();
   if(IR.currentTab==='dashboard') irScrollVBarsToEnd();
+  irFitKpiNumbers();
 }
+/* Encolhe o numero de cada tile de KPI ate ele caber na largura real disponivel.
+   O grid dos blocos e auto-fit, entao a largura da tile muda de forma pouco previsivel
+   conforme a tela (medido: 76px a 1500px, 86px a 1280px, 111px a 1920px) — chutar o
+   tamanho da fonte pelo numero de caracteres errava nos dois sentidos, ora quebrando o
+   numero no meio ("1.170.9 / 41"), ora deixando-o transbordar da tile. Aqui a medicao e
+   feita no elemento real, entao vale pra qualquer valor, formato e largura de tela. */
+function irFitKpiNumbers(){
+  document.querySelectorAll('#viewRoot .kpi-tile').forEach(tile=>{
+    const num = tile.querySelector('.num');
+    if(!num) return;
+    num.style.fontSize = ''; // volta ao tamanho da classe antes de medir
+    const cs = getComputedStyle(tile);
+    const util = tile.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    if(util<=0) return;
+    let size = parseFloat(getComputedStyle(num).fontSize);
+    while(num.scrollWidth > util+1 && size > 9){
+      size -= 0.5;
+      num.style.fontSize = size+'px';
+    }
+  });
+}
+// Reajusta ao redimensionar a janela — a largura da tile muda junto.
+addEventListener('resize', ()=>{
+  clearTimeout(IR._fitKpiTimer);
+  IR._fitKpiTimer = setTimeout(irFitKpiNumbers, 120);
+});
 // Gráficos "por dia" (Peças/Valor/Locais Divergentes por Dia) abrem rolados pro dia
 // mais recente por padrão — é o que interessa de cara, sem precisar arrastar a barra.
 function irScrollVBarsToEnd(){
@@ -540,8 +580,11 @@ function irKpiTile(icon, val, label, cls, hint){
   // Valores longos (ex.: "R$ 114.927.853,46") quebravam no meio do número com o
   // tamanho de fonte padrão — reduz a fonte quando o texto passa de um limiar, em vez
   // de deixar o overflow-wrap partir dígitos no meio.
+  // Limiares medidos no navegador: na largura de tela mais apertada a tile util fica
+  // com ~84px, e a fonte mono 800 ocupa ~10,2px/char a 17px, ~8,4 a 14px, ~7,2 a 12px.
+  // Dai os cortes abaixo — sem eles o numero quebrava no meio (ex.: "1.170.9 / 41").
   const tamanho = String(val).replace(/<[^>]*>/g,'').length;
-  const numCls = tamanho>14 ? 'num-sm' : (tamanho>10 ? 'num-md' : '');
+  const numCls = tamanho>12 ? 'num-xs' : (tamanho>10 ? 'num-sm' : (tamanho>8 ? 'num-md' : ''));
   return `<div class="kpi-tile"><div class="kt-icon">${icon}</div><div class="num mono ${numCls} ${cls||''}">${val}</div><div class="label">${label}</div>${hint?`<div class="meta-hint">${hint}</div>`:''}</div>`;
 }
 function irKpiBlock(theme, icon, title, tilesHtml){
@@ -595,8 +638,8 @@ function irRenderDashboard(){
   );
   const blocoValor = irKpiBlock('black','💰','Valor',
     irKpiTile('🎯', irFmtPct(ind.acuraciaValor), 'Acurácia Valor', ind.acuraciaValor>=ind.meta?'good':'bad', metaHint+' · '+taxaRecontagemHint) +
-    irKpiTile('💰', irFmtMoney(ind.valorFisicoTotal), 'Valor Contado', '', 'total físico') +
-    irKpiTile('⚠️', irFmtMoney(ind.valorDivergenteAbsoluto), 'Valor Divergente', 'bad', 'soma absoluta')
+    irKpiTile('💰', irFmtMoneyCompact(ind.valorFisicoTotal), 'Valor Contado', '', irFmtMoneyInt(ind.valorFisicoTotal)) +
+    irKpiTile('⚠️', irFmtMoneyCompact(ind.valorDivergenteAbsoluto), 'Valor Divergente', 'bad', irFmtMoneyInt(ind.valorDivergenteAbsoluto))
   );
   const blocoCiclo = irKpiBlock('neutral','🔄','Ciclo',
     irKpiTile('📊', irFmtPct(ind.andamentoCiclo), 'Andamento', '', irFmtInt(ind.locaisConcluidos)+' de '+irFmtInt(ind.locaisCongelados)) +
@@ -1078,8 +1121,8 @@ function irRenderComparativoCiclosPanel(){
         irKpiTile('⚠️', irFmtInt(locaisDivergentes), 'Divergentes', 'bad', ''))}
       ${irKpiBlock('black','💰','Valor',
         irKpiTile('🎯', temValorContado&&valorContado>0?irFmtPct(1-valorDivergente/valorContado):'—', 'Acurácia Geral', '', temValorContado?'todos os ciclos':'reprocesse o ciclo pra habilitar') +
-        irKpiTile('💰', temValorContado?irFmtMoney(valorContado):'—', 'Contado', '', '') +
-        irKpiTile('⚠️', irFmtMoney(valorDivergente), 'Divergente', 'bad', ''))}
+        irKpiTile('💰', temValorContado?irFmtMoneyCompact(valorContado):'—', 'Contado', '', temValorContado?irFmtMoneyInt(valorContado):'') +
+        irKpiTile('⚠️', irFmtMoneyCompact(valorDivergente), 'Divergente', 'bad', irFmtMoneyInt(valorDivergente)))}
     </div>
   </div>`;
 }
