@@ -353,7 +353,44 @@ function irRenderUltimoProcessamento(){
       <div class="kpi-card"><div class="num mono">${irFmtInt(m.totalContagens)}</div><div class="label">Contagens processadas</div></div>
     </div>
     <p class="field-hint">Processado em ${new Date(m.processedAt).toLocaleString('pt-BR')}</p>
+    ${irRenderDiagnosticoIngestao(m)}
   </div>`;
+}
+/* Mostra o que a 843 trouxe e o que foi descartado, linha a linha de motivo. Existe
+   porque, sem isso, quando a janela do ciclo já passou o número simplesmente "congela"
+   a cada nova importação, sem nenhuma pista do porquê — foi exatamente o que aconteceu
+   ao investigar os locais pendentes que não atualizavam. */
+function irRenderDiagnosticoIngestao(m){
+  if(m.totalLinhas843==null) return '<p class="field-hint" style="color:var(--orange);">Diagnóstico da 843 indisponível — reprocesse o ciclo para gerá-lo.</p>';
+  const hoje = new Date().toISOString().slice(0,10);
+  const janelaVencida = m.janelaTermino && m.janelaTermino < hoje;
+  const perdendoContagem = m.dataMaisRecenteForaDaJanela && m.dataMaisRecenteAceita &&
+                           m.dataMaisRecenteForaDaJanela > m.dataMaisRecenteAceita;
+  const linha = (rot, val, alerta) => `<tr><td>${rot}</td><td class="mono" style="text-align:right;${alerta?'color:var(--danger);font-weight:700;':''}">${val}</td></tr>`;
+  const d = s => s ? irFmtDate(s) : '—';
+  return `
+    ${(janelaVencida || perdendoContagem) ? `<div class="callout callout-warn">
+      <strong>⚠️ A janela deste ciclo está barrando contagens.</strong>
+      O ciclo vai de <b>${d(m.janelaAbertura)}</b> até <b>${d(m.janelaTermino)}</b>, e a 843 traz contagem
+      de até <b>${d(m.dataMaisRecenteForaDaJanela)}</b> que ficou de fora por estar depois do término previsto.
+      Tudo que for contado a partir de agora vai continuar sendo ignorado e os números não vão mudar.
+      <b>Corrija o Término Previsto do ciclo</b> na tela de ciclos e reprocesse.
+    </div>` : ''}
+    <div class="table-wrap" style="margin-top:10px;"><table class="table-dense">
+      <thead><tr><th>Diagnóstico da QRY0843</th><th style="text-align:right;">Valor</th></tr></thead>
+      <tbody>
+        ${linha('Janela do ciclo', d(m.janelaAbertura)+' → '+d(m.janelaTermino), janelaVencida)}
+        ${linha('Linhas lidas na planilha', irFmtInt(m.totalLinhas843))}
+        ${linha('Contagens aceitas', irFmtInt(m.totalContagens))}
+        ${linha('Descartadas — fora da janela do ciclo', irFmtInt(m.linhasForaDaJanela||0), perdendoContagem)}
+        ${linha('Descartadas — não são AIR', irFmtInt(m.linhasNaoAir||0))}
+        ${linha('Descartadas — não liquidadas', irFmtInt(m.linhasNaoLiquidadas||0))}
+        ${linha('Descartadas — sem data utilizável', irFmtInt(m.linhasSemDataDescartadas||0))}
+        ${linha('Locais só com Rodada 1 (sem contagem física)', irFmtInt(m.visitasSemContagemFisica||0))}
+        ${linha('Contagem mais recente ACEITA', d(m.dataMaisRecenteAceita))}
+        ${linha('Contagem mais recente DESCARTADA por data', d(m.dataMaisRecenteForaDaJanela), perdendoContagem)}
+      </tbody>
+    </table></div>`;
 }
 function irClassifyFile(file){
   const t = IR_FILE_TYPES.find(t=>t.pattern.test(file.name));

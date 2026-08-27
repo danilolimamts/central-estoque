@@ -278,6 +278,11 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   post('progress', {stage:'Processando contagens (QRY0843)...', pct:35});
   const contagens = [];
   let idx843 = 0, linhasSemDataDescartadas = 0;
+  // Diagnostico da ingestao da 843 — sem isso o usuario nao tem como saber POR QUE uma
+  // linha nao entrou (janela do ciclo? nao-AIR? nao liquidada?), e o numero "congela"
+  // sem explicacao quando a janela do ciclo ja passou.
+  let linhasForaDaJanela = 0, linhasNaoAir = 0, linhasNaoLiquidadas = 0;
+  let dataMaisRecenteAceita = '', dataMaisRecenteForaDaJanela = '';
   for(const row of rows843){
     idx843++;
     const local = irNormItemKey(getVal(row, r843.local));
@@ -291,10 +296,10 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     if(!local) continue;
     // Só eventos de Ajuste Inventário Rotativo (Obs começando em "AIR") entram no ciclo —
     // outras tratativas na mesma planilha (ex.: "ADE - Ajuste Auditoria de Estoque") não são deste módulo.
-    if(!/^AIR/i.test(obsInventario)) continue;
+    if(!/^AIR/i.test(obsInventario)){ linhasNaoAir++; continue; }
     // "Contado" de verdade só quando o local E o inventário foram liquidados — sessões
     // Canceladas (ex.: reabertas depois) não contam como contagem válida.
-    if(situacaoLocal!=='Liquidado' || situacaoInventario!=='Liquidado') continue;
+    if(situacaoLocal!=='Liquidado' || situacaoInventario!=='Liquidado'){ linhasNaoLiquidadas++; continue; }
     const dataSituacao = isoDateTime(parseDateVal(getVal(row, r843.dataSituacao)));
     const dataInicioContagem = isoDateTime(parseDateVal(getVal(row, r843.dataInicioContagem)));
     const dataFimContagem = isoDateTime(parseDateVal(getVal(row, r843.dataFimContagem)));
@@ -314,8 +319,12 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     // fica de fora (e é contabilizada em linhasSemDataDescartadas, pra não sumir calada).
     const diaRef = (dataSituacao || dataFimContagem || dataInicioContagem || '').slice(0,10);
     if(!diaRef){ linhasSemDataDescartadas++; continue; }
-    if(dataAbertura && diaRef<dataAbertura) continue;
-    if(dataPrevistaTermino && diaRef>dataPrevistaTermino) continue;
+    if((dataAbertura && diaRef<dataAbertura) || (dataPrevistaTermino && diaRef>dataPrevistaTermino)){
+      linhasForaDaJanela++;
+      if(diaRef>dataMaisRecenteForaDaJanela) dataMaisRecenteForaDaJanela = diaRef;
+      continue;
+    }
+    if(diaRef>dataMaisRecenteAceita) dataMaisRecenteAceita = diaRef;
     contagens.push({
       id: cicloId+'|'+local+'|'+item+'|'+idConferencia+'|'+idx843,
       cicloId, inventario: String(getVal(row, r843.inventario) ?? '').trim(), local,
@@ -564,7 +573,10 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     totalLocaisCongelados: indicadores.locaisCongelados,
     totalContagens: contagens.length,
     totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length,
-    linhasSemDataDescartadas, visitasSemContagemFisica
+    linhasSemDataDescartadas, visitasSemContagemFisica,
+    totalLinhas843: rows843.length, linhasForaDaJanela, linhasNaoAir, linhasNaoLiquidadas,
+    dataMaisRecenteAceita, dataMaisRecenteForaDaJanela,
+    janelaAbertura: dataAbertura || '', janelaTermino: dataPrevistaTermino || ''
   });
 
   post('progress', {stage:'Concluído.', pct:100});
