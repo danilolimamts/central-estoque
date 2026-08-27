@@ -475,8 +475,9 @@ table.table-dense tbody td{ padding:3px 10px; font-size:12.5px; }
 .mes-grid{ stroke:var(--mes-grid); stroke-width:1; }
 .mes-meta{ stroke:var(--ink-soft); stroke-width:1.5; }
 .mes-axis{ fill:var(--ink-soft); font-size:10px; font-family:'SFMono-Regular',Consolas,monospace; }
-.mes-val{ fill:var(--ink-soft); font-size:12.5px; font-weight:700; font-family:'SFMono-Regular',Consolas,monospace; }
-.mes-val-cont{ fill:var(--ink); }
+/* Contado e divergente usam a MESMA cor de rótulo (tinta cheia) — a cor está
+   na coluna, não no número. */
+.mes-val{ fill:var(--ink); font-size:12.5px; font-weight:700; font-family:'SFMono-Regular',Consolas,monospace; }
 .mes-mon{ fill:var(--ink-soft); font-size:10.5px; font-weight:600; }
 .mes-band{ fill:var(--ink-soft); font-size:9px; font-weight:800; letter-spacing:.07em; }
 .mes-acc{ font-size:11px; font-weight:800; font-family:'SFMono-Regular',Consolas,monospace; }
