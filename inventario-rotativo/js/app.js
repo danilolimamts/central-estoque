@@ -593,7 +593,7 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 8; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 9; // mantido em sincronia com worker.js
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
 function irRenderDashDateFilterBar(){
@@ -671,8 +671,129 @@ function irRenderDashboard(){
     </div>
     ${irRenderLogTablePanel(ind)}
     ${irRenderComparativoCiclosPanel(ind)}
+    ${irRenderEvolucaoMensalPanel(ind)}
     ${irRenderCalendarioPanel(ind)}
   `;
+}
+/* ============================================================
+   Evolução mensal — Peças, Locais e Valor (modelo "A3" aprovado)
+   Por mês: duas colunas na MESMA escala (contado x divergente) e, no rodapé,
+   uma faixa 95%→100% com a marca da meta mostrando a acurácia do mês.
+   Cada métrica usa a cor padrão do Dashboard (Peças laranja, Locais azul,
+   Valor grafite); a coluna de divergência usa o vermelho de alerta — no caso
+   de Peças, um vermelho mais escuro, porque o laranja padrão e o vermelho
+   padrão são indistinguíveis lado a lado (inclusive para daltônicos).
+   ============================================================ */
+const IR_MES_SERIES = {
+  pecas:  {titulo:'Peças',  rotContado:'Peças contadas',  rotDiv:'Peças divergentes',
+           cont:'var(--mes-pecas-cont)',  div:'var(--mes-pecas-div)',  acc:'var(--mes-pecas-cont)'},
+  locais: {titulo:'Locais', rotContado:'Locais contados', rotDiv:'Locais divergentes',
+           cont:'var(--mes-locais-cont)', div:'var(--mes-locais-div)', acc:'var(--mes-locais-cont)'},
+  valor:  {titulo:'Valor',  rotContado:'Valor contado',   rotDiv:'Valor divergente',
+           cont:'var(--mes-valor-cont)',  div:'var(--mes-valor-div)',  acc:'var(--mes-valor-cont)'}
+};
+const IR_MES_ABREV = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+function irMesLabel(mes){
+  const [a,m] = String(mes||'').split('-');
+  const i = parseInt(m,10)-1;
+  return (IR_MES_ABREV[i]||m||'?')+'/'+String(a||'').slice(2);
+}
+/* Gráfico mensal de UMA métrica. `rows` = [{mes, contado, divergente, acuracia}]. */
+/* Piso da faixa de acurácia. Padrão 95%, mas desce se algum mês ficar abaixo
+   disso — senão a barrinha do mês pior vira um toco de 3px e não dá pra
+   comparar nada (Acurácia Local costuma rodar na casa dos 93%). */
+function irMesAccFloor(rows){
+  const min = Math.min(...rows.map(r=>r.acuracia), 0.95);
+  return Math.max(0, Math.floor(min*100)/100 - 0.01);
+}
+function irBuildEvolucaoMensalSvg(rows, cfg, fmtVal){
+  const meta = IR_META_ACURACIA;
+  const lo = irMesAccFloor(rows);
+  const W=1080, padL=86, padR=16, padT=26;
+  const plotH=210, baseY=padT+plotH, plotW=W-padL-padR;
+  const accTop=baseY+58, H=accTop+42;
+  const maxVal = Math.max(...rows.map(r=>r.contado), 1)*1.05;
+  const step = plotW/rows.length;
+  const bw = Math.min(24, Math.max(10, step/3.2)), gapIn = 6;
+  let grid='', bars='', faixa='';
+  for(let i=0;i<=4;i++){
+    const v = maxVal*i/4, y = baseY-(v/maxVal)*plotH;
+    grid += `<line x1="${padL}" x2="${W-padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" class="mes-grid"/>`
+         +  `<text x="${padL-9}" y="${(y+3.5).toFixed(1)}" text-anchor="end" class="mes-axis">${irEsc(fmtVal(v))}</text>`;
+  }
+  rows.forEach((r,i)=>{
+    const cx = padL+step*i+step/2;
+    const x1 = cx-bw-gapIn/2, x2 = cx+gapIn/2;
+    const hC = (r.contado/maxVal)*plotH;
+    const hD = Math.max((r.divergente/maxVal)*plotH, 2);
+    bars += `<rect x="${x1.toFixed(1)}" y="${(baseY-hC).toFixed(1)}" width="${bw.toFixed(1)}" height="${hC.toFixed(1)}" rx="4" fill="${cfg.cont}"><title>${irEsc(irMesLabel(r.mes))} — ${irEsc(cfg.rotContado)}: ${irEsc(fmtVal(r.contado))}</title></rect>`
+         +  `<rect x="${x2.toFixed(1)}" y="${(baseY-hD).toFixed(1)}" width="${bw.toFixed(1)}" height="${hD.toFixed(1)}" rx="4" fill="${cfg.div}"><title>${irEsc(irMesLabel(r.mes))} — ${irEsc(cfg.rotDiv)}: ${irEsc(fmtVal(r.divergente))}</title></rect>`
+         // Rótulo ancorado na borda esquerda da coluna divergente (não centralizado):
+         // rótulo largo — valor em R$, por exemplo — centralizado invadia a coluna
+         // de contados, que fica logo à esquerda.
+         +  `<text x="${x2.toFixed(1)}" y="${(baseY-hD-6).toFixed(1)}" text-anchor="start" class="mes-val">${irEsc(fmtVal(r.divergente))}</text>`
+         +  `<text x="${cx.toFixed(1)}" y="${(baseY+22).toFixed(1)}" text-anchor="middle" class="mes-mon">${irEsc(irMesLabel(r.mes))}</text>`;
+    // Faixa de acurácia: escala do piso → 100%, com traço na meta.
+    const frac = Math.max(0, Math.min(1, (r.acuracia-lo)/(1-lo)));
+    const tw = Math.min(78, step*0.72), tx = cx-tw/2, ok = r.acuracia>=meta;
+    const mx = tx+tw*Math.max(0, Math.min(1,(meta-lo)/(1-lo)));
+    faixa += `<rect x="${tx.toFixed(1)}" y="${accTop}" width="${tw.toFixed(1)}" height="7" rx="3.5" fill="var(--surface2)"/>`
+          +  `<rect x="${tx.toFixed(1)}" y="${accTop}" width="${Math.max(tw*frac,3).toFixed(1)}" height="7" rx="3.5" fill="${ok?cfg.acc:'var(--danger)'}"><title>Acurácia ${irEsc(irMesLabel(r.mes))}: ${irFmtPct(r.acuracia)} (meta ${irFmtPct(meta)})</title></rect>`
+          +  `<line x1="${mx.toFixed(1)}" x2="${mx.toFixed(1)}" y1="${accTop-3}" y2="${accTop+10}" class="mes-meta"/>`
+          +  `<text x="${cx.toFixed(1)}" y="${accTop+27}" text-anchor="middle" class="mes-acc ${ok?'ok':'bad'}">${irFmtPct(r.acuracia)}</text>`;
+  });
+  return `<div class="mes-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolução mensal de ${irEsc(cfg.titulo)}">
+    ${grid}${bars}
+    <line x1="${padL}" x2="${W-padR}" y1="${baseY}" y2="${baseY}" class="mes-grid"/>
+    <text x="${padL-9}" y="${accTop-8}" text-anchor="end" class="mes-band">ACURÁCIA</text>
+    ${faixa}
+  </svg></div>`;
+}
+function irEvolucaoMensalBloco(rows, cfg, fmtVal){
+  return `<div class="mes-bloco">
+    <div class="mes-legend">
+      <span class="mes-lg"><span class="mes-sw" style="background:${cfg.cont}"></span>${irEsc(cfg.rotContado)}</span>
+      <span class="mes-lg"><span class="mes-sw" style="background:${cfg.div}"></span>${irEsc(cfg.rotDiv)}</span>
+      <span class="mes-legend-right">Acurácia na faixa ${irFmtPct(irMesAccFloor(rows))}→100% · traço = meta ${irFmtPct(IR_META_ACURACIA)}</span>
+    </div>
+    ${irBuildEvolucaoMensalSvg(rows, cfg, fmtVal)}
+  </div>`;
+}
+function irRenderEvolucaoMensalPanel(ind){
+  const meses = (ind && ind.porMes) || [];
+  if(!meses.length){
+    return `<div class="panel">
+      <h3>📅 Evolução mensal</h3>
+      <p class="field-hint">Reprocesse o ciclo na Importação para habilitar a quebra por mês.</p>
+    </div>`;
+  }
+  const linhas = m => ({
+    pecas:  {mes:m.mes, contado:m.pecasContadas,  divergente:m.pecasDivergentes,  acuracia:m.acuraciaPecas},
+    locais: {mes:m.mes, contado:m.locaisContados, divergente:m.locaisDivergentes, acuracia:m.acuraciaLocal},
+    valor:  {mes:m.mes, contado:m.valorContado,   divergente:m.valorDivergente,   acuracia:m.acuraciaValor}
+  });
+  const dados = meses.map(linhas);
+  const tabela = `<details class="mes-tabela"><summary>Ver os números em tabela</summary>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Mês</th><th>Peças contadas</th><th>Peças div.</th><th>Acur. Peças</th>
+        <th>Locais contados</th><th>Locais div.</th><th>Acur. Local</th>
+        <th>Valor contado</th><th>Valor div.</th><th>Acur. Valor</th></tr></thead>
+      <tbody>${meses.map(m=>`<tr>
+        <td>${irEsc(irMesLabel(m.mes))}</td>
+        <td class="mono">${irFmtInt(m.pecasContadas)}</td><td class="mono">${irFmtInt(m.pecasDivergentes)}</td><td class="mono">${irFmtPct(m.acuraciaPecas)}</td>
+        <td class="mono">${irFmtInt(m.locaisContados)}</td><td class="mono">${irFmtInt(m.locaisDivergentes)}</td><td class="mono">${irFmtPct(m.acuraciaLocal)}</td>
+        <td class="mono">${irFmtMoneyInt(m.valorContado)}</td><td class="mono">${irFmtMoneyInt(m.valorDivergente)}</td><td class="mono">${irFmtPct(m.acuraciaValor)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </details>`;
+  return `<div class="panel">
+    <h3>📅 Evolução mensal — Peças, Locais e Valor</h3>
+    <p class="panel-sub">Cada mês tem a coluna do que foi contado e a do que divergiu (mesma escala), com a acurácia do mês na faixa abaixo. O mês de um local é o do fechamento da última rodada — mesma regra dos KPIs do topo (Peças e Valor só com locais concluídos; Locais com todos os contados).</p>
+    ${irEvolucaoMensalBloco(dados.map(d=>d.pecas),  IR_MES_SERIES.pecas,  irFmtInt)}
+    ${irEvolucaoMensalBloco(dados.map(d=>d.locais), IR_MES_SERIES.locais, irFmtInt)}
+    ${irEvolucaoMensalBloco(dados.map(d=>d.valor),  IR_MES_SERIES.valor,  irFmtMoneyCompact)}
+    ${tabela}
+  </div>`;
 }
 // Impacto de locais que tiveram trabalho de campo iniciado (Data Início Contagem
 // preenchida na 843) e terminaram CANCELADOS — o colaborador foi lá, começou a contar,

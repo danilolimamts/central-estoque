@@ -439,6 +439,51 @@ table.table-dense tbody td{ padding:3px 10px; font-size:12.5px; }
 .cmp-legend span{ display:inline-flex; align-items:center; gap:6px; }
 .cmp-dot{ width:10px; height:10px; border-radius:50%; display:inline-block; }
 
+/* ---------- EVOLUÇÃO MENSAL (Dashboard) ----------
+   Cores por métrica seguem o padrão do Dashboard (Peças laranja, Locais azul,
+   Valor grafite). A coluna de divergência é sempre o vermelho de alerta; em
+   Peças ele é escurecido porque o laranja padrão e o vermelho padrão ficam
+   indistinguíveis lado a lado (validado inclusive para daltonismo). */
+:root{
+  --mes-pecas-cont:#FA4616;  --mes-pecas-div:#8C2A0E;
+  --mes-locais-cont:#3B5BA9; --mes-locais-div:#C83812;
+  --mes-valor-cont:#5A6070;  --mes-valor-div:#C83812;
+  --mes-grid:#E4E7EE;
+}
+:root[data-theme="dark"]{
+  --mes-pecas-cont:#F9814F;  --mes-pecas-div:#C0442A;
+  --mes-locais-cont:#5A83D6; --mes-locais-div:#E56A3C;
+  --mes-valor-cont:#8892A8;  --mes-valor-div:#E56A3C;
+  --mes-grid:#272B36;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --mes-pecas-cont:#F9814F;  --mes-pecas-div:#C0442A;
+    --mes-locais-cont:#5A83D6; --mes-locais-div:#E56A3C;
+    --mes-valor-cont:#8892A8;  --mes-valor-div:#E56A3C;
+    --mes-grid:#272B36;
+  }
+}
+.mes-bloco{ margin-top:14px; }
+.mes-bloco:first-of-type{ margin-top:8px; }
+.mes-legend{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:4px; }
+.mes-lg{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:var(--ink-soft); }
+.mes-sw{ width:10px; height:10px; border-radius:3px; flex:none; }
+.mes-legend-right{ margin-left:auto; font-size:11px; color:var(--ink-soft); }
+.mes-chart{ overflow-x:auto; }
+.mes-chart svg{ display:block; width:100%; min-width:620px; height:auto; }
+.mes-grid{ stroke:var(--mes-grid); stroke-width:1; }
+.mes-meta{ stroke:var(--ink-soft); stroke-width:1.5; }
+.mes-axis{ fill:var(--ink-soft); font-size:10px; font-family:'SFMono-Regular',Consolas,monospace; }
+.mes-val{ fill:var(--ink-soft); font-size:9.5px; font-weight:700; font-family:'SFMono-Regular',Consolas,monospace; }
+.mes-mon{ fill:var(--ink-soft); font-size:10.5px; font-weight:600; }
+.mes-band{ fill:var(--ink-soft); font-size:9px; font-weight:800; letter-spacing:.07em; }
+.mes-acc{ font-size:11px; font-weight:800; font-family:'SFMono-Regular',Consolas,monospace; }
+.mes-acc.ok{ fill:var(--success); }
+.mes-acc.bad{ fill:var(--danger); }
+.mes-tabela{ margin-top:12px; }
+.mes-tabela summary{ cursor:pointer; font-size:12px; font-weight:600; color:var(--ink-soft); }
+
 /* ---------- TAGS / BADGES ---------- */
 .tag{ display:inline-block; font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; padding:2px 8px; border-radius:100px; }
 .tag-blue{ color:var(--blue); background:var(--blue-light); }
