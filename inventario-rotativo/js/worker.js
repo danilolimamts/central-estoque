@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 8;
+const IR_INDICADORES_VERSION = 9;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -815,6 +815,56 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     .map(([dia,g])=>({dia, pecas:g.pecas, valor:g.valorAbs, locais:g.locaisSet.size}))
     .sort((a,b)=>a.dia.localeCompare(b.dia));
 
+  // Consolidado por MÊS (YYYY-MM) — alimenta o painel "Evolução mensal" do Dashboard.
+  // Cada local entra no mês do seu "dia final" (mesma regra de contadosPorDia), então
+  // um local nunca é contado em dois meses. As acurácias seguem exatamente a mesma
+  // regra dos KPIs do topo:
+  //   • Peças e Valor  -> só locais CONCLUÍDOS (divergenciasConcluidas)
+  //   • Locais         -> todos os locais já contados (qualquer status)
+  const mesMap = new Map(); // 'YYYY-MM' -> agregados
+  function getMes(mes){
+    if(!mesMap.has(mes)) mesMap.set(mes, {
+      mes, pecasContadas:0, pecasDivergentes:0, valorContado:0, valorDivergente:0,
+      locaisContados:0, locaisDivergentesSet:new Set()
+    });
+    return mesMap.get(mes);
+  }
+  const mesFinalPorLocal = new Map(); // local -> 'YYYY-MM'
+  for(const [local, {dia}] of diaFinalPorLocal){
+    const mes = dia.slice(0,7);
+    mesFinalPorLocal.set(local, mes);
+    getMes(mes).locaisContados++;
+  }
+  for(const d of divergenciasConcluidas){
+    const mes = mesFinalPorLocal.get(d.local);
+    if(!mes) continue;
+    const g = getMes(mes);
+    g.pecasContadas   += d.qtdeFisica;
+    g.pecasDivergentes += Math.abs(d.diferenca);
+    g.valorContado    += d.vlFisico;
+    g.valorDivergente += Math.abs(d.vlDivergencia);
+  }
+  for(const d of divergencias){
+    if(d.diferenca===0) continue;
+    const mes = mesFinalPorLocal.get(d.local);
+    if(!mes) continue;
+    getMes(mes).locaisDivergentesSet.add(d.local);
+  }
+  const porMes = Array.from(mesMap.values())
+    .map(g=>{
+      const locaisDivergentes = g.locaisDivergentesSet.size;
+      return {
+        mes: g.mes,
+        pecasContadas: g.pecasContadas, pecasDivergentes: g.pecasDivergentes,
+        valorContado: g.valorContado, valorDivergente: g.valorDivergente,
+        locaisContados: g.locaisContados, locaisDivergentes,
+        acuraciaPecas: clamp01(g.pecasContadas>0 ? 1-(g.pecasDivergentes/g.pecasContadas) : 1),
+        acuraciaValor: clamp01(g.valorContado>0 ? 1-(g.valorDivergente/g.valorContado) : 1),
+        acuraciaLocal: clamp01(g.locaisContados>0 ? 1-(locaisDivergentes/g.locaisContados) : 1)
+      };
+    })
+    .sort((a,b)=>a.mes.localeCompare(b.mes));
+
   // Saldo líquido por item (para ranking de maiores sobras/faltas)
   const porItemSaldo = new Map();
   for(const d of divergencias){
@@ -862,7 +912,7 @@ function calcularIndicadores({congelados, contagens, divergencias, statusPorLoca
     itensSemPreco, itensSemPrecoTotal: semPrecoPorItem.size,
     pecasContadas: totalPecasFisicas, pecasDivergentes: totalDiferencaAbs,
     qtdRecontagens, tempoMedioContagemMin, diasRestantes, eficiencia,
-    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, divergentesPorDia,
+    rankingProdutividade, porRua, porLog, contadosPorDia, porDiaRua, divergentesPorDia, porMes,
     topItensPositivos, topItensNegativos, topItensPositivosValor, topItensNegativosValor
   };
 }
