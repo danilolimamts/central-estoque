@@ -227,6 +227,10 @@ export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
     [2, 12, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência do fabricante', 'base invertida: veio de fábrica com a furação errada', 'TERMACO', 14263],
     // Sem apuracao: o SAC abriu o caso sem detalhe.
     [3, 8, 'CD_CAJAMAR', 'Falta volume/item', 'Faltou volume', '-', 'JOMINI', 10290],
+    // Conta no painel, mas o codigo do produto nao esta na aba
+    // Multiplos: cai em "Nao identificado" e mostra a lacuna de
+    // cadastro com a descricao do que voltou.
+    [7, 9, 'CD_CAJAMAR', 'Diferente do comprado', 'Divergência operacional CD', 'coluna trocada na separação', 'MANDALA', 20256],
   ];
   return bruto.map(([mes, dia, filial, motivo, submotivo, comentario, transportadora, valor], i) => ({
     pedido: `2607${10 + i}-00${100 + i}`,
@@ -238,16 +242,24 @@ export function divergenciasDemo(hoje = new Date()): DivergenciaSAC[] {
        codigo solto, todo caso caia em "Nao identificado" e o exemplo
        nao mostrava a leitura por fornecedor.
 
-       O caso 12 fica de fora de proposito: e um acessorio, nao esta na
-       aba Multiplos, e serve para o exemplo mostrar tambem como a
-       lacuna de cadastro aparece. */
-    itemProduto: i === 12 ? '4655675' : (CODIGOS_COM_FOTO[i % CODIGOS_COM_FOTO.length] ?? '4484433'),
+       O caso 12 e um acessorio: sai do painel na leitura do produto,
+       antes de chegar no cruzamento por fornecedor.
+
+       O caso 15 e o que mostra a lacuna de cadastro: e coluna de
+       elevador, conta no painel, mas o codigo nao esta na aba
+       Multiplos, entao cai em "Nao identificado". */
+    itemProduto:
+      i === 12 ? '4655675'
+      : i === 15 ? '9912345'
+      : (CODIGOS_COM_FOTO[i % CODIGOS_COM_FOTO.length] ?? '4484433'),
     produto:
       i === 12
         ? 'BORRACHA PARA SAPATA U PARA ELEVADOR 4000KG REH004'
-        : i % 3 === 0
-          ? 'ELEVADOR AUTO ELETRO HIDRAULICO 2.6 TON PRETO C/BASE'
-          : 'BASE PARA ELEVADOR AUTOMOTIVO HIDRAULICO DE 4000KG',
+        : i === 15
+          ? 'COLUNAS_ELEV HIDRAULICO 4T DOUBLE LOCK AZUL C/ CHUMBADORES -RIBEIRO-REH004'
+          : i % 3 === 0
+            ? 'ELEVADOR AUTO ELETRO HIDRAULICO 2.6 TON PRETO C/BASE'
+            : 'BASE PARA ELEVADOR AUTOMOTIVO HIDRAULICO DE 4000KG',
     motivo,
     submotivo,
     comentario,

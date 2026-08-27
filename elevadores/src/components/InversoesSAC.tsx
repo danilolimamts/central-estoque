@@ -19,7 +19,7 @@
    precisa poder conferir - e o title de cada selo mostra o comentario
    que gerou a classificacao.
    ============================================================ */
-import { useCallback, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import {
   anosDisponiveis,
   doAno,
@@ -205,6 +205,10 @@ export function InversoesSAC({
   );
   const anos = useMemo(() => anosDisponiveis(detectados), [detectados]);
   const [ano, setAno] = useState<string>('');
+  /* A lista dos produtos sem fornecedor comeca fechada: ela e o
+     detalhe de uma linha so, e aberta por padrao empurraria a tabela
+     do fornecedor para fora da tela. */
+  const [verSemCadastro, setVerSemCadastro] = useState(false);
   const anoAtivo = Number(ano) || anos[0] || new Date().getFullYear();
 
   const doAnoEscolhido = useMemo(() => doAno(inversoes, anoAtivo), [inversoes, anoAtivo]);
@@ -318,12 +322,57 @@ export function InversoesSAC({
                 </thead>
                 <tbody>
                   {fornecedores.linhas.map((f) => (
-                    <tr key={f.fornecedor} className={f.semCadastro ? 'eq-sac-sem-cadastro' : undefined}>
-                      <Td>{f.semCadastro ? <i>{f.fornecedor}</i> : f.fornecedor}</Td>
-                      <Td alinha="right" numerico>{f.quantidade}</Td>
-                      <Td alinha="right" numerico>{f.pct.toFixed(0)}%</Td>
-                      <Td alinha="right" numerico>{formatarReal(f.valor)}</Td>
-                    </tr>
+                    <Fragment key={f.fornecedor}>
+                      <tr className={f.semCadastro ? 'eq-sac-sem-cadastro' : undefined}>
+                        <Td>
+                          {f.semCadastro ? (
+                            /* A linha abre a lista dos produtos que nao
+                               casaram: o numero sozinho nao diz o que
+                               cadastrar, a descricao diz. */
+                            <button
+                              className="eq-sac-abrir"
+                              onClick={() => setVerSemCadastro((v) => !v)}
+                              aria-expanded={verSemCadastro}
+                              title="Ver quais produtos ficaram sem fornecedor"
+                            >
+                              <i>{f.fornecedor}</i>
+                              <span aria-hidden="true">{verSemCadastro ? '▲' : '▼'}</span>
+                            </button>
+                          ) : (
+                            f.fornecedor
+                          )}
+                        </Td>
+                        <Td alinha="right" numerico>{f.quantidade}</Td>
+                        <Td alinha="right" numerico>{f.pct.toFixed(0)}%</Td>
+                        <Td alinha="right" numerico>{formatarReal(f.valor)}</Td>
+                      </tr>
+                      {f.semCadastro && verSemCadastro && (
+                        <tr className="eq-sac-sem-cadastro">
+                          <td colSpan={4} className="eq-sac-itens">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Código</th>
+                                  <th>Descrição do produto devolvido</th>
+                                  <th>Casos</th>
+                                  <th>Custo</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {fornecedores.itensSemCadastro.map((i) => (
+                                  <tr key={i.codigo || i.produto}>
+                                    <td className="mono">{i.codigo || <i>sem código</i>}</td>
+                                    <td>{i.produto || <i>sem descrição na planilha do SAC</i>}</td>
+                                    <td className="mono">{i.quantidade}</td>
+                                    <td className="mono">{formatarReal(i.valor)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </Tabela>

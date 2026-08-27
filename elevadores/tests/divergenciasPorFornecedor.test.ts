@@ -150,3 +150,89 @@ describe('divergências por fornecedor', () => {
     expect(r).toMatchObject({ linhas: [], total: 0, semCadastro: 0, pctSemCadastro: 0 });
   });
 });
+
+describe('quais produtos ficaram sem fornecedor', () => {
+  /* O numero sozinho nao vira acao: "4 casos sem fornecedor" nao diz o
+     que cadastrar. A tela precisa da descricao de cada produto. */
+  const componentes = [comp({ itemVolMultiplo: '100', fabricante: 'ALFA' })];
+
+  it('lista codigo e descricao de cada produto que nao casou', () => {
+    const r = divergenciasPorFornecedor(
+      [
+        div({ itemProduto: '100', produto: 'ELEVADOR ALFA 4T', valor: 10 }),
+        div({ itemProduto: '999', produto: 'RAMPA PARA ALINHAMENTO', valor: 30 }),
+        div({ itemProduto: '888', produto: 'COLUNAS_ELEV HIDRAULICO 4T', valor: 20 }),
+      ],
+      componentes
+    );
+    expect(r.semCadastro).toBe(2);
+    expect(r.itensSemCadastro).toEqual([
+      { codigo: '999', produto: 'RAMPA PARA ALINHAMENTO', quantidade: 1, valor: 30 },
+      { codigo: '888', produto: 'COLUNAS_ELEV HIDRAULICO 4T', quantidade: 1, valor: 20 },
+    ]);
+    /* Quem tem fornecedor nao entra na lista da lacuna. */
+    expect(r.itensSemCadastro.some((i) => i.codigo === '100')).toBe(false);
+  });
+
+  it('junta as devolucoes do mesmo produto em uma linha', () => {
+    const r = divergenciasPorFornecedor(
+      [
+        div({ itemProduto: '999', produto: 'RAMPA', valor: 30 }),
+        div({ itemProduto: '999', produto: 'RAMPA', valor: 20 }),
+        div({ itemProduto: '777', produto: 'BASE SOLTA', valor: 90 }),
+      ],
+      componentes
+    );
+    const rampa = r.itensSemCadastro.find((i) => i.codigo === '999')!;
+    expect(rampa.quantidade).toBe(2);
+    expect(rampa.valor).toBe(50);
+    /* Mais casos primeiro, mesmo custando menos: o que mais volta e o
+       que mais urge cadastrar. */
+    expect(r.itensSemCadastro.map((i) => i.codigo)).toEqual(['999', '777']);
+  });
+
+  it('devolucao sem codigo entra pela descricao, sem sumir da lista', () => {
+    const r = divergenciasPorFornecedor(
+      [div({ itemProduto: '', produto: 'ELEVADOR SEM CODIGO', valor: 15 })],
+      componentes
+    );
+    expect(r.semCadastro).toBe(1);
+    expect(r.itensSemCadastro).toHaveLength(1);
+    expect(r.itensSemCadastro[0].codigo).toBe('');
+    expect(r.itensSemCadastro[0].produto).toBe('ELEVADOR SEM CODIGO');
+  });
+
+  it('aproveita a descricao da outra linha quando uma vem vazia', () => {
+    const r = divergenciasPorFornecedor(
+      [
+        div({ itemProduto: '999', produto: '', valor: 10 }),
+        div({ itemProduto: '999', produto: 'RAMPA PARA ALINHAMENTO', valor: 10 }),
+      ],
+      componentes
+    );
+    expect(r.itensSemCadastro[0].produto).toBe('RAMPA PARA ALINHAMENTO');
+    expect(r.itensSemCadastro[0].quantidade).toBe(2);
+  });
+
+  it('sem lacuna nenhuma, a lista vem vazia', () => {
+    const r = divergenciasPorFornecedor([div({ itemProduto: '100', produto: 'X' })], componentes);
+    expect(r.semCadastro).toBe(0);
+    expect(r.itensSemCadastro).toEqual([]);
+  });
+
+  it('a soma da lista fecha com o total de casos sem fornecedor', () => {
+    const r = divergenciasPorFornecedor(
+      [
+        div({ itemProduto: '999', valor: 10 }),
+        div({ itemProduto: '999', valor: 10 }),
+        div({ itemProduto: '888', valor: 5 }),
+        div({ itemProduto: '100', valor: 5 }),
+      ],
+      componentes
+    );
+    const soma = r.itensSemCadastro.reduce((s, i) => s + i.quantidade, 0);
+    expect(soma).toBe(r.semCadastro);
+    const linha = r.linhas.find((l) => l.fornecedor === NAO_IDENTIFICADO)!;
+    expect(r.itensSemCadastro.reduce((s, i) => s + i.valor, 0)).toBe(linha.valor);
+  });
+});

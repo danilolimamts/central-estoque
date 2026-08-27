@@ -890,6 +890,22 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .eq-sac-nota{ margin:8px 2px 0; font-size:11.5px; line-height:1.5; color:var(--ink-soft); }
 /* Linha do "Nao identificado": e uma lacuna, nao um fornecedor. */
 .eq-sac-sem-cadastro td{ color:var(--ink-soft); background:rgba(91,94,107,.06); }
+/* A linha abre a lista dos produtos que ficaram sem fornecedor. */
+.eq-sac-abrir{ display:inline-flex; align-items:center; gap:7px; background:none; border:none;
+  padding:0; font:inherit; color:inherit; text-decoration:underline dotted;
+  text-underline-offset:3px; }
+.eq-sac-abrir span{ font-size:8.5px; opacity:.7; }
+.eq-sac-itens{ padding:0 0 10px 22px !important; background:rgba(91,94,107,.06); }
+.eq-sac-itens table{ width:100%; border-collapse:collapse; }
+.eq-sac-itens th{ background:none; color:var(--ink-soft); font-size:9.5px; text-transform:uppercase;
+  letter-spacing:.05em; font-weight:700; padding:6px 10px 4px; text-align:left; cursor:default;
+  border-bottom:1px solid var(--line); white-space:nowrap; }
+.eq-sac-itens th:nth-child(3), .eq-sac-itens th:nth-child(4),
+.eq-sac-itens td:nth-child(3), .eq-sac-itens td:nth-child(4){ text-align:right; width:1%; }
+.eq-sac-itens td{ padding:5px 10px; font-size:11.5px; color:var(--ink);
+  border-bottom:1px solid var(--line); }
+.eq-sac-itens tr:last-child td{ border-bottom:none; }
+.eq-sac-itens td:first-child{ white-space:nowrap; font-weight:700; }
 
 /* Carimbo do build no pe do menu. Fica discreto, mas sempre visivel:
    e o que responde "estou vendo a versao nova?" sem abrir o inspetor. */

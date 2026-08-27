@@ -41,6 +41,16 @@ export interface LinhaFornecedorSAC {
   semCadastro: boolean;
 }
 
+/* Um produto que nao achou fornecedor na base mestre. Sem a descricao
+   o numero nao vira acao: "4 casos sem fornecedor" nao diz o que
+   cadastrar, "4570497 - COLUNAS_ELEV HIDRAULICO 4T" diz. */
+export interface ItemSemCadastro {
+  codigo: string;
+  produto: string;
+  quantidade: number;
+  valor: number;
+}
+
 export interface ResumoFornecedorSAC {
   linhas: LinhaFornecedorSAC[];
   /* Quantos casos entraram sem fornecedor conhecido, e o que isso
@@ -48,6 +58,9 @@ export interface ResumoFornecedorSAC {
   semCadastro: number;
   pctSemCadastro: number;
   total: number;
+  /* Quais produtos ficaram de fora, para o cadastro poder ser
+     corrigido. Do que mais aparece para o que menos aparece. */
+  itensSemCadastro: ItemSemCadastro[];
 }
 
 /* Codigo do produto -> fabricante.
@@ -77,6 +90,8 @@ export function divergenciasPorFornecedor(
 ): ResumoFornecedorSAC {
   const mapa = mapaDeFabricante(componentes);
   const somas = new Map<string, { quantidade: number; valor: number }>();
+  /* Os produtos que caem em "Nao identificado", um por codigo. */
+  const semCadastroPorItem = new Map<string, ItemSemCadastro>();
 
   for (const d of lista) {
     const codigo = d.itemProduto?.trim();
@@ -85,6 +100,24 @@ export function divergenciasPorFornecedor(
     atual.quantidade += 1;
     atual.valor += d.valor;
     somas.set(fornecedor, atual);
+
+    if (fornecedor === NAO_IDENTIFICADO) {
+      /* Devolucao sem codigo existe: entra agrupada pela descricao,
+         que e a unica pista que sobrou do que voltou. */
+      const chave = codigo || `sem codigo: ${d.produto?.trim() ?? ''}`;
+      const item = semCadastroPorItem.get(chave) ?? {
+        codigo: codigo ?? '',
+        produto: d.produto?.trim() ?? '',
+        quantidade: 0,
+        valor: 0,
+      };
+      item.quantidade += 1;
+      item.valor += d.valor;
+      /* A descricao pode faltar em uma linha e vir na outra do mesmo
+         codigo; fica a primeira que estiver preenchida. */
+      if (!item.produto) item.produto = d.produto?.trim() ?? '';
+      semCadastroPorItem.set(chave, item);
+    }
   }
 
   const total = lista.length;
@@ -111,10 +144,18 @@ export function divergenciasPorFornecedor(
   });
 
   const semCadastro = somas.get(NAO_IDENTIFICADO)?.quantidade ?? 0;
+  const itensSemCadastro = [...semCadastroPorItem.values()].sort(
+    (a, b) =>
+      b.quantidade - a.quantidade ||
+      b.valor - a.valor ||
+      a.codigo.localeCompare(b.codigo, 'pt-BR')
+  );
+
   return {
     linhas,
     semCadastro,
     pctSemCadastro: total > 0 ? (semCadastro / total) * 100 : 0,
     total,
+    itensSemCadastro,
   };
 }
