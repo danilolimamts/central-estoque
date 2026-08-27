@@ -203,6 +203,27 @@ async function irSeedPrioridadeConfigIfEmpty(){
   return seed;
 }
 
+/* ---------- Meta de produtividade ----------
+   Guardada no mesmo store de configuração (chave própria), pra não exigir
+   migração de schema. Sem registro = sem meta cadastrada, e a aba
+   Produtividade usa a média da equipe como referência, dizendo isso na tela. */
+async function irGetProdMetaConfig(){
+  const store = await irTx(IR_STORES.prioridadeConfig, 'readonly');
+  return new Promise((resolve, reject)=>{
+    const req = store.get('prod-meta');
+    req.onsuccess = ()=>resolve(req.result || null);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function irSaveProdMetaConfig(cfg){
+  const store = await irTx(IR_STORES.prioridadeConfig, 'readwrite');
+  return new Promise((resolve, reject)=>{
+    const req = store.put({key:'prod-meta', ...cfg});
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+
 /* ---------- Import meta ---------- */
 async function irSaveImportMeta(cicloId, meta){
   const store = await irTx(IR_STORES.importMeta, 'readwrite');

@@ -19,7 +19,9 @@ const IR = {
   divergencias:[], locais:[], contagens:[],
   divFilters:{search:'', local:''},
   auditFilters:{minPrioridade:0},
-  prodFilters:{de:'', ate:''},
+  prodFilters:{de:'', ate:'', usuario:'', setor:''},
+  prodSort:{col:'locaisHora', dir:'desc'},
+  prodMeta:null,
   dashFilters:{applyProdDate:true},
   compararA:null, compararB:null,
   novoCiclo:false,
@@ -85,6 +87,7 @@ async function irInit(){
 
   try{
     IR.prioridadeConfig = await irSeedPrioridadeConfigIfEmpty();
+    IR.prodMeta = await irGetProdMetaConfig();
     IR.net410Legenda = await irSeedNet410LegendaIfEmpty();
     IR.net410Ignorados = await irGetNet410IgnoradosAll();
     IR.net410Padroes = await irSeedNet410PadroesIgnoradosIfEmpty();
@@ -175,7 +178,7 @@ function irZoomOut(){ irApplyZoom((parseInt(localStorage.getItem('ir-zoom'),10)|
 const IR_TAB_LABELS = {
   dashboard:['Dashboard Executivo','Visão geral do ciclo ativo.'],
   ciclo:['NET','Meta x realizado do ciclo e detalhe de NET por Log/Rua/Tipo.'],
-  produtividade:['Produtividade','Ranking e desempenho dos colaboradores.'],
+  produtividade:['Produtividade','Ritmo, meta, qualidade e capacidade da equipe.'],
   setores:['Setores','Resumo por setor (rua) e ruas mais divergentes.'],
   divergencias:['Divergências','Itens com saldo final diferente do sistêmico.'],
   auditoria:['Auditoria Inteligente','Fila priorizada automaticamente para conferência.'],
@@ -2254,53 +2257,754 @@ function irRenderProdMatriz(p, opts){
     </tbody>
   </table></div>`;
 }
+/* ============================================================
+   PRODUTIVIDADE — análise completa
+   Responde 5 perguntas: quanto a equipe produziu, qual a produtividade por
+   hora, quem está acima/abaixo da meta, se a produção tem qualidade e se a
+   capacidade fecha a meta do ciclo.
+
+   Tudo sai dos dados que já existem no módulo (QRY0843 + Base Congelada).
+   Dependências que a base AINDA NÃO tem, e que ficam declaradas na tela em vez
+   de estimadas:
+     • Ponto eletrônico / escala  -> homem-hora é aproximado por blocos de hora
+       com registro de contagem, e "homem-hora disponível" não existe.
+     • Turno                      -> filtro fica visível e desabilitado.
+     • Tempo improdutivo          -> indicador aparece como indisponível.
+     • Complexidade da posição    -> só há SKUs e peças por local; o índice
+       composto fica preparado, sem peso inventado.
+   ============================================================ */
+const IR_PROD_META_PADRAO = {locaisPorHH:null, horasDia:8};
+/* Semáforo padrão de atingimento: >=100% verde, 80–100% amarelo, <80% vermelho. */
+function irProdSemaforo(pct){
+  if(pct>=1) return {cls:'good', dot:'🟢', txt:'Acima da meta'};
+  if(pct>=0.8) return {cls:'warn', dot:'🟡', txt:'Próximo da meta'};
+  return {cls:'bad', dot:'🔴', txt:'Abaixo da meta'};
+}
+function irProdSetFiltroSel(key, val){ IR.prodFilters[key] = val; irRenderView(); }
+function irProdSort(col){
+  const s = IR.prodSort || {col:'locaisHora', dir:'desc'};
+  IR.prodSort = (s.col===col) ? {col, dir: s.dir==='desc'?'asc':'desc'} : {col, dir:'desc'};
+  irRenderView();
+}
+/* Setor (X1 da base congelada) de cada local, pro filtro por área. */
+function irProdSetorPorLocal(){
+  if(IR._setorPorLocal && IR._setorPorLocalCiclo===(IR.cicloAtivo||{}).id) return IR._setorPorLocal;
+  const m = new Map();
+  for(const l of (IR.locais||[])) m.set(l.idLocal, l.x1 || '(sem setor)');
+  IR._setorPorLocal = m;
+  IR._setorPorLocalCiclo = (IR.cicloAtivo||{}).id;
+  return m;
+}
+/* Contagens da aba já com TODOS os filtros aplicados (período, colaborador, setor). */
+function irProdContagensAnalise(){
+  const {usuario, setor} = IR.prodFilters;
+  const setorPorLocal = irProdSetorPorLocal();
+  return irProdContagensFiltradas().filter(c=>{
+    if(usuario && c.usuario!==usuario) return false;
+    if(setor && (setorPorLocal.get(c.local)||'(sem setor)')!==setor) return false;
+    return true;
+  });
+}
+/* Histórico de rodadas por local — usa a base INTEIRA do ciclo (não a filtrada),
+   porque saber se um local precisou de recontagem depende de todas as rodadas
+   dele, mesmo as que caíram fora do período ou de outro colaborador. */
+function irProdRodadasPorLocal(){
+  const max = new Map();
+  for(const c of (IR.contagens||[])){
+    if(c.idConferencia<2) continue;
+    const atual = max.get(c.local)||0;
+    if(c.idConferencia>atual) max.set(c.local, c.idConferencia);
+  }
+  return max;
+}
+/* Núcleo de cálculo da aba. Recebe as contagens já filtradas e devolve tudo que
+   os painéis precisam — por colaborador, por dia, por hora e consolidado. */
+function irCalcProdAnalitica(contagens){
+  const maxRodadaPorLocal = irProdRodadasPorLocal();
+  const setorPorLocal = irProdSetorPorLocal();
+  const porUsuario = new Map();
+  const porDia = new Map();     // 'YYYY-MM-DD' -> {locais:Set, itens, pecas, blocos:Set}
+  const porHora = new Map();    // 0-23 -> {locais:Set, itens, pecas, blocos:Set}
+  const blocosGlobais = new Set();
+
+  for(const c of contagens){
+    // Mesma referência de horário já usada no módulo: Data Fim Contagem é quando o
+    // local foi de fato finalizado (Início pode ficar pendurado fora do expediente).
+    const dataRef = c.dataFimContagem || c.dataInicioContagem;
+    if(!dataRef) continue;
+    const dia = dataRef.slice(0,10);
+    const bloco = dataRef.slice(0,13);           // YYYY-MM-DDTHH
+    const hora = parseInt(dataRef.slice(11,13), 10);
+    const blocoUsuario = c.usuario+'|'+bloco;    // homem-hora = usuário x bloco de hora
+
+    if(!porUsuario.has(c.usuario)) porUsuario.set(c.usuario, {
+      usuario:c.usuario, locais:new Set(), itens:0, pecas:0, contagens:0,
+      blocos:new Set(), minutos:0, nMin:0,
+      locaisPrimeira:new Set(), locaisPrimeiraOk:new Set(), locaisRecontagem:new Set()
+    });
+    const gu = porUsuario.get(c.usuario);
+    gu.locais.add(c.local); gu.itens++; gu.pecas += (c.qtFis||0); gu.contagens++;
+    gu.blocos.add(bloco);
+    if(c.dataInicioContagem && c.dataFimContagem){
+      const ini=new Date(c.dataInicioContagem).getTime(), fim=new Date(c.dataFimContagem).getTime();
+      if(fim>ini){ gu.minutos += (fim-ini)/60000; gu.nMin++; }
+    }
+    // Qualidade: entre os locais em que o colaborador fez a PRIMEIRA contagem física
+    // (rodada 2), quantos fecharam sem precisar de outra rodada.
+    if(c.idConferencia===2){
+      gu.locaisPrimeira.add(c.local);
+      if((maxRodadaPorLocal.get(c.local)||2)<=2) gu.locaisPrimeiraOk.add(c.local);
+    }
+    if(c.idConferencia>=3) gu.locaisRecontagem.add(c.local);
+
+    if(!porDia.has(dia)) porDia.set(dia, {dia, locais:new Set(), itens:0, pecas:0, blocos:new Set()});
+    const gd = porDia.get(dia);
+    gd.locais.add(c.local); gd.itens++; gd.pecas += (c.qtFis||0); gd.blocos.add(blocoUsuario);
+
+    if(hora>=IR_HORA_INICIO && hora<=IR_HORA_FIM){
+      if(!porHora.has(hora)) porHora.set(hora, {hora, locais:new Set(), itens:0, pecas:0, blocos:new Set()});
+      const gh = porHora.get(hora);
+      gh.locais.add(c.local); gh.itens++; gh.pecas += (c.qtFis||0); gh.blocos.add(blocoUsuario);
+    }
+    blocosGlobais.add(blocoUsuario);
+  }
+
+  const colaboradores = Array.from(porUsuario.values()).map(g=>{
+    const hh = g.blocos.size;
+    const locais = g.locais.size;
+    const primeira = g.locaisPrimeira.size;
+    return {
+      usuario:g.usuario, locais, itens:g.itens, pecas:g.pecas, contagens:g.contagens,
+      horasHomem: hh,
+      locaisHora: hh>0 ? locais/hh : 0,
+      itensHora:  hh>0 ? g.itens/hh : 0,
+      pecasHora:  hh>0 ? g.pecas/hh : 0,
+      tempoMedioMin: g.nMin>0 ? g.minutos/g.nMin : 0,
+      minPorLocal: locais>0 ? hh*60/locais : 0,
+      recontagens: g.locaisRecontagem.size,
+      pctRecontagem: locais>0 ? g.locaisRecontagem.size/locais : 0,
+      locaisPrimeira: primeira,
+      pctPrimeira: primeira>0 ? g.locaisPrimeiraOk.size/primeira : null,
+      // Contexto de complexidade que a base JÁ permite medir (SKUs e peças por posição).
+      itensPorLocal: locais>0 ? g.itens/locais : 0,
+      pecasPorLocal: locais>0 ? g.pecas/locais : 0
+    };
+  });
+
+  const horasHomem = blocosGlobais.size;
+  const totalLocais = new Set(contagens.map(c=>c.local)).size;
+  const totalItens = contagens.length;
+  const totalPecas = contagens.reduce((s,c)=>s+(c.qtFis||0),0);
+
+  const dias = Array.from(porDia.values()).map(d=>({
+    dia:d.dia, locais:d.locais.size, itens:d.itens, pecas:d.pecas, horasHomem:d.blocos.size,
+    locaisHora: d.blocos.size>0 ? d.locais.size/d.blocos.size : 0,
+    itensHora:  d.blocos.size>0 ? d.itens/d.blocos.size : 0,
+    pecasHora:  d.blocos.size>0 ? d.pecas/d.blocos.size : 0
+  })).sort((a,b)=>a.dia.localeCompare(b.dia));
+
+  const horas = [];
+  for(let h=IR_HORA_INICIO; h<=IR_HORA_FIM; h++){
+    const g = porHora.get(h);
+    horas.push({
+      hora:h,
+      locais: g?g.locais.size:0, itens: g?g.itens:0, pecas: g?g.pecas:0,
+      horasHomem: g?g.blocos.size:0,
+      locaisHora: (g&&g.blocos.size>0) ? g.locais.size/g.blocos.size : 0
+    });
+  }
+
+  // Recontagem no nível da equipe: locais do recorte que precisaram de mais de uma
+  // rodada física, sobre os locais do recorte.
+  let locaisRecontados = 0;
+  for(const local of new Set(contagens.map(c=>c.local))){
+    if((maxRodadaPorLocal.get(local)||2)>=3) locaisRecontados++;
+  }
+  const setores = Array.from(new Set((IR.locais||[]).map(l=>l.x1||'(sem setor)'))).sort();
+
+  return {
+    colaboradores, dias, horas, horasHomem, totalLocais, totalItens, totalPecas,
+    locaisRecontados, pctRecontagem: totalLocais>0 ? locaisRecontados/totalLocais : 0,
+    locaisHora: horasHomem>0 ? totalLocais/horasHomem : 0,
+    itensHora:  horasHomem>0 ? totalItens/horasHomem  : 0,
+    pecasHora:  horasHomem>0 ? totalPecas/horasHomem  : 0,
+    minPorLocal: totalLocais>0 ? horasHomem*60/totalLocais : 0,
+    minPorItem:  totalItens>0  ? horasHomem*60/totalItens  : 0,
+    setores, setorPorLocal
+  };
+}
+/* Meta de locais/homem-hora. Quando não há meta cadastrada em Configurações, a
+   referência é a média da própria equipe no recorte — e a tela diz isso, pra
+   ninguém ler como meta oficial. */
+function irProdMetaLocaisHH(a){
+  const cfg = IR.prodMeta || IR_PROD_META_PADRAO;
+  if(cfg.locaisPorHH>0) return {valor:cfg.locaisPorHH, origem:'cadastrada'};
+  return {valor:a.locaisHora, origem:'media'};
+}
+/* Meta diária de locais do ciclo = locais congelados / dias úteis do ciclo. */
+function irProdMetaDiaria(ind){
+  const c = IR.cicloAtivo;
+  if(!c || !c.dataAbertura || !c.dataPrevistaTermino) return null;
+  const dias = irDiasUteisEntre(new Date(c.dataAbertura+'T12:00:00'), new Date(c.dataPrevistaTermino+'T12:00:00'));
+  if(!dias) return null;
+  return (ind.locaisCongelados||0)/dias;
+}
+
+/* ---------- CABEÇALHO DA ABA ---------- */
+function irRenderProdHeader(ind){
+  const c = IR.cicloAtivo;
+  return `<div class="panel prod-hero">
+    <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="prod-hero-logo">
+    <div class="prod-hero-titles">
+      <h2>Produtividade do Inventário</h2>
+      <p>${c?irEsc(irCicloLabel(c)):'Sem ciclo'} · Centro de Distribuição Cajamar</p>
+    </div>
+    <div class="prod-hero-meta">
+      <span>Atualizado em</span>
+      <strong class="mono">${new Date().toLocaleString('pt-BR')}</strong>
+    </div>
+  </div>`;
+}
+/* ---------- FILTROS ---------- */
+function irRenderProdFiltros(a){
+  const f = IR.prodFilters;
+  const usuarios = Array.from(new Set(irProdContagensBase(false).map(c=>c.usuario))).sort();
+  const temFiltro = f.de||f.ate||f.usuario||f.setor;
+  return `<div class="panel dash-filter-bar prod-filtros">
+    <div class="dash-filter-group">
+      <label>Período</label>
+      <input type="date" value="${irEsc(f.de)}" onchange="irProdSetFilter('de', this.value)">
+      <span class="dash-filter-sep">–</span>
+      <input type="date" value="${irEsc(f.ate)}" onchange="irProdSetFilter('ate', this.value)">
+    </div>
+    <div class="dash-filter-group">
+      <label>Colaborador</label>
+      <select onchange="irProdSetFiltroSel('usuario', this.value)">
+        <option value="">Todos (${usuarios.length})</option>
+        ${usuarios.map(u=>`<option value="${irEsc(u)}" ${f.usuario===u?'selected':''}>${irEsc(String(u).replace(/^MECA_/,''))}</option>`).join('')}
+      </select>
+    </div>
+    <div class="dash-filter-group">
+      <label>Área / Setor</label>
+      <select onchange="irProdSetFiltroSel('setor', this.value)">
+        <option value="">Todos</option>
+        ${a.setores.map(s=>`<option value="${irEsc(s)}" ${f.setor===s?'selected':''}>${irEsc(s)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="dash-filter-group">
+      <label>Turno</label>
+      <select disabled title="A base atual não traz turno."><option>Indisponível na base</option></select>
+    </div>
+    <label class="prod-filtro-check">
+      <input type="checkbox" ${f.incluirAbertura?'checked':''} onchange="irProdToggleAbertura()">
+      Incluir rodada 1 (abertura)
+    </label>
+    ${temFiltro ? `<button class="btn-link" onclick="irProdLimparFiltros()">Limpar filtros</button>` : ''}
+    <button class="btn btn-secondary" style="margin-left:auto;" onclick="irCompartilharProdutividade()">📤 Compartilhar produtividade</button>
+  </div>`;
+}
+function irProdLimparFiltros(){
+  IR.prodFilters.de=''; IR.prodFilters.ate=''; IR.prodFilters.usuario=''; IR.prodFilters.setor='';
+  irRenderView();
+}
+/* ---------- 6 CARDS PRINCIPAIS ---------- */
+function irRenderProdCards(a, ind, meta, metaDiaria){
+  // Comparação com o período anterior de mesmo tamanho — só quando há um período
+  // fechado nos filtros, senão não existe "anterior" com que comparar.
+  const comp = irProdComparativoAnterior();
+  const deltaTxt = comp
+    ? `<div class="delta ${comp.delta>=0?'down':'up'}">${comp.delta>=0?'▲':'▼'} ${irFmtPct(Math.abs(comp.delta))} vs. período anterior</div>`
+    : `<div class="sub">Selecione um período para comparar com o anterior</div>`;
+  // Sem meta cadastrada, a referência É a média da equipe — comparar a equipe com
+  // ela mesma daria 100% sempre, o que não informa nada. Nesse caso o card mostra a
+  // origem da referência em vez de um atingimento falso.
+  const temMeta = meta.origem==='cadastrada';
+  const pctMeta = temMeta && meta.valor>0 ? a.locaisHora/meta.valor : 0;
+  const sem = irProdSemaforo(pctMeta);
+  const realizadoDia = a.dias.length ? a.totalLocais/a.dias.length : 0;
+  const gapDia = metaDiaria!=null ? realizadoDia-metaDiaria : null;
+  return `<div class="kpi-grid prod-cards">
+    <div class="kpi-card orange">
+      <div class="num mono">${irFmtInt(a.totalLocais)}</div>
+      <div class="label">Posições inventariadas</div>
+      ${deltaTxt}
+    </div>
+    <div class="kpi-card ${temMeta?sem.cls:'orange'}">
+      <div class="num mono">${irFmtNum(a.locaisHora,1)}</div>
+      <div class="label">Posições / Homem-hora</div>
+      <div class="sub">${temMeta
+        ? `${sem.dot} ${irFmtPct(pctMeta)} da meta (${irFmtNum(meta.valor,1)})`
+        : 'Sem meta cadastrada — cadastre em Configurações'}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="num mono">${irFmtNum(a.itensHora,1)}</div>
+      <div class="label">Itens / Homem-hora</div>
+      <div class="sub">${irFmtInt(a.totalItens)} itens no recorte</div>
+    </div>
+    <div class="kpi-card">
+      <div class="num mono">${irFmtNum(a.pecasHora,1)}</div>
+      <div class="label">Peças / Homem-hora</div>
+      <div class="sub">${irFmtInt(a.totalPecas)} peças no recorte</div>
+    </div>
+    <div class="kpi-card ${metaDiaria!=null?irProdSemaforo(metaDiaria>0?realizadoDia/metaDiaria:0).cls:''}">
+      <div class="num mono">${metaDiaria!=null&&metaDiaria>0?irFmtPct(realizadoDia/metaDiaria):'—'}</div>
+      <div class="label">Atingimento da meta diária</div>
+      <div class="sub">${metaDiaria!=null
+        ? `Realizado ${irFmtNum(realizadoDia,0)}/dia · meta ${irFmtNum(metaDiaria,0)} · gap ${gapDia>=0?'+':''}${irFmtNum(gapDia,0)}`
+        : 'Ciclo sem data de abertura/término'}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="num mono">${irFmtNum(a.minPorLocal,1)}</div>
+      <div class="label">Tempo médio / posição</div>
+      <div class="sub">minutos por posição (homem-hora × 60 ÷ posições)</div>
+    </div>
+  </div>`;
+}
+/* Período anterior de mesmo tamanho, pro delta do card 1. Só existe quando os dois
+   extremos do filtro estão preenchidos. */
+function irProdComparativoAnterior(){
+  const {de, ate} = IR.prodFilters;
+  if(!de || !ate) return null;
+  const d0 = new Date(de+'T12:00:00'), d1 = new Date(ate+'T12:00:00');
+  if(isNaN(d0)||isNaN(d1)||d1<d0) return null;
+  const dias = Math.round((d1-d0)/86400000)+1;
+  const antFim = new Date(d0); antFim.setDate(antFim.getDate()-1);
+  const antIni = new Date(antFim); antIni.setDate(antIni.getDate()-dias+1);
+  const iso = d => d.toISOString().slice(0,10);
+  const dentro = (c, ini, fim) => {
+    const dia = (c.dataFimContagem||c.dataInicioContagem||'').slice(0,10);
+    return dia>=ini && dia<=fim;
+  };
+  const base = irProdContagensBase(false);
+  const atual = new Set(base.filter(c=>dentro(c, de, ate)).map(c=>c.local)).size;
+  const anterior = new Set(base.filter(c=>dentro(c, iso(antIni), iso(antFim))).map(c=>c.local)).size;
+  if(!anterior) return null;
+  return {atual, anterior, delta:(atual-anterior)/anterior};
+}
+/* ---------- EVOLUÇÃO DA PRODUTIVIDADE (dia a dia) ---------- */
+function irRenderProdEvolucao(a, metaDiaria){
+  if(!a.dias.length) return '';
+  const media = a.totalLocais/a.dias.length;
+  const W=1080, padL=64, padR=16, padT=22, padB=42, H=300;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const max = Math.max(...a.dias.map(d=>d.locais), metaDiaria||0, media)*1.12 || 1;
+  const step = plotW/a.dias.length;
+  const bw = Math.min(26, Math.max(6, step*0.5));
+  let grid='', bars='';
+  for(let i=0;i<=4;i++){
+    const v=max*i/4, y=padT+plotH-(v/max)*plotH;
+    grid += `<line x1="${padL}" x2="${W-padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" class="mes-grid"/>`
+         +  `<text x="${padL-8}" y="${(y+3.5).toFixed(1)}" text-anchor="end" class="mes-axis">${irFmtInt(v)}</text>`;
+  }
+  const passo = Math.ceil(a.dias.length/14);
+  a.dias.forEach((d,i)=>{
+    const cx = padL+step*i+step/2;
+    const h = (d.locais/max)*plotH;
+    const tip = `${irFmtDate(d.dia)}
+Locais: ${irFmtInt(d.locais)}
+Homem-hora: ${irFmtInt(d.horasHomem)}
+Locais/HH: ${irFmtNum(d.locaisHora,1)}
+Itens/HH: ${irFmtNum(d.itensHora,1)}
+Peças/HH: ${irFmtNum(d.pecasHora,1)}${metaDiaria?`
+% da meta: ${irFmtPct(d.locais/metaDiaria)}`:''}`;
+    bars += `<rect x="${(cx-bw/2).toFixed(1)}" y="${(padT+plotH-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="var(--prod-bar)"><title>${irEsc(tip)}</title></rect>`;
+    if(i%passo===0) bars += `<text x="${cx.toFixed(1)}" y="${H-22}" text-anchor="middle" class="mes-mon">${irEsc(d.dia.slice(8,10)+'/'+d.dia.slice(5,7))}</text>`;
+  });
+  const linha = (v, cls, rot) => {
+    if(!v) return '';
+    const y = padT+plotH-(v/max)*plotH;
+    return `<line x1="${padL}" x2="${W-padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" class="${cls}"/>`
+      + `<text x="${W-padR}" y="${(y-6).toFixed(1)}" text-anchor="end" class="prod-ref-lbl">${irEsc(rot)}</text>`;
+  };
+  return `<div class="panel">
+    <h3>📈 Evolução da produtividade</h3>
+    <p class="panel-sub">Locais inventariados por dia, com a meta diária do ciclo e a média da equipe no recorte. Passe o mouse na coluna para ver homem-hora e produtividade do dia.</p>
+    <div class="mes-legend">
+      <span class="mes-lg"><span class="mes-sw" style="background:var(--prod-bar)"></span>Locais inventariados</span>
+      <span class="mes-lg"><span class="mes-sw prod-sw-meta"></span>Meta diária${metaDiaria?' ('+irFmtNum(metaDiaria,0)+')':' indisponível'}</span>
+      <span class="mes-lg"><span class="mes-sw prod-sw-media"></span>Média da equipe (${irFmtNum(media,0)})</span>
+    </div>
+    <div class="mes-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Locais inventariados por dia">
+      ${grid}${bars}
+      <line x1="${padL}" x2="${W-padR}" y1="${padT+plotH}" y2="${padT+plotH}" class="mes-grid"/>
+      ${linha(media,'prod-linha-media','média')}
+      ${linha(metaDiaria,'prod-linha-meta','meta')}
+    </svg></div>
+  </div>`;
+}
+/* ---------- RANKING DE PRODUTIVIDADE ---------- */
+const IR_PROD_COLS = [
+  {key:'usuario',      lbl:'Colaborador', tipo:'txt'},
+  {key:'locais',       lbl:'Locais'},
+  {key:'itens',        lbl:'Itens'},
+  {key:'pecas',        lbl:'Peças'},
+  {key:'horasHomem',   lbl:'Homem-hora'},
+  {key:'locaisHora',   lbl:'Locais/Hora'},
+  {key:'itensHora',    lbl:'Itens/Hora'},
+  {key:'pecasHora',    lbl:'Peças/Hora'},
+  {key:'meta',         lbl:'Meta'},
+  {key:'pctMeta',      lbl:'% Meta'},
+  {key:'recontagens',  lbl:'Recontagens'},
+  {key:'pctPrimeira',  lbl:'% 1ª Contagem'}
+];
+function irRenderProdRanking(a, meta){
+  if(!a.colaboradores.length) return `<div class="panel"><h3>🏅 Ranking de produtividade</h3><p class="field-hint">Sem contagens no recorte selecionado.</p></div>`;
+  const s = IR.prodSort || {col:'locaisHora', dir:'desc'};
+  const linhas = a.colaboradores.map(r=>({
+    ...r, meta: meta.valor, pctMeta: meta.valor>0 ? r.locaisHora/meta.valor : 0
+  })).sort((x,y)=>{
+    const dir = s.dir==='desc' ? -1 : 1;
+    if(s.col==='usuario') return dir*String(x.usuario).localeCompare(String(y.usuario));
+    const vx = x[s.col]==null?-1:x[s.col], vy = y[s.col]==null?-1:y[s.col];
+    return dir*(vx-vy);
+  });
+  const seta = k => s.col===k ? (s.dir==='desc'?' ▼':' ▲') : '';
+  return `<div class="panel">
+    <h3>🏅 Ranking de produtividade</h3>
+    <p class="panel-sub">Ordenado por <strong>${irEsc((IR_PROD_COLS.find(c=>c.key===s.col)||{}).lbl||'Locais/Hora')}</strong> — clique em qualquer coluna para reordenar. A comparação justa é por produtividade/hora: quem fez mais locais no total não é necessariamente mais produtivo.</p>
+    <div class="table-wrap"><table class="prod-rank">
+      <thead><tr>
+        <th>#</th>
+        ${IR_PROD_COLS.map(c=>`<th class="prod-th" onclick="irProdSort('${c.key}')">${irEsc(c.lbl)}${seta(c.key)}</th>`).join('')}
+      </tr></thead>
+      <tbody>${linhas.map((r,i)=>{
+        const sem = irProdSemaforo(r.pctMeta);
+        return `<tr>
+          <td class="mono">${i+1}</td>
+          <td>${sem.dot} ${irEsc(String(r.usuario).replace(/^MECA_/,''))}</td>
+          <td class="mono">${irFmtInt(r.locais)}</td>
+          <td class="mono">${irFmtInt(r.itens)}</td>
+          <td class="mono">${irFmtInt(r.pecas)}</td>
+          <td class="mono">${irFmtInt(r.horasHomem)}</td>
+          <td class="mono" style="font-weight:700;">${irFmtNum(r.locaisHora,1)}</td>
+          <td class="mono">${irFmtNum(r.itensHora,1)}</td>
+          <td class="mono">${irFmtNum(r.pecasHora,1)}</td>
+          <td class="mono">${irFmtNum(r.meta,1)}</td>
+          <td class="mono prod-${sem.cls}">${irFmtPct(r.pctMeta)}</td>
+          <td class="mono">${irFmtInt(r.recontagens)}</td>
+          <td class="mono">${r.pctPrimeira==null?'—':irFmtPct(r.pctPrimeira)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    <p class="field-hint" style="margin-top:8px;">🟢 acima da meta · 🟡 entre 80% e 100% · 🔴 abaixo de 80%. Meta em uso: ${irFmtNum(meta.valor,1)} locais/homem-hora ${meta.origem==='media'?'(referência automática — média da equipe no recorte, pois não há meta cadastrada em Configurações)':'(cadastrada em Configurações)'}.</p>
+  </div>`;
+}
+/* ---------- RITMO DA OPERAÇÃO (hora a hora) ---------- */
+function irRenderProdRitmo(a){
+  const horas = a.horas;
+  const temDado = horas.some(h=>h.locais>0);
+  if(!temDado) return '';
+  const comDado = horas.filter(h=>h.locais>0);
+  const pico = comDado.reduce((m,h)=>h.locaisHora>m.locaisHora?h:m, comDado[0]);
+  const vale = comDado.reduce((m,h)=>h.locaisHora<m.locaisHora?h:m, comDado[0]);
+  const W=1080, padL=64, padR=16, padT=22, padB=42, H=300;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const max = Math.max(...horas.map(h=>h.locais))*1.12 || 1;
+  const maxProd = Math.max(...horas.map(h=>h.locaisHora)) || 1;
+  const step = plotW/horas.length;
+  const bw = Math.min(26, step*0.5);
+  let grid='', bars='', pts=[];
+  for(let i=0;i<=4;i++){
+    const v=max*i/4, y=padT+plotH-(v/max)*plotH;
+    grid += `<line x1="${padL}" x2="${W-padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" class="mes-grid"/>`
+         +  `<text x="${padL-8}" y="${(y+3.5).toFixed(1)}" text-anchor="end" class="mes-axis">${irFmtInt(v)}</text>`;
+  }
+  horas.forEach((h,i)=>{
+    const cx=padL+step*i+step/2, hh=(h.locais/max)*plotH;
+    const tip = `${String(h.hora).padStart(2,'0')}h
+Locais: ${irFmtInt(h.locais)}
+Itens: ${irFmtInt(h.itens)}
+Peças: ${irFmtInt(h.pecas)}
+Homem-hora: ${irFmtInt(h.horasHomem)}
+Locais/HH: ${h.horasHomem?irFmtNum(h.locaisHora,1):'sem base'}`;
+    bars += `<rect x="${(cx-bw/2).toFixed(1)}" y="${(padT+plotH-hh).toFixed(1)}" width="${bw.toFixed(1)}" height="${hh.toFixed(1)}" rx="3" fill="var(--prod-bar)"><title>${irEsc(tip)}</title></rect>`
+         +  `<text x="${cx.toFixed(1)}" y="${H-22}" text-anchor="middle" class="mes-mon">${String(h.hora).padStart(2,'0')}h</text>`;
+    if(h.horasHomem>0) pts.push([cx, padT+plotH-(h.locaisHora/maxProd)*plotH*0.9]);
+  });
+  const linha = pts.length>1 ? `<polyline points="${pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" class="prod-linha-prod"/>` : '';
+  return `<div class="panel">
+    <h3>⏱️ Ritmo da operação</h3>
+    <p class="panel-sub">Volume por hora do expediente (06h–21h) e a produtividade daquela faixa. A linha usa escala própria — é o ritmo (locais por homem-hora), não o volume.</p>
+    <div class="mes-legend">
+      <span class="mes-lg"><span class="mes-sw" style="background:var(--prod-bar)"></span>Locais inventariados</span>
+      <span class="mes-lg"><span class="mes-sw prod-sw-prod"></span>Locais / homem-hora</span>
+      <span class="mes-legend-right">Passe o mouse para ver itens, peças e homem-hora da hora</span>
+    </div>
+    <div class="mes-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ritmo da operação por hora">
+      ${grid}${bars}
+      <line x1="${padL}" x2="${W-padR}" y1="${padT+plotH}" y2="${padT+plotH}" class="mes-grid"/>
+      ${linha}
+    </svg></div>
+    <div class="prod-destaques">
+      ${pico.hora!==vale.hora ? `
+      <div class="prod-destaque good"><span>🟢 Pico de produtividade</span><strong>${String(pico.hora).padStart(2,'0')}h · ${irFmtNum(pico.locaisHora,1)} locais/HH</strong></div>
+      <div class="prod-destaque bad"><span>🔴 Menor produtividade</span><strong>${String(vale.hora).padStart(2,'0')}h · ${irFmtNum(vale.locaisHora,1)} locais/HH</strong></div>`
+      : `<div class="prod-destaque"><span>Ritmo ao longo do dia</span><strong>Uniforme — nenhuma hora se destaca</strong></div>`}
+      <div class="prod-destaque"><span>Maior volume</span><strong>${(()=>{const m=comDado.reduce((x,h)=>h.locais>x.locais?h:x,comDado[0]);return String(m.hora).padStart(2,'0')+'h · '+irFmtInt(m.locais)+' locais';})()}</strong></div>
+    </div>
+  </div>`;
+}
+/* ---------- CAPACIDADE OPERACIONAL ---------- */
+function irRenderProdCapacidade(a, meta){
+  const capacidade = a.horasHomem*meta.valor;
+  const util = capacidade>0 ? a.totalLocais/capacidade : 0;
+  const gap = a.totalLocais-capacidade;
+  return `<div class="panel">
+    <h3>🧰 Capacidade operacional</h3>
+    <p class="panel-sub">Capacidade teórica = homem-hora × meta de locais/homem-hora. O homem-hora <strong>disponível</strong> (escala prevista) não existe na base atual — o valor abaixo é o homem-hora <strong>utilizado</strong>, medido pelos registros de contagem.</p>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="num mono">${irFmtInt(a.colaboradores.length)}</div><div class="label">Colaboradores ativos</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(a.horasHomem)}</div><div class="label">Homem-hora utilizado</div><div class="sub">disponível: não há escala na base</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(capacidade)}</div><div class="label">Capacidade teórica (locais)</div></div>
+      <div class="kpi-card orange"><div class="num mono">${irFmtInt(a.totalLocais)}</div><div class="label">Produção realizada</div></div>
+      <div class="kpi-card ${irProdSemaforo(util).cls}"><div class="num mono">${irFmtPct(util)}</div><div class="label">Capacidade utilizada</div></div>
+      <div class="kpi-card ${gap>=0?'good':'bad'}"><div class="num mono">${gap>=0?'+':''}${irFmtInt(gap)}</div><div class="label">Gap de produção</div></div>
+    </div>
+    <div class="prod-barra"><div class="prod-barra-fill ${irProdSemaforo(util).cls}" style="width:${Math.min(100,util*100).toFixed(1)}%;"></div></div>
+    <p class="field-hint">${irFmtPct(util)} da capacidade teórica no recorte.</p>
+  </div>`;
+}
+/* ---------- PROJEÇÃO DE FECHAMENTO ---------- */
+function irRenderProdProjecao(a, ind){
+  const metaCiclo = ind.locaisCongelados||0;
+  const realizado = ind.locaisConcluidos||0;
+  const diasTrab = a.dias.length;
+  const diasRest = ind.diasRestantes;
+  const mediaDia = diasTrab>0 ? a.totalLocais/diasTrab : 0;
+  const falta = Math.max(0, metaCiclo-realizado);
+  const necessarioDia = (diasRest && diasRest>0) ? falta/diasRest : null;
+  const projecao = (diasRest!=null) ? realizado + mediaDia*diasRest : null;
+  const ok = projecao!=null && projecao>=metaCiclo;
+  return `<div class="panel">
+    <h3>🎯 Projeção de fechamento</h3>
+    <p class="panel-sub">Projeção = realizado até hoje + (média diária do recorte × dias úteis restantes do ciclo).</p>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="num mono">${irFmtInt(metaCiclo)}</div><div class="label">Meta do ciclo</div><div class="sub">locais congelados</div></div>
+      <div class="kpi-card orange"><div class="num mono">${irFmtInt(realizado)}</div><div class="label">Realizado</div><div class="sub">${metaCiclo>0?irFmtPct(realizado/metaCiclo):'—'} da meta</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(diasTrab)}</div><div class="label">Dias trabalhados</div><div class="sub">no recorte</div></div>
+      <div class="kpi-card"><div class="num mono">${diasRest==null?'—':irFmtInt(diasRest)}</div><div class="label">Dias restantes</div><div class="sub">dias úteis</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(mediaDia,0)}</div><div class="label">Média diária atual</div><div class="sub">necessário: ${necessarioDia==null?'—':irFmtNum(necessarioDia,0)}/dia</div></div>
+      <div class="kpi-card ${projecao==null?'':(ok?'good':'bad')}">
+        <div class="num mono">${projecao==null?'—':irFmtInt(projecao)}</div>
+        <div class="label">Projeção de fechamento</div>
+        <div class="sub">${projecao==null?'sem data de término no ciclo':(ok?'🟢 Meta projetada':'🔴 Risco de não atingimento')} · gap ${projecao==null?'—':(projecao-metaCiclo>=0?'+':'')+irFmtInt(projecao-metaCiclo)}</div>
+      </div>
+    </div>
+  </div>`;
+}
+/* ---------- PRODUTIVIDADE × QUALIDADE (dispersão com 4 quadrantes) ---------- */
+function irRenderProdQualidade(a, meta){
+  const pts = a.colaboradores.filter(c=>c.pctPrimeira!=null && c.horasHomem>0);
+  if(pts.length<2) return `<div class="panel"><h3>🎯 Produtividade × Qualidade</h3><p class="field-hint">São necessários ao menos 2 colaboradores com primeira contagem registrada no recorte.</p></div>`;
+  const mediaQual = pts.reduce((s,c)=>s+c.pctPrimeira,0)/pts.length;
+  const W=1080, padL=64, padR=20, padT=20, padB=44, H=380;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const maxX = Math.max(...pts.map(c=>c.locaisHora), meta.valor)*1.15 || 1;
+  const minY = Math.min(...pts.map(c=>c.pctPrimeira), mediaQual)*0.98;
+  const maxY = 1;
+  const spanY = Math.max(0.02, maxY-minY);
+  const px = v => padL + (v/maxX)*plotW;
+  const py = v => padT + plotH - ((v-minY)/spanY)*plotH;
+  const cutX = px(meta.valor), cutY = py(mediaQual);
+  // O rótulo fica ancorado no lado externo do quadrante e some quando o quadrante
+  // é estreito demais pra caber o texto — melhor sem legenda do que com legenda
+  // vazando por cima do quadrante vizinho.
+  const quad = (x,y,w,h,cls,txt,dir) => {
+    const rect = `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0,w).toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" class="prod-quad ${cls}"/>`;
+    if(w < txt.length*6.2 + 16) return rect;
+    const tx = dir==='end' ? x+w-8 : x+8;
+    return rect + `<text x="${tx.toFixed(1)}" y="${(y+16).toFixed(1)}" text-anchor="${dir||'start'}" class="prod-quad-lbl">${irEsc(txt)}</text>`;
+  };
+  const bolas = pts.map(c=>{
+    const x=px(c.locaisHora), y=py(c.pctPrimeira);
+    const tip = `${String(c.usuario).replace(/^MECA_/,'')}
+Locais/HH: ${irFmtNum(c.locaisHora,1)}
+1ª contagem correta: ${irFmtPct(c.pctPrimeira)}
+Locais: ${irFmtInt(c.locais)} · Homem-hora: ${irFmtInt(c.horasHomem)}`;
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" class="prod-dot"><title>${irEsc(tip)}</title></circle>`;
+  }).join('');
+  return `<div class="panel">
+    <h3>🎯 Produtividade × Qualidade</h3>
+    <p class="panel-sub">Cada ponto é um colaborador. Eixo X: locais por homem-hora. Eixo Y: % de locais que fecharam já na primeira contagem física. Corte vertical na meta, corte horizontal na média de qualidade da equipe (${irFmtPct(mediaQual)}).</p>
+    <div class="mes-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Dispersão produtividade x qualidade">
+      ${quad(cutX, padT, padL+plotW-cutX, cutY-padT, 'q-ref', 'Referência — rápido e certo', 'end')}
+      ${quad(padL, padT, cutX-padL, cutY-padT, 'q-opo', 'Oportunidade de ganho')}
+      ${quad(cutX, cutY, padL+plotW-cutX, padT+plotH-cutY, 'q-risco', 'Velocidade com risco', 'end')}
+      ${quad(padL, cutY, cutX-padL, padT+plotH-cutY, 'q-acao', 'Prioridade de ação')}
+      <line x1="${cutX.toFixed(1)}" x2="${cutX.toFixed(1)}" y1="${padT}" y2="${padT+plotH}" class="prod-corte"/>
+      <line x1="${padL}" x2="${padL+plotW}" y1="${cutY.toFixed(1)}" y2="${cutY.toFixed(1)}" class="prod-corte"/>
+      ${bolas}
+      <line x1="${padL}" x2="${padL+plotW}" y1="${padT+plotH}" y2="${padT+plotH}" class="mes-grid"/>
+      <text x="${padL}" y="${H-14}" class="mes-mon">0</text>
+      <text x="${padL+plotW}" y="${H-14}" text-anchor="end" class="mes-mon">${irFmtNum(maxX,1)} locais/HH</text>
+      <text x="${padL-8}" y="${(padT+10)}" text-anchor="end" class="mes-axis">${irFmtPct(maxY)}</text>
+      <text x="${padL-8}" y="${(padT+plotH)}" text-anchor="end" class="mes-axis">${irFmtPct(minY)}</text>
+    </svg></div>
+  </div>`;
+}
+/* ---------- RECONTAGEM ---------- */
+function irRenderProdRecontagem(a){
+  const comRec = a.colaboradores.filter(c=>c.recontagens>0).sort((x,y)=>y.pctRecontagem-x.pctRecontagem);
+  const mediaPorColab = a.colaboradores.length ? a.colaboradores.reduce((s,c)=>s+c.recontagens,0)/a.colaboradores.length : 0;
+  const pior = comRec[0];
+  const max = Math.max(1, ...a.colaboradores.map(c=>c.pctRecontagem));
+  return `<div class="panel">
+    <h3>🔁 Recontagem</h3>
+    <p class="panel-sub">Local recontado = precisou de mais de uma rodada física para fechar. O histórico de rodadas usa o ciclo inteiro, mesmo quando o filtro de período recorta a visão.</p>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="num mono">${irFmtInt(a.locaisRecontados)}</div><div class="label">Locais recontados</div></div>
+      <div class="kpi-card ${a.pctRecontagem>0.1?'bad':''}"><div class="num mono">${irFmtPct(a.pctRecontagem)}</div><div class="label">% de recontagem</div><div class="sub">sobre os locais do recorte</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(mediaPorColab,1)}</div><div class="label">Média por colaborador</div></div>
+      <div class="kpi-card ${pior?'bad':''}"><div class="num mono" style="font-size:16px;">${pior?irEsc(String(pior.usuario).replace(/^MECA_/,'')):'—'}</div><div class="label">Maior índice</div><div class="sub">${pior?irFmtPct(pior.pctRecontagem)+' dos locais dele':'sem recontagens no recorte'}</div></div>
+    </div>
+    ${a.colaboradores.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Colaborador</th><th>Locais</th><th>Recontagens</th><th>% Recontagem</th><th style="width:34%;"></th></tr></thead>
+      <tbody>${a.colaboradores.slice().sort((x,y)=>y.pctRecontagem-x.pctRecontagem).map(c=>`<tr>
+        <td>${irEsc(String(c.usuario).replace(/^MECA_/,''))}</td>
+        <td class="mono">${irFmtInt(c.locais)}</td>
+        <td class="mono">${irFmtInt(c.recontagens)}</td>
+        <td class="mono">${irFmtPct(c.pctRecontagem)}</td>
+        <td><div class="prod-barra mini"><div class="prod-barra-fill ${c.pctRecontagem>0.1?'bad':'warn'}" style="width:${(c.pctRecontagem/max*100).toFixed(1)}%;"></div></div></td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : ''}
+  </div>`;
+}
+/* ---------- TEMPO E EFICIÊNCIA + COMPLEXIDADE ---------- */
+function irRenderProdTempo(a){
+  return `<div class="panel">
+    <h3>⏳ Tempo e eficiência</h3>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="num mono">${irFmtInt(a.horasHomem)}</div><div class="label">Homem-hora total</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(a.horasHomem)}</div><div class="label">Homem-hora produtivo</div><div class="sub">todo bloco medido tem contagem</div></div>
+      <div class="kpi-card"><div class="num mono">—</div><div class="label">Homem-hora improdutivo</div><div class="sub">Indicador não disponível na base atual</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(a.minPorLocal,1)}</div><div class="label">Tempo médio / posição</div><div class="sub">minutos</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(a.minPorItem,2)}</div><div class="label">Tempo médio / item</div><div class="sub">minutos</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtNum(a.dias.length?a.horasHomem/a.dias.length:0,1)}</div><div class="label">Homem-hora / dia</div></div>
+    </div>
+    <p class="field-hint">Homem-hora improdutivo depende de apontamento de pausa/deslocamento, que a QRY0843 não traz. O card fica preparado para receber o dado quando a fonte existir — nada é estimado aqui.</p>
+  </div>
+  <div class="panel">
+    <h3>🧩 Produtividade ajustada por complexidade</h3>
+    <p class="panel-sub">Comparar quem inventariou posições simples com quem pegou posições densas exige um índice de complexidade. Da lista necessária, a base atual só entrega parte.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Componente</th><th>Situação na base atual</th></tr></thead>
+      <tbody>
+        <tr><td>SKUs (itens distintos) na posição</td><td>✅ disponível — QRY0843</td></tr>
+        <tr><td>Peças na posição</td><td>✅ disponível — QRY0843 (QT_FIS)</td></tr>
+        <tr><td>Necessidade de recontagem</td><td>✅ disponível — rodadas por local</td></tr>
+        <tr><td>Quantidade de endereços por posição</td><td>❌ não disponível</td></tr>
+        <tr><td>Altura / acessibilidade da posição</td><td>❌ não disponível</td></tr>
+        <tr><td>Peso da complexidade no índice</td><td>❌ não definido pela operação</td></tr>
+      </tbody>
+    </table></div>
+    <p class="field-hint" style="margin-top:8px;">Enquanto os pesos não forem definidos, nenhum índice composto é calculado — a tabela abaixo mostra a densidade real de cada colaborador, que é o insumo pronto do índice.</p>
+    ${a.colaboradores.length ? `<div class="table-wrap" style="margin-top:10px;"><table>
+      <thead><tr><th>Colaborador</th><th>Itens / posição</th><th>Peças / posição</th><th>Locais/Hora</th></tr></thead>
+      <tbody>${a.colaboradores.slice().sort((x,y)=>y.pecasPorLocal-x.pecasPorLocal).map(c=>`<tr>
+        <td>${irEsc(String(c.usuario).replace(/^MECA_/,''))}</td>
+        <td class="mono">${irFmtNum(c.itensPorLocal,1)}</td>
+        <td class="mono">${irFmtNum(c.pecasPorLocal,1)}</td>
+        <td class="mono">${irFmtNum(c.locaisHora,1)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : ''}
+  </div>`;
+}
+/* ---------- DIAGNÓSTICO AUTOMÁTICO ---------- */
+function irRenderProdDiagnostico(a, ind, meta, metaDiaria){
+  if(!a.colaboradores.length) return '';
+  const frases = [];
+  const alertas = [];
+  const pctMeta = meta.origem==='cadastrada' && meta.valor>0 ? a.locaisHora/meta.valor : 0;
+  const sem = irProdSemaforo(pctMeta);
+  if(meta.origem==='cadastrada'){
+    frases.push(`A produtividade da equipe está ${irFmtPct(Math.abs(pctMeta-1))} ${pctMeta>=1?'acima':'abaixo'} da meta (${irFmtNum(a.locaisHora,1)} contra ${irFmtNum(meta.valor,1)} locais/homem-hora).`);
+  } else {
+    frases.push(`A equipe está em ${irFmtNum(a.locaisHora,1)} locais por homem-hora no recorte. Não há meta de produtividade cadastrada, então esse valor está sendo usado como referência.`);
+  }
+  if(meta.origem==='cadastrada'){
+    alertas.push({cls:sem.cls, txt:`${sem.dot} Produtividade da equipe: ${irFmtPct(pctMeta)} da meta`});
+  } else {
+    alertas.push({cls:'warn', txt:'🟡 Sem meta de produtividade cadastrada'});
+  }
+
+  const comDado = a.horas.filter(h=>h.horasHomem>0);
+  if(comDado.length>1){
+    const pico = comDado.reduce((m,h)=>h.locaisHora>m.locaisHora?h:m, comDado[0]);
+    const vale = comDado.reduce((m,h)=>h.locaisHora<m.locaisHora?h:m, comDado[0]);
+    if(pico.hora!==vale.hora){
+      frases.push(`O melhor ritmo do dia acontece às ${String(pico.hora).padStart(2,'0')}h (${irFmtNum(pico.locaisHora,1)} locais/hora) e o mais fraco às ${String(vale.hora).padStart(2,'0')}h (${irFmtNum(vale.locaisHora,1)}).`);
+    }
+  }
+  const abaixo = a.colaboradores.filter(c=>meta.valor>0 && c.locaisHora/meta.valor<0.8);
+  if(abaixo.length){
+    frases.push(`${abaixo.length} colaborador${abaixo.length>1?'es estão':' está'} abaixo de 80% da meta: ${abaixo.slice(0,4).map(c=>String(c.usuario).replace(/^MECA_/,'')).join(', ')}${abaixo.length>4?' e outros':''}.`);
+    alertas.push({cls:'bad', txt:`🔴 ${abaixo.length} colaborador(es) abaixo de 80% da meta`});
+  } else {
+    alertas.push({cls:'good', txt:'🟢 Nenhum colaborador abaixo de 80% da meta'});
+  }
+  frases.push(`A taxa de recontagem está em ${irFmtPct(a.pctRecontagem)} dos locais do recorte (${irFmtInt(a.locaisRecontados)} locais precisaram de mais de uma rodada física).`);
+  if(a.pctRecontagem>0.1) alertas.push({cls:'bad', txt:`🔴 Recontagem em ${irFmtPct(a.pctRecontagem)} dos locais`});
+
+  const metaCiclo = ind.locaisCongelados||0, realizado = ind.locaisConcluidos||0;
+  const mediaDia = a.dias.length ? a.totalLocais/a.dias.length : 0;
+  if(ind.diasRestantes!=null && metaCiclo>0){
+    const projecao = realizado + mediaDia*ind.diasRestantes;
+    frases.push(`Mantendo o ritmo atual, a projeção indica ${irFmtPct(projecao/metaCiclo)} da meta do ciclo (${irFmtInt(projecao)} de ${irFmtInt(metaCiclo)} locais).`);
+    alertas.push(projecao>=metaCiclo
+      ? {cls:'good', txt:'🟢 Projeção acima da meta do ciclo'}
+      : {cls:'bad',  txt:`🔴 Projeção abaixo da meta — faltam ${irFmtInt(metaCiclo-projecao)} locais`});
+  }
+  const melhor = a.colaboradores.slice().sort((x,y)=>y.locaisHora-x.locaisHora)[0];
+  const menor  = a.colaboradores.slice().sort((x,y)=>x.locaisHora-y.locaisHora)[0];
+  return `<div class="panel">
+    <h3>🧠 Diagnóstico da produtividade</h3>
+    <p class="panel-sub">Texto gerado a partir dos dados do recorte selecionado — muda junto com os filtros.</p>
+    <div class="prod-alertas">${alertas.map(al=>`<span class="prod-alerta ${al.cls}">${irEsc(al.txt)}</span>`).join('')}</div>
+    <div class="prod-diag">${frases.map(f=>`<p>${irEsc(f)}</p>`).join('')}</div>
+    ${melhor&&menor&&melhor!==menor ? `<div class="prod-destaques">
+      <div class="prod-destaque good"><span>Maior produtividade</span><strong>${irEsc(String(melhor.usuario).replace(/^MECA_/,''))} · ${irFmtNum(melhor.locaisHora,1)} locais/HH</strong></div>
+      <div class="prod-destaque bad"><span>Menor produtividade</span><strong>${irEsc(String(menor.usuario).replace(/^MECA_/,''))} · ${irFmtNum(menor.locaisHora,1)} locais/HH</strong></div>
+    </div>` : ''}
+  </div>`;
+}
 function irRenderProdutividade(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem dados', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  const contagens = irProdContagensFiltradas();
-  const p = irCalcProdutividade(contagens);
-  const maxLocais = Math.max(1, ...p.ranking.map(r=>r.locais));
+  const contagens = irProdContagensAnalise();
+  const a = irCalcProdAnalitica(contagens);
+  const p = irCalcProdutividade(contagens); // pódio, matriz hora a hora e exports
+  const meta = irProdMetaLocaisHH(a);
+  const metaDiaria = irProdMetaDiaria(ind);
+  if(!contagens.length){
+    return `${irRenderProdHeader(ind)}${irRenderProdFiltros(a)}
+      <div class="panel"><p class="field-hint">Nenhuma contagem no recorte selecionado. Ajuste o período, o colaborador ou o setor.</p></div>`;
+  }
   return `
-    <div class="filter-bar">
-      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">De</label>
-      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.de)}" onchange="irProdSetFilter('de', this.value)">
-      <label style="display:inline;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);">Até</label>
-      <input type="date" style="width:auto;" value="${irEsc(IR.prodFilters.ate)}" onchange="irProdSetFilter('ate', this.value)">
-      ${(IR.prodFilters.de||IR.prodFilters.ate) ? `<button class="btn-link" onclick="irProdSetFilter('de','');IR.prodFilters.ate='';irRenderView();">Limpar filtro</button>` : ''}
-      <label style="display:flex;align-items:center;gap:5px;margin:0;text-transform:none;font-size:12px;color:var(--ink-soft);cursor:pointer;">
-        <input type="checkbox" style="width:auto;" ${IR.prodFilters.incluirAbertura?'checked':''} onchange="irProdToggleAbertura()">
-        Incluir contagem de abertura (rodada 1) — exemplo de visualização
-      </label>
-      <button class="btn btn-secondary" style="margin-left:auto;" onclick="irCompartilharProdutividade()">📤 Compartilhar produtividade da equipe</button>
-    </div>
-    ${IR.prodFilters.incluirAbertura ? `<p class="field-hint" style="color:var(--orange);margin:-8px 0 12px;">A rodada 1 (abertura do inventário) está incluída só para pré-visualizar o design — por padrão ela não conta como produtividade real de conferência.</p>` : ''}
-    <div class="kpi-grid">
-      <div class="kpi-card"><div class="num mono">${p.ranking.length}</div><div class="label">Colaboradores ativos</div></div>
-      <div class="kpi-card orange"><div class="num mono">${irFmtInt(p.totalLocais)}</div><div class="label">Locais contados (distintos)</div></div>
-      <div class="kpi-card"><div class="num mono">${irFmtInt(p.totalItens)}</div><div class="label">Itens contados</div></div>
-      <div class="kpi-card"><div class="num mono">${irFmtInt(p.totalPecas)}</div><div class="label">Peças contadas</div></div>
-      <div class="kpi-card"><div class="num mono">${irFmtNum(p.itensPorHomemHora,1)}</div><div class="label">Itens / Homem-Hora</div></div>
-      <div class="kpi-card"><div class="num mono">${irFmtNum(p.pecasPorHomemHora,1)}</div><div class="label">Peças / Homem-Hora</div></div>
-    </div>
-    <p class="field-hint" style="margin:-8px 0 14px;">Homem-hora = nº de blocos de hora distintos em que cada colaborador registrou ao menos 1 contagem (aproximação, sem ponto eletrônico). Total no período: ${irFmtInt(p.horasHomem)} horas-homem.</p>
-    <div class="panel">
-      <h3>Locais por colaborador, hora a hora</h3>
-      <p class="panel-sub">Cada célula é o número de locais distintos que o colaborador contou naquele horário. Janela de expediente: 06h–22h (soma os dias do período filtrado).</p>
-      ${irRenderProdMatriz(p)}
-    </div>
+    ${irRenderProdHeader(ind)}
+    ${irRenderProdFiltros(a)}
+    ${IR.prodFilters.incluirAbertura ? `<p class="field-hint" style="color:var(--orange);margin:-8px 0 12px;">A rodada 1 (abertura do inventário) está incluída — ela é sistêmica e não representa produtividade real de conferência.</p>` : ''}
+    ${irRenderProdCards(a, ind, meta, metaDiaria)}
+    <p class="field-hint" style="margin:-8px 0 14px;">Homem-hora = nº de blocos de hora distintos em que cada colaborador registrou ao menos 1 contagem (aproximação, sem ponto eletrônico). Total no recorte: ${irFmtInt(a.horasHomem)} homem-hora.</p>
+    ${irRenderProdDiagnostico(a, ind, meta, metaDiaria)}
+    ${irRenderProdEvolucao(a, metaDiaria)}
+    ${irRenderProdRanking(a, meta)}
+    ${irRenderProdRitmo(a)}
+    ${irRenderProdCapacidade(a, meta)}
+    ${irRenderProdProjecao(a, ind)}
+    ${irRenderProdQualidade(a, meta)}
+    ${irRenderProdRecontagem(a)}
+    ${irRenderProdTempo(a)}
     <div class="panel">
       <div class="panel-head-row">
-        <h3>Ranking de colaboradores (por locais contados)</h3>
+        <h3>🏆 Pódio da equipe (por locais contados)</h3>
         <button class="btn btn-secondary" onclick="irExportarRankingImagem()">🖼️ Exportar ranking (imagem)</button>
       </div>
       ${irRenderPodio(p.ranking)}
-      <div class="rank-list">${p.ranking.map((r,i)=>`<div class="rank-item">
-        <span class="rank-pos">${irMedalha(i)}</span>
-        <div class="rank-bar-wrap">
-          <div class="rank-key"><span>${irEsc(r.usuario)}</span><span class="mono">${r.locais} locais · ${r.itens} itens · ${r.horasAtivas}h ativas · ${irFmtNum(r.tempoMedioMin,1)} min/contagem</span></div>
-          <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${(r.locais/maxLocais*100).toFixed(0)}%;"></div></div>
-        </div>
-      </div>`).join('') || '<p class="field-hint">Sem contagens registradas.</p>'}</div>
+    </div>
+    <div class="panel">
+      <h3>Locais por colaborador, hora a hora</h3>
+      <p class="panel-sub">Cada célula é o número de locais distintos que o colaborador contou naquele horário. Janela de expediente: 06h–22h (soma os dias do recorte).</p>
+      ${irRenderProdMatriz(p)}
     </div>
   `;
 }
@@ -3181,9 +3885,42 @@ function irRenderConfiguracoes(){
     <p class="field-hint" id="ir-cfg-soma" style="margin-top:8px;">Soma atual: ${(soma*100).toFixed(0)}%</p>
     <div class="form-actions"><button class="btn btn-primary" onclick="irSalvarPrioridadeConfig()">Salvar pesos</button></div>
   </div>
+  ${irRenderProdMetaConfig()}
   ${irRenderNet410LegendaConfig()}
   ${irRenderNet410IgnoradosConfig()}
   ${irRenderNet410PadroesConfig()}`;
+}
+/* Meta de produtividade usada na aba Produtividade. Enquanto estiver vazia, a aba
+   usa a média da própria equipe como referência e diz isso na tela — meta chutada
+   valeria menos que nenhuma. */
+function irRenderProdMetaConfig(){
+  const m = IR.prodMeta || {};
+  return `<div class="panel">
+    <h3>Meta de produtividade do inventário</h3>
+    <p class="field-hint" style="margin-bottom:12px;">Usada nos cards, no ranking e na capacidade da aba Produtividade. Deixe em branco enquanto a operação não definir a meta — a aba passa a usar a média da equipe como referência, sinalizando que não é meta oficial.</p>
+    <div class="two-col">
+      <div>
+        <label>Meta de locais por homem-hora</label>
+        <input type="number" id="ir-prod-meta-hh" min="0" step="0.1" value="${m.locaisPorHH>0?m.locaisPorHH:''}" placeholder="ex.: 12">
+      </div>
+      <div>
+        <label>Jornada considerada (horas/dia)</label>
+        <input type="number" id="ir-prod-meta-jornada" min="1" max="24" step="0.5" value="${m.horasDia||8}">
+      </div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="irSalvarProdMetaConfig()">Salvar meta</button></div>
+  </div>`;
+}
+async function irSalvarProdMetaConfig(){
+  const raw = document.getElementById('ir-prod-meta-hh').value;
+  const locaisPorHH = raw==='' ? null : parseFloat(raw);
+  const horasDia = parseFloat(document.getElementById('ir-prod-meta-jornada').value) || 8;
+  if(locaisPorHH!==null && !(locaisPorHH>0)){ irShowToast('A meta de locais/homem-hora precisa ser maior que zero (ou vazia).', true); return; }
+  const cfg = {locaisPorHH, horasDia};
+  await irSaveProdMetaConfig(cfg);
+  IR.prodMeta = {key:'prod-meta', ...cfg};
+  irShowToast(locaisPorHH===null ? 'Meta removida — a aba volta a usar a média da equipe.' : 'Meta salva.');
+  irRenderView();
 }
 // Padrões de Observação WMS (ex.: "SALDO") que escondem qualquer item que os carregue
 // da análise "Por que o NET está distorcido" — diferente do ignorado item por item,
