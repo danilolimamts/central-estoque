@@ -731,7 +731,7 @@ function irBuildEvolucaoMensalSvg(rows, cfg, fmtVal){
          // Rótulos ancorados nas bordas EXTERNAS do par (contado alinhado à direita,
          // divergente à esquerda), não centralizados: rótulo largo — valor em R$, por
          // exemplo — centralizado invade a coluna vizinha.
-         +  `<text x="${(x1+bw).toFixed(1)}" y="${(baseY-hC-7).toFixed(1)}" text-anchor="end" class="mes-val mes-val-cont">${irEsc(fmtVal(r.contado))}</text>`
+         +  `<text x="${(x1+bw).toFixed(1)}" y="${(baseY-hC-7).toFixed(1)}" text-anchor="end" class="mes-val">${irEsc(fmtVal(r.contado))}</text>`
          +  `<text x="${x2.toFixed(1)}" y="${(baseY-hD-7).toFixed(1)}" text-anchor="start" class="mes-val">${irEsc(fmtVal(r.divergente))}</text>`
          +  `<text x="${cx.toFixed(1)}" y="${(baseY+22).toFixed(1)}" text-anchor="middle" class="mes-mon">${irEsc(irMesLabel(r.mes))}</text>`;
     // Faixa de acurácia: escala do piso → 100%, com traço na meta.
