@@ -483,6 +483,11 @@ table.table-dense tbody td{ padding:3px 10px; font-size:12.5px; }
 .rank-bar-fill{ height:100%; background:var(--blue); border-radius:100px; }
 .rank-pos{ text-align:center; font-size:13px; }
 
+/* ---------- CALLOUT DE ALERTA (diagnóstico de importação) ---------- */
+.callout{ border-radius:10px; padding:12px 14px; font-size:12.5px; line-height:1.6; margin-top:12px; }
+.callout-warn{ background:var(--danger-light); border:1px solid var(--danger); color:var(--ink); }
+.callout-warn strong{ display:block; margin-bottom:4px; color:var(--danger); }
+
 /* ---------- PÓDIO (top 3 do ranking de produtividade) ---------- */
 .panel-head-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
 .panel-head-row h3{ margin:0; }
