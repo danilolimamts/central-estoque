@@ -294,7 +294,8 @@ button{ font-family:inherit; cursor:pointer; }
 .kpi-tile .num.num-xs{ font-size:10.5px; }
 .kpi-tile .num.bad{ color:var(--danger); } .kpi-tile .num.good{ color:var(--success); }
 .kpi-tile .label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-top:5px; }
-.kpi-tile .meta-hint{ font-size:9px; color:var(--ink-soft); margin-top:3px; }
+.kpi-tile .meta-hint{ font-size:9px; color:var(--ink-soft); margin-top:3px; overflow-wrap:anywhere; }
+.kpi-tile .label{ overflow-wrap:anywhere; }
 
 /* ---------- CALENDÁRIO DE METAS ---------- */
 .ir-cal-month{ margin-bottom:20px; }
