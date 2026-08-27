@@ -464,8 +464,9 @@ table.table-dense tbody td{ padding:3px 10px; font-size:12.5px; }
     --mes-grid:#272B36;
   }
 }
-.mes-bloco{ margin-top:14px; }
-.mes-bloco:first-of-type{ margin-top:8px; }
+/* Cada métrica é um bloco; a partir do segundo, um filete separa do anterior. */
+.mes-bloco{ margin-top:8px; }
+.mes-bloco + .mes-bloco{ margin-top:22px; padding-top:22px; border-top:1px solid var(--line); }
 .mes-legend{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:4px; }
 .mes-lg{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:var(--ink-soft); }
 .mes-sw{ width:10px; height:10px; border-radius:3px; flex:none; }
