@@ -625,7 +625,7 @@ function irRenderDashboard(){
   // começou mas o local não fechou porque foi interrompido, ex.: precisava coletar)
   // sobre o total de locais orçados do ciclo. Pedido explícito do usuário: aparecer
   // em CADA bloco de acurácia, pra deixar claro o quanto disso pesa em cada frente.
-  const taxaRecontagemHint = `Recontagem/cancelamento: ${irFmtPct(ind.taxaCancelamento||0)}`;
+  const taxaRecontagemHint = `Recontagem: ${irFmtPct(ind.taxaCancelamento||0)}`;
   const blocoPecas = irKpiBlock('orange','📦','Peças',
     irKpiTile('🎯', irFmtPct(ind.acuraciaPecas), 'Acurácia Peças', ind.acuraciaPecas>=ind.meta?'good':'bad', metaHint+' · '+taxaRecontagemHint) +
     irKpiTile('📦', irFmtInt(ind.pecasContadas), 'Peças Contadas', '', 'total físico') +
