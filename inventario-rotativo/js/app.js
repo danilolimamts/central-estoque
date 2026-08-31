@@ -908,16 +908,20 @@ function irCalNavMonth(delta){
   irRenderView();
 }
 function irRenderLogTablePanel(ind){
-  const rows = irFiltrarLogsValidos(ind.porLog);
+  const rows = irFiltrarLogsValidos(ind.porLog).map(r=>({
+    ...r, locaisPendentes: irLocaisPendentesPor('grupoClasse', r.chave).length
+  }));
   if(!rows.length) return '';
-  const rowsComTotal = [...rows, irCalcLogTotal(rows)];
+  const total = irCalcLogTotal(rows);
+  total.locaisPendentes = rows.reduce((s,r)=>s+r.locaisPendentes, 0);
+  const rowsComTotal = [...rows, total];
   const meta = ind.meta;
   return `<div class="panel">
     <h3>Acurácia por Log</h3>
     <p class="panel-sub">Locais orçados x contados (Grupo Classe da base congelada), peças e acurácias por log — só locais CONCLUÍDOS (mesma regra do KPI "Acurácia Peças/Valor" do topo). Só LOG 1, 2, 3 e 6 — os demais ainda têm base congelada pra corrigir.</p>
     <div class="table-wrap"><table>
       <thead><tr>
-        <th>Log</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Divergentes</th>
+        <th>Log</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Pendentes</th><th>Locais Divergentes</th>
         <th>Peças Contadas</th><th>Peças Divergentes</th>
         <th>Acurácia Peças</th><th>Acurácia Posições</th><th>Acurácia Valor</th>
       </tr></thead>
@@ -925,6 +929,7 @@ function irRenderLogTablePanel(ind){
         <td class="mono">${irEsc(r.chave)}</td>
         <td class="mono">${irFmtInt(r.locaisOrcados)}</td>
         <td class="mono">${irFmtInt(r.locaisContados)}</td>
+        <td class="mono">${irFmtInt(r.locaisPendentes)}</td>
         <td class="mono">${irFmtInt(r.locaisDivergentes)}</td>
         <td class="mono">${irFmtInt(r.pecasContadas)}</td>
         <td class="mono">${irFmtInt(r.pecasDivergentes)}</td>
@@ -3648,9 +3653,14 @@ function irLocaisPendentesContagem(rua){
   // Só rodada FÍSICA (idConferencia >= 2) conta como "local contado". A rodada 1 é o
   // congelamento automático do sistema na abertura do inventário — local que só tem
   // rodada 1 foi aberto e liquidado sem ninguém contar, então continua pendente.
+  return irLocaisPendentesPor('x1', rua);
+}
+/* Mesma regra de pendente, recortando por qualquer campo da base congelada —
+   'x1' pro Resumo por Setor, 'grupoClasse' pra Acurácia por Log. */
+function irLocaisPendentesPor(campo, valor){
   const contadosSet = new Set((IR.contagens||[]).filter(c=>c.idConferencia>=2).map(c=>c.local));
   let base = (IR.locais||[]).filter(l=>!contadosSet.has(l.idLocal));
-  if(rua) base = base.filter(l=>l.x1===rua);
+  if(valor) base = base.filter(l=>l[campo]===valor);
   return base.sort((a,b)=>String(a.descricao||'').localeCompare(String(b.descricao||''), undefined, {numeric:true}));
 }
 function irExportarLocaisPendentesCsv(rua){
