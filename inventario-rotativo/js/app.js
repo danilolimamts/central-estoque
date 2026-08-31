@@ -2513,8 +2513,8 @@ function irRenderProdCards(a, ind, meta, metaDiaria){
   // fechado nos filtros, senão não existe "anterior" com que comparar.
   const comp = irProdComparativoAnterior();
   const deltaTxt = comp
-    ? `<div class="delta ${comp.delta>=0?'down':'up'}">${comp.delta>=0?'▲':'▼'} ${irFmtPct(Math.abs(comp.delta))} vs. período anterior</div>`
-    : `<div class="sub">Selecione um período para comparar com o anterior</div>`;
+    ? `<div class="delta ${comp.delta>=0?'down':'up'}">${comp.delta>=0?'▲':'▼'} ${irFmtPct(Math.abs(comp.delta))} vs. anterior</div>`
+    : `<div class="sub">sem período para comparar</div>`;
   // Sem meta cadastrada, a referência É a média da equipe — comparar a equipe com
   // ela mesma daria 100% sempre, o que não informa nada. Nesse caso o card mostra a
   // origem da referência em vez de um atingimento falso.
@@ -2534,7 +2534,7 @@ function irRenderProdCards(a, ind, meta, metaDiaria){
       <div class="label">Posições / Homem-hora</div>
       <div class="sub">${temMeta
         ? `${sem.dot} ${irFmtPct(pctMeta)} da meta (${irFmtNum(meta.valor,1)})`
-        : 'Sem meta cadastrada — cadastre em Configurações'}</div>
+        : 'sem meta cadastrada'}</div>
     </div>
     <div class="kpi-card">
       <div class="num mono">${irFmtNum(a.itensHora,1)}</div>
@@ -2550,13 +2550,13 @@ function irRenderProdCards(a, ind, meta, metaDiaria){
       <div class="num mono">${metaDiaria!=null&&metaDiaria>0?irFmtPct(realizadoDia/metaDiaria):'—'}</div>
       <div class="label">Atingimento da meta diária</div>
       <div class="sub">${metaDiaria!=null
-        ? `Realizado ${irFmtNum(realizadoDia,0)}/dia · meta ${irFmtNum(metaDiaria,0)} · gap ${gapDia>=0?'+':''}${irFmtNum(gapDia,0)}`
-        : 'Ciclo sem data de abertura/término'}</div>
+        ? `${irFmtNum(realizadoDia,0)}/dia · meta ${irFmtNum(metaDiaria,0)} · gap ${gapDia>=0?'+':''}${irFmtNum(gapDia,0)}`
+        : 'sem datas no ciclo'}</div>
     </div>
     <div class="kpi-card">
       <div class="num mono">${irFmtNum(a.minPorLocal,1)}</div>
       <div class="label">Tempo médio / posição</div>
-      <div class="sub">minutos por posição (homem-hora × 60 ÷ posições)</div>
+      <div class="sub">minutos</div>
     </div>
   </div>`;
 }
@@ -2618,7 +2618,7 @@ Peças/HH: ${irFmtNum(d.pecasHora,1)}${metaDiaria?`
   };
   return `<div class="panel">
     <h3>📈 Evolução da produtividade</h3>
-    <p class="panel-sub">Locais inventariados por dia, com a meta diária do ciclo e a média da equipe no recorte. Passe o mouse na coluna para ver homem-hora e produtividade do dia.</p>
+    <p class="panel-sub">Locais por dia · meta diária e média da equipe.</p>
     <div class="mes-legend">
       <span class="mes-lg"><span class="mes-sw" style="background:var(--prod-bar)"></span>Locais inventariados</span>
       <span class="mes-lg"><span class="mes-sw prod-sw-meta"></span>Meta diária${metaDiaria?' ('+irFmtNum(metaDiaria,0)+')':' indisponível'}</span>
@@ -2661,7 +2661,7 @@ function irRenderProdRanking(a, meta){
   const seta = k => s.col===k ? (s.dir==='desc'?' ▼':' ▲') : '';
   return `<div class="panel">
     <h3>🏅 Ranking de produtividade</h3>
-    <p class="panel-sub">Ordenado por <strong>${irEsc((IR_PROD_COLS.find(c=>c.key===s.col)||{}).lbl||'Locais/Hora')}</strong> — clique em qualquer coluna para reordenar. A comparação justa é por produtividade/hora: quem fez mais locais no total não é necessariamente mais produtivo.</p>
+    <p class="panel-sub">Ordenado por <strong>${irEsc((IR_PROD_COLS.find(c=>c.key===s.col)||{}).lbl||'Locais/Hora')}</strong> · clique na coluna para reordenar.</p>
     <div class="table-wrap"><table class="prod-rank">
       <thead><tr>
         <th>#</th>
@@ -2686,7 +2686,7 @@ function irRenderProdRanking(a, meta){
         </tr>`;
       }).join('')}</tbody>
     </table></div>
-    <p class="field-hint" style="margin-top:8px;">🟢 acima da meta · 🟡 entre 80% e 100% · 🔴 abaixo de 80%. Meta em uso: ${irFmtNum(meta.valor,1)} locais/homem-hora ${meta.origem==='media'?'(referência automática — média da equipe no recorte, pois não há meta cadastrada em Configurações)':'(cadastrada em Configurações)'}.</p>
+    <p class="field-hint" style="margin-top:8px;">🟢 ≥100% · 🟡 80–100% · 🔴 &lt;80% · meta ${irFmtNum(meta.valor,1)} locais/HH ${meta.origem==='media'?'(média da equipe)':'(cadastrada)'}</p>
   </div>`;
 }
 /* ---------- RITMO DA OPERAÇÃO (hora a hora) ---------- */
@@ -2724,7 +2724,7 @@ Locais/HH: ${h.horasHomem?irFmtNum(h.locaisHora,1):'sem base'}`;
   const linha = pts.length>1 ? `<polyline points="${pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" class="prod-linha-prod"/>` : '';
   return `<div class="panel">
     <h3>⏱️ Ritmo da operação</h3>
-    <p class="panel-sub">Volume por hora do expediente (06h–21h) e a produtividade daquela faixa. A linha usa escala própria — é o ritmo (locais por homem-hora), não o volume.</p>
+    <p class="panel-sub">Volume por hora (06h–21h) · linha = locais/HH, escala própria.</p>
     <div class="mes-legend">
       <span class="mes-lg"><span class="mes-sw" style="background:var(--prod-bar)"></span>Locais inventariados</span>
       <span class="mes-lg"><span class="mes-sw prod-sw-prod"></span>Locais / homem-hora</span>
@@ -2751,17 +2751,17 @@ function irRenderProdCapacidade(a, meta){
   const gap = a.totalLocais-capacidade;
   return `<div class="panel">
     <h3>🧰 Capacidade operacional</h3>
-    <p class="panel-sub">Capacidade teórica = homem-hora × meta de locais/homem-hora. O homem-hora <strong>disponível</strong> (escala prevista) não existe na base atual — o valor abaixo é o homem-hora <strong>utilizado</strong>, medido pelos registros de contagem.</p>
+    <p class="panel-sub">Capacidade teórica = homem-hora × meta locais/HH.</p>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="num mono">${irFmtInt(a.colaboradores.length)}</div><div class="label">Colaboradores ativos</div></div>
-      <div class="kpi-card"><div class="num mono">${irFmtInt(a.horasHomem)}</div><div class="label">Homem-hora utilizado</div><div class="sub">disponível: não há escala na base</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(a.horasHomem)}</div><div class="label">Homem-hora utilizado</div><div class="sub">disponível: sem escala na base</div></div>
       <div class="kpi-card"><div class="num mono">${irFmtInt(capacidade)}</div><div class="label">Capacidade teórica (locais)</div></div>
       <div class="kpi-card orange"><div class="num mono">${irFmtInt(a.totalLocais)}</div><div class="label">Produção realizada</div></div>
       <div class="kpi-card ${irProdSemaforo(util).cls}"><div class="num mono">${irFmtPct(util)}</div><div class="label">Capacidade utilizada</div></div>
       <div class="kpi-card ${gap>=0?'good':'bad'}"><div class="num mono">${gap>=0?'+':''}${irFmtInt(gap)}</div><div class="label">Gap de produção</div></div>
     </div>
     <div class="prod-barra"><div class="prod-barra-fill ${irProdSemaforo(util).cls}" style="width:${Math.min(100,util*100).toFixed(1)}%;"></div></div>
-    <p class="field-hint">${irFmtPct(util)} da capacidade teórica no recorte.</p>
+    <p class="field-hint">${irFmtPct(util)} da capacidade teórica.</p>
   </div>`;
 }
 /* ---------- PROJEÇÃO DE FECHAMENTO ---------- */
@@ -2777,7 +2777,7 @@ function irRenderProdProjecao(a, ind){
   const ok = projecao!=null && projecao>=metaCiclo;
   return `<div class="panel">
     <h3>🎯 Projeção de fechamento</h3>
-    <p class="panel-sub">Projeção = realizado até hoje + (média diária do recorte × dias úteis restantes do ciclo).</p>
+    <p class="panel-sub">Projeção = realizado + (média diária × dias úteis restantes).</p>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="num mono">${irFmtInt(metaCiclo)}</div><div class="label">Meta do ciclo</div><div class="sub">locais congelados</div></div>
       <div class="kpi-card orange"><div class="num mono">${irFmtInt(realizado)}</div><div class="label">Realizado</div><div class="sub">${metaCiclo>0?irFmtPct(realizado/metaCiclo):'—'} da meta</div></div>
@@ -2825,7 +2825,7 @@ Locais: ${irFmtInt(c.locais)} · Homem-hora: ${irFmtInt(c.horasHomem)}`;
   }).join('');
   return `<div class="panel">
     <h3>🎯 Produtividade × Qualidade</h3>
-    <p class="panel-sub">Cada ponto é um colaborador. Eixo X: locais por homem-hora. Eixo Y: % de locais que fecharam já na primeira contagem física. Corte vertical na meta, corte horizontal na média de qualidade da equipe (${irFmtPct(mediaQual)}).</p>
+    <p class="panel-sub">X = locais/HH · Y = % 1ª contagem · cortes na meta (${irFmtNum(meta.valor,1)}) e na média de qualidade (${irFmtPct(mediaQual)}).</p>
     <div class="mes-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Dispersão produtividade x qualidade">
       ${quad(cutX, padT, padL+plotW-cutX, cutY-padT, 'q-ref', 'Referência — rápido e certo', 'end')}
       ${quad(padL, padT, cutX-padL, cutY-padT, 'q-opo', 'Oportunidade de ganho')}
@@ -2850,7 +2850,7 @@ function irRenderProdRecontagem(a){
   const max = Math.max(1, ...a.colaboradores.map(c=>c.pctRecontagem));
   return `<div class="panel">
     <h3>🔁 Recontagem</h3>
-    <p class="panel-sub">Local recontado = precisou de mais de uma rodada física para fechar. O histórico de rodadas usa o ciclo inteiro, mesmo quando o filtro de período recorta a visão.</p>
+    <p class="panel-sub">Local recontado = precisou de mais de uma rodada física.</p>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="num mono">${irFmtInt(a.locaisRecontados)}</div><div class="label">Locais recontados</div></div>
       <div class="kpi-card ${a.pctRecontagem>0.1?'bad':''}"><div class="num mono">${irFmtPct(a.pctRecontagem)}</div><div class="label">% de recontagem</div><div class="sub">sobre os locais do recorte</div></div>
@@ -2875,17 +2875,17 @@ function irRenderProdTempo(a){
     <h3>⏳ Tempo e eficiência</h3>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="num mono">${irFmtInt(a.horasHomem)}</div><div class="label">Homem-hora total</div></div>
-      <div class="kpi-card"><div class="num mono">${irFmtInt(a.horasHomem)}</div><div class="label">Homem-hora produtivo</div><div class="sub">todo bloco medido tem contagem</div></div>
-      <div class="kpi-card"><div class="num mono">—</div><div class="label">Homem-hora improdutivo</div><div class="sub">Indicador não disponível na base atual</div></div>
+      <div class="kpi-card"><div class="num mono">${irFmtInt(a.horasHomem)}</div><div class="label">Homem-hora produtivo</div></div>
+      <div class="kpi-card"><div class="num mono">—</div><div class="label">Homem-hora improdutivo</div><div class="sub">indisponível na base</div></div>
       <div class="kpi-card"><div class="num mono">${irFmtNum(a.minPorLocal,1)}</div><div class="label">Tempo médio / posição</div><div class="sub">minutos</div></div>
       <div class="kpi-card"><div class="num mono">${irFmtNum(a.minPorItem,2)}</div><div class="label">Tempo médio / item</div><div class="sub">minutos</div></div>
       <div class="kpi-card"><div class="num mono">${irFmtNum(a.dias.length?a.horasHomem/a.dias.length:0,1)}</div><div class="label">Homem-hora / dia</div></div>
     </div>
-    <p class="field-hint">Homem-hora improdutivo depende de apontamento de pausa/deslocamento, que a QRY0843 não traz. O card fica preparado para receber o dado quando a fonte existir — nada é estimado aqui.</p>
+    <p class="field-hint">Tempo improdutivo exige apontamento de pausa/deslocamento — fora da QRY0843.</p>
   </div>
   <div class="panel">
     <h3>🧩 Produtividade ajustada por complexidade</h3>
-    <p class="panel-sub">Comparar quem inventariou posições simples com quem pegou posições densas exige um índice de complexidade. Da lista necessária, a base atual só entrega parte.</p>
+    <p class="panel-sub">Índice pendente de dados e de pesos. Abaixo, a densidade real por colaborador.</p>
     <div class="table-wrap"><table>
       <thead><tr><th>Componente</th><th>Situação na base atual</th></tr></thead>
       <tbody>
@@ -2897,7 +2897,6 @@ function irRenderProdTempo(a){
         <tr><td>Peso da complexidade no índice</td><td>❌ não definido pela operação</td></tr>
       </tbody>
     </table></div>
-    <p class="field-hint" style="margin-top:8px;">Enquanto os pesos não forem definidos, nenhum índice composto é calculado — a tabela abaixo mostra a densidade real de cada colaborador, que é o insumo pronto do índice.</p>
     ${a.colaboradores.length ? `<div class="table-wrap" style="margin-top:10px;"><table>
       <thead><tr><th>Colaborador</th><th>Itens / posição</th><th>Peças / posição</th><th>Locais/Hora</th></tr></thead>
       <tbody>${a.colaboradores.slice().sort((x,y)=>y.pecasPorLocal-x.pecasPorLocal).map(c=>`<tr>
@@ -2912,59 +2911,65 @@ function irRenderProdTempo(a){
 /* ---------- DIAGNÓSTICO AUTOMÁTICO ---------- */
 function irRenderProdDiagnostico(a, ind, meta, metaDiaria){
   if(!a.colaboradores.length) return '';
-  const frases = [];
+  // Diagnóstico em linhas curtas "rótulo -> número": o número é o que decide, o
+  // texto só nomeia o que está sendo medido.
+  const fatos = [];
   const alertas = [];
-  const pctMeta = meta.origem==='cadastrada' && meta.valor>0 ? a.locaisHora/meta.valor : 0;
+  const temMeta = meta.origem==='cadastrada';
+  const pctMeta = temMeta && meta.valor>0 ? a.locaisHora/meta.valor : 0;
   const sem = irProdSemaforo(pctMeta);
-  if(meta.origem==='cadastrada'){
-    frases.push(`A produtividade da equipe está ${irFmtPct(Math.abs(pctMeta-1))} ${pctMeta>=1?'acima':'abaixo'} da meta (${irFmtNum(a.locaisHora,1)} contra ${irFmtNum(meta.valor,1)} locais/homem-hora).`);
-  } else {
-    frases.push(`A equipe está em ${irFmtNum(a.locaisHora,1)} locais por homem-hora no recorte. Não há meta de produtividade cadastrada, então esse valor está sendo usado como referência.`);
-  }
-  if(meta.origem==='cadastrada'){
-    alertas.push({cls:sem.cls, txt:`${sem.dot} Produtividade da equipe: ${irFmtPct(pctMeta)} da meta`});
-  } else {
-    alertas.push({cls:'warn', txt:'🟡 Sem meta de produtividade cadastrada'});
-  }
+  alertas.push(temMeta
+    ? {cls:sem.cls, txt:`${sem.dot} ${irFmtPct(pctMeta)} da meta`}
+    : {cls:'warn', txt:'🟡 Sem meta cadastrada'});
+  fatos.push({lbl:'Ritmo da equipe', val:irFmtNum(a.locaisHora,1)+' locais/HH',
+              sub: temMeta ? `meta ${irFmtNum(meta.valor,1)}` : 'referência: média da equipe'});
 
   const comDado = a.horas.filter(h=>h.horasHomem>0);
   if(comDado.length>1){
     const pico = comDado.reduce((m,h)=>h.locaisHora>m.locaisHora?h:m, comDado[0]);
     const vale = comDado.reduce((m,h)=>h.locaisHora<m.locaisHora?h:m, comDado[0]);
     if(pico.hora!==vale.hora){
-      frases.push(`O melhor ritmo do dia acontece às ${String(pico.hora).padStart(2,'0')}h (${irFmtNum(pico.locaisHora,1)} locais/hora) e o mais fraco às ${String(vale.hora).padStart(2,'0')}h (${irFmtNum(vale.locaisHora,1)}).`);
+      fatos.push({lbl:'Melhor hora', val:String(pico.hora).padStart(2,'0')+'h', sub:irFmtNum(pico.locaisHora,1)+' locais/HH', cls:'good'});
+      fatos.push({lbl:'Pior hora',   val:String(vale.hora).padStart(2,'0')+'h', sub:irFmtNum(vale.locaisHora,1)+' locais/HH', cls:'bad'});
     }
   }
   const abaixo = a.colaboradores.filter(c=>meta.valor>0 && c.locaisHora/meta.valor<0.8);
-  if(abaixo.length){
-    frases.push(`${abaixo.length} colaborador${abaixo.length>1?'es estão':' está'} abaixo de 80% da meta: ${abaixo.slice(0,4).map(c=>String(c.usuario).replace(/^MECA_/,'')).join(', ')}${abaixo.length>4?' e outros':''}.`);
-    alertas.push({cls:'bad', txt:`🔴 ${abaixo.length} colaborador(es) abaixo de 80% da meta`});
-  } else {
-    alertas.push({cls:'good', txt:'🟢 Nenhum colaborador abaixo de 80% da meta'});
-  }
-  frases.push(`A taxa de recontagem está em ${irFmtPct(a.pctRecontagem)} dos locais do recorte (${irFmtInt(a.locaisRecontados)} locais precisaram de mais de uma rodada física).`);
-  if(a.pctRecontagem>0.1) alertas.push({cls:'bad', txt:`🔴 Recontagem em ${irFmtPct(a.pctRecontagem)} dos locais`});
+  fatos.push({lbl:'Abaixo de 80% da meta', val:irFmtInt(abaixo.length)+' de '+irFmtInt(a.colaboradores.length),
+              sub: abaixo.length ? abaixo.slice(0,3).map(c=>String(c.usuario).replace(/^MECA_/,'')).join(', ')+(abaixo.length>3?'…':'') : 'nenhum',
+              cls: abaixo.length?'bad':'good'});
+  alertas.push(abaixo.length
+    ? {cls:'bad', txt:`🔴 ${abaixo.length} abaixo de 80%`}
+    : {cls:'good', txt:'🟢 Todos acima de 80%'});
+
+  fatos.push({lbl:'Recontagem', val:irFmtPct(a.pctRecontagem), sub:irFmtInt(a.locaisRecontados)+' locais',
+              cls: a.pctRecontagem>0.1?'bad':''});
+  if(a.pctRecontagem>0.1) alertas.push({cls:'bad', txt:`🔴 Recontagem ${irFmtPct(a.pctRecontagem)}`});
 
   const metaCiclo = ind.locaisCongelados||0, realizado = ind.locaisConcluidos||0;
   const mediaDia = a.dias.length ? a.totalLocais/a.dias.length : 0;
   if(ind.diasRestantes!=null && metaCiclo>0){
     const projecao = realizado + mediaDia*ind.diasRestantes;
-    frases.push(`Mantendo o ritmo atual, a projeção indica ${irFmtPct(projecao/metaCiclo)} da meta do ciclo (${irFmtInt(projecao)} de ${irFmtInt(metaCiclo)} locais).`);
-    alertas.push(projecao>=metaCiclo
-      ? {cls:'good', txt:'🟢 Projeção acima da meta do ciclo'}
-      : {cls:'bad',  txt:`🔴 Projeção abaixo da meta — faltam ${irFmtInt(metaCiclo-projecao)} locais`});
+    const ok = projecao>=metaCiclo;
+    fatos.push({lbl:'Projeção do ciclo', val:irFmtPct(projecao/metaCiclo),
+                sub:`${irFmtInt(projecao)} de ${irFmtInt(metaCiclo)}`, cls: ok?'good':'bad'});
+    alertas.push(ok
+      ? {cls:'good', txt:'🟢 Projeção bate a meta'}
+      : {cls:'bad',  txt:`🔴 Faltam ${irFmtInt(metaCiclo-projecao)} locais`});
   }
-  const melhor = a.colaboradores.slice().sort((x,y)=>y.locaisHora-x.locaisHora)[0];
-  const menor  = a.colaboradores.slice().sort((x,y)=>x.locaisHora-y.locaisHora)[0];
+  const ordem = a.colaboradores.slice().sort((x,y)=>y.locaisHora-x.locaisHora);
+  const melhor = ordem[0], menor = ordem[ordem.length-1];
+  if(melhor && menor && melhor!==menor){
+    fatos.push({lbl:'Maior produtividade', val:irFmtNum(melhor.locaisHora,1), sub:String(melhor.usuario).replace(/^MECA_/,''), cls:'good'});
+    fatos.push({lbl:'Menor produtividade', val:irFmtNum(menor.locaisHora,1), sub:String(menor.usuario).replace(/^MECA_/,''), cls:'bad'});
+  }
   return `<div class="panel">
-    <h3>🧠 Diagnóstico da produtividade</h3>
-    <p class="panel-sub">Texto gerado a partir dos dados do recorte selecionado — muda junto com os filtros.</p>
+    <h3>🧠 Diagnóstico</h3>
     <div class="prod-alertas">${alertas.map(al=>`<span class="prod-alerta ${al.cls}">${irEsc(al.txt)}</span>`).join('')}</div>
-    <div class="prod-diag">${frases.map(f=>`<p>${irEsc(f)}</p>`).join('')}</div>
-    ${melhor&&menor&&melhor!==menor ? `<div class="prod-destaques">
-      <div class="prod-destaque good"><span>Maior produtividade</span><strong>${irEsc(String(melhor.usuario).replace(/^MECA_/,''))} · ${irFmtNum(melhor.locaisHora,1)} locais/HH</strong></div>
-      <div class="prod-destaque bad"><span>Menor produtividade</span><strong>${irEsc(String(menor.usuario).replace(/^MECA_/,''))} · ${irFmtNum(menor.locaisHora,1)} locais/HH</strong></div>
-    </div>` : ''}
+    <div class="prod-fatos">${fatos.map(f=>`<div class="prod-fato ${f.cls||''}">
+      <span class="prod-fato-lbl">${irEsc(f.lbl)}</span>
+      <strong class="mono">${irEsc(f.val)}</strong>
+      <span class="prod-fato-sub">${irEsc(f.sub||'')}</span>
+    </div>`).join('')}</div>
   </div>`;
 }
 function irRenderProdutividade(){
@@ -2977,14 +2982,14 @@ function irRenderProdutividade(){
   const metaDiaria = irProdMetaDiaria(ind);
   if(!contagens.length){
     return `${irRenderProdHeader(ind)}${irRenderProdFiltros(a)}
-      <div class="panel"><p class="field-hint">Nenhuma contagem no recorte selecionado. Ajuste o período, o colaborador ou o setor.</p></div>`;
+      <div class="panel"><p class="field-hint">Nenhuma contagem no recorte.</p></div>`;
   }
   return `
     ${irRenderProdHeader(ind)}
     ${irRenderProdFiltros(a)}
-    ${IR.prodFilters.incluirAbertura ? `<p class="field-hint" style="color:var(--orange);margin:-8px 0 12px;">A rodada 1 (abertura do inventário) está incluída — ela é sistêmica e não representa produtividade real de conferência.</p>` : ''}
+    ${IR.prodFilters.incluirAbertura ? `<p class="field-hint" style="color:var(--orange);margin:-8px 0 12px;">Rodada 1 incluída — é sistêmica, não é conferência.</p>` : ''}
     ${irRenderProdCards(a, ind, meta, metaDiaria)}
-    <p class="field-hint" style="margin:-8px 0 14px;">Homem-hora = nº de blocos de hora distintos em que cada colaborador registrou ao menos 1 contagem (aproximação, sem ponto eletrônico). Total no recorte: ${irFmtInt(a.horasHomem)} homem-hora.</p>
+    <p class="field-hint" style="margin:-8px 0 14px;">${irFmtInt(a.horasHomem)} homem-hora no recorte · blocos de hora com contagem registrada (sem ponto eletrônico).</p>
     ${irRenderProdDiagnostico(a, ind, meta, metaDiaria)}
     ${irRenderProdEvolucao(a, metaDiaria)}
     ${irRenderProdRanking(a, meta)}
