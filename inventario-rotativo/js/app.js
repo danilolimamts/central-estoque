@@ -1505,20 +1505,25 @@ function irSoLocaisConcluidos(divergencias){
   return (divergencias||[]).filter(d=>IR_LOCAIS_CONCLUIDO.has(d.statusLocal));
 }
 function irCalcItemSaldo(divergencias){
+  // Este ranking mede o TAMANHO DO ERRO de contagem por item — divergência
+  // ABSOLUTA: Σ |físico − sistema|. Sobra num local e falta em outro não se
+  // anulam; as duas foram erro. O saldo líquido (NET) continua calculado e
+  // aparece ao lado como leitura complementar, mas não é o que ordena a lista.
   const map = new Map();
   for(const d of irSoLocaisConcluidos(divergencias)){
     if(d.diferenca===0) continue;
     let g = map.get(d.item);
-    if(!g){ g = {item:d.item, descricao:d.itemNome, saldoQtd:0, saldoValor:0}; map.set(d.item, g); }
+    if(!g){ g = {item:d.item, descricao:d.itemNome, saldoQtd:0, saldoValor:0, absQtd:0, absValor:0, locais:new Set()}; map.set(d.item, g); }
     g.saldoQtd += d.diferenca;
     g.saldoValor += d.vlDivergencia;
+    g.absQtd += Math.abs(d.diferenca);
+    g.absValor += Math.abs(d.vlDivergencia);
+    g.locais.add(d.local);
   }
-  const itens = Array.from(map.values());
+  const itens = Array.from(map.values()).map(g=>({...g, locais:g.locais.size}));
   return {
-    topItensPositivos: itens.filter(i=>i.saldoQtd>0).sort((a,b)=>b.saldoQtd-a.saldoQtd).slice(0,20),
-    topItensNegativos: itens.filter(i=>i.saldoQtd<0).sort((a,b)=>a.saldoQtd-b.saldoQtd).slice(0,20),
-    topItensPositivosValor: itens.filter(i=>i.saldoValor>0).sort((a,b)=>b.saldoValor-a.saldoValor).slice(0,20),
-    topItensNegativosValor: itens.filter(i=>i.saldoValor<0).sort((a,b)=>a.saldoValor-b.saldoValor).slice(0,20)
+    topItensAbsQtd:   itens.filter(i=>i.absQtd>0).sort((a,b)=>b.absQtd-a.absQtd).slice(0,20),
+    topItensAbsValor: itens.filter(i=>i.absValor>0).sort((a,b)=>b.absValor-a.absValor).slice(0,20)
   };
 }
 // Busca as divergências do escopo escolhido pro painel "Itens mais Divergentes":
@@ -1579,38 +1584,36 @@ function irToggleCollapse(id, btn){
 }
 function irRenderTopItensPanel(saldo, kind){
   const isValor = kind==='valor';
-  const pos = (isValor ? saldo.topItensPositivosValor : saldo.topItensPositivos) || [];
-  const neg = (isValor ? saldo.topItensNegativosValor : saldo.topItensNegativos) || [];
+  const itens = (isValor ? saldo.topItensAbsValor : saldo.topItensAbsQtd) || [];
   const titulo = isValor ? 'Itens mais Divergentes (Valor)' : 'Itens mais Divergentes (Peças)';
   const fmt = isValor ? irFmtMoney : irFmtInt;
-  const getVal = i => isValor ? i.saldoValor : i.saldoQtd;
-  if(!pos.length && !neg.length) return `<div class="panel"><h3>${titulo}</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
-  const maxAbs = Math.max(1, ...pos.map(getVal), ...neg.map(i=>Math.abs(getVal(i))));
+  const getAbs = i => isValor ? i.absValor : i.absQtd;
+  const getNet = i => isValor ? i.saldoValor : i.saldoQtd;
+  if(!itens.length) return `<div class="panel"><h3>${titulo}</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
+  const maxAbs = Math.max(1, ...itens.map(getAbs));
   const VISIVEL = 8;
-  const row = (i, cls)=>`<div class="bi-hbar-row${isValor?' bi-hbar-row-money':''}">
-      <div class="bi-hbar-label" title="${irEsc(i.item)} — ${irEsc(i.descricao)}"><span class="mono">${irEsc(i.item)}</span> — ${irEsc(i.descricao||i.item)}</div>
-      <div class="bi-hbar-track"><div class="bi-hbar-fill ${cls}" style="width:${Math.round(Math.abs(getVal(i))/maxAbs*100)}%;"></div></div>
-      <div class="bi-hbar-val">${getVal(i)>0?'+':''}${fmt(getVal(i))}</div>
+  const row = (i, pos)=>{
+    const net = getNet(i);
+    return `<div class="bi-hbar-row${isValor?' bi-hbar-row-money':''}">
+      <div class="bi-hbar-label" title="${irEsc(i.item)} — ${irEsc(i.descricao)}">
+        <span class="mono">${irEsc(pos)}º</span> <span class="mono">${irEsc(i.item)}</span> — ${irEsc(i.descricao||i.item)}
+        <span class="item-div-net ${net>=0?'pos':'neg'}">NET ${net>0?'+':''}${fmt(net)} · ${irFmtInt(i.locais)} ${i.locais===1?'local':'locais'}</span>
+      </div>
+      <div class="bi-hbar-track"><div class="bi-hbar-fill neg" style="width:${Math.round(getAbs(i)/maxAbs*100)}%;"></div></div>
+      <div class="bi-hbar-val">${fmt(getAbs(i))}</div>
     </div>`;
-  const list = (items, cls)=>{
-    if(!items.length) return '<p class="field-hint">Nenhum.</p>';
-    const visiveis = items.slice(0, VISIVEL).map(i=>row(i,cls)).join('');
-    const resto = items.slice(VISIVEL);
-    if(!resto.length) return visiveis;
-    const uid = 'ir-col-'+Math.random().toString(36).slice(2,9);
-    // Botão no TOPO da lista (antes de qualquer linha) — dá pra abrir/fechar sem
-    // rolar até o meio ou o fim da lista, ainda mais útil quando "ver mais" trouxer
-    // muitas linhas.
-    return `<button class="btn-link" style="margin:0 0 6px;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>
-      ${visiveis}<div id="${uid}" style="display:none;">${resto.map(i=>row(i,cls)).join('')}</div>`;
   };
+  const visiveis = itens.slice(0, VISIVEL).map((i,n)=>row(i,n+1)).join('');
+  const resto = itens.slice(VISIVEL);
+  const uid = 'ir-col-'+Math.random().toString(36).slice(2,9);
+  const lista = resto.length
+    ? `<button class="btn-link" style="margin:0 0 6px;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>
+       ${visiveis}<div id="${uid}" style="display:none;">${resto.map((i,n)=>row(i,n+1+VISIVEL)).join('')}</div>`
+    : visiveis;
   return `<div class="panel">
     <h3>${titulo}</h3>
-    <p class="panel-sub">${isValor ? 'Soma líquida do valor divergente por item' : 'Soma líquida da diferença de quantidade por item'}, ${irItemDivEscopoLabel()}.</p>
-    <div class="bi-grid-2">
-      <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--success);">MAIS SOBRA (saldo positivo)</p>${list(pos,'pos')}</div>
-      <div><p class="field-hint" style="margin-bottom:6px;font-weight:700;color:var(--danger);">MAIS FALTA (saldo negativo)</p>${list(neg,'neg')}</div>
-    </div>
+    <p class="panel-sub">${isValor ? 'Divergência absoluta de valor por item' : 'Divergência absoluta de peças por item'} — soma de |físico − sistema|, ${irItemDivEscopoLabel()}. Sobra e falta não se anulam.</p>
+    <div class="item-div-list">${lista}</div>
   </div>`;
 }
 /* ============================================================

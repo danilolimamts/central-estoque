@@ -349,6 +349,14 @@ button{ font-family:inherit; cursor:pointer; }
 .bi-hbar-fill.orange{ background:var(--orange); }
 .bi-hbar-fill.neg{ background:var(--danger); }
 .bi-hbar-fill.pos{ background:var(--success); }
+/* Ranking de itens mais divergentes: label mais larga (cabe posição, código,
+   descrição e o NET embaixo) e valor absoluto com folga à direita. */
+.item-div-list .bi-hbar-row{ grid-template-columns:minmax(230px,1.6fr) 1fr 78px; align-items:center; padding:5px 0; }
+.item-div-list .bi-hbar-row-money{ grid-template-columns:minmax(230px,1.6fr) 1fr 104px; }
+.item-div-list .bi-hbar-label{ white-space:normal; overflow:visible; line-height:1.35; }
+.item-div-net{ display:block; font-size:10px; color:var(--ink-soft); font-family:'SFMono-Regular',Consolas,monospace; }
+.item-div-net.pos{ color:var(--success); }
+.item-div-net.neg{ color:var(--danger); }
 .bi-hbar-val{ text-align:right; font-family:'SFMono-Regular',Consolas,monospace; font-size:11px; color:var(--ink); font-weight:600; }
 
 /* Barras verticais (por dia / por log) */
