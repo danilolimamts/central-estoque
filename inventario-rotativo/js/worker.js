@@ -205,14 +205,20 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   const duplicatasTotais = m843.duplicatas + mCong.duplicatas + m278.duplicatas + m051.duplicatas;
   if(duplicatasTotais) post('progress', {stage:'Removidas '+duplicatasTotais+' linha(s) duplicada(s) entre arquivos importados...', pct:8});
 
+  // Estoque atual por ITEM x LOCAL. É o que permite a auditoria de validação mandar
+  // o auditor conferir também os locais onde o item TEM SALDO hoje e que não foram
+  // contados no ciclo — sem isso só dá pra apontar onde já se sabe que divergiu.
   post('progress', {stage:'Indexando estoque atual (QRY0390)...', pct:10});
-  const map390 = new Map();
+  const estoquePorItemLocal = new Map(); // item -> Map(local -> qtd)
   if(r390){
     for(const row of rows390){
       const item = irNormItemKey(getVal(row, r390.item));
-      if(!item) continue;
+      const local = irNormItemKey(getVal(row, r390.local));
+      if(!item || !local) continue;
       const qtd = parseNumber(getVal(row, r390.quantidade));
-      map390.set(item, (map390.get(item)||0) + qtd);
+      if(!estoquePorItemLocal.has(item)) estoquePorItemLocal.set(item, new Map());
+      const porLocal = estoquePorItemLocal.get(item);
+      porLocal.set(local, (porLocal.get(local)||0) + qtd);
     }
   }
 
@@ -560,7 +566,24 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     locaisComCancelamento: locaisComCancelamentoSet.size, tentativasCanceladas, minutosPerdidosCancelamento, sessoesComHorarioRegistrado,
     locaisCanceladosAposBater: locaisCanceladosAposBater.size, locaisCanceladosInterrompidos: locaisCanceladosInterrompidos.size});
 
+  // Só os itens que divergiram entram no store de estoque — guardar a QRY0390
+  // inteira seria centenas de milhares de linhas sem uso.
+  const itensDivergentes = new Set(divergencias.filter(d=>d.diferenca!==0).map(d=>d.item));
+  const estoqueRows = [];
+  for(const item of itensDivergentes){
+    const porLocal = estoquePorItemLocal.get(item);
+    if(!porLocal || !porLocal.size) continue;
+    estoqueRows.push({
+      id: cicloId+'|'+item, cicloId, item,
+      locais: Array.from(porLocal.entries())
+        .filter(([,q])=>q!==0)
+        .map(([local, qtd])=>({local, qtd}))
+        .sort((a,b)=>b.qtd-a.qtd)
+    });
+  }
+
   post('progress', {stage:'Gravando dados no IndexedDB...', pct:95});
+  await irClearCiclo(IR_STORES.estoqueItem, cicloId);
   await irClearCiclo(IR_STORES.locais, cicloId);
   await irClearCiclo(IR_STORES.contagens, cicloId);
   await irClearCiclo(IR_STORES.divergencias, cicloId);
@@ -568,6 +591,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   for(let i=0;i<locais.length;i+=CHUNK) await irBulkPut(IR_STORES.locais, locais.slice(i,i+CHUNK));
   for(let i=0;i<contagens.length;i+=CHUNK) await irBulkPut(IR_STORES.contagens, contagens.slice(i,i+CHUNK));
   for(let i=0;i<divergencias.length;i+=CHUNK) await irBulkPut(IR_STORES.divergencias, divergencias.slice(i,i+CHUNK));
+  for(let i=0;i<estoqueRows.length;i+=CHUNK) await irBulkPut(IR_STORES.estoqueItem, estoqueRows.slice(i,i+CHUNK));
   await irSaveIndicadores(cicloId, indicadores);
   await irSaveImportMeta(cicloId, {
     totalLocaisCongelados: indicadores.locaisCongelados,
@@ -576,7 +600,8 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     linhasSemDataDescartadas, visitasSemContagemFisica,
     totalLinhas843: rows843.length, linhasForaDaJanela, linhasNaoAir, linhasNaoLiquidadas,
     dataMaisRecenteAceita, dataMaisRecenteForaDaJanela,
-    janelaAbertura: dataAbertura || '', janelaTermino: dataPrevistaTermino || ''
+    janelaAbertura: dataAbertura || '', janelaTermino: dataPrevistaTermino || '',
+    itensComEstoque390: estoqueRows.length, temQry390: !!r390
   });
 
   post('progress', {stage:'Concluído.', pct:100});

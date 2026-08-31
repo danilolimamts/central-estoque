@@ -3,7 +3,7 @@
    100% client-side. Nenhum servidor, nenhuma API.
    ============================================================ */
 const IR_DB_NAME = 'inventario_rotativo_v1';
-const IR_DB_VERSION = 5;
+const IR_DB_VERSION = 6;
 
 const IR_STORES = {
   ciclos: 'ciclos',
@@ -16,6 +16,10 @@ const IR_STORES = {
   net410: 'net410', // resumo de Perdas e Ganhos (QRY410) por ano — independente do ciclo
   net410Legenda: 'net410_legenda', // legenda de motivos da 410 (AIR/ADE/LOJA/...), editável em Configurações
   net410Ignorados: 'net410_ignorados', // itens com motivo já conhecido, ocultos da análise de distorção do NET
+  // Saldo atual do item por LOCAL (QRY0390), guardado só para os itens que
+  // divergiram no ciclo — é o que a auditoria de validação precisa pra mandar o
+  // auditor conferir também os locais onde o item tem saldo e não foi contado.
+  estoqueItem: 'estoque_item',
   net410PadroesIgnorados: 'net410_padroes_ignorados' // trecho da Observação WMS (ex.: "SALDO") que oculta qualquer item que o carregue, sem precisar ignorar item por item
 };
 
@@ -61,6 +65,10 @@ function irOpenDB(){
       }
       if(!db.objectStoreNames.contains(IR_STORES.net410Ignorados)){
         db.createObjectStore(IR_STORES.net410Ignorados, {keyPath:'item'});
+      }
+      if(!db.objectStoreNames.contains(IR_STORES.estoqueItem)){
+        const s = db.createObjectStore(IR_STORES.estoqueItem, {keyPath:'id'});
+        s.createIndex('cicloId', 'cicloId', {unique:false});
       }
       if(!db.objectStoreNames.contains(IR_STORES.net410PadroesIgnorados)){
         db.createObjectStore(IR_STORES.net410PadroesIgnorados, {keyPath:'id'});
@@ -156,6 +164,16 @@ async function irGetAllByIndex(storeKey, indexName, value){
       if(cursor){ out.push(cursor.value); cursor.continue(); }
       else resolve(out);
     };
+    req.onerror = ()=>reject(req.error);
+  });
+}
+
+/* ---------- Estoque atual por item (QRY0390, por local) ---------- */
+async function irGetEstoqueItem(cicloId, item){
+  const store = await irTx(IR_STORES.estoqueItem, 'readonly');
+  return new Promise((resolve, reject)=>{
+    const req = store.get(cicloId+'|'+item);
+    req.onsuccess = ()=>resolve(req.result||null);
     req.onerror = ()=>reject(req.error);
   });
 }
