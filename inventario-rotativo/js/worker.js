@@ -503,6 +503,13 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     }
     let totalFisico = 0;
     const st = statusPorVisita.get(chave) || {status:'em_contagem', rodadas:0};
+    // Dia em que a visita fechou = Data Situação da rodada de maior Id Conferência.
+    // Fica gravado em cada divergência pra que os filtros por dia/mês/ano funcionem em
+    // qualquer ciclo, sem precisar carregar as contagens daquele ciclo na memória.
+    let rodadaTopo = -1, diaFechamento = '';
+    for(const c of lista){
+      if(c.idConferencia>=rodadaTopo && c.dataSituacao){ rodadaTopo = c.idConferencia; diaFechamento = c.dataSituacao.slice(0,10); }
+    }
     for(const [item, g] of porItem){
       totalFisico += g.final;
       // REGRA: Rodada 1 é sempre a quantidade sistêmica, a última rodada é a física,
@@ -524,7 +531,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
         cicloId, local, item, itemNome,
         qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
         precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
-        statusLocal: st.status, rodadasLocal: st.rodadas,
+        statusLocal: st.status, rodadasLocal: st.rodadas, diaFechamento,
         diagnostico: diferenca!==0 ? 'divergente' : 'correto', componenteSemValor
       });
     }

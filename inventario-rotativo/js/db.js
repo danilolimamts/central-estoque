@@ -168,6 +168,23 @@ async function irGetAllByIndex(storeKey, indexName, value){
   });
 }
 
+/* ---------- Exclusão de ciclo ----------
+   Remove o ciclo e tudo que pende dele. Usado pra tirar da base um ciclo
+   importado por engano — sem isso ele continuaria entrando nas visões por ano. */
+async function irDeleteCiclo(cicloId){
+  for(const store of [IR_STORES.locais, IR_STORES.contagens, IR_STORES.divergencias, IR_STORES.estoqueItem]){
+    await irClearCiclo(store, cicloId);
+  }
+  for(const [store, key] of [[IR_STORES.indicadores, cicloId], [IR_STORES.importMeta, cicloId], [IR_STORES.ciclos, cicloId]]){
+    const st = await irTx(store, 'readwrite');
+    await new Promise((resolve, reject)=>{
+      const req = st.delete(key);
+      req.onsuccess = ()=>resolve();
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+}
+
 /* ---------- Estoque atual por item (QRY0390, por local) ---------- */
 async function irGetEstoqueItem(cicloId, item){
   const store = await irTx(IR_STORES.estoqueItem, 'readonly');
