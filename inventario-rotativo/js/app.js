@@ -1582,6 +1582,13 @@ function irToggleCollapse(id, btn){
   el.style.display = abrir ? 'block' : 'none';
   btn.textContent = abrir ? 'Ver menos' : btn.dataset.moreLabel;
 }
+/* Descrição do item resumida à primeira e à última palavra ("DISCO … FORTG").
+   A descrição inteira continua no title da linha, no hover. */
+function irResumirDescricao(desc){
+  const partes = String(desc||'').trim().split(/\s+/).filter(Boolean);
+  if(partes.length<=2) return partes.join(' ');
+  return partes[0]+' … '+partes[partes.length-1];
+}
 function irRenderTopItensPanel(saldo, kind){
   const isValor = kind==='valor';
   const itens = (isValor ? saldo.topItensAbsValor : saldo.topItensAbsQtd) || [];
@@ -1592,7 +1599,7 @@ function irRenderTopItensPanel(saldo, kind){
   const maxAbs = Math.max(1, ...itens.map(getAbs));
   const VISIVEL = 8;
   const row = i=>`<div class="bi-hbar-row${isValor?' bi-hbar-row-money':''}">
-      <div class="bi-hbar-label" title="${irEsc(i.item)} — ${irEsc(i.descricao)}"><span class="mono">${irEsc(i.item)}</span> — ${irEsc(i.descricao||i.item)}</div>
+      <div class="bi-hbar-label" title="${irEsc(i.item)} — ${irEsc(i.descricao)}"><span class="mono">${irEsc(i.item)}</span> — ${irEsc(irResumirDescricao(i.descricao)||i.item)}</div>
       <div class="bi-hbar-track"><div class="bi-hbar-fill neg" style="width:${Math.round(getAbs(i)/maxAbs*100)}%;"></div></div>
       <div class="bi-hbar-val">${fmt(getAbs(i))}</div>
     </div>`;
