@@ -1585,7 +1585,7 @@ function irToggleCollapse(id, btn){
 function irRenderTopItensPanel(saldo, kind){
   const isValor = kind==='valor';
   const itens = (isValor ? saldo.topItensAbsValor : saldo.topItensAbsQtd) || [];
-  const titulo = isValor ? 'Itens mais Divergentes (Valor)' : 'Itens mais Divergentes (Peças)';
+  const titulo = isValor ? 'Itens mais Divergentes (Valor · ABS)' : 'Itens mais Divergentes (Peças · ABS)';
   const fmt = isValor ? irFmtMoney : irFmtInt;
   const getAbs = i => isValor ? i.absValor : i.absQtd;
   const getNet = i => isValor ? i.saldoValor : i.saldoQtd;
@@ -1600,7 +1600,7 @@ function irRenderTopItensPanel(saldo, kind){
         <span class="item-div-net ${net>=0?'pos':'neg'}">NET ${net>0?'+':''}${fmt(net)} · ${irFmtInt(i.locais)} ${i.locais===1?'local':'locais'}</span>
       </div>
       <div class="bi-hbar-track"><div class="bi-hbar-fill neg" style="width:${Math.round(getAbs(i)/maxAbs*100)}%;"></div></div>
-      <div class="bi-hbar-val">${fmt(getAbs(i))}</div>
+      <div class="bi-hbar-val"><span class="item-div-abs">ABS</span> ${fmt(getAbs(i))}</div>
     </div>`;
   };
   const visiveis = itens.slice(0, VISIVEL).map((i,n)=>row(i,n+1)).join('');
