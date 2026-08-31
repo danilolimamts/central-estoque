@@ -808,6 +808,17 @@ function irRenderCancelamentoImpactoPanel(ind){
   const tentativas = ind.tentativasCanceladas||0;
   if(!tentativas) return '';
   const comHorario = ind.sessoesComHorarioRegistrado||0;
+  const afetados = ind.locaisComCancelamento||0;
+  const bateram = ind.locaisCanceladosAposBater||0;
+  const horas = ind.horasPerdidasCancelamento||0;
+  const diasPerdidos = horas/8;
+  // Dias úteis já decorridos do ciclo — serve pra traduzir os dias perdidos em
+  // "quantas pessoas em tempo integral isso consumiu" no mesmo período.
+  const c = IR.cicloAtivo;
+  const hoje = new Date();
+  const diasDecorridos = (c && c.dataAbertura)
+    ? irDiasUteisEntre(new Date(c.dataAbertura+'T12:00:00'), hoje) : null;
+  const pessoasEquivalentes = (diasDecorridos>0) ? diasPerdidos/diasDecorridos : null;
   return `<div class="panel">
     <h3>⏱️ Impacto de cancelamentos (recontagem por interrupção)</h3>
     <p class="panel-sub">Locais em que a contagem foi iniciada em campo mas a rodada terminou cancelada — não fechou porque foi interrompida (ex.: precisava coletar). Essas rodadas não entram em nenhum outro indicador de acurácia; aqui é só o custo da interrupção em si.</p>
@@ -819,7 +830,8 @@ function irRenderCancelamentoImpactoPanel(ind){
       )}
       ${irKpiBlock('black','🚧','Como foi cancelado',
         irKpiTile('✋', irFmtInt(ind.locaisCanceladosInterrompidos||0), 'Interrompidos no Meio', '', 'começou a contar, cancelou antes de bater') +
-        irKpiTile('💥', irFmtInt(ind.locaisCanceladosAposBater||0), 'Bateram e Cancelamos', 'bad', 'contagem pronta, jogada fora')
+        irKpiTile('💥', irFmtInt(bateram), 'Bateram e Cancelamos', 'bad', 'contagem pronta, jogada fora') +
+        irKpiTile('♻️', afetados>0?irFmtPct(bateram/afetados):'—', 'Trabalho Jogado Fora', bateram>0?'bad':'', 'dos locais afetados')
       )}
       ${irKpiBlock('black','⏱️','Tempo Perdido',
         irKpiTile('⏱️', ind.horasPerdidasCancelamento?irFmtNum(ind.horasPerdidasCancelamento,1)+'h':'—', 'Horas Perdidas', '', comHorario+' de '+tentativas+' com início e fim registrados') +
@@ -827,7 +839,9 @@ function irRenderCancelamentoImpactoPanel(ind){
         irKpiTile('❓', irFmtInt(tentativas-comHorario), 'Sem Horário Completo', '', 'sem Data Fim Contagem')
       )}
       ${irKpiBlock('black','🧑','Custo em Pessoas',
-        irKpiTile('📅', ind.horasPerdidasCancelamento?irFmtNum(ind.horasPerdidasCancelamento/8,1)+' dias':'—', 'Dias de Produtividade Perdidos', '', 'jornada de 8h/dia')
+        irKpiTile('📅', horas?irFmtNum(diasPerdidos,1)+' dias':'—', 'Dias de Produtividade Perdidos', '', 'jornada de 8h/dia') +
+        irKpiTile('🧑\u200d🏭', pessoasEquivalentes!=null?irFmtNum(pessoasEquivalentes,1):'—', 'Pessoas Equivalentes', '', diasDecorridos!=null?'em '+irFmtInt(diasDecorridos)+' dias úteis do ciclo':'ciclo sem data de abertura') +
+        irKpiTile('🔎', tentativas>0?irFmtPct(comHorario/tentativas):'—', 'Cobertura da Medição', comHorario/tentativas<0.5?'bad':'', 'o tempo perdido real é maior')
       )}
     </div>
   </div>`;
