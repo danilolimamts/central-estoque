@@ -554,8 +554,14 @@ table.prod-rank td{ white-space:nowrap; }
 .prod-alerta.good{ background:var(--success-light); color:var(--success); }
 .prod-alerta.bad{ background:var(--danger-light); color:var(--danger); }
 .prod-alerta.warn{ background:rgba(201,138,8,.12); color:#B8790A; }
-.prod-diag p{ font-size:13px; color:var(--ink); margin-bottom:6px; }
-.prod-diag p:last-child{ margin-bottom:0; }
+/* Diagnóstico: uma grade de números, não parágrafos. */
+.prod-fatos{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:2px; background:var(--line); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+.prod-fato{ background:var(--surface); padding:10px 12px; border-top:3px solid transparent; }
+.prod-fato.good{ border-top-color:var(--success); }
+.prod-fato.bad{ border-top-color:var(--danger); }
+.prod-fato-lbl{ display:block; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); }
+.prod-fato strong{ display:block; font-size:19px; font-weight:800; color:var(--ink); line-height:1.2; margin-top:3px; }
+.prod-fato-sub{ display:block; font-size:10.5px; color:var(--ink-soft); margin-top:2px; overflow-wrap:anywhere; }
 .prod-quad.q-ref{ fill:var(--prod-quad-ref); }
 .prod-quad.q-opo{ fill:var(--prod-quad-opo); }
 .prod-quad.q-risco{ fill:var(--prod-quad-risco); }
