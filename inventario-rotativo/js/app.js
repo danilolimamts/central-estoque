@@ -925,7 +925,16 @@ function irRenderLogTablePanel(ind){
   const rows = irFiltrarLogsValidos(ind.porLog).map(r=>({
     ...r, locaisPendentes: irLocaisPendentesPor('grupoClasse', r.chave).length
   }));
-  if(!rows.length) return '';
+  // Sem log válido a tabela sumia da tela sem explicação. Agora o painel continua
+  // no lugar dizendo por que está vazio — some do Dashboard é o pior sintoma
+  // possível pra quem usa o número todo dia.
+  if(!rows.length){
+    const logsNaBase = Array.from(new Set((ind.porLog||[]).map(r=>r.chave))).filter(Boolean);
+    return `<div class="panel">
+      <h3>Acurácia por Log</h3>
+      <p class="field-hint">Nenhum dos logs considerados (${IR_LOGS_VALIDOS.join(', ')}) tem local contado neste ciclo.${logsNaBase.length?` Grupo Classe encontrado na base congelada: ${irEsc(logsNaBase.slice(0,12).join(', '))}.`:' A base congelada não trouxe Grupo Classe — reprocesse o ciclo na Importação.'}</p>
+    </div>`;
+  }
   const total = irCalcLogTotal(rows);
   total.locaisPendentes = rows.reduce((s,r)=>s+r.locaisPendentes, 0);
   const rowsComTotal = [...rows, total];
@@ -3671,8 +3680,19 @@ function irLocaisPendentesContagem(rua){
 }
 /* Mesma regra de pendente, recortando por qualquer campo da base congelada —
    'x1' pro Resumo por Setor, 'grupoClasse' pra Acurácia por Log. */
+function irLocaisContadosSet(){
+  // Memoizado por ciclo: montar esse Set varre TODAS as contagens do ciclo (milhões
+  // de linhas na base real) e ele era remontado uma vez por rua e por log, a cada
+  // render do Dashboard.
+  const cicloId = (IR.cicloAtivo||{}).id;
+  if(IR._contadosSet && IR._contadosSetCiclo===cicloId && IR._contadosSetN===(IR.contagens||[]).length) return IR._contadosSet;
+  IR._contadosSet = new Set((IR.contagens||[]).filter(c=>c.idConferencia>=2).map(c=>c.local));
+  IR._contadosSetCiclo = cicloId;
+  IR._contadosSetN = (IR.contagens||[]).length;
+  return IR._contadosSet;
+}
 function irLocaisPendentesPor(campo, valor){
-  const contadosSet = new Set((IR.contagens||[]).filter(c=>c.idConferencia>=2).map(c=>c.local));
+  const contadosSet = irLocaisContadosSet();
   let base = (IR.locais||[]).filter(l=>!contadosSet.has(l.idLocal));
   if(valor) base = base.filter(l=>l[campo]===valor);
   return base.sort((a,b)=>String(a.descricao||'').localeCompare(String(b.descricao||''), undefined, {numeric:true}));
