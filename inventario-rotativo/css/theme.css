@@ -357,6 +357,7 @@ button{ font-family:inherit; cursor:pointer; }
 .item-div-net{ display:block; font-size:10px; color:var(--ink-soft); font-family:'SFMono-Regular',Consolas,monospace; }
 .item-div-net.pos{ color:var(--success); }
 .item-div-net.neg{ color:var(--danger); }
+.item-div-abs{ font-size:9px; font-weight:800; letter-spacing:.06em; color:var(--ink-soft); }
 .bi-hbar-val{ text-align:right; font-family:'SFMono-Regular',Consolas,monospace; font-size:11px; color:var(--ink); font-weight:600; }
 
 /* Barras verticais (por dia / por log) */
