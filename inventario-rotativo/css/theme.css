@@ -585,6 +585,10 @@ table.div-net-table td{ vertical-align:middle; }
 table.div-net-table tr.div-sel{ background:var(--orange-light); }
 .div-acum-track{ height:6px; border-radius:100px; background:var(--surface2); overflow:hidden; min-width:70px; }
 .div-acum-fill{ height:100%; border-radius:100px; background:var(--orange); }
+/* Colunas do ano ficam num fundo próprio — é o contraponto ao escopo escolhido. */
+table.div-net-table th.div-col-ano, table.div-net-table td.div-col-ano{ background:var(--surface2); }
+:root[data-theme="dark"] table.div-net-table th.div-col-ano,
+:root[data-theme="dark"] table.div-net-table td.div-col-ano{ background:rgba(255,255,255,.04); }
 tr.div-aud-saldo{ background:var(--blue-light); }
 :root[data-theme="dark"] table.div-net-table tr.div-sel{ background:rgba(250,70,22,.16); }
 :root[data-theme="dark"] tr.div-aud-saldo{ background:rgba(90,131,214,.14); }
