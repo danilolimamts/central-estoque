@@ -18,6 +18,8 @@ const IR = {
   processing:false, progress:{stage:'', pct:0},
   divergencias:[], locais:[], contagens:[],
   divFilters:{search:'', local:''},
+  divEscopo:{tipo:'ciclo'}, divEscopoDados:null, divSelecionados:null,
+  divMostrarAnulados:false, divAuditoria:null,
   auditFilters:{minPrioridade:0},
   prodFilters:{de:'', ate:'', usuario:'', setor:''},
   prodSort:{col:'locaisHora', dir:'desc'},
@@ -3589,13 +3591,303 @@ function irRenderNetDistorcaoPanel(){
     ${tabela}
   </div>`;
 }
+/* ============================================================
+   DIVERGÊNCIAS — quem está distorcendo o NET, e a auditoria de validação
+
+   A pergunta da aba: das peças divergentes do período, quais ITENS puxam o NET
+   e por onde começar. Item que perdeu num local e ganhou em outro fecha o NET
+   perto de zero — não precisa auditoria, e some do topo da lista.
+
+   Da lista o usuário marca os itens e gera a auditoria de validação, que sai em
+   dois blocos por item:
+     • LOCAIS DIVERGENTES — onde a diferença apareceu no ciclo.
+     • LOCAIS COM SALDO   — onde o item tem estoque hoje (QRY0390), inclusive
+       posições que ninguém contou. Cada linha aponta os locais divergentes do
+       mesmo item, pra o auditor saber de onde a suspeita veio.
+   ============================================================ */
+const IR_DIV_AUTOANULA_LIM = 0.25; // |NET| < 25% do ABS => sobra e falta se anularam
+
+function irDivSetEscopo(value){
+  IR.divEscopo = value.startsWith('ano:') ? {tipo:'ano', ano:value.slice(4)}
+              : value.startsWith('mes:') ? {tipo:'mes', mes:value.slice(4)}
+              : {tipo:value};
+  IR.divEscopoDados = null;
+  IR.divSelecionados = new Set();
+  IR.divAuditoria = null;
+  irRenderView();
+  irCarregarDivEscopo();
+}
+async function irCarregarDivEscopo(){
+  const e = IR.divEscopo;
+  let divs;
+  if(e.tipo==='ano'){
+    const ciclosDoAno = IR.ciclos.filter(c=>String(c.dataAbertura||'').slice(0,4)===String(e.ano));
+    divs = (await Promise.all(ciclosDoAno.map(c=>irGetByCiclo(IR_STORES.divergencias, c.id)))).flat();
+  } else {
+    divs = IR.divergencias;
+  }
+  IR.divEscopoDados = divs;
+  irRenderView();
+}
+/* Mês de cada divergência = mês em que o local fechou (mesma regra do resto do
+   módulo). Só existe para o ciclo carregado, onde temos as contagens. */
+function irDivMesPorLocal(){
+  if(IR._divMesPorLocal && IR._divMesPorLocalCiclo===(IR.cicloAtivo||{}).id) return IR._divMesPorLocal;
+  const finalPorLocal = new Map();
+  for(const c of (IR.contagens||[])){
+    if(c.idConferencia<2 || !c.dataSituacao) continue;
+    const atual = finalPorLocal.get(c.local);
+    if(!atual || c.idConferencia>atual.rodada) finalPorLocal.set(c.local, {rodada:c.idConferencia, mes:c.dataSituacao.slice(0,7)});
+  }
+  const m = new Map();
+  for(const [local, v] of finalPorLocal) m.set(local, v.mes);
+  IR._divMesPorLocal = m;
+  IR._divMesPorLocalCiclo = (IR.cicloAtivo||{}).id;
+  return m;
+}
+function irDivMesesDisponiveis(){
+  return Array.from(new Set(Array.from(irDivMesPorLocal().values()))).sort();
+}
+/* Consolida por item dentro do escopo: NET (com sinal) e ABS (sem sinal), em
+   peças e em valor, com os locais divergentes de cada item. */
+function irDivCalcItens(){
+  const base = IR.divEscopoDados || IR.divergencias || [];
+  const e = IR.divEscopo;
+  let divs = irSoLocaisConcluidos(base).filter(d=>d.diferenca!==0);
+  if(e.tipo==='mes'){
+    const mesPorLocal = irDivMesPorLocal();
+    divs = divs.filter(d=>mesPorLocal.get(d.local)===e.mes);
+  }
+  const map = new Map();
+  for(const d of divs){
+    let g = map.get(d.item);
+    if(!g){ g = {item:d.item, descricao:d.itemNome, netQtd:0, netValor:0, absQtd:0, absValor:0, locais:[]}; map.set(d.item, g); }
+    g.netQtd += d.diferenca;
+    g.netValor += d.vlDivergencia;
+    g.absQtd += Math.abs(d.diferenca);
+    g.absValor += Math.abs(d.vlDivergencia);
+    g.locais.push(d);
+    if(!g.descricao && d.itemNome) g.descricao = d.itemNome;
+  }
+  const itens = Array.from(map.values()).map(g=>({
+    ...g,
+    nLocais: g.locais.length,
+    autoAnulado: g.absQtd>0 && Math.abs(g.netQtd)/g.absQtd < IR_DIV_AUTOANULA_LIM
+  })).sort((a,b)=>Math.abs(b.netValor)-Math.abs(a.netValor));
+  // Cobertura acumulada sobre o |NET| — responde "quantos itens explicam 80% do NET".
+  const totalNetAbs = itens.reduce((s,i)=>s+Math.abs(i.netValor), 0);
+  let acum = 0;
+  for(const i of itens){ acum += Math.abs(i.netValor); i.pctAcumulado = totalNetAbs>0 ? acum/totalNetAbs : 0; }
+  return {itens, totalNetAbs,
+    netQtd: itens.reduce((s,i)=>s+i.netQtd,0),
+    absQtd: itens.reduce((s,i)=>s+i.absQtd,0),
+    netValor: itens.reduce((s,i)=>s+i.netValor,0),
+    absValor: itens.reduce((s,i)=>s+i.absValor,0)};
+}
+function irDivToggleAnulados(){ IR.divMostrarAnulados = !IR.divMostrarAnulados; irRenderView(); }
+function irDivToggleItem(item){
+  if(!IR.divSelecionados) IR.divSelecionados = new Set();
+  if(IR.divSelecionados.has(item)) IR.divSelecionados.delete(item); else IR.divSelecionados.add(item);
+  irRenderView();
+}
+function irDivSelecionarTop(){
+  const n = Math.max(1, parseInt((document.getElementById('ir-div-topn')||{}).value, 10) || 10);
+  const lista = irDivListaVisivel();
+  IR.divSelecionados = new Set(lista.slice(0, n).map(i=>i.item));
+  irRenderView();
+}
+function irDivLimparSelecao(){ IR.divSelecionados = new Set(); IR.divAuditoria = null; irRenderView(); }
+function irDivListaVisivel(){
+  const {itens} = irDivCalcItens();
+  return IR.divMostrarAnulados ? itens : itens.filter(i=>!i.autoAnulado);
+}
+function irDivEscopoLabel(){
+  const e = IR.divEscopo;
+  if(e.tipo==='ano') return 'ano '+e.ano;
+  if(e.tipo==='mes') return irMesLabel(e.mes);
+  return IR.cicloAtivo ? irCicloLabel(IR.cicloAtivo) : 'ciclo atual';
+}
+
+/* ---------- AUDITORIA DE VALIDAÇÃO ---------- */
+async function irDivGerarAuditoria(){
+  const sel = Array.from(IR.divSelecionados||[]);
+  if(!sel.length){ irShowToast('Marque ao menos um item.', true); return; }
+  const {itens} = irDivCalcItens();
+  const porItem = new Map(itens.map(i=>[i.item, i]));
+  const cicloId = (IR.cicloAtivo||{}).id;
+  const descricaoLocal = new Map((IR.locais||[]).map(l=>[l.idLocal, l]));
+  const linhas = [];
+  let semEstoque = 0;
+  for(const item of sel){
+    const g = porItem.get(item);
+    if(!g) continue;
+    const locaisDivergentes = new Set(g.locais.map(l=>l.local));
+    const refDivergentes = Array.from(locaisDivergentes).join(', ');
+    for(const d of g.locais.slice().sort((a,b)=>Math.abs(b.diferenca)-Math.abs(a.diferenca))){
+      const l = descricaoLocal.get(d.local) || {};
+      linhas.push({origem:'divergente', item, descricao:g.descricao, local:d.local,
+        descricaoLocal:l.descricao||'', rua:l.x1||'', log:l.grupoClasse||'',
+        qtdeSistema:d.qtdeSistema, qtdeFisica:d.qtdeFisica, diferenca:d.diferenca,
+        vlDivergencia:d.vlDivergencia, saldoAtual:null, refDivergentes:''});
+    }
+    // Locais onde o item tem saldo hoje (QRY0390) — inclusive os que ninguém contou.
+    const est = cicloId ? await irGetEstoqueItem(cicloId, item) : null;
+    if(!est || !est.locais.length){ semEstoque++; continue; }
+    for(const s of est.locais){
+      if(locaisDivergentes.has(s.local)) continue; // já saiu no bloco de divergentes
+      const l = descricaoLocal.get(s.local) || {};
+      linhas.push({origem:'saldo', item, descricao:g.descricao, local:s.local,
+        descricaoLocal:l.descricao||'', rua:l.x1||'', log:l.grupoClasse||'',
+        qtdeSistema:s.qtd, qtdeFisica:null, diferenca:null, vlDivergencia:null,
+        saldoAtual:s.qtd, refDivergentes});
+    }
+  }
+  IR.divAuditoria = {
+    geradoEm: new Date().toLocaleString('pt-BR'),
+    escopo: irDivEscopoLabel(),
+    itens: sel.length, linhas, semEstoque,
+    divergentes: linhas.filter(l=>l.origem==='divergente').length,
+    saldo: linhas.filter(l=>l.origem==='saldo').length
+  };
+  irRenderView();
+}
+function irDivExportarAuditoriaCsv(){
+  const g = IR.divAuditoria;
+  if(!g || !g.linhas.length){ irShowToast('Nada para exportar.', true); return; }
+  const cols = [
+    ['origem','Origem'], ['item','Item'], ['descricao','Descrição'], ['local','Local'],
+    ['descricaoLocal','Descrição do Local'], ['rua','Rua'], ['log','Log'],
+    ['qtdeSistema','Qtde Sistema'], ['qtdeFisica','Qtde Física'], ['diferenca','Diferença'],
+    ['vlDivergencia','Valor Divergente'], ['saldoAtual','Saldo Atual'],
+    ['refDivergentes','Locais com divergência do item']
+  ];
+  const esc = v => {
+    if(v===null || v===undefined) return '';
+    if(typeof v==='string') return '"'+v.replace(/"/g,'""')+'"';
+    return String(v).replace('.', ',');
+  };
+  const linhas = g.linhas.map(l=>cols.map(([k])=>esc(l[k])).join(';'));
+  // Coluna em branco pro auditor anotar a contagem dele em campo.
+  const csv = '﻿'+cols.map(c=>c[1]).join(';')+';Contagem do Auditor\n'+linhas.map(l=>l+';').join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'auditoria_validacao_'+String(g.escopo).replace(/\W+/g,'_')+'.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function irRenderDivAuditoria(){
+  const g = IR.divAuditoria;
+  if(!g) return '';
+  const row = l=>`<tr class="${l.origem==='saldo'?'div-aud-saldo':''}">
+    <td><span class="tag ${l.origem==='saldo'?'tag-blue':'tag-orange'}">${l.origem==='saldo'?'saldo':'divergente'}</span></td>
+    <td class="mono">${irEsc(l.item)}</td>
+    <td title="${irEsc(l.descricao||'')}">${irEsc(irResumirDescricao(l.descricao))}</td>
+    <td class="mono">${irEsc(l.local)}</td>
+    <td>${irEsc(l.descricaoLocal||'—')}</td>
+    <td class="mono">${l.qtdeSistema!=null?irFmtInt(l.qtdeSistema):'—'}</td>
+    <td class="mono">${l.qtdeFisica!=null?irFmtInt(l.qtdeFisica):'—'}</td>
+    <td class="mono">${l.diferenca!=null?(l.diferenca>0?'+':'')+irFmtInt(l.diferenca):'—'}</td>
+    <td class="mono field-hint">${irEsc(l.refDivergentes||'')}</td>
+  </tr>`;
+  return `<div class="panel" style="background:var(--surface2);">
+    <div class="panel-head-row">
+      <h3>🔍 Auditoria de validação — ${irEsc(g.escopo)}</h3>
+      <button class="btn btn-primary" onclick="irDivExportarAuditoriaCsv()">📥 Exportar CSV</button>
+    </div>
+    <p class="field-hint" style="margin-bottom:10px;">
+      ${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} ·
+      ${irFmtInt(g.divergentes)} ${g.divergentes===1?'local divergente':'locais divergentes'} ·
+      ${irFmtInt(g.saldo)} ${g.saldo===1?'local com saldo':'locais com saldo'} ·
+      gerado em ${irEsc(g.geradoEm)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} item(ns) sem QRY0390 importada`:''}
+    </p>
+    <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
+      <table class="table-dense">
+        <thead><tr><th>Origem</th><th>Item</th><th>Descrição</th><th>Local</th><th>Descrição do Local</th>
+          <th>Qtde Sistema</th><th>Qtde Física</th><th>Diferença</th><th>Locais com divergência</th></tr></thead>
+        <tbody>${g.linhas.map(row).join('')}</tbody>
+      </table>
+    </div></div>
+  </div>`;
+}
+
+/* ---------- PAINEL PRINCIPAL ---------- */
+function irRenderDivDistorcaoNet(){
+  const {itens, netQtd, absQtd, netValor, absValor} = irDivCalcItens();
+  const visiveis = IR.divMostrarAnulados ? itens : itens.filter(i=>!i.autoAnulado);
+  const anulados = itens.length - itens.filter(i=>!i.autoAnulado).length;
+  const sel = IR.divSelecionados || new Set();
+  // Quantos itens explicam 80% do NET — é o "por onde atacar".
+  const idx80 = visiveis.findIndex(i=>i.pctAcumulado>=0.8);
+  const itens80 = idx80===-1 ? visiveis.length : idx80+1;
+  const meses = irDivMesesDisponiveis();
+  const anos = Array.from(new Set(IR.ciclos.map(c=>String(c.dataAbertura||'').slice(0,4)).filter(Boolean))).sort((a,b)=>b.localeCompare(a));
+  const e = IR.divEscopo;
+  const valorEscopo = e.tipo==='ano' ? 'ano:'+e.ano : e.tipo==='mes' ? 'mes:'+e.mes : 'ciclo';
+  const maxNet = Math.max(1, ...visiveis.map(i=>Math.abs(i.netValor)));
+  const row = i=>`<tr class="${sel.has(i.item)?'div-sel':''}">
+    <td><input type="checkbox" ${sel.has(i.item)?'checked':''} onchange="irDivToggleItem('${irEsc(i.item)}')"></td>
+    <td class="mono">${irEsc(i.item)}</td>
+    <td title="${irEsc(i.descricao||'')}">${irEsc(irResumirDescricao(i.descricao))}</td>
+    <td class="mono" style="font-weight:700;color:${i.netQtd>=0?'var(--success)':'var(--danger)'};">${i.netQtd>0?'+':''}${irFmtInt(i.netQtd)}</td>
+    <td class="mono" style="font-weight:700;color:${i.netValor>=0?'var(--success)':'var(--danger)'};">${i.netValor>0?'+':''}${irFmtMoney(i.netValor)}</td>
+    <td class="mono field-hint">${irFmtInt(i.absQtd)}</td>
+    <td class="mono">${irFmtInt(i.nLocais)}</td>
+    <td>
+      <div class="div-acum-track"><div class="div-acum-fill" style="width:${Math.round(Math.abs(i.netValor)/maxNet*100)}%;"></div></div>
+      <span class="field-hint mono">${irFmtPct(i.pctAcumulado)} acum.</span>
+    </td>
+    <td>${i.autoAnulado?'<span class="tag tag-blue" title="Sobra e falta quase se anulam — NET perto de zero">auto-anulado</span>':''}</td>
+  </tr>`;
+  return `<div class="panel dash-filter-bar" style="margin-bottom:14px;">
+    <div class="dash-filter-group">
+      <label>Escopo</label>
+      <select onchange="irDivSetEscopo(this.value)">
+        <option value="ciclo" ${valorEscopo==='ciclo'?'selected':''}>Ciclo atual (${irEsc(irCicloLabel(IR.cicloAtivo))})</option>
+        ${meses.map(m=>`<option value="mes:${m}" ${valorEscopo==='mes:'+m?'selected':''}>Mês ${irEsc(irMesLabel(m))}</option>`).join('')}
+        ${anos.map(a=>`<option value="ano:${a}" ${valorEscopo==='ano:'+a?'selected':''}>Ano ${a} (todos os ciclos)</option>`).join('')}
+      </select>
+    </div>
+    <label class="prod-filtro-check">
+      <input type="checkbox" ${IR.divMostrarAnulados?'checked':''} onchange="irDivToggleAnulados()">
+      Mostrar itens auto-anulados (${irFmtInt(anulados)})
+    </label>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi-card orange"><div class="num mono">${netQtd>0?'+':''}${irFmtInt(netQtd)}</div><div class="label">NET peças</div></div>
+    <div class="kpi-card"><div class="num mono">${irFmtInt(absQtd)}</div><div class="label">Peças divergentes (ABS)</div></div>
+    <div class="kpi-card orange"><div class="num mono">${netValor>0?'+':''}${irFmtMoneyCompact(netValor)}</div><div class="label">NET valor</div><div class="sub">${irFmtMoneyInt(netValor)}</div></div>
+    <div class="kpi-card"><div class="num mono">${irFmtMoneyCompact(absValor)}</div><div class="label">Valor divergente (ABS)</div><div class="sub">${irFmtMoneyInt(absValor)}</div></div>
+    <div class="kpi-card"><div class="num mono">${irFmtInt(itens.length)}</div><div class="label">Itens divergentes</div><div class="sub">${irFmtInt(anulados)} auto-anulados</div></div>
+    <div class="kpi-card bad"><div class="num mono">${irFmtInt(itens80)}</div><div class="label">Itens = 80% do NET</div><div class="sub">ataque por aqui</div></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head-row">
+      <h3>🎯 Itens que distorcem o NET — ${irEsc(irDivEscopoLabel())}</h3>
+      <div class="div-acoes">
+        <input type="number" id="ir-div-topn" min="1" max="200" value="${itens80}" style="width:72px;">
+        <button class="btn btn-secondary" onclick="irDivSelecionarTop()">Marcar top N</button>
+        ${sel.size?`<button class="btn-link" onclick="irDivLimparSelecao()">Limpar (${sel.size})</button>`:''}
+        <button class="btn btn-primary" onclick="irDivGerarAuditoria()">🔍 Gerar auditoria (${sel.size})</button>
+      </div>
+    </div>
+    <p class="panel-sub">Ordenado por |NET| em valor. Item que perdeu num local e ganhou em outro fecha perto de zero e sai do topo — não precisa de auditoria.</p>
+    ${visiveis.length ? `<div class="table-wrap"><div class="table-scroll" style="max-height:560px;">
+      <table class="table-dense div-net-table">
+        <thead><tr><th></th><th>Item</th><th>Descrição</th><th>NET peças</th><th>NET valor</th><th>ABS peças</th><th>Locais</th><th>Peso no NET</th><th></th></tr></thead>
+        <tbody>${visiveis.map(row).join('')}</tbody>
+      </table>
+    </div></div>` : '<p class="field-hint">Nenhum item divergente nesse escopo.</p>'}
+  </div>
+  ${irRenderDivAuditoria()}`;
+}
 function irRenderDivergencias(){
   const semDivergencias = !IR.divergencias.length;
   if(semDivergencias && !IR.net410Anos.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
   if(semDivergencias) return irRenderNetDistorcaoPanel();
   const locais = Array.from(new Set(IR.divergencias.map(d=>d.local))).sort();
   return `
-    ${irRenderNetDistorcaoPanel()}
+    ${irRenderDivDistorcaoNet()}
     <button class="btn-link" style="margin-bottom:10px;" onclick="irToggleDivRawTable(this)">📋 Ver lista completa de divergências do ciclo atual (${irFmtInt(irDivergenciasFiltered().length)} itens, item × local)</button>
     <div id="ir-div-raw-wrap" style="display:none;">
     <div class="filter-bar">
@@ -3613,6 +3905,10 @@ function irRenderDivergencias(){
       </div>
     </div>
     </div>
+    <details style="margin-top:16px;">
+      <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-soft);">Análise do NET de Perdas e Ganhos (QRY410) — outra base, movimentação do CD</summary>
+      <div style="margin-top:12px;">${irRenderNetDistorcaoPanel()}</div>
+    </details>
   `;
 }
 function irToggleDivRawTable(btn){
