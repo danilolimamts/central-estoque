@@ -1588,32 +1588,25 @@ function irRenderTopItensPanel(saldo, kind){
   const titulo = isValor ? 'Itens mais Divergentes (Valor · ABS)' : 'Itens mais Divergentes (Peças · ABS)';
   const fmt = isValor ? irFmtMoney : irFmtInt;
   const getAbs = i => isValor ? i.absValor : i.absQtd;
-  const getNet = i => isValor ? i.saldoValor : i.saldoQtd;
   if(!itens.length) return `<div class="panel"><h3>${titulo}</h3><p class="field-hint">Nenhuma divergência registrada ainda.</p></div>`;
   const maxAbs = Math.max(1, ...itens.map(getAbs));
   const VISIVEL = 8;
-  const row = (i, pos)=>{
-    const net = getNet(i);
-    return `<div class="bi-hbar-row${isValor?' bi-hbar-row-money':''}">
-      <div class="bi-hbar-label" title="${irEsc(i.item)} — ${irEsc(i.descricao)}">
-        <span class="mono">${irEsc(pos)}º</span> <span class="mono">${irEsc(i.item)}</span> — ${irEsc(i.descricao||i.item)}
-        <span class="item-div-net ${net>=0?'pos':'neg'}">NET ${net>0?'+':''}${fmt(net)} · ${irFmtInt(i.locais)} ${i.locais===1?'local':'locais'}</span>
-      </div>
+  const row = i=>`<div class="bi-hbar-row${isValor?' bi-hbar-row-money':''}">
+      <div class="bi-hbar-label" title="${irEsc(i.item)} — ${irEsc(i.descricao)}"><span class="mono">${irEsc(i.item)}</span> — ${irEsc(i.descricao||i.item)}</div>
       <div class="bi-hbar-track"><div class="bi-hbar-fill neg" style="width:${Math.round(getAbs(i)/maxAbs*100)}%;"></div></div>
-      <div class="bi-hbar-val"><span class="item-div-abs">ABS</span> ${fmt(getAbs(i))}</div>
+      <div class="bi-hbar-val">${fmt(getAbs(i))}</div>
     </div>`;
-  };
-  const visiveis = itens.slice(0, VISIVEL).map((i,n)=>row(i,n+1)).join('');
+  const visiveis = itens.slice(0, VISIVEL).map(row).join('');
   const resto = itens.slice(VISIVEL);
   const uid = 'ir-col-'+Math.random().toString(36).slice(2,9);
   const lista = resto.length
     ? `<button class="btn-link" style="margin:0 0 6px;" onclick="irToggleCollapse('${uid}', this)">Ver mais (+${resto.length})</button>
-       ${visiveis}<div id="${uid}" style="display:none;">${resto.map((i,n)=>row(i,n+1+VISIVEL)).join('')}</div>`
+       ${visiveis}<div id="${uid}" style="display:none;">${resto.map(row).join('')}</div>`
     : visiveis;
   return `<div class="panel">
     <h3>${titulo}</h3>
-    <p class="panel-sub">${isValor ? 'Divergência absoluta de valor por item' : 'Divergência absoluta de peças por item'} — soma de |físico − sistema|, ${irItemDivEscopoLabel()}. Sobra e falta não se anulam.</p>
-    <div class="item-div-list">${lista}</div>
+    <p class="panel-sub">${isValor ? 'Divergência absoluta de valor por item' : 'Divergência absoluta de peças por item'}, ${irItemDivEscopoLabel()}.</p>
+    ${lista}
   </div>`;
 }
 /* ============================================================
