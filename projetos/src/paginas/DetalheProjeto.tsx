@@ -1,0 +1,429 @@
+import { useState } from 'react';
+import FormularioProjeto from './FormularioProjeto';
+import { Aviso, Barra, Campo, Modal, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
+import {
+  excluirAtualizacao, excluirMarco, excluirProjeto, excluirTarefa, lancarAtualizacao,
+  mensagemDeErro, salvarMarco, salvarProjeto, salvarTarefa, useDetalheProjeto,
+} from '@/estado/dados';
+import {
+  formatarData, isoDeHoje, marcoAtrasado, percentualEsperado, progressoDeTarefas, saude, tarefaAtrasada,
+} from '@/dominio/regras';
+import type { Marco, Pessoa, Projeto, StatusProjeto, StatusTarefa, Tarefa } from '@/dominio/tipos';
+import { STATUS, STATUS_TAREFA, rotuloStatus, rotuloStatusTarefa } from '@/dominio/tipos';
+
+interface Props {
+  projeto: Projeto;
+  pessoas: Pessoa[];
+  podeEditar: boolean;
+  ehAdmin: boolean;
+  /* Id da pessoa (cadastro do modulo) e id do login: o primeiro liga
+     tarefas ao executor, o segundo diz quem assinou o lancamento. */
+  euId: string | null;
+  authId: string;
+  aoVoltar: () => void;
+  recarregar: () => Promise<void>;
+}
+
+export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, euId, authId, aoVoltar, recarregar }: Props) {
+  const dados = useDetalheProjeto(projeto.id);
+  const [editando, setEditando] = useState(false);
+  const [marcoEmEdicao, setMarcoEmEdicao] = useState<Marco | 'novo' | null>(null);
+  const [tarefaEmEdicao, setTarefaEmEdicao] = useState<Tarefa | 'nova' | null>(null);
+  const [reportando, setReportando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const nomePessoa = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '—';
+
+  async function comErro(acao: () => Promise<void>) {
+    try {
+      setErro(null);
+      await acao();
+      await dados.recarregar();
+      await recarregar();
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <button className="text-sm font-bold text-roxo-escuro hover:underline" onClick={aoVoltar}>← Voltar</button>
+
+      <div className="cartao p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              {projeto.codigo && <span className="text-xs font-bold text-tinta-suave">{projeto.codigo}</span>}
+              <SeloStatus status={projeto.status} />
+              <SeloPrioridade prioridade={projeto.prioridade} />
+              <SeloSaude saude={saude(projeto)} />
+            </div>
+            <h1 className="font-titulo text-xl font-extrabold">{projeto.nome}</h1>
+            {projeto.descricao && <p className="mt-1 max-w-3xl text-sm text-tinta-suave">{projeto.descricao}</p>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="botao-neutro"
+              onClick={() => void comErro(async () => {
+                /* A biblioteca de planilha pesa quase metade do bundle:
+                   so e baixada quando alguem exporta de fato. */
+                const { exportarProjeto } = await import('@/exportar/excel');
+                exportarProjeto(projeto, pessoas, dados.marcos, dados.tarefas, dados.atualizacoes);
+              })}
+            >
+              Exportar Excel
+            </button>
+            {podeEditar && <button className="botao-neutro" onClick={() => setReportando(true)}>Lançar acompanhamento</button>}
+            {podeEditar && <button className="botao-primario" onClick={() => setEditando(true)}>Editar</button>}
+            {ehAdmin && (
+              <button
+                className="botao-perigo"
+                onClick={() => {
+                  if (!confirm(`Excluir "${projeto.nome}"? Marcos, tarefas e histórico serão apagados junto.`)) return;
+                  void comErro(async () => { await excluirProjeto(projeto.id); aoVoltar(); });
+                }}
+              >Excluir</button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div><p className="rotulo">Responsável</p>{nomePessoa(projeto.responsavel_id)}</div>
+          <div><p className="rotulo">Área</p>{projeto.area ?? '—'}</div>
+          <div><p className="rotulo">Previsto</p>{formatarData(projeto.inicio_previsto)} → {formatarData(projeto.fim_previsto)}</div>
+          <div><p className="rotulo">Real</p>{formatarData(projeto.inicio_real)} → {formatarData(projeto.fim_real)}</div>
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-1 flex items-center justify-between text-xs font-bold text-tinta-suave">
+            <span>Avanço informado</span>
+            <span>
+              {projeto.percentual}%
+              {percentualEsperado(projeto) !== null && ` · esperado pelo prazo ${percentualEsperado(projeto)}%`}
+              {dados.tarefas.length > 0 && ` · tarefas concluídas ${progressoDeTarefas(dados.tarefas)}%`}
+            </span>
+          </div>
+          <Barra valor={projeto.percentual} esperado={percentualEsperado(projeto)} />
+        </div>
+      </div>
+
+      {erro && <Aviso>{erro}</Aviso>}
+      {dados.erro && <Aviso>{dados.erro}</Aviso>}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="cartao overflow-hidden">
+          <div className="flex items-center justify-between border-b border-linha px-4 py-3">
+            <h2 className="font-titulo text-sm font-extrabold">Marcos</h2>
+            {podeEditar && <button className="text-sm font-bold text-roxo-escuro" onClick={() => setMarcoEmEdicao('novo')}>+ Novo marco</button>}
+          </div>
+          {dados.marcos.length ? (
+            <ul className="divide-y divide-linha">
+              {dados.marcos.map((m) => (
+                <li key={m.id} className="flex items-start gap-3 px-4 py-3">
+                  <input
+                    type="checkbox" checked={m.concluido} disabled={!podeEditar} className="mt-1"
+                    onChange={(e) => void comErro(() => salvarMarco(
+                      { projeto_id: projeto.id, nome: m.nome, concluido: e.target.checked, data_real: e.target.checked ? (m.data_real ?? isoDeHoje()) : null },
+                      m.id,
+                    ))}
+                  />
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${m.concluido ? 'text-tinta-suave line-through' : ''}`}>{m.nome}</p>
+                    <p className="text-xs text-tinta-suave">
+                      Previsto {formatarData(m.data_prevista)}
+                      {m.data_real && ` · concluído ${formatarData(m.data_real)}`}
+                      {marcoAtrasado(m) && <span className="ml-1 font-bold text-vermelho">atrasado</span>}
+                    </p>
+                  </div>
+                  {podeEditar && (
+                    <div className="flex gap-2 text-xs">
+                      <button className="font-bold text-roxo-escuro" onClick={() => setMarcoEmEdicao(m)}>Editar</button>
+                      <button className="font-bold text-vermelho" onClick={() => { if (confirm('Excluir marco?')) void comErro(() => excluirMarco(m.id)); }}>Excluir</button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : <Vazio>Nenhum marco cadastrado.</Vazio>}
+        </section>
+
+        <section className="cartao overflow-hidden">
+          <div className="flex items-center justify-between border-b border-linha px-4 py-3">
+            <h2 className="font-titulo text-sm font-extrabold">
+              Tarefas {dados.tarefas.length > 0 && <span className="text-tinta-suave">({progressoDeTarefas(dados.tarefas)}% concluídas)</span>}
+            </h2>
+            {podeEditar && <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>}
+          </div>
+          {dados.tarefas.length ? (
+            <ul className="divide-y divide-linha">
+              {dados.tarefas.map((t) => {
+                /* Quem executa a tarefa mexe no proprio andamento mesmo
+                   sem ser responsavel pelo projeto - a policy do banco
+                   permite, e a tela precisa refletir isso. */
+                const meu = !!euId && t.responsavel_id === euId;
+                return (
+                  <li key={t.id} className="flex items-start gap-3 px-4 py-3">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold">{t.titulo}</p>
+                      <p className="text-xs text-tinta-suave">
+                        {nomePessoa(t.responsavel_id)} · prazo {formatarData(t.prazo)}
+                        {tarefaAtrasada(t) && <span className="ml-1 font-bold text-vermelho">atrasada</span>}
+                      </p>
+                    </div>
+                    <select
+                      className="campo w-36 py-1 text-xs" value={t.status} disabled={!podeEditar && !meu}
+                      onChange={(e) => {
+                        const novo = e.target.value as StatusTarefa;
+                        void comErro(() => salvarTarefa(
+                          { projeto_id: projeto.id, titulo: t.titulo, status: novo, concluida_em: novo === 'concluida' ? (t.concluida_em ?? isoDeHoje()) : null },
+                          t.id,
+                        ));
+                      }}
+                    >
+                      {STATUS_TAREFA.map((s) => <option key={s} value={s}>{rotuloStatusTarefa[s]}</option>)}
+                    </select>
+                    {podeEditar && (
+                      <div className="flex gap-2 pt-1 text-xs">
+                        <button className="font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao(t)}>Editar</button>
+                        <button className="font-bold text-vermelho" onClick={() => { if (confirm('Excluir tarefa?')) void comErro(() => excluirTarefa(t.id)); }}>Excluir</button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : <Vazio>Nenhuma tarefa cadastrada.</Vazio>}
+        </section>
+      </div>
+
+      <section className="cartao overflow-hidden">
+        <div className="border-b border-linha px-4 py-3">
+          <h2 className="font-titulo text-sm font-extrabold">Acompanhamento</h2>
+        </div>
+        {dados.atualizacoes.length ? (
+          <ul className="divide-y divide-linha">
+            {dados.atualizacoes.map((a) => (
+              <li key={a.id} className="px-4 py-3">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-tinta-suave">
+                  <strong className="text-tinta">{formatarData(a.data)}</strong>
+                  {a.status_reportado && <SeloStatus status={a.status_reportado} />}
+                  {a.percentual !== null && <span>{a.percentual}%</span>}
+                  {(ehAdmin || a.autor_id === authId) && (
+                    <button className="ml-auto font-bold text-vermelho" onClick={() => { if (confirm('Excluir lançamento?')) void comErro(() => excluirAtualizacao(a.id)); }}>Excluir</button>
+                  )}
+                </div>
+                <p className="whitespace-pre-wrap text-sm">{a.texto}</p>
+                {a.riscos && <p className="mt-1 text-sm text-ambar"><strong>Riscos:</strong> {a.riscos}</p>}
+                {a.proximos_passos && <p className="mt-1 text-sm text-tinta-suave"><strong>Próximos passos:</strong> {a.proximos_passos}</p>}
+              </li>
+            ))}
+          </ul>
+        ) : <Vazio>Nenhum acompanhamento lançado.</Vazio>}
+      </section>
+
+      <FormularioProjeto
+        aberto={editando} projeto={projeto} pessoas={pessoas}
+        aoFechar={() => setEditando(false)} aoSalvar={async () => { await recarregar(); await dados.recarregar(); }}
+      />
+
+      <FormularioMarco
+        projetoId={projeto.id} marco={marcoEmEdicao} ordemSugerida={dados.marcos.length}
+        aoFechar={() => setMarcoEmEdicao(null)} recarregar={dados.recarregar}
+      />
+
+      <FormularioTarefa
+        projetoId={projeto.id} tarefa={tarefaEmEdicao} marcos={dados.marcos} pessoas={pessoas}
+        ordemSugerida={dados.tarefas.length}
+        aoFechar={() => setTarefaEmEdicao(null)} recarregar={dados.recarregar}
+      />
+
+      <FormularioAcompanhamento
+        projeto={projeto} aberto={reportando} aoFechar={() => setReportando(false)}
+        recarregar={async () => { await dados.recarregar(); await recarregar(); }}
+      />
+    </div>
+  );
+}
+
+/* ---------------- Marcos ---------------- */
+
+function FormularioMarco({ projetoId, marco, ordemSugerida, aoFechar, recarregar }: {
+  projetoId: string; marco: Marco | 'novo' | null; ordemSugerida: number;
+  aoFechar: () => void; recarregar: () => Promise<void>;
+}) {
+  const [erro, setErro] = useState<string | null>(null);
+  const atual = marco === 'novo' ? null : marco;
+
+  async function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await salvarMarco({
+        projeto_id: projetoId,
+        nome: String(f.get('nome')),
+        descricao: String(f.get('descricao')) || null,
+        data_prevista: String(f.get('data_prevista')) || null,
+        ordem: Number(f.get('ordem')),
+      }, atual?.id);
+      await recarregar();
+      aoFechar();
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+    }
+  }
+
+  return (
+    <Modal aberto={!!marco} aoFechar={aoFechar} titulo={atual ? 'Editar marco' : 'Novo marco'} largura="max-w-lg">
+      <form onSubmit={enviar} className="space-y-3">
+        <Campo rotulo="Nome *"><input name="nome" required defaultValue={atual?.nome ?? ''} className="campo" /></Campo>
+        <Campo rotulo="Descrição"><textarea name="descricao" rows={2} defaultValue={atual?.descricao ?? ''} className="campo" /></Campo>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Campo rotulo="Data prevista"><input name="data_prevista" type="date" defaultValue={atual?.data_prevista ?? ''} className="campo" /></Campo>
+          <Campo rotulo="Ordem"><input name="ordem" type="number" defaultValue={atual?.ordem ?? ordemSugerida} className="campo" /></Campo>
+        </div>
+        {erro && <Aviso>{erro}</Aviso>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="botao-neutro" onClick={aoFechar}>Cancelar</button>
+          <button type="submit" className="botao-primario">Salvar</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/* ---------------- Tarefas ---------------- */
+
+function FormularioTarefa({ projetoId, tarefa, marcos, pessoas, ordemSugerida, aoFechar, recarregar }: {
+  projetoId: string; tarefa: Tarefa | 'nova' | null; marcos: Marco[]; pessoas: Pessoa[];
+  ordemSugerida: number; aoFechar: () => void; recarregar: () => Promise<void>;
+}) {
+  const [erro, setErro] = useState<string | null>(null);
+  const atual = tarefa === 'nova' ? null : tarefa;
+
+  async function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const status = f.get('status') as StatusTarefa;
+    try {
+      await salvarTarefa({
+        projeto_id: projetoId,
+        titulo: String(f.get('titulo')),
+        descricao: String(f.get('descricao')) || null,
+        marco_id: String(f.get('marco_id')) || null,
+        responsavel_id: String(f.get('responsavel_id')) || null,
+        status,
+        inicio: String(f.get('inicio')) || null,
+        prazo: String(f.get('prazo')) || null,
+        concluida_em: status === 'concluida' ? (atual?.concluida_em ?? isoDeHoje()) : null,
+        ordem: Number(f.get('ordem')),
+      }, atual?.id);
+      await recarregar();
+      aoFechar();
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+    }
+  }
+
+  return (
+    <Modal aberto={!!tarefa} aoFechar={aoFechar} titulo={atual ? 'Editar tarefa' : 'Nova tarefa'} largura="max-w-lg">
+      <form onSubmit={enviar} className="space-y-3">
+        <Campo rotulo="Título *"><input name="titulo" required defaultValue={atual?.titulo ?? ''} className="campo" /></Campo>
+        <Campo rotulo="Descrição"><textarea name="descricao" rows={2} defaultValue={atual?.descricao ?? ''} className="campo" /></Campo>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Campo rotulo="Marco">
+            <select name="marco_id" defaultValue={atual?.marco_id ?? ''} className="campo">
+              <option value="">Sem marco</option>
+              {marcos.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
+            </select>
+          </Campo>
+          <Campo rotulo="Responsável">
+            <select name="responsavel_id" defaultValue={atual?.responsavel_id ?? ''} className="campo">
+              <option value="">Sem responsável</option>
+              {pessoas.filter((p) => p.ativo).map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+            </select>
+          </Campo>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Campo rotulo="Situação">
+            <select name="status" defaultValue={atual?.status ?? 'pendente'} className="campo">
+              {STATUS_TAREFA.map((s) => <option key={s} value={s}>{rotuloStatusTarefa[s]}</option>)}
+            </select>
+          </Campo>
+          <Campo rotulo="Início"><input name="inicio" type="date" defaultValue={atual?.inicio ?? ''} className="campo" /></Campo>
+          <Campo rotulo="Prazo"><input name="prazo" type="date" defaultValue={atual?.prazo ?? ''} className="campo" /></Campo>
+          <Campo rotulo="Ordem"><input name="ordem" type="number" defaultValue={atual?.ordem ?? ordemSugerida} className="campo" /></Campo>
+        </div>
+        {erro && <Aviso>{erro}</Aviso>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="botao-neutro" onClick={aoFechar}>Cancelar</button>
+          <button type="submit" className="botao-primario">Salvar</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/* ---------------- Acompanhamento ---------------- */
+
+function FormularioAcompanhamento({ projeto, aberto, aoFechar, recarregar }: {
+  projeto: Projeto; aberto: boolean; aoFechar: () => void; recarregar: () => Promise<void>;
+}) {
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const status = f.get('status_reportado') as StatusProjeto;
+    const percentual = Number(f.get('percentual'));
+    try {
+      await lancarAtualizacao({
+        projeto_id: projeto.id,
+        data: String(f.get('data')),
+        texto: String(f.get('texto')),
+        status_reportado: status,
+        percentual,
+        riscos: String(f.get('riscos')) || null,
+        proximos_passos: String(f.get('proximos_passos')) || null,
+      });
+      /* O lancamento e a fonte do status: sem espelhar no projeto, a
+         lista e o painel continuariam mostrando o quadro antigo. */
+      if (f.get('espelhar')) {
+        await salvarProjeto({ nome: projeto.nome, status, percentual }, projeto.id);
+      }
+      await recarregar();
+      aoFechar();
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+    }
+  }
+
+  return (
+    <Modal aberto={aberto} aoFechar={aoFechar} titulo="Lançar acompanhamento" largura="max-w-lg">
+      <form onSubmit={enviar} className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Campo rotulo="Data"><input name="data" type="date" defaultValue={isoDeHoje()} className="campo" /></Campo>
+          <Campo rotulo="Situação">
+            <select name="status_reportado" defaultValue={projeto.status} className="campo">
+              {STATUS.map((s) => <option key={s} value={s}>{rotuloStatus[s]}</option>)}
+            </select>
+          </Campo>
+          <Campo rotulo="Avanço (%)">
+            <input name="percentual" type="number" min={0} max={100} defaultValue={projeto.percentual} className="campo" />
+          </Campo>
+        </div>
+        <Campo rotulo="O que aconteceu *"><textarea name="texto" required rows={3} className="campo" /></Campo>
+        <Campo rotulo="Riscos"><textarea name="riscos" rows={2} className="campo" /></Campo>
+        <Campo rotulo="Próximos passos"><textarea name="proximos_passos" rows={2} className="campo" /></Campo>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="espelhar" defaultChecked />
+          Atualizar situação e avanço do projeto com estes valores
+        </label>
+        {erro && <Aviso>{erro}</Aviso>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="botao-neutro" onClick={aoFechar}>Cancelar</button>
+          <button type="submit" className="botao-primario">Lançar</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

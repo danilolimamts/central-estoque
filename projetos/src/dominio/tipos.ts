@@ -1,0 +1,96 @@
+export type Papel = 'admin' | 'editor' | 'leitor';
+export type StatusProjeto = 'nao_iniciado' | 'em_andamento' | 'em_risco' | 'pausado' | 'concluido' | 'cancelado';
+export type Prioridade = 'baixa' | 'media' | 'alta' | 'critica';
+export type StatusTarefa = 'pendente' | 'em_andamento' | 'concluida' | 'bloqueada';
+
+export interface Pessoa {
+  id: string;
+  user_id: string | null;
+  nome: string;
+  email: string;
+  area: string | null;
+  papel: Papel;
+  ativo: boolean;
+}
+
+export interface Projeto {
+  id: string;
+  codigo: string | null;
+  nome: string;
+  descricao: string | null;
+  area: string | null;
+  responsavel_id: string | null;
+  status: StatusProjeto;
+  prioridade: Prioridade;
+  inicio_previsto: string | null;
+  fim_previsto: string | null;
+  inicio_real: string | null;
+  fim_real: string | null;
+  percentual: number;
+  criado_por: string | null;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+export interface Marco {
+  id: string;
+  projeto_id: string;
+  nome: string;
+  descricao: string | null;
+  data_prevista: string | null;
+  data_real: string | null;
+  concluido: boolean;
+  ordem: number;
+}
+
+export interface Tarefa {
+  id: string;
+  projeto_id: string;
+  marco_id: string | null;
+  titulo: string;
+  descricao: string | null;
+  responsavel_id: string | null;
+  status: StatusTarefa;
+  inicio: string | null;
+  prazo: string | null;
+  concluida_em: string | null;
+  ordem: number;
+}
+
+export interface Atualizacao {
+  id: string;
+  projeto_id: string;
+  data: string;
+  texto: string;
+  status_reportado: StatusProjeto | null;
+  percentual: number | null;
+  riscos: string | null;
+  proximos_passos: string | null;
+  autor_id: string | null;
+  criado_em: string;
+}
+
+export const rotuloStatus: Record<StatusProjeto, string> = {
+  nao_iniciado: 'Não iniciado',
+  em_andamento: 'Em andamento',
+  em_risco: 'Em risco',
+  pausado: 'Pausado',
+  concluido: 'Concluído',
+  cancelado: 'Cancelado',
+};
+
+export const rotuloPrioridade: Record<Prioridade, string> = {
+  baixa: 'Baixa', media: 'Média', alta: 'Alta', critica: 'Crítica',
+};
+
+export const rotuloStatusTarefa: Record<StatusTarefa, string> = {
+  pendente: 'Pendente', em_andamento: 'Em andamento', concluida: 'Concluída', bloqueada: 'Bloqueada',
+};
+
+export const rotuloPapel: Record<Papel, string> = {
+  admin: 'Administrador', editor: 'Editor', leitor: 'Leitor',
+};
+
+export const STATUS: StatusProjeto[] = ['nao_iniciado', 'em_andamento', 'em_risco', 'pausado', 'concluido', 'cancelado'];
+export const PRIORIDADES: Prioridade[] = ['baixa', 'media', 'alta', 'critica'];
+export const STATUS_TAREFA: StatusTarefa[] = ['pendente', 'em_andamento', 'concluida', 'bloqueada'];
