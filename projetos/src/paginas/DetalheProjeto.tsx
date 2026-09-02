@@ -14,17 +14,11 @@ import { STATUS, STATUS_TAREFA, rotuloStatus, rotuloStatusTarefa } from '@/domin
 interface Props {
   projeto: Projeto;
   pessoas: Pessoa[];
-  podeEditar: boolean;
-  ehAdmin: boolean;
-  /* Id da pessoa (cadastro do modulo) e id do login: o primeiro liga
-     tarefas ao executor, o segundo diz quem assinou o lancamento. */
-  euId: string | null;
-  authId: string;
   aoVoltar: () => void;
   recarregar: () => Promise<void>;
 }
 
-export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, euId, authId, aoVoltar, recarregar }: Props) {
+export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar }: Props) {
   const dados = useDetalheProjeto(projeto.id);
   const [editando, setEditando] = useState(false);
   const [marcoEmEdicao, setMarcoEmEdicao] = useState<Marco | 'novo' | null>(null);
@@ -73,17 +67,15 @@ export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, 
             >
               Exportar Excel
             </button>
-            {podeEditar && <button className="botao-neutro" onClick={() => setReportando(true)}>Lançar acompanhamento</button>}
-            {podeEditar && <button className="botao-primario" onClick={() => setEditando(true)}>Editar</button>}
-            {ehAdmin && (
-              <button
+            <button className="botao-neutro" onClick={() => setReportando(true)}>Lançar acompanhamento</button>
+            <button className="botao-primario" onClick={() => setEditando(true)}>Editar</button>
+            <button
                 className="botao-perigo"
                 onClick={() => {
                   if (!confirm(`Excluir "${projeto.nome}"? Marcos, tarefas e histórico serão apagados junto.`)) return;
                   void comErro(async () => { await excluirProjeto(projeto.id); aoVoltar(); });
                 }}
-              >Excluir</button>
-            )}
+            >Excluir</button>
           </div>
         </div>
 
@@ -114,14 +106,14 @@ export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, 
         <section className="cartao overflow-hidden">
           <div className="flex items-center justify-between border-b border-linha px-4 py-3">
             <h2 className="font-titulo text-sm font-extrabold">Marcos</h2>
-            {podeEditar && <button className="text-sm font-bold text-roxo-escuro" onClick={() => setMarcoEmEdicao('novo')}>+ Novo marco</button>}
+            <button className="text-sm font-bold text-roxo-escuro" onClick={() => setMarcoEmEdicao('novo')}>+ Novo marco</button>
           </div>
           {dados.marcos.length ? (
             <ul className="divide-y divide-linha">
               {dados.marcos.map((m) => (
                 <li key={m.id} className="flex items-start gap-3 px-4 py-3">
                   <input
-                    type="checkbox" checked={m.concluido} disabled={!podeEditar} className="mt-1"
+                    type="checkbox" checked={m.concluido} className="mt-1"
                     onChange={(e) => void comErro(() => salvarMarco(
                       { projeto_id: projeto.id, nome: m.nome, concluido: e.target.checked, data_real: e.target.checked ? (m.data_real ?? isoDeHoje()) : null },
                       m.id,
@@ -135,12 +127,10 @@ export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, 
                       {marcoAtrasado(m) && <span className="ml-1 font-bold text-vermelho">atrasado</span>}
                     </p>
                   </div>
-                  {podeEditar && (
-                    <div className="flex gap-2 text-xs">
-                      <button className="font-bold text-roxo-escuro" onClick={() => setMarcoEmEdicao(m)}>Editar</button>
-                      <button className="font-bold text-vermelho" onClick={() => { if (confirm('Excluir marco?')) void comErro(() => excluirMarco(m.id)); }}>Excluir</button>
-                    </div>
-                  )}
+                  <div className="flex gap-2 text-xs">
+                    <button className="font-bold text-roxo-escuro" onClick={() => setMarcoEmEdicao(m)}>Editar</button>
+                    <button className="font-bold text-vermelho" onClick={() => { if (confirm('Excluir marco?')) void comErro(() => excluirMarco(m.id)); }}>Excluir</button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -152,16 +142,11 @@ export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, 
             <h2 className="font-titulo text-sm font-extrabold">
               Tarefas {dados.tarefas.length > 0 && <span className="text-tinta-suave">({progressoDeTarefas(dados.tarefas)}% concluídas)</span>}
             </h2>
-            {podeEditar && <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>}
+            <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>
           </div>
           {dados.tarefas.length ? (
             <ul className="divide-y divide-linha">
-              {dados.tarefas.map((t) => {
-                /* Quem executa a tarefa mexe no proprio andamento mesmo
-                   sem ser responsavel pelo projeto - a policy do banco
-                   permite, e a tela precisa refletir isso. */
-                const meu = !!euId && t.responsavel_id === euId;
-                return (
+              {dados.tarefas.map((t) => (
                   <li key={t.id} className="flex items-start gap-3 px-4 py-3">
                     <div className="flex-1">
                       <p className="text-sm font-semibold">{t.titulo}</p>
@@ -171,7 +156,7 @@ export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, 
                       </p>
                     </div>
                     <select
-                      className="campo w-36 py-1 text-xs" value={t.status} disabled={!podeEditar && !meu}
+                      className="campo w-36 py-1 text-xs" value={t.status}
                       onChange={(e) => {
                         const novo = e.target.value as StatusTarefa;
                         void comErro(() => salvarTarefa(
@@ -182,15 +167,12 @@ export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, 
                     >
                       {STATUS_TAREFA.map((s) => <option key={s} value={s}>{rotuloStatusTarefa[s]}</option>)}
                     </select>
-                    {podeEditar && (
-                      <div className="flex gap-2 pt-1 text-xs">
-                        <button className="font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao(t)}>Editar</button>
-                        <button className="font-bold text-vermelho" onClick={() => { if (confirm('Excluir tarefa?')) void comErro(() => excluirTarefa(t.id)); }}>Excluir</button>
-                      </div>
-                    )}
+                    <div className="flex gap-2 pt-1 text-xs">
+                      <button className="font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao(t)}>Editar</button>
+                      <button className="font-bold text-vermelho" onClick={() => { if (confirm('Excluir tarefa?')) void comErro(() => excluirTarefa(t.id)); }}>Excluir</button>
+                    </div>
                   </li>
-                );
-              })}
+              ))}
             </ul>
           ) : <Vazio>Nenhuma tarefa cadastrada.</Vazio>}
         </section>
@@ -208,9 +190,8 @@ export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, 
                   <strong className="text-tinta">{formatarData(a.data)}</strong>
                   {a.status_reportado && <SeloStatus status={a.status_reportado} />}
                   {a.percentual !== null && <span>{a.percentual}%</span>}
-                  {(ehAdmin || a.autor_id === authId) && (
-                    <button className="ml-auto font-bold text-vermelho" onClick={() => { if (confirm('Excluir lançamento?')) void comErro(() => excluirAtualizacao(a.id)); }}>Excluir</button>
-                  )}
+                  {a.autor_nome && <span>por {a.autor_nome}</span>}
+                  <button className="ml-auto font-bold text-vermelho" onClick={() => { if (confirm('Excluir lançamento?')) void comErro(() => excluirAtualizacao(a.id)); }}>Excluir</button>
                 </div>
                 <p className="whitespace-pre-wrap text-sm">{a.texto}</p>
                 {a.riscos && <p className="mt-1 text-sm text-ambar"><strong>Riscos:</strong> {a.riscos}</p>}
@@ -238,7 +219,7 @@ export default function DetalheProjeto({ projeto, pessoas, podeEditar, ehAdmin, 
       />
 
       <FormularioAcompanhamento
-        projeto={projeto} aberto={reportando} aoFechar={() => setReportando(false)}
+        projeto={projeto} pessoas={pessoas} aberto={reportando} aoFechar={() => setReportando(false)}
         recarregar={async () => { await dados.recarregar(); await recarregar(); }}
       />
     </div>
@@ -365,8 +346,8 @@ function FormularioTarefa({ projetoId, tarefa, marcos, pessoas, ordemSugerida, a
 
 /* ---------------- Acompanhamento ---------------- */
 
-function FormularioAcompanhamento({ projeto, aberto, aoFechar, recarregar }: {
-  projeto: Projeto; aberto: boolean; aoFechar: () => void; recarregar: () => Promise<void>;
+function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarregar }: {
+  projeto: Projeto; pessoas: Pessoa[]; aberto: boolean; aoFechar: () => void; recarregar: () => Promise<void>;
 }) {
   const [erro, setErro] = useState<string | null>(null);
 
@@ -384,6 +365,7 @@ function FormularioAcompanhamento({ projeto, aberto, aoFechar, recarregar }: {
         percentual,
         riscos: String(f.get('riscos')) || null,
         proximos_passos: String(f.get('proximos_passos')) || null,
+        autor_nome: String(f.get('autor_nome')) || null,
       });
       /* O lancamento e a fonte do status: sem espelhar no projeto, a
          lista e o painel continuariam mostrando o quadro antigo. */
@@ -411,6 +393,12 @@ function FormularioAcompanhamento({ projeto, aberto, aoFechar, recarregar }: {
             <input name="percentual" type="number" min={0} max={100} defaultValue={projeto.percentual} className="campo" />
           </Campo>
         </div>
+        <Campo rotulo="Reportado por">
+          <select name="autor_nome" className="campo" defaultValue="">
+            <option value="">Não informado</option>
+            {pessoas.map((p) => <option key={p.id} value={p.nome}>{p.nome}</option>)}
+          </select>
+        </Campo>
         <Campo rotulo="O que aconteceu *"><textarea name="texto" required rows={3} className="campo" /></Campo>
         <Campo rotulo="Riscos"><textarea name="riscos" rows={2} className="campo" /></Campo>
         <Campo rotulo="Próximos passos"><textarea name="proximos_passos" rows={2} className="campo" /></Campo>

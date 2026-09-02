@@ -11,7 +11,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "publicar": "npm run build && node scripts/publicarNoSite.mjs",
-    "verificar:tela": "npm run build && node scripts/verificarTela.mjs"
+    "verificar:tela": "npm run build && node scripts/verificarTela.mjs",
+    "verificar:telas": "npm run build && node scripts/verificarTelas.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.1",

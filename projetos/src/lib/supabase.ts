@@ -15,6 +15,8 @@ export const supabase = createClient(
     /* As tabelas do modulo vivem no schema "projetos" para nao se
        misturar com os outros modulos do mesmo banco. */
     db: { schema: 'projetos' },
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    /* O modulo e aberto, como os demais da Central: ninguem faz login,
+       entao nao ha sessao para guardar nem token para renovar. */
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   }
 );

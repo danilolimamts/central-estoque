@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import Login from '@/paginas/Login';
-import SemAcesso from '@/paginas/SemAcesso';
 import Painel from '@/paginas/Painel';
 import ListaProjetos from '@/paginas/ListaProjetos';
 import DetalheProjeto from '@/paginas/DetalheProjeto';
@@ -8,7 +6,6 @@ import Cronograma from '@/paginas/Cronograma';
 import Pessoas from '@/paginas/Pessoas';
 import { Aviso, Carregando } from '@/componentes/ui';
 import { useCarteira } from '@/estado/dados';
-import { useSessao } from '@/estado/sessao';
 import type { Projeto } from '@/dominio/tipos';
 
 declare const __VERSAO__: string;
@@ -23,19 +20,13 @@ const ABAS: { id: Aba; rotulo: string }[] = [
 ];
 
 export default function App() {
-  const { carregando, sessao, eu, ehAdmin, podeCriar, sair } = useSessao();
   const [aba, setAba] = useState<Aba>('painel');
   const [aberto, setAberto] = useState<Projeto | null>(null);
-  const carteira = useCarteira(!!eu?.ativo);
-
-  if (carregando) return <div className="p-10"><Carregando /></div>;
-  if (!sessao) return <Login />;
-  if (!eu || !eu.ativo) return <SemAcesso />;
+  const carteira = useCarteira();
 
   /* O projeto aberto vem sempre da lista recarregada: guardar o objeto
      no estado deixaria a tela com dados velhos apos uma edicao. */
   const selecionado = aberto ? carteira.projetos.find((p) => p.id === aberto.id) ?? aberto : null;
-  const podeEditar = (p: Projeto) => ehAdmin || (!!eu && p.responsavel_id === eu.id);
 
   return (
     <div className="min-h-screen">
@@ -47,13 +38,9 @@ export default function App() {
             <p className="text-xs text-white/60">CD Cajamar · acompanhamento de projetos e iniciativas</p>
           </div>
           <a href="../" className="text-xs font-bold text-white/70 hover:text-white">← Central</a>
-          <div className="text-right text-xs">
-            <p className="font-bold">{eu.nome}</p>
-            <button className="text-white/60 hover:text-white" onClick={() => void sair()}>Sair</button>
-          </div>
         </div>
         <nav className="mx-auto flex max-w-[1240px] gap-1 px-6">
-          {ABAS.filter((a) => a.id !== 'pessoas' || ehAdmin || eu.papel === 'editor').map((a) => (
+          {ABAS.map((a) => (
             <button
               key={a.id}
               onClick={() => { setAba(a.id); setAberto(null); }}
@@ -71,10 +58,6 @@ export default function App() {
           <DetalheProjeto
             projeto={selecionado}
             pessoas={carteira.pessoas}
-            podeEditar={podeEditar(selecionado)}
-            ehAdmin={ehAdmin}
-            euId={eu.id}
-            authId={sessao.user.id}
             aoVoltar={() => setAberto(null)}
             recarregar={carteira.recarregar}
           />
@@ -83,12 +66,12 @@ export default function App() {
             {aba === 'painel' && <Painel projetos={carteira.projetos} pessoas={carteira.pessoas} aoAbrir={setAberto} />}
             {aba === 'projetos' && (
               <ListaProjetos
-                projetos={carteira.projetos} pessoas={carteira.pessoas} podeCriar={podeCriar}
+                projetos={carteira.projetos} pessoas={carteira.pessoas}
                 aoAbrir={setAberto} recarregar={carteira.recarregar}
               />
             )}
             {aba === 'cronograma' && <Cronograma projetos={carteira.projetos} aoAbrir={setAberto} />}
-            {aba === 'pessoas' && <Pessoas pessoas={carteira.pessoas} ehAdmin={ehAdmin} recarregar={carteira.recarregar} />}
+            {aba === 'pessoas' && <Pessoas pessoas={carteira.pessoas} recarregar={carteira.recarregar} />}
           </>
         )}
       </main>

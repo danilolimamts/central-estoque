@@ -9,7 +9,7 @@ export function mensagemDeErro(erro: unknown): string {
   const e = erro as { code?: string; message?: string } | null;
   if (!e) return 'Erro desconhecido.';
   if (e.code === '42501' || e.message?.includes('row-level security')) {
-    return 'Sem permissão para esta ação. Fale com um administrador do módulo.';
+    return 'O banco recusou esta ação por falta de permissão.';
   }
   if (e.code === '23505') return 'Já existe um registro com este código ou e-mail.';
   return e.message ?? 'Erro ao falar com o servidor.';
@@ -30,9 +30,8 @@ export async function salvarProjeto(dados: Partial<Projeto> & { nome: string }, 
     if (error) throw error;
     return id;
   }
-  const { data: sessao } = await supabase.auth.getUser();
   const { data, error } = await supabase.from('projetos')
-    .insert({ ...dados, criado_por: sessao.user?.id }).select('id').single();
+    .insert(dados).select('id').single();
   if (error) throw error;
   return (data as { id: string }).id;
 }
@@ -80,8 +79,7 @@ export async function excluirTarefa(id: string) {
 }
 
 export async function lancarAtualizacao(dados: Omit<Atualizacao, 'id' | 'criado_em' | 'autor_id'>) {
-  const { data: sessao } = await supabase.auth.getUser();
-  const { error } = await supabase.from('atualizacoes').insert({ ...dados, autor_id: sessao.user?.id });
+  const { error } = await supabase.from('atualizacoes').insert(dados);
   if (error) throw error;
 }
 
@@ -101,14 +99,13 @@ interface Carteira {
 /* Carteira inteira em memoria: sao dezenas de projetos, nao milhares.
    Carregar tudo de uma vez deixa filtro, painel e cronograma
    instantaneos e evita uma consulta por interacao. */
-export function useCarteira(ativo: boolean): Carteira {
+export function useCarteira(): Carteira {
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
   const recarregar = useCallback(async () => {
-    if (!ativo) { setCarregando(false); return; }
     setCarregando(true);
     try {
       const [p, q] = await Promise.all([listarProjetos(), listarPessoas()]);
@@ -120,7 +117,7 @@ export function useCarteira(ativo: boolean): Carteira {
     } finally {
       setCarregando(false);
     }
-  }, [ativo]);
+  }, []);
 
   useEffect(() => { void recarregar(); }, [recarregar]);
 

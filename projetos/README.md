@@ -4,8 +4,8 @@ Acompanhamento de projetos e iniciativas do CD Cajamar: carteira, marcos,
 tarefas, histórico de acompanhamento, painel e cronograma.
 
 Diferente dos outros módulos da Central, os dados **não** ficam no navegador:
-são compartilhados por toda a equipe em um banco Supabase, com login e
-permissões.
+são compartilhados por toda a equipe em um banco Supabase. O acesso é aberto,
+igual ao restante da Central — quem abre o link do hub já entra.
 
 - Fonte: `projetos/` (React + Vite + TypeScript + Tailwind)
 - Publicado em: `acompanhamento-projetos/` (servido pelo GitHub Pages)
@@ -20,7 +20,8 @@ npm test               # regras de prazo, saúde e indicadores
 npm run typecheck
 npm run build
 npm run publicar       # build + cópia para ../acompanhamento-projetos
-npm run verificar:tela # build + smoke test no navegador (precisa de um servidor local)
+npm run verificar:tela  # build + smoke test da tela inicial (precisa de um servidor local)
+npm run verificar:telas # idem, com a API simulada: painel, carteira, cronograma e detalhe
 ```
 
 ## Banco de dados
@@ -37,33 +38,40 @@ banco. As migrations aplicadas estão em `supabase/migrations/`.
 | `tarefas` | itens de execução, com responsável e prazo |
 | `atualizacoes` | histórico de acompanhamento; nunca sobrescrito |
 
-### Regras de acesso (RLS)
+### Acesso
 
-O site é público e a chave publicável do Supabase vai embutida no bundle — isso
-é normal e esperado. Quem protege os dados é o RLS, não a chave:
+O módulo é aberto: sem login, como os demais da Central. Na prática, quem tiver
+o endereço lê, cria, edita e apaga qualquer projeto — a chave publicável do
+Supabase vai no bundle e o papel `anon` recebeu policy liberada em todas as
+tabelas (`003_acesso_aberto.sql`).
 
-- **Ler** exige cadastro ativo em `pessoas` vinculado ao login. Um e-mail que
-  peça o link mágico sem estar cadastrado entra autenticado e não enxerga nada.
-- **Criar projeto**: papel `admin` ou `editor`.
-- **Editar projeto, marcos e tarefas**: `admin` ou a pessoa responsável pelo projeto.
-- **Mudar o andamento da própria tarefa**: quem está como responsável dela.
-- **Excluir projeto e gerenciar pessoas**: só `admin`.
-- Ninguém muda o próprio papel: um gatilho bloqueia a autopromoção.
-- O **primeiro** usuário que fizer login vira `admin` automaticamente — é ele que
-  cadastra os demais em *Pessoas*. Depois disso o cadastro prévio passa a ser
-  obrigatório.
+O cadastro de **Pessoas** existe para atribuir responsáveis e filtrar a
+carteira, não para controlar acesso. No histórico de acompanhamento, quem
+reporta se identifica escolhendo o próprio nome (`autor_nome`).
+
+#### Como religar o login depois
+
+As regras por papel continuam no banco, intactas (`002_rls_e_gatilhos.sql`):
+ler exige cadastro ativo vinculado ao login, criar exige `admin`/`editor`,
+editar exige `admin` ou ser o responsável, e um gatilho impede autopromoção.
+Para voltar a exigir login basta derrubar as policies de `anon` e restaurar a
+tela de acesso:
+
+```sql
+drop policy pessoas_aberto on projetos.pessoas;
+drop policy projetos_aberto on projetos.projetos;
+drop policy marcos_aberto on projetos.marcos;
+drop policy tarefas_aberto on projetos.tarefas;
+drop policy atualizacoes_aberto on projetos.atualizacoes;
+revoke select, insert, update, delete on all tables in schema projetos from anon;
+```
 
 ## Configuração no painel do Supabase (uma vez só)
 
 1. **Settings → API → Exposed schemas**: adicionar `projetos` à lista (o padrão
    traz só `public`). Sem isso o app recebe erro de schema inexistente.
-2. **Authentication → URL Configuration**: incluir em *Redirect URLs* o endereço
-   publicado (`https://danilolimamts.github.io/central-estoque/acompanhamento-projetos/`)
-   e, para desenvolvimento, `http://localhost:5173/`. O link mágico só volta
-   para URLs desta lista.
-3. **Authentication → Providers → Email**: manter o provedor de e-mail ativo. O
-   remetente padrão do Supabase tem limite baixo de envios; para uso diário da
-   equipe vale configurar um SMTP próprio.
+2. **Authentication → URL Configuration**: só importa se o login voltar a ser
+   exigido. Já está preenchido com o endereço publicado.
 
 ## Apontar para outro projeto Supabase
 

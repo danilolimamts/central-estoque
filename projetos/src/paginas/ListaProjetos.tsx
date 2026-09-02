@@ -8,12 +8,11 @@ import { STATUS, rotuloStatus } from '@/dominio/tipos';
 interface Props {
   projetos: Projeto[];
   pessoas: Pessoa[];
-  podeCriar: boolean;
   aoAbrir: (p: Projeto) => void;
   recarregar: () => Promise<void>;
 }
 
-export default function ListaProjetos({ projetos, pessoas, podeCriar, aoAbrir, recarregar }: Props) {
+export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }: Props) {
   const [busca, setBusca] = useState('');
   const [status, setStatus] = useState<StatusProjeto | ''>('');
   const [responsavel, setResponsavel] = useState('');
@@ -83,7 +82,7 @@ export default function ListaProjetos({ projetos, pessoas, podeCriar, aoAbrir, r
               exportarCarteira(filtrados, pessoas);
             }}
           >Exportar Excel</button>
-          {podeCriar && <button className="botao-primario" onClick={() => setFormAberto(true)}>Novo projeto</button>}
+          <button className="botao-primario" onClick={() => setFormAberto(true)}>Novo projeto</button>
         </div>
       </div>
 

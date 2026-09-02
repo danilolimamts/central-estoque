@@ -67,6 +67,9 @@ export interface Atualizacao {
   riscos: string | null;
   proximos_passos: string | null;
   autor_id: string | null;
+  /* Sem login, quem reporta se identifica pelo nome escolhido no
+     formulario - e o unico registro de autoria que sobra. */
+  autor_nome: string | null;
   criado_em: string;
 }
 
