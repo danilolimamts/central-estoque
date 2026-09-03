@@ -6,6 +6,8 @@ import Anexos from '@/componentes/Anexos';
    so consulta o painel nao deve baixar isso: entram sob demanda, quando
    o detalhe do projeto abre. */
 const Paginas = lazy(() => import('@/componentes/paginas/Paginas'));
+/* O gerador de .docx tambem so desce quando o projeto e aberto. */
+const Documentos = lazy(() => import('@/componentes/documentos/Documentos'));
 import { Aviso, Barra, Campo, Carregando, Modal, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import {
   enviarAnexo, excluirAtualizacao, excluirMarco, excluirProjeto, excluirTarefa,
@@ -193,6 +195,13 @@ export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar 
         projetoId={projeto.id} anexos={dados.anexos} marcos={dados.marcos}
         pessoas={pessoas} recarregar={dados.recarregar}
       />
+
+      <Suspense fallback={<div className="cartao"><Carregando /></div>}>
+        <Documentos
+          projeto={projeto} pessoas={pessoas} marcos={dados.marcos}
+          tarefas={dados.tarefas} anexos={dados.anexos}
+        />
+      </Suspense>
 
       <section className="cartao overflow-hidden">
         <div className="border-b border-linha px-4 py-3">
