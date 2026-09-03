@@ -1,10 +1,10 @@
 import { Suspense, lazy, useState } from 'react';
 import FormularioProjeto from './FormularioProjeto';
 import Anexos from '@/componentes/Anexos';
-import Melhorias from '@/componentes/Melhorias';
+import Atividades from '@/componentes/Atividades';
 import Quadro from '@/componentes/Quadro';
 import { coresStatusTarefa } from '@/config/tokens';
-import { ehGrupo, singularDoRotulo } from '@/dominio/arvore';
+import { ehRaiz, rotuloDosFilhos, singularDoRotulo } from '@/dominio/arvore';
 
 /* O editor de texto e o desenhista de fluxograma somam alguns MB. Quem
    so consulta o painel nao deve baixar isso: entram sob demanda, quando
@@ -48,10 +48,15 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
   const pai = projeto.projeto_pai_id
     ? projetos.find((p) => p.id === projeto.projeto_pai_id)
     : undefined;
-  /* Projeto guarda-chuva nao guarda trabalho: marcos, tarefas, paginas,
-     anexos e documento pertencem a cada item de dentro. Mostrar essas
-     secoes vazias no grupo so confunde quem abre a tela. */
-  const grupo = ehGrupo(projetos, projeto);
+  /* Projeto de topo e a pasta das atividades: abrir mostra a lista do
+     que ha para fazer. Marcos, tarefas, paginas, anexos e documento
+     pertencem a cada atividade, e so aparecem la dentro. */
+  const grupo = ehRaiz(projeto);
+  /* Projeto antigo pode ter conteudo proprio de antes desta estrutura.
+     Ele continua visivel para nada se perder, mas o novo vai para as
+     atividades. */
+  const temConteudoAntigo = !!dados.marcos.length || !!dados.tarefas.length || !!dados.anexos.length;
+  const mostrarTrabalho = !grupo || temConteudoAntigo;
 
   async function comErro(acao: () => Promise<void>) {
     try {
@@ -91,8 +96,9 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
             {projeto.descricao && <p className="mt-1 max-w-3xl text-sm text-tinta-suave">{projeto.descricao}</p>}
             {grupo && (
               <p className="mt-1 text-xs text-tinta-suave">
-                Projeto guarda-chuva: marcos, tarefas, páginas, anexos e documentos ficam em cada
-                {' '}{singularDoRotulo(projeto).toLowerCase()} de dentro.
+                O trabalho deste projeto está em {rotuloDosFilhos(projeto).toLowerCase()}: marcos,
+                tarefas, páginas, anexos e documento ficam dentro de cada
+                {' '}{singularDoRotulo(projeto).toLowerCase()}.
               </p>
             )}
           </div>
@@ -143,7 +149,14 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
       {erro && <Aviso>{erro}</Aviso>}
       {dados.erro && <Aviso>{dados.erro}</Aviso>}
 
-      {!grupo && (
+      {grupo && (
+        <Atividades
+          pai={projeto} projetos={projetos} pessoas={pessoas}
+          aoAbrir={aoAbrir} recarregar={recarregar}
+        />
+      )}
+
+      {mostrarTrabalho && (
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="cartao overflow-hidden">
           <div className="flex items-center justify-between border-b border-linha px-4 py-3">
@@ -228,7 +241,7 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
       </div>
       )}
 
-      {!grupo && tarefasEmQuadro && (
+      {mostrarTrabalho && tarefasEmQuadro && (
         <section className="cartao overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-linha px-4 py-3">
             <h2 className="font-titulo text-sm font-extrabold">
@@ -270,14 +283,8 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
         </section>
       )}
 
-      {grupo && (
-        <Melhorias
-          pai={projeto} projetos={projetos} pessoas={pessoas}
-          aoAbrir={aoAbrir} recarregar={recarregar}
-        />
-      )}
 
-      {!grupo && (
+      {mostrarTrabalho && (
         <>
           <Suspense fallback={<div className="cartao"><Carregando /></div>}>
             <Paginas projetoId={projeto.id} pessoas={pessoas} />

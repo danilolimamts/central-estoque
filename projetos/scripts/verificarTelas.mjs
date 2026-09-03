@@ -197,14 +197,22 @@ if (!textoDoGrupo.includes('Entrada massiva') || !textoDoGrupo.includes('avanço
   console.error('FALHOU: o quadro de melhorias não montou.');
   process.exitCode = 1;
 }
-/* O guarda-chuva nao pode oferecer marcos, tarefas, paginas nem anexos:
+/* O projeto nao pode oferecer marcos, tarefas, paginas nem anexos:
    isso pertence a cada melhoria de dentro. */
 for (const secao of ['Marcos', 'Nova tarefa', 'Nova página', 'Arraste arquivos aqui', 'Criar documento']) {
   if (textoDoGrupo.includes(secao)) {
-    console.error(`FALHOU: o grupo ainda mostra "${secao}".`);
+    console.error(`FALHOU: o projeto ainda mostra "${secao}".`);
     process.exitCode = 1;
   }
 }
+/* A lista abre por padrao, com as colunas de acompanhamento. */
+for (const coluna of ['Responsável', 'Prioridade', 'Prazo', 'Saúde', 'Avanço']) {
+  if (!textoDoGrupo.includes(coluna)) {
+    console.error(`FALHOU: a lista de melhorias não tem a coluna "${coluna}".`);
+    process.exitCode = 1;
+  }
+}
+await pagina.screenshot({ path: 'verificacao-melhorias.png', fullPage: true });
 
 await pagina.getByRole('button', { name: 'Projetos', exact: true }).click();
 await pagina.getByText('Reendereçamento do mezanino').first().click();

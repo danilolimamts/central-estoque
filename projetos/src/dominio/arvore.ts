@@ -4,19 +4,22 @@ import type { Projeto } from './tipos';
    do que e trabalho de verdade - a distincao importa nos indicadores:
    contar o pai junto com os filhos dobraria o mesmo trabalho no painel. */
 
-/* Guarda-chuva: agrupa itens em vez de guardar trabalho proprio. Ter
-   filhos ja basta, mesmo sem o rotulo preenchido - projeto criado antes
-   deste campo continua funcionando. */
-export const ehGrupo = (lista: Projeto[], projeto: Projeto) =>
-  !!projeto.rotulo_filhos?.trim() || temFilhos(lista, projeto.id);
+/* Todo projeto de topo e uma pasta de atividades: abrir o projeto mostra
+   a lista do que ha para fazer, e o trabalho de verdade (marcos,
+   tarefas, paginas, anexos, documento) vive dentro de cada atividade.
+   Nao ha configuracao para isso - e a estrutura do modulo. */
+export const ehRaiz = (projeto: Projeto) => !projeto.projeto_pai_id;
 
+/* O nome das atividades muda conforme o projeto: "Melhorias" no
+   Bseller, "Frentes" ou "Etapas" em outro. */
 export const rotuloDosFilhos = (projeto: Projeto) =>
-  projeto.rotulo_filhos?.trim() || 'Itens';
+  projeto.rotulo_filhos?.trim() || 'Atividades';
 
 /* Singular do rotulo, para o botao de criar ("+ Nova melhoria").
    Portugues nao tem regra unica, entao os casos que importam ficam na
    tabela e o resto cai na queda do "s" final. */
 const SINGULARES: Record<string, string> = {
+  atividades: 'atividade',
   itens: 'item',
   melhorias: 'melhoria',
   frentes: 'frente',
@@ -35,12 +38,15 @@ const SINGULARES: Record<string, string> = {
    feminina na pratica dos nomes usados aqui; o resto e masculino, e os
    casos que fogem da regra ficam listados. */
 const FEMININOS = new Set(['frente', 'ação', 'fase', 'ordem']);
+/* Terminacoes que sao femininas em portugues mesmo sem o A final. */
+const TERMINACOES_FEMININAS = ['dade', 'ção', 'são', 'gem', 'ez'];
 const MASCULINOS = new Set(['item', 'dia', 'mapa']);
 
 export function generoDoRotulo(projeto: Projeto): 'f' | 'm' {
   const singular = singularDoRotulo(projeto).toLowerCase();
   if (FEMININOS.has(singular)) return 'f';
   if (MASCULINOS.has(singular)) return 'm';
+  if (TERMINACOES_FEMININAS.some((t) => singular.endsWith(t))) return 'f';
   return singular.endsWith('a') ? 'f' : 'm';
 }
 

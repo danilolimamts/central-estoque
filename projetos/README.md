@@ -58,31 +58,32 @@ ou **documento**; o campo `par` nomeia a cena e é o que liga um antes ao seu
 depois na galeria comparativa. Anexo lançado junto com um acompanhamento fica
 preso a ele (`atualizacao_id`) e aparece dentro do próprio reporte.
 
-### Projeto guarda-chuva
+### Projeto e atividades
 
-Um projeto pode agrupar outros. "Melhoria Sistêmica Bseller" é o guarda-chuva;
-cada melhoria dentro dele é um projeto próprio, com marcos, tarefas, páginas,
-anexos e o documento em Word dela mesma. Isso é uma coluna `projeto_pai_id` na
-própria tabela de projetos: o item herda tudo o que o projeto já sabe fazer, sem
-uma entidade nova pela metade.
+Abrir um projeto mostra **a lista do que há para fazer dentro dele**, não o
+trabalho em si. Cada linha é uma atividade, com responsável, situação,
+prioridade, prazo, saúde e avanço editáveis ali mesmo; abrir a atividade leva à
+tela cheia, onde vivem marcos, tarefas, páginas, anexos e o documento em Word.
 
-**O grupo não guarda trabalho.** Marcos, tarefas, páginas, anexos e documentos
-somem da tela do guarda-chuva, porque pertencem a cada item de dentro; o grupo
-mostra o quadro dos itens e o histórico de acompanhamento, e nada mais.
+Isso é uma coluna `projeto_pai_id` na própria tabela de projetos: a atividade é
+um projeto filho e herda tudo o que o projeto já sabe fazer, sem uma entidade
+nova pela metade. Não há configuração: projeto de topo é sempre a pasta,
+atividade é sempre o trabalho.
 
-**O nome dos itens é escolhido no projeto** (`rotulo_filhos`): "Melhorias" no
-Bseller, "Frentes" ou "Etapas" em outro. Preencher esse campo é o que transforma
-o projeto em guarda-chuva; vazio, ele é um projeto comum. O singular e o gênero
-saem do plural para o botão sair "+ Nova melhoria", não "+ Novo melhoria".
+O nome das atividades vem do campo `rotulo_filhos` do projeto: "Melhorias" no
+Bseller, "Frentes" ou "Etapas" em outro, "Atividades" quando ninguém escolhe. O
+singular e o gênero saem do plural, para o botão sair "+ Nova melhoria", não
+"+ Novo melhoria".
 
 Consequências no resto do módulo:
 
-- a **carteira** mostra só os projetos de topo, com o número de melhorias ao
-  lado do nome; a caixa *Incluir melhorias* abre a lista plana;
-- **painel** e **cronograma** contam apenas as folhas (projetos sem filhos), para
-  o guarda-chuva e as melhorias dentro dele não contarem o mesmo trabalho duas
-  vezes;
-- o detalhe do grupo traz o **avanço médio** das melhorias, ignorando canceladas.
+- a **carteira** lista só os projetos de topo, com o número de atividades ao lado
+  do nome (a caixa *Incluir melhorias* abre a lista plana);
+- **painel** e **cronograma** contam apenas as folhas, para o projeto e as
+  atividades dentro dele não contarem o mesmo trabalho duas vezes;
+- o projeto mostra o **avanço médio** das atividades, ignorando as canceladas;
+- projeto antigo que tinha marcos ou tarefas próprios continua mostrando o que
+  já tinha, para nada se perder.
 
 ### Quadro (arrastar e soltar)
 
