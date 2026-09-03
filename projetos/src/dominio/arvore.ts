@@ -4,6 +4,54 @@ import type { Projeto } from './tipos';
    do que e trabalho de verdade - a distincao importa nos indicadores:
    contar o pai junto com os filhos dobraria o mesmo trabalho no painel. */
 
+/* Guarda-chuva: agrupa itens em vez de guardar trabalho proprio. Ter
+   filhos ja basta, mesmo sem o rotulo preenchido - projeto criado antes
+   deste campo continua funcionando. */
+export const ehGrupo = (lista: Projeto[], projeto: Projeto) =>
+  !!projeto.rotulo_filhos?.trim() || temFilhos(lista, projeto.id);
+
+export const rotuloDosFilhos = (projeto: Projeto) =>
+  projeto.rotulo_filhos?.trim() || 'Itens';
+
+/* Singular do rotulo, para o botao de criar ("+ Nova melhoria").
+   Portugues nao tem regra unica, entao os casos que importam ficam na
+   tabela e o resto cai na queda do "s" final. */
+const SINGULARES: Record<string, string> = {
+  itens: 'item',
+  melhorias: 'melhoria',
+  frentes: 'frente',
+  etapas: 'etapa',
+  entregas: 'entrega',
+  demandas: 'demanda',
+  acoes: 'ação',
+  ações: 'ação',
+  projetos: 'projeto',
+  modulos: 'módulo',
+  módulos: 'módulo',
+};
+
+/* Genero do rotulo, para o botao sair "+ Nova melhoria" e nao
+   "+ Novo melhoria". Palavra terminada em A ou em AO fechado e
+   feminina na pratica dos nomes usados aqui; o resto e masculino, e os
+   casos que fogem da regra ficam listados. */
+const FEMININOS = new Set(['frente', 'ação', 'fase', 'ordem']);
+const MASCULINOS = new Set(['item', 'dia', 'mapa']);
+
+export function generoDoRotulo(projeto: Projeto): 'f' | 'm' {
+  const singular = singularDoRotulo(projeto).toLowerCase();
+  if (FEMININOS.has(singular)) return 'f';
+  if (MASCULINOS.has(singular)) return 'm';
+  return singular.endsWith('a') ? 'f' : 'm';
+}
+
+export function singularDoRotulo(projeto: Projeto): string {
+  const plural = rotuloDosFilhos(projeto);
+  const conhecido = SINGULARES[plural.toLowerCase()];
+  if (conhecido) return conhecido;
+  if (plural.toLowerCase().endsWith('ões')) return `${plural.slice(0, -3)}ão`;
+  return plural.endsWith('s') ? plural.slice(0, -1) : plural;
+}
+
 export const raizes = (lista: Projeto[]) => lista.filter((p) => !p.projeto_pai_id);
 
 export const filhosDe = (lista: Projeto[], paiId: string) =>

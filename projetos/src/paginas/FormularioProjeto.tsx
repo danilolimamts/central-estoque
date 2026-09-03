@@ -38,6 +38,7 @@ export default function FormularioProjeto({ aberto, projeto, projetos = [], pess
         inicio_previsto: vazio(String(f.get('inicio_previsto'))),
         fim_previsto: vazio(String(f.get('fim_previsto'))),
         projeto_pai_id: vazio(String(f.get('projeto_pai_id'))),
+        rotulo_filhos: vazio(String(f.get('rotulo_filhos'))),
         inicio_real: vazio(String(f.get('inicio_real'))),
         fim_real: vazio(String(f.get('fim_real'))),
         percentual: Number(f.get('percentual')),
@@ -65,6 +66,13 @@ export default function FormularioProjeto({ aberto, projeto, projetos = [], pess
 
         <Campo rotulo="Descrição">
           <textarea name="descricao" rows={2} defaultValue={projeto?.descricao ?? ''} className="campo" />
+        </Campo>
+
+        <Campo rotulo="Agrupa itens chamados de (deixe vazio para projeto comum)">
+          <input
+            name="rotulo_filhos" defaultValue={projeto?.rotulo_filhos ?? ''} className="campo"
+            placeholder="Ex.: Melhorias, Frentes, Etapas"
+          />
         </Campo>
 
         <Campo rotulo="Faz parte de">

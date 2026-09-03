@@ -4,7 +4,7 @@ import type { CartaoDoQuadro, ColunaDoQuadro } from '@/componentes/Quadro';
 import { Aviso, Barra, SeloPrioridade, Vazio } from '@/componentes/ui';
 import { coresStatus } from '@/config/tokens';
 import { mensagemDeErro, salvarProjeto } from '@/estado/dados';
-import { avancoDoGrupo, filhosDe } from '@/dominio/arvore';
+import { avancoDoGrupo, filhosDe, generoDoRotulo, rotuloDosFilhos, singularDoRotulo } from '@/dominio/arvore';
 import { atrasado, diasDeAtraso, formatarData } from '@/dominio/regras';
 import type { Pessoa, Projeto, StatusProjeto } from '@/dominio/tipos';
 import { STATUS, rotuloStatus } from '@/dominio/tipos';
@@ -25,9 +25,11 @@ interface CartaoDeMelhoria extends CartaoDoQuadro {
   projeto: Projeto;
 }
 
-/* Melhorias sao projetos filhos: cada uma tem marcos, tarefas, paginas,
-   anexos e documento proprios. Aqui elas aparecem como um quadro por
-   situacao, que e como a equipe acompanha uma carteira grande. */
+/* Os itens de um grupo sao projetos filhos: cada um tem marcos,
+   tarefas, paginas, anexos e documento proprios. Aqui aparecem como um
+   quadro por situacao, que e como a equipe acompanha uma carteira
+   grande. O nome deles vem do proprio projeto: "Melhorias" no Bseller,
+   "Frentes" ou "Etapas" em outro. */
 export default function Melhorias({ pai, projetos, pessoas, aoAbrir, recarregar }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [emQuadro, setEmQuadro] = useState(true);
@@ -35,6 +37,9 @@ export default function Melhorias({ pai, projetos, pessoas, aoAbrir, recarregar 
   const [nome, setNome] = useState('');
 
   const filhos = useMemo(() => filhosDe(projetos, pai.id), [projetos, pai.id]);
+  const plural = rotuloDosFilhos(pai);
+  const singular = singularDoRotulo(pai);
+  const artigo = generoDoRotulo(pai) === 'f' ? 'a' : 'o';
   const avanco = avancoDoGrupo(projetos, pai.id);
   const nomePessoa = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '';
 
@@ -78,7 +83,7 @@ export default function Melhorias({ pai, projetos, pessoas, aoAbrir, recarregar 
     <section className="cartao overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-linha px-4 py-3">
         <h2 className="font-titulo text-sm font-extrabold">
-          Melhorias {filhos.length > 0 && <span className="text-tinta-suave">({filhos.length})</span>}
+          {plural} {filhos.length > 0 && <span className="text-tinta-suave">({filhos.length})</span>}
           {avanco !== null && <span className="ml-2 text-xs font-normal text-tinta-suave">avanço médio {avanco}%</span>}
         </h2>
         <div className="flex items-center gap-2">
@@ -93,7 +98,7 @@ export default function Melhorias({ pai, projetos, pessoas, aoAbrir, recarregar 
             >Lista</button>
           </div>
           <button className="botao-primario py-1 text-xs" onClick={() => setCriando('nao_iniciado')}>
-            + Nova melhoria
+            + Nov{artigo} {singular.toLowerCase()}
           </button>
         </div>
       </div>
@@ -106,7 +111,7 @@ export default function Melhorias({ pai, projetos, pessoas, aoAbrir, recarregar 
           onSubmit={(e) => { e.preventDefault(); void criar(criando); }}
         >
           <label className="min-w-[240px] flex-1">
-            <span className="rotulo">Nome da melhoria</span>
+            <span className="rotulo">Nome d{artigo} {singular.toLowerCase()}</span>
             <input
               className="campo" value={nome} autoFocus
               onChange={(e) => setNome(e.target.value)}
@@ -128,8 +133,8 @@ export default function Melhorias({ pai, projetos, pessoas, aoAbrir, recarregar 
 
       {!filhos.length ? (
         <Vazio>
-          Nenhuma melhoria neste projeto. Cada melhoria é um projeto próprio: tem marcos,
-          tarefas, páginas, anexos e gera o documento em Word dela mesma.
+          Nenhum item em {plural.toLowerCase()} ainda. Cada {singular.toLowerCase()} tem marcos,
+          tarefas, páginas, anexos e gera o próprio documento em Word.
         </Vazio>
       ) : emQuadro ? (
         <Quadro
