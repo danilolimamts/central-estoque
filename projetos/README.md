@@ -37,6 +37,23 @@ banco. As migrations aplicadas estão em `supabase/migrations/`.
 | `marcos` | etapas com data prevista e data real |
 | `tarefas` | itens de execução, com responsável e prazo |
 | `atualizacoes` | histórico de acompanhamento; nunca sobrescrito |
+| `anexos` | fotos e documentos, com o par antes/depois |
+
+### Anexos
+
+Arquivos ficam no bucket `anexos-projetos` do Storage (público na leitura,
+15 MB por arquivo, imagens e documentos de escritório). A tabela `anexos`
+guarda só o caminho — a URL pública é derivada dele, então trocar de projeto
+Supabase não quebra os links.
+
+Antes de subir, imagem maior que 1600 px é redimensionada e recomprimida no
+próprio navegador; foto de celular cai de alguns MB para algumas centenas de
+KB. O plano free dá 1 GB de armazenamento.
+
+O campo `momento` classifica cada anexo em **antes**, **depois**, **evidência**
+ou **documento**; o campo `par` nomeia a cena e é o que liga um antes ao seu
+depois na galeria comparativa. Anexo lançado junto com um acompanhamento fica
+preso a ele (`atualizacao_id`) e aparece dentro do próprio reporte.
 
 ### Acesso
 

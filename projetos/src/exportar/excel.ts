@@ -1,7 +1,8 @@
 import * as XLSX from 'xlsx-js-style';
 import { formatarData, rotuloSaude, saude } from '@/dominio/regras';
-import type { Atualizacao, Marco, Pessoa, Projeto, Tarefa } from '@/dominio/tipos';
-import { rotuloPrioridade, rotuloStatus, rotuloStatusTarefa } from '@/dominio/tipos';
+import { urlDoAnexo } from '@/estado/dados';
+import type { Anexo, Atualizacao, Marco, Pessoa, Projeto, Tarefa } from '@/dominio/tipos';
+import { rotuloMomento, rotuloPrioridade, rotuloStatus, rotuloStatusTarefa } from '@/dominio/tipos';
 
 const CABECALHO = {
   font: { bold: true, color: { rgb: 'FFFFFF' }, name: 'Calibri', sz: 11 },
@@ -47,7 +48,8 @@ export function exportarCarteira(projetos: Projeto[], pessoas: Pessoa[]) {
 }
 
 export function exportarProjeto(
-  projeto: Projeto, pessoas: Pessoa[], marcos: Marco[], tarefas: Tarefa[], atualizacoes: Atualizacao[],
+  projeto: Projeto, pessoas: Pessoa[], marcos: Marco[], tarefas: Tarefa[],
+  atualizacoes: Atualizacao[], anexos: Anexo[] = [],
 ) {
   const nome = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '';
   const livro = XLSX.utils.book_new();
@@ -90,6 +92,18 @@ export function exportarProjeto(
       a.percentual ?? '', a.texto, a.riscos ?? '', a.proximos_passos ?? '',
     ]),
   ], [13, 18, 11, 60, 40, 40]), 'Acompanhamento');
+
+  if (anexos.length) {
+    /* O arquivo em si nao entra na planilha: vai o link publico, que
+       abre a foto ou o documento direto do navegador. */
+    XLSX.utils.book_append_sheet(livro, aba([
+      ['Arquivo', 'Momento', 'Cena', 'Legenda', 'Enviado por', 'Data', 'Link'],
+      ...anexos.map((a) => [
+        a.nome_arquivo, rotuloMomento[a.momento], a.par ?? '', a.legenda ?? '',
+        a.enviado_por ?? '', formatarData(a.criado_em), urlDoAnexo(a.caminho),
+      ]),
+    ], [34, 13, 20, 40, 22, 13, 70]), 'Anexos');
+  }
 
   const arquivo = (projeto.codigo ?? projeto.nome).replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase();
   baixar(livro, `projeto-${arquivo}-${carimbo()}.xlsx`);

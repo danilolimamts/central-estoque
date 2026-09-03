@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { Atualizacao, Marco, Pessoa, Projeto, Tarefa } from '@/dominio/tipos';
+import { comprimirImagem } from '@/lib/imagem';
+import type { Anexo, Atualizacao, Marco, Momento, Pessoa, Projeto, Tarefa } from '@/dominio/tipos';
+
+const BALDE = 'anexos-projetos';
 
 /* Erro do PostgREST vira mensagem legivel. 42501 e a negativa de RLS:
    sem tradutor, o usuario ve um codigo e nao entende que faltou
@@ -12,6 +15,10 @@ export function mensagemDeErro(erro: unknown): string {
     return 'O banco recusou esta ação por falta de permissão.';
   }
   if (e.code === '23505') return 'Já existe um registro com este código ou e-mail.';
+  if (e.message?.includes('exceeded the maximum allowed size')) {
+    return 'Arquivo grande demais: o limite é 15 MB por anexo.';
+  }
+  if (e.message?.includes('mime type')) return 'Tipo de arquivo não aceito.';
   return e.message ?? 'Erro ao falar com o servidor.';
 }
 
@@ -78,13 +85,89 @@ export async function excluirTarefa(id: string) {
   if (error) throw error;
 }
 
-export async function lancarAtualizacao(dados: Omit<Atualizacao, 'id' | 'criado_em' | 'autor_id'>) {
-  const { error } = await supabase.from('atualizacoes').insert(dados);
+/* Devolve o id do lancamento para que as fotos do reporte sejam
+   anexadas a ele, e nao soltas no projeto. */
+export async function lancarAtualizacao(
+  dados: Omit<Atualizacao, 'id' | 'criado_em' | 'autor_id'>,
+): Promise<string> {
+  const { data, error } = await supabase.from('atualizacoes').insert(dados).select('id').single();
   if (error) throw error;
+  return (data as { id: string }).id;
 }
 
 export async function excluirAtualizacao(id: string) {
   const { error } = await supabase.from('atualizacoes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/* ---------------- Anexos ---------------- */
+
+export function urlDoAnexo(caminho: string): string {
+  return supabase.storage.from(BALDE).getPublicUrl(caminho).data.publicUrl;
+}
+
+/* Nome de arquivo vira caminho de URL: acento, espaco e barra quebram o
+   endereco publico, entao o nome guardado no banco continua o original
+   e o caminho fica sem eles. */
+function caminhoSeguro(projetoId: string, nome: string): string {
+  const limpo = nome
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(-80);
+  return `${projetoId}/${crypto.randomUUID()}-${limpo}`;
+}
+
+export interface DadosDoAnexo {
+  projetoId: string;
+  momento: Momento;
+  legenda?: string | null;
+  par?: string | null;
+  marcoId?: string | null;
+  atualizacaoId?: string | null;
+  enviadoPor?: string | null;
+}
+
+export async function enviarAnexo(arquivo: File, dados: DadosDoAnexo): Promise<void> {
+  const pronto = await comprimirImagem(arquivo);
+  const caminho = caminhoSeguro(dados.projetoId, pronto.name);
+
+  const envio = await supabase.storage.from(BALDE).upload(caminho, pronto, {
+    contentType: pronto.type || 'application/octet-stream',
+    upsert: false,
+  });
+  if (envio.error) throw envio.error;
+
+  const { error } = await supabase.from('anexos').insert({
+    projeto_id: dados.projetoId,
+    marco_id: dados.marcoId ?? null,
+    atualizacao_id: dados.atualizacaoId ?? null,
+    caminho,
+    nome_arquivo: pronto.name,
+    tipo_mime: pronto.type || null,
+    tamanho_bytes: pronto.size,
+    momento: dados.momento,
+    legenda: dados.legenda ?? null,
+    par: dados.par ?? null,
+    enviado_por: dados.enviadoPor ?? null,
+  });
+  /* O registro no banco e o arquivo no balde precisam andar juntos: sem
+     esta limpeza, uma falha aqui deixaria arquivo orfao ocupando espaco
+     sem aparecer em lugar nenhum. */
+  if (error) {
+    await supabase.storage.from(BALDE).remove([caminho]);
+    throw error;
+  }
+}
+
+export async function excluirAnexo(anexo: Anexo): Promise<void> {
+  const { error } = await supabase.from('anexos').delete().eq('id', anexo.id);
+  if (error) throw error;
+  await supabase.storage.from(BALDE).remove([anexo.caminho]);
+}
+
+export async function atualizarAnexo(id: string, dados: Partial<Anexo>): Promise<void> {
+  const { error } = await supabase.from('anexos').update(dados).eq('id', id);
   if (error) throw error;
 }
 
@@ -128,6 +211,7 @@ interface Detalhe {
   marcos: Marco[];
   tarefas: Tarefa[];
   atualizacoes: Atualizacao[];
+  anexos: Anexo[];
   carregando: boolean;
   erro: string | null;
   recarregar: () => Promise<void>;
@@ -137,23 +221,26 @@ export function useDetalheProjeto(projetoId: string | null): Detalhe {
   const [marcos, setMarcos] = useState<Marco[]>([]);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [atualizacoes, setAtualizacoes] = useState<Atualizacao[]>([]);
+  const [anexos, setAnexos] = useState<Anexo[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const recarregar = useCallback(async () => {
-    if (!projetoId) { setMarcos([]); setTarefas([]); setAtualizacoes([]); return; }
+    if (!projetoId) { setMarcos([]); setTarefas([]); setAtualizacoes([]); setAnexos([]); return; }
     setCarregando(true);
     try {
-      const [m, t, a] = await Promise.all([
+      const [m, t, a, x] = await Promise.all([
         supabase.from('marcos').select('*').eq('projeto_id', projetoId).order('ordem'),
         supabase.from('tarefas').select('*').eq('projeto_id', projetoId).order('ordem'),
         supabase.from('atualizacoes').select('*').eq('projeto_id', projetoId).order('data', { ascending: false }),
+        supabase.from('anexos').select('*').eq('projeto_id', projetoId).order('criado_em', { ascending: false }),
       ]);
-      const falha = m.error ?? t.error ?? a.error;
+      const falha = m.error ?? t.error ?? a.error ?? x.error;
       if (falha) throw falha;
       setMarcos((m.data ?? []) as Marco[]);
       setTarefas((t.data ?? []) as Tarefa[]);
       setAtualizacoes((a.data ?? []) as Atualizacao[]);
+      setAnexos((x.data ?? []) as Anexo[]);
       setErro(null);
     } catch (e) {
       setErro(mensagemDeErro(e));
@@ -164,7 +251,7 @@ export function useDetalheProjeto(projetoId: string | null): Detalhe {
 
   useEffect(() => { void recarregar(); }, [recarregar]);
 
-  return { marcos, tarefas, atualizacoes, carregando, erro, recarregar };
+  return { marcos, tarefas, atualizacoes, anexos, carregando, erro, recarregar };
 }
 
 /* Marcos e tarefas de todos os projetos, para o cronograma geral. */

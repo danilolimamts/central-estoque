@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import FormularioProjeto from './FormularioProjeto';
+import Anexos from '@/componentes/Anexos';
 import { Aviso, Barra, Campo, Modal, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import {
-  excluirAtualizacao, excluirMarco, excluirProjeto, excluirTarefa, lancarAtualizacao,
-  mensagemDeErro, salvarMarco, salvarProjeto, salvarTarefa, useDetalheProjeto,
+  enviarAnexo, excluirAtualizacao, excluirMarco, excluirProjeto, excluirTarefa,
+  lancarAtualizacao, mensagemDeErro, salvarMarco, salvarProjeto, salvarTarefa,
+  urlDoAnexo, useDetalheProjeto,
 } from '@/estado/dados';
 import {
   formatarData, isoDeHoje, marcoAtrasado, percentualEsperado, progressoDeTarefas, saude, tarefaAtrasada,
@@ -62,7 +64,7 @@ export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar 
                 /* A biblioteca de planilha pesa quase metade do bundle:
                    so e baixada quando alguem exporta de fato. */
                 const { exportarProjeto } = await import('@/exportar/excel');
-                exportarProjeto(projeto, pessoas, dados.marcos, dados.tarefas, dados.atualizacoes);
+                exportarProjeto(projeto, pessoas, dados.marcos, dados.tarefas, dados.atualizacoes, dados.anexos);
               })}
             >
               Exportar Excel
@@ -178,6 +180,11 @@ export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar 
         </section>
       </div>
 
+      <Anexos
+        projetoId={projeto.id} anexos={dados.anexos} marcos={dados.marcos}
+        pessoas={pessoas} recarregar={dados.recarregar}
+      />
+
       <section className="cartao overflow-hidden">
         <div className="border-b border-linha px-4 py-3">
           <h2 className="font-titulo text-sm font-extrabold">Acompanhamento</h2>
@@ -196,6 +203,22 @@ export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar 
                 <p className="whitespace-pre-wrap text-sm">{a.texto}</p>
                 {a.riscos && <p className="mt-1 text-sm text-ambar"><strong>Riscos:</strong> {a.riscos}</p>}
                 {a.proximos_passos && <p className="mt-1 text-sm text-tinta-suave"><strong>Próximos passos:</strong> {a.proximos_passos}</p>}
+                {dados.anexos.some((x) => x.atualizacao_id === a.id) && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {dados.anexos.filter((x) => x.atualizacao_id === a.id).map((x) => (
+                      <a key={x.id} href={urlDoAnexo(x.caminho)} target="_blank" rel="noreferrer" title={x.nome_arquivo}>
+                        {x.tipo_mime?.startsWith('image/') ? (
+                          <img src={urlDoAnexo(x.caminho)} alt={x.legenda ?? x.nome_arquivo} loading="lazy"
+                            className="h-20 w-20 rounded-lg border border-linha object-cover" />
+                        ) : (
+                          <span className="inline-block rounded-lg border border-linha px-3 py-2 text-xs font-bold text-roxo-escuro">
+                            {x.nome_arquivo}
+                          </span>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -350,14 +373,18 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
   projeto: Projeto; pessoas: Pessoa[]; aberto: boolean; aoFechar: () => void; recarregar: () => Promise<void>;
 }) {
   const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
   async function enviar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const status = f.get('status_reportado') as StatusProjeto;
     const percentual = Number(f.get('percentual'));
+    const autor = String(f.get('autor_nome')) || null;
+    const fotos = (f.getAll('fotos') as File[]).filter((a) => a.size > 0);
+    setEnviando(true);
     try {
-      await lancarAtualizacao({
+      const atualizacaoId = await lancarAtualizacao({
         projeto_id: projeto.id,
         data: String(f.get('data')),
         texto: String(f.get('texto')),
@@ -365,8 +392,19 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
         percentual,
         riscos: String(f.get('riscos')) || null,
         proximos_passos: String(f.get('proximos_passos')) || null,
-        autor_nome: String(f.get('autor_nome')) || null,
+        autor_nome: autor,
       });
+
+      /* As fotos ficam penduradas no lancamento: e assim que a
+         evidencia da semana nao se perde no meio das outras. */
+      for (const foto of fotos) {
+        await enviarAnexo(foto, {
+          projetoId: projeto.id,
+          atualizacaoId,
+          momento: 'evidencia',
+          enviadoPor: autor,
+        });
+      }
       /* O lancamento e a fonte do status: sem espelhar no projeto, a
          lista e o painel continuariam mostrando o quadro antigo. */
       if (f.get('espelhar')) {
@@ -376,6 +414,8 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
       aoFechar();
     } catch (falha) {
       setErro(mensagemDeErro(falha));
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -402,6 +442,12 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
         <Campo rotulo="O que aconteceu *"><textarea name="texto" required rows={3} className="campo" /></Campo>
         <Campo rotulo="Riscos"><textarea name="riscos" rows={2} className="campo" /></Campo>
         <Campo rotulo="Próximos passos"><textarea name="proximos_passos" rows={2} className="campo" /></Campo>
+        <Campo rotulo="Fotos deste acompanhamento">
+          <input
+            name="fotos" type="file" multiple className="campo py-1.5"
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+          />
+        </Campo>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="espelhar" defaultChecked />
           Atualizar situação e avanço do projeto com estes valores
@@ -409,7 +455,9 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
         {erro && <Aviso>{erro}</Aviso>}
         <div className="flex justify-end gap-2">
           <button type="button" className="botao-neutro" onClick={aoFechar}>Cancelar</button>
-          <button type="submit" className="botao-primario">Lançar</button>
+          <button type="submit" className="botao-primario" disabled={enviando}>
+            {enviando ? 'Enviando…' : 'Lançar'}
+          </button>
         </div>
       </form>
     </Modal>

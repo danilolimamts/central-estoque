@@ -73,6 +73,34 @@ export interface Atualizacao {
   criado_em: string;
 }
 
+export type Momento = 'antes' | 'depois' | 'evidencia' | 'documento';
+
+export interface Anexo {
+  id: string;
+  projeto_id: string;
+  marco_id: string | null;
+  atualizacao_id: string | null;
+  /* Caminho dentro do bucket. A URL publica e derivada dele, nunca
+     guardada: se o projeto Supabase mudar de endereco, os anexos
+     continuam encontraveis. */
+  caminho: string;
+  nome_arquivo: string;
+  tipo_mime: string | null;
+  tamanho_bytes: number | null;
+  momento: Momento;
+  legenda: string | null;
+  /* Nome da cena que liga um "antes" ao seu "depois". */
+  par: string | null;
+  enviado_por: string | null;
+  criado_em: string;
+}
+
+export const rotuloMomento: Record<Momento, string> = {
+  antes: 'Antes', depois: 'Depois', evidencia: 'Evidência', documento: 'Documento',
+};
+
+export const MOMENTOS: Momento[] = ['antes', 'depois', 'evidencia', 'documento'];
+
 export const rotuloStatus: Record<StatusProjeto, string> = {
   nao_iniciado: 'Não iniciado',
   em_andamento: 'Em andamento',
