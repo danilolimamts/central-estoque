@@ -31,18 +31,20 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <header className="bg-navy text-white">
-        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-4 px-6 py-4">
-          {/* 48px de altura contra os 91px do arquivo: a marca cresce e
-              ainda sobra resolucao, entao a tela de retina nao borra.
-              Acima disso o PNG comeca a esticar. */}
+        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-5 px-6 py-5">
+          {/* O arquivo em brand/ tem 91 px de altura. Em 72 px a marca
+              domina o cabecalho e ainda sobra pixel de origem; passar
+              disso e esticar o PNG, que embaça. No celular cai para
+              56 px para nao empurrar o titulo para a linha de baixo. */}
           <img
             src="./brand/Logo_LDM_hor_2_Branco.png" alt="Loja do Mecânico"
-            width={125} height={48}
-            className="h-12 w-auto drop-shadow-[0_2px_6px_rgba(0,0,0,.35)]"
+            width={188} height={72}
+            className="h-14 w-auto drop-shadow-[0_2px_8px_rgba(0,0,0,.4)] sm:h-[72px]"
           />
+          <span className="hidden h-12 w-px bg-white/20 sm:block" />
           <div className="mr-auto">
-            <h1 className="font-titulo text-lg font-extrabold leading-tight">Projetos</h1>
-            <p className="text-xs text-white/60">CD Cajamar · acompanhamento de projetos e iniciativas</p>
+            <h1 className="font-titulo text-2xl font-extrabold leading-tight">Projetos</h1>
+            <p className="text-[13px] text-white/60">CD Cajamar · acompanhamento de projetos e iniciativas</p>
           </div>
           <a href="../" className="text-xs font-bold text-white/70 hover:text-white">← Central</a>
         </div>
