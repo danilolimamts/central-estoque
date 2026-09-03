@@ -19,6 +19,10 @@ export interface Projeto {
      e um projeto filho, com marcos, tarefas, paginas e documento
      proprios. */
   projeto_pai_id: string | null;
+  /* Preenchido, o projeto e um guarda-chuva e este e o nome dos itens
+     de dentro no plural ("Melhorias", "Frentes", "Etapas"). Vazio, e um
+     projeto comum, com marcos, tarefas, paginas e anexos proprios. */
+  rotulo_filhos: string | null;
   codigo: string | null;
   nome: string;
   descricao: string | null;

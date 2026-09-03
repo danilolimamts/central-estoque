@@ -22,19 +22,19 @@ const pessoas = [
 const projetos = [
   {
     id: 'j1', codigo: 'PRJ-001', nome: 'Reendereçamento do mezanino', descricao: 'Revisão de endereços e capacidade.',
-    projeto_pai_id: null, area: 'Estoque', responsavel_id: 'p1', status: 'em_andamento', prioridade: 'alta',
+    projeto_pai_id: null, rotulo_filhos: null, area: 'Estoque', responsavel_id: 'p1', status: 'em_andamento', prioridade: 'alta',
     inicio_previsto: iso(-40), fim_previsto: iso(20), inicio_real: iso(-38), fim_real: null,
     percentual: 45, criado_por: null, criado_em: '', atualizado_em: '',
   },
   {
     id: 'j2', codigo: 'PRJ-002', nome: 'Automação da conferência cega', descricao: null,
-    projeto_pai_id: null, area: 'Recebimento', responsavel_id: 'p2', status: 'em_risco', prioridade: 'critica',
+    projeto_pai_id: null, rotulo_filhos: null, area: 'Recebimento', responsavel_id: 'p2', status: 'em_risco', prioridade: 'critica',
     inicio_previsto: iso(-70), fim_previsto: iso(-8), inicio_real: iso(-70), fim_real: null,
     percentual: 60, criado_por: null, criado_em: '', atualizado_em: '',
   },
   {
     id: 'j3', codigo: 'PRJ-003', nome: 'Padronização de paletes', descricao: null,
-    projeto_pai_id: null, area: 'Expedição', responsavel_id: 'p1', status: 'concluido', prioridade: 'media',
+    projeto_pai_id: null, rotulo_filhos: null, area: 'Expedição', responsavel_id: 'p1', status: 'concluido', prioridade: 'media',
     inicio_previsto: iso(-120), fim_previsto: iso(-25), inicio_real: iso(-118), fim_real: iso(-25),
     percentual: 100, criado_por: null, criado_em: '', atualizado_em: '',
   },
@@ -42,20 +42,20 @@ const projetos = [
 
 projetos.push(
   {
-    id: 'g1', codigo: 'PRJ-100', nome: 'Melhorias Bseller', descricao: 'Guarda-chuva das melhorias sistêmicas.',
-    projeto_pai_id: null, area: 'Sistema', responsavel_id: 'p1', status: 'em_andamento', prioridade: 'alta',
+    id: 'g1', codigo: 'PRJ-100', nome: 'Melhoria Sistêmica Bseller', descricao: 'Guarda-chuva das melhorias sistêmicas.',
+    projeto_pai_id: null, rotulo_filhos: 'Melhorias', area: 'Sistema', responsavel_id: 'p1', status: 'em_andamento', prioridade: 'alta',
     inicio_previsto: iso(-30), fim_previsto: iso(60), inicio_real: null, fim_real: null,
     percentual: 0, criado_por: null, criado_em: '', atualizado_em: '',
   },
   {
     id: 'g1a', codigo: null, nome: 'Entrada massiva', descricao: null,
-    projeto_pai_id: 'g1', area: 'Sistema', responsavel_id: 'p1', status: 'em_andamento', prioridade: 'alta',
+    projeto_pai_id: 'g1', rotulo_filhos: null, area: 'Sistema', responsavel_id: 'p1', status: 'em_andamento', prioridade: 'alta',
     inicio_previsto: iso(-10), fim_previsto: iso(20), inicio_real: null, fim_real: null,
     percentual: 30, criado_por: null, criado_em: '', atualizado_em: '',
   },
   {
     id: 'g1b', codigo: null, nome: 'Trava sistêmica para paletes', descricao: null,
-    projeto_pai_id: 'g1', area: 'Sistema', responsavel_id: 'p2', status: 'nao_iniciado', prioridade: 'media',
+    projeto_pai_id: 'g1', rotulo_filhos: null, area: 'Sistema', responsavel_id: 'p2', status: 'nao_iniciado', prioridade: 'media',
     inicio_previsto: null, fim_previsto: null, inicio_real: null, fim_real: null,
     percentual: 0, criado_por: null, criado_em: '', atualizado_em: '',
   },
@@ -189,13 +189,21 @@ await pagina.screenshot({ path: 'verificacao-detalhe.png', fullPage: true });
 // Guarda-chuva: quadro de melhorias por situação.
 await pagina.getByRole('button', { name: 'Voltar', exact: false }).first().click();
 await pagina.waitForTimeout(400);
-await pagina.getByText('Melhorias Bseller').first().click();
+await pagina.getByText('Melhoria Sistêmica Bseller').first().click();
 await pagina.waitForTimeout(800);
 await pagina.screenshot({ path: 'verificacao-melhorias.png', fullPage: true });
 const textoDoGrupo = (await pagina.textContent('body')) ?? '';
 if (!textoDoGrupo.includes('Entrada massiva') || !textoDoGrupo.includes('avanço médio')) {
   console.error('FALHOU: o quadro de melhorias não montou.');
   process.exitCode = 1;
+}
+/* O guarda-chuva nao pode oferecer marcos, tarefas, paginas nem anexos:
+   isso pertence a cada melhoria de dentro. */
+for (const secao of ['Marcos', 'Nova tarefa', 'Nova página', 'Arraste arquivos aqui', 'Criar documento']) {
+  if (textoDoGrupo.includes(secao)) {
+    console.error(`FALHOU: o grupo ainda mostra "${secao}".`);
+    process.exitCode = 1;
+  }
 }
 
 await pagina.getByRole('button', { name: 'Projetos', exact: true }).click();

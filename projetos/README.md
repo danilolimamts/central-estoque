@@ -58,13 +58,22 @@ ou **documento**; o campo `par` nomeia a cena e é o que liga um antes ao seu
 depois na galeria comparativa. Anexo lançado junto com um acompanhamento fica
 preso a ele (`atualizacao_id`) e aparece dentro do próprio reporte.
 
-### Melhorias (subprojetos)
+### Projeto guarda-chuva
 
-Um projeto pode agrupar outros. "Melhorias Bseller" é o guarda-chuva; cada
-melhoria dentro dele é um projeto próprio, com marcos, tarefas, páginas, anexos
-e o documento em Word dela mesma. Isso é uma coluna `projeto_pai_id` na própria
-tabela de projetos: a melhoria herda tudo o que o projeto já sabe fazer, sem uma
-entidade nova pela metade.
+Um projeto pode agrupar outros. "Melhoria Sistêmica Bseller" é o guarda-chuva;
+cada melhoria dentro dele é um projeto próprio, com marcos, tarefas, páginas,
+anexos e o documento em Word dela mesma. Isso é uma coluna `projeto_pai_id` na
+própria tabela de projetos: o item herda tudo o que o projeto já sabe fazer, sem
+uma entidade nova pela metade.
+
+**O grupo não guarda trabalho.** Marcos, tarefas, páginas, anexos e documentos
+somem da tela do guarda-chuva, porque pertencem a cada item de dentro; o grupo
+mostra o quadro dos itens e o histórico de acompanhamento, e nada mais.
+
+**O nome dos itens é escolhido no projeto** (`rotulo_filhos`): "Melhorias" no
+Bseller, "Frentes" ou "Etapas" em outro. Preencher esse campo é o que transforma
+o projeto em guarda-chuva; vazio, ele é um projeto comum. O singular e o gênero
+saem do plural para o botão sair "+ Nova melhoria", não "+ Novo melhoria".
 
 Consequências no resto do módulo:
 

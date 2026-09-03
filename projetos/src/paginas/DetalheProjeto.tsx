@@ -4,6 +4,7 @@ import Anexos from '@/componentes/Anexos';
 import Melhorias from '@/componentes/Melhorias';
 import Quadro from '@/componentes/Quadro';
 import { coresStatusTarefa } from '@/config/tokens';
+import { ehGrupo, singularDoRotulo } from '@/dominio/arvore';
 
 /* O editor de texto e o desenhista de fluxograma somam alguns MB. Quem
    so consulta o painel nao deve baixar isso: entram sob demanda, quando
@@ -47,6 +48,10 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
   const pai = projeto.projeto_pai_id
     ? projetos.find((p) => p.id === projeto.projeto_pai_id)
     : undefined;
+  /* Projeto guarda-chuva nao guarda trabalho: marcos, tarefas, paginas,
+     anexos e documento pertencem a cada item de dentro. Mostrar essas
+     secoes vazias no grupo so confunde quem abre a tela. */
+  const grupo = ehGrupo(projetos, projeto);
 
   async function comErro(acao: () => Promise<void>) {
     try {
@@ -84,6 +89,12 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
             </div>
             <h1 className="font-titulo text-xl font-extrabold">{projeto.nome}</h1>
             {projeto.descricao && <p className="mt-1 max-w-3xl text-sm text-tinta-suave">{projeto.descricao}</p>}
+            {grupo && (
+              <p className="mt-1 text-xs text-tinta-suave">
+                Projeto guarda-chuva: marcos, tarefas, páginas, anexos e documentos ficam em cada
+                {' '}{singularDoRotulo(projeto).toLowerCase()} de dentro.
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -132,6 +143,7 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
       {erro && <Aviso>{erro}</Aviso>}
       {dados.erro && <Aviso>{dados.erro}</Aviso>}
 
+      {!grupo && (
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="cartao overflow-hidden">
           <div className="flex items-center justify-between border-b border-linha px-4 py-3">
@@ -214,8 +226,9 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
         </section>
         )}
       </div>
+      )}
 
-      {tarefasEmQuadro && (
+      {!grupo && tarefasEmQuadro && (
         <section className="cartao overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-linha px-4 py-3">
             <h2 className="font-titulo text-sm font-extrabold">
@@ -257,26 +270,32 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
         </section>
       )}
 
-      <Melhorias
-        pai={projeto} projetos={projetos} pessoas={pessoas}
-        aoAbrir={aoAbrir} recarregar={recarregar}
-      />
-
-      <Suspense fallback={<div className="cartao"><Carregando /></div>}>
-        <Paginas projetoId={projeto.id} pessoas={pessoas} />
-      </Suspense>
-
-      <Anexos
-        projetoId={projeto.id} anexos={dados.anexos} marcos={dados.marcos}
-        pessoas={pessoas} recarregar={dados.recarregar}
-      />
-
-      <Suspense fallback={<div className="cartao"><Carregando /></div>}>
-        <Documentos
-          projeto={projeto} pessoas={pessoas} marcos={dados.marcos}
-          tarefas={dados.tarefas} anexos={dados.anexos}
+      {grupo && (
+        <Melhorias
+          pai={projeto} projetos={projetos} pessoas={pessoas}
+          aoAbrir={aoAbrir} recarregar={recarregar}
         />
-      </Suspense>
+      )}
+
+      {!grupo && (
+        <>
+          <Suspense fallback={<div className="cartao"><Carregando /></div>}>
+            <Paginas projetoId={projeto.id} pessoas={pessoas} />
+          </Suspense>
+
+          <Anexos
+            projetoId={projeto.id} anexos={dados.anexos} marcos={dados.marcos}
+            pessoas={pessoas} recarregar={dados.recarregar}
+          />
+
+          <Suspense fallback={<div className="cartao"><Carregando /></div>}>
+            <Documentos
+              projeto={projeto} pessoas={pessoas} marcos={dados.marcos}
+              tarefas={dados.tarefas} anexos={dados.anexos}
+            />
+          </Suspense>
+        </>
+      )}
 
       <section className="cartao overflow-hidden">
         <div className="border-b border-linha px-4 py-3">

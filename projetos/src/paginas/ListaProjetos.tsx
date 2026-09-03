@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import FormularioProjeto from './FormularioProjeto';
 import { Barra, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import { atrasado, diasDeAtraso, formatarData, percentualEsperado, saude } from '@/dominio/regras';
-import { filhosDe } from '@/dominio/arvore';
+import { filhosDe, rotuloDosFilhos } from '@/dominio/arvore';
 import type { Pessoa, Projeto, StatusProjeto } from '@/dominio/tipos';
 import { STATUS, rotuloStatus } from '@/dominio/tipos';
 
@@ -118,7 +118,7 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
                     {p.codigo && <span className="ml-2 text-xs text-tinta-suave">{p.codigo}</span>}
                     {filhosDe(projetos, p.id).length > 0 && (
                       <span className="ml-2 rounded-full bg-roxo-suave px-2 py-0.5 text-[11px] font-bold text-roxo-escuro">
-                        {filhosDe(projetos, p.id).length} melhorias
+                        {filhosDe(projetos, p.id).length} {rotuloDosFilhos(p).toLowerCase()}
                       </span>
                     )}
                   </td>
