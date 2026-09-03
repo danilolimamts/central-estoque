@@ -58,6 +58,31 @@ ou **documento**; o campo `par` nomeia a cena e é o que liga um antes ao seu
 depois na galeria comparativa. Anexo lançado junto com um acompanhamento fica
 preso a ele (`atualizacao_id`) e aparece dentro do próprio reporte.
 
+### Melhorias (subprojetos)
+
+Um projeto pode agrupar outros. "Melhorias Bseller" é o guarda-chuva; cada
+melhoria dentro dele é um projeto próprio, com marcos, tarefas, páginas, anexos
+e o documento em Word dela mesma. Isso é uma coluna `projeto_pai_id` na própria
+tabela de projetos: a melhoria herda tudo o que o projeto já sabe fazer, sem uma
+entidade nova pela metade.
+
+Consequências no resto do módulo:
+
+- a **carteira** mostra só os projetos de topo, com o número de melhorias ao
+  lado do nome; a caixa *Incluir melhorias* abre a lista plana;
+- **painel** e **cronograma** contam apenas as folhas (projetos sem filhos), para
+  o guarda-chuva e as melhorias dentro dele não contarem o mesmo trabalho duas
+  vezes;
+- o detalhe do grupo traz o **avanço médio** das melhorias, ignorando canceladas.
+
+### Quadro (arrastar e soltar)
+
+As melhorias de um grupo e as tarefas de um projeto aparecem em colunas por
+situação, e o cartão muda de situação ao ser arrastado — no espírito do Jira.
+Usa a API de arrastar do próprio navegador, sem biblioteca. No celular não há
+arrastar, por isso todo cartão continua tendo o seletor de situação na visão em
+lista, que é o caminho garantido.
+
 ### Páginas
 
 Cada projeto tem páginas próprias — a folha onde se descreve o comportamento de

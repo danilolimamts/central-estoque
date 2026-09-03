@@ -66,8 +66,10 @@ export default function App() {
         {carteira.carregando ? <Carregando /> : selecionado ? (
           <DetalheProjeto
             projeto={selecionado}
+            projetos={carteira.projetos}
             pessoas={carteira.pessoas}
             aoVoltar={() => setAberto(null)}
+            aoAbrir={setAberto}
             recarregar={carteira.recarregar}
           />
         ) : (

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import FormularioProjeto from './FormularioProjeto';
 import { Barra, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import { atrasado, diasDeAtraso, formatarData, percentualEsperado, saude } from '@/dominio/regras';
+import { filhosDe } from '@/dominio/arvore';
 import type { Pessoa, Projeto, StatusProjeto } from '@/dominio/tipos';
 import { STATUS, rotuloStatus } from '@/dominio/tipos';
 
@@ -18,6 +19,9 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
   const [responsavel, setResponsavel] = useState('');
   const [area, setArea] = useState('');
   const [soAtrasados, setSoAtrasados] = useState(false);
+  /* Por padrao a carteira mostra so os projetos de topo: com dezenas de
+     melhorias dentro de um guarda-chuva, a lista plana vira ruido. */
+  const [incluirMelhorias, setIncluirMelhorias] = useState(false);
   const [formAberto, setFormAberto] = useState(false);
 
   const areas = useMemo(
@@ -28,6 +32,7 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return projetos.filter((p) => {
+      if (!incluirMelhorias && p.projeto_pai_id) return false;
       if (termo && !`${p.nome} ${p.codigo ?? ''} ${p.descricao ?? ''}`.toLowerCase().includes(termo)) return false;
       if (status && p.status !== status) return false;
       if (responsavel && p.responsavel_id !== responsavel) return false;
@@ -35,7 +40,7 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
       if (soAtrasados && !atrasado(p)) return false;
       return true;
     });
-  }, [projetos, busca, status, responsavel, area, soAtrasados]);
+  }, [projetos, busca, status, responsavel, area, soAtrasados, incluirMelhorias]);
 
   const nomePessoa = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '—';
 
@@ -72,6 +77,10 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
           <input type="checkbox" checked={soAtrasados} onChange={(e) => setSoAtrasados(e.target.checked)} />
           Só atrasados
         </label>
+        <label className="flex items-center gap-2 pb-2 text-sm font-semibold">
+          <input type="checkbox" checked={incluirMelhorias} onChange={(e) => setIncluirMelhorias(e.target.checked)} />
+          Incluir melhorias
+        </label>
         <div className="ml-auto flex gap-2">
           <button
             className="botao-neutro"
@@ -107,6 +116,11 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
                   <td className="px-4 py-2">
                     <span className="font-semibold">{p.nome}</span>
                     {p.codigo && <span className="ml-2 text-xs text-tinta-suave">{p.codigo}</span>}
+                    {filhosDe(projetos, p.id).length > 0 && (
+                      <span className="ml-2 rounded-full bg-roxo-suave px-2 py-0.5 text-[11px] font-bold text-roxo-escuro">
+                        {filhosDe(projetos, p.id).length} melhorias
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2 text-tinta-suave">{p.area ?? '—'}</td>
                   <td className="px-4 py-2 text-tinta-suave">{nomePessoa(p.responsavel_id)}</td>
@@ -132,7 +146,7 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
       </div>
 
       <FormularioProjeto
-        aberto={formAberto} projeto={null} pessoas={pessoas}
+        aberto={formAberto} projeto={null} projetos={projetos} pessoas={pessoas}
         aoFechar={() => setFormAberto(false)} aoSalvar={recarregar}
       />
     </div>

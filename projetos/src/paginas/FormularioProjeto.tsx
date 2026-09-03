@@ -7,6 +7,9 @@ import { PRIORIDADES, STATUS, rotuloPrioridade, rotuloStatus } from '@/dominio/t
 interface Props {
   aberto: boolean;
   projeto: Projeto | null;
+  /* A carteira inteira serve para oferecer os projetos que podem ser
+     pai deste. */
+  projetos?: Projeto[];
   pessoas: Pessoa[];
   aoFechar: () => void;
   aoSalvar: () => Promise<void> | void;
@@ -14,7 +17,7 @@ interface Props {
 
 const vazio = (v: string) => (v.trim() === '' ? null : v.trim());
 
-export default function FormularioProjeto({ aberto, projeto, pessoas, aoFechar, aoSalvar }: Props) {
+export default function FormularioProjeto({ aberto, projeto, projetos = [], pessoas, aoFechar, aoSalvar }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -34,6 +37,7 @@ export default function FormularioProjeto({ aberto, projeto, pessoas, aoFechar, 
         prioridade: f.get('prioridade') as Prioridade,
         inicio_previsto: vazio(String(f.get('inicio_previsto'))),
         fim_previsto: vazio(String(f.get('fim_previsto'))),
+        projeto_pai_id: vazio(String(f.get('projeto_pai_id'))),
         inicio_real: vazio(String(f.get('inicio_real'))),
         fim_real: vazio(String(f.get('fim_real'))),
         percentual: Number(f.get('percentual')),
@@ -61,6 +65,17 @@ export default function FormularioProjeto({ aberto, projeto, pessoas, aoFechar, 
 
         <Campo rotulo="Descrição">
           <textarea name="descricao" rows={2} defaultValue={projeto?.descricao ?? ''} className="campo" />
+        </Campo>
+
+        <Campo rotulo="Faz parte de">
+          <select name="projeto_pai_id" defaultValue={projeto?.projeto_pai_id ?? ''} className="campo">
+            <option value="">Projeto independente</option>
+            {projetos
+              /* So projeto de topo pode ser pai, e nunca ele mesmo:
+                 evita corrente de projeto dentro de projeto. */
+              .filter((p) => !p.projeto_pai_id && p.id !== projeto?.id)
+              .map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
         </Campo>
 
         <div className="grid gap-3 sm:grid-cols-2">
