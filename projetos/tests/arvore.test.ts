@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  avancoDoGrupo, ehGrupo, filhosDe, folhas, generoDoRotulo, nomeCompleto, raizes,
+  avancoDoGrupo, ehRaiz, filhosDe, folhas, generoDoRotulo, nomeCompleto, raizes,
   rotuloDosFilhos, singularDoRotulo, temFilhos,
 } from '../src/dominio/arvore';
 import type { Projeto } from '../src/dominio/tipos';
@@ -58,9 +58,9 @@ describe('rótulo dos itens do grupo', () => {
     expect(singularDoRotulo(grupo)).toBe('melhoria');
   });
 
-  it('cai em "Itens" quando ninguém escolheu', () => {
-    expect(rotuloDosFilhos(carteira[0])).toBe('Itens');
-    expect(singularDoRotulo(carteira[0])).toBe('item');
+  it('cai em "Atividades" quando ninguém escolheu', () => {
+    expect(rotuloDosFilhos(carteira[0])).toBe('Atividades');
+    expect(singularDoRotulo(carteira[0])).toBe('atividade');
   });
 
   it('tira o s de nomes que não estão na tabela', () => {
@@ -69,14 +69,15 @@ describe('rótulo dos itens do grupo', () => {
 
   it('acerta o gênero, para o botão não sair "Novo melhoria"', () => {
     expect(generoDoRotulo(grupo)).toBe('f');
-    expect(generoDoRotulo(carteira[0])).toBe('m');
+    expect(generoDoRotulo(carteira[0])).toBe('f');
     expect(generoDoRotulo({ ...grupo, rotulo_filhos: 'Frentes' })).toBe('f');
     expect(generoDoRotulo({ ...grupo, rotulo_filhos: 'Módulos' })).toBe('m');
+    // "atividade" não termina em A, mas é feminina: a terminação DADE decide.
+    expect(generoDoRotulo({ ...grupo, rotulo_filhos: 'Atividades' })).toBe('f');
   });
 
-  it('é grupo quem tem filhos ou nome de item definido', () => {
-    expect(ehGrupo(carteira, carteira[0])).toBe(true);
-    expect(ehGrupo(carteira, carteira[4])).toBe(false);
-    expect(ehGrupo([], { ...carteira[4], rotulo_filhos: 'Frentes' })).toBe(true);
+  it('projeto de topo é pasta de atividades; o filho é o trabalho', () => {
+    expect(ehRaiz(carteira[0])).toBe(true);
+    expect(ehRaiz(carteira[1])).toBe(false);
   });
 });

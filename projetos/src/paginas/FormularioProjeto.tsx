@@ -68,10 +68,10 @@ export default function FormularioProjeto({ aberto, projeto, projetos = [], pess
           <textarea name="descricao" rows={2} defaultValue={projeto?.descricao ?? ''} className="campo" />
         </Campo>
 
-        <Campo rotulo="Agrupa itens chamados de (deixe vazio para projeto comum)">
+        <Campo rotulo="Como chamar o que este projeto reúne">
           <input
             name="rotulo_filhos" defaultValue={projeto?.rotulo_filhos ?? ''} className="campo"
-            placeholder="Ex.: Melhorias, Frentes, Etapas"
+            placeholder="Atividades (padrão) · Melhorias · Frentes · Etapas"
           />
         </Campo>
 
