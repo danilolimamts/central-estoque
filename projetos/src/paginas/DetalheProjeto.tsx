@@ -1,6 +1,9 @@
 import { Suspense, lazy, useState } from 'react';
 import FormularioProjeto from './FormularioProjeto';
 import Anexos from '@/componentes/Anexos';
+import Melhorias from '@/componentes/Melhorias';
+import Quadro from '@/componentes/Quadro';
+import { coresStatusTarefa } from '@/config/tokens';
 
 /* O editor de texto e o desenhista de fluxograma somam alguns MB. Quem
    so consulta o painel nao deve baixar isso: entram sob demanda, quando
@@ -22,20 +25,28 @@ import { STATUS, STATUS_TAREFA, rotuloStatus, rotuloStatusTarefa } from '@/domin
 
 interface Props {
   projeto: Projeto;
+  /* A carteira inteira: e dela que saem as melhorias deste projeto e o
+     nome do grupo a que ele pertence. */
+  projetos: Projeto[];
   pessoas: Pessoa[];
   aoVoltar: () => void;
+  aoAbrir: (p: Projeto) => void;
   recarregar: () => Promise<void>;
 }
 
-export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar }: Props) {
+export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, aoAbrir, recarregar }: Props) {
   const dados = useDetalheProjeto(projeto.id);
   const [editando, setEditando] = useState(false);
   const [marcoEmEdicao, setMarcoEmEdicao] = useState<Marco | 'novo' | null>(null);
   const [tarefaEmEdicao, setTarefaEmEdicao] = useState<Tarefa | 'nova' | null>(null);
   const [reportando, setReportando] = useState(false);
+  const [tarefasEmQuadro, setTarefasEmQuadro] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const nomePessoa = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '—';
+  const pai = projeto.projeto_pai_id
+    ? projetos.find((p) => p.id === projeto.projeto_pai_id)
+    : undefined;
 
   async function comErro(acao: () => Promise<void>) {
     try {
@@ -50,7 +61,17 @@ export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar 
 
   return (
     <div className="space-y-4">
-      <button className="text-sm font-bold text-roxo-escuro hover:underline" onClick={aoVoltar}>← Voltar</button>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <button className="font-bold text-roxo-escuro hover:underline" onClick={aoVoltar}>← Voltar</button>
+        {pai && (
+          <>
+            <span className="text-tinta-suave">·</span>
+            <button className="font-bold text-tinta-suave hover:text-tinta" onClick={() => aoAbrir(pai)}>
+              {pai.nome}
+            </button>
+          </>
+        )}
+      </div>
 
       <div className="cartao p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -146,12 +167,18 @@ export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar 
           ) : <Vazio>Nenhum marco cadastrado.</Vazio>}
         </section>
 
+        {!tarefasEmQuadro && (
         <section className="cartao overflow-hidden">
           <div className="flex items-center justify-between border-b border-linha px-4 py-3">
             <h2 className="font-titulo text-sm font-extrabold">
               Tarefas {dados.tarefas.length > 0 && <span className="text-tinta-suave">({progressoDeTarefas(dados.tarefas)}% concluídas)</span>}
             </h2>
-            <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>
+            <div className="flex items-center gap-2">
+              <button className="text-xs font-bold text-tinta-suave hover:text-tinta" onClick={() => setTarefasEmQuadro(true)}>
+                Ver em quadro
+              </button>
+              <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>
+            </div>
           </div>
           {dados.tarefas.length ? (
             <ul className="divide-y divide-linha">
@@ -185,7 +212,55 @@ export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar 
             </ul>
           ) : <Vazio>Nenhuma tarefa cadastrada.</Vazio>}
         </section>
+        )}
       </div>
+
+      {tarefasEmQuadro && (
+        <section className="cartao overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-linha px-4 py-3">
+            <h2 className="font-titulo text-sm font-extrabold">
+              Tarefas {dados.tarefas.length > 0 && <span className="text-tinta-suave">({progressoDeTarefas(dados.tarefas)}% concluídas)</span>}
+            </h2>
+            <div className="flex items-center gap-2">
+              <button className="text-xs font-bold text-tinta-suave hover:text-tinta" onClick={() => setTarefasEmQuadro(false)}>
+                Ver em lista
+              </button>
+              <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>
+            </div>
+          </div>
+          {dados.tarefas.length ? (
+            <Quadro
+              colunas={STATUS_TAREFA.map((s) => ({ id: s, rotulo: rotuloStatusTarefa[s], cor: coresStatusTarefa[s] }))}
+              itens={dados.tarefas.map((t) => ({ id: t.id, coluna: t.status, tarefa: t }))}
+              aoAbrir={(c) => setTarefaEmEdicao(c.tarefa)}
+              aoMover={(c, coluna) => comErro(() => salvarTarefa(
+                {
+                  projeto_id: projeto.id,
+                  titulo: c.tarefa.titulo,
+                  status: coluna as StatusTarefa,
+                  concluida_em: coluna === 'concluida' ? (c.tarefa.concluida_em ?? isoDeHoje()) : null,
+                },
+                c.tarefa.id,
+              ))}
+              cartao={(c) => (
+                <>
+                  <p className="text-sm font-semibold leading-snug">{c.tarefa.titulo}</p>
+                  <p className="mt-1 truncate text-[11px] text-tinta-suave">
+                    {nomePessoa(c.tarefa.responsavel_id)}
+                    {c.tarefa.prazo && ` · ${formatarData(c.tarefa.prazo)}`}
+                    {tarefaAtrasada(c.tarefa) && <span className="ml-1 font-bold text-vermelho">atrasada</span>}
+                  </p>
+                </>
+              )}
+            />
+          ) : <Vazio>Nenhuma tarefa cadastrada.</Vazio>}
+        </section>
+      )}
+
+      <Melhorias
+        pai={projeto} projetos={projetos} pessoas={pessoas}
+        aoAbrir={aoAbrir} recarregar={recarregar}
+      />
 
       <Suspense fallback={<div className="cartao"><Carregando /></div>}>
         <Paginas projetoId={projeto.id} pessoas={pessoas} />
@@ -244,7 +319,7 @@ export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar 
       </section>
 
       <FormularioProjeto
-        aberto={editando} projeto={projeto} pessoas={pessoas}
+        aberto={editando} projeto={projeto} projetos={projetos} pessoas={pessoas}
         aoFechar={() => setEditando(false)} aoSalvar={async () => { await recarregar(); await dados.recarregar(); }}
       />
 

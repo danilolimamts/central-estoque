@@ -15,6 +15,10 @@ export interface Pessoa {
 
 export interface Projeto {
   id: string;
+  /* Projeto que agrupa este. "Melhorias Bseller" e o pai; cada melhoria
+     e um projeto filho, com marcos, tarefas, paginas e documento
+     proprios. */
+  projeto_pai_id: string | null;
   codigo: string | null;
   nome: string;
   descricao: string | null;

@@ -6,6 +6,7 @@ import {
   atrasado, calcularIndicadores, diasDeAtraso, encerrado, entregasPorMes,
   formatarData, percentualEsperado, saude, venceEm,
 } from '@/dominio/regras';
+import { folhas } from '@/dominio/arvore';
 import type { Pessoa, Projeto } from '@/dominio/tipos';
 import { STATUS, rotuloStatus } from '@/dominio/tipos';
 
@@ -16,16 +17,19 @@ interface Props {
 }
 
 export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
-  const indicadores = useMemo(() => calcularIndicadores(projetos), [projetos]);
-  const entregas = useMemo(() => entregasPorMes(projetos), [projetos]);
+  /* Projeto que agrupa outros nao entra na conta: senao o guarda-chuva
+     e cada melhoria dentro dele contariam o mesmo trabalho duas vezes. */
+  const carteira = useMemo(() => folhas(projetos), [projetos]);
+  const indicadores = useMemo(() => calcularIndicadores(carteira), [carteira]);
+  const entregas = useMemo(() => entregasPorMes(carteira), [carteira]);
   const nomePessoa = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '—';
 
   /* Fila de atencao: atrasados primeiro, depois o que vence em 15 dias.
      E o unico recorte do painel que pede acao imediata. */
-  const atencao = useMemo(() => projetos
+  const atencao = useMemo(() => carteira
     .filter((p) => !encerrado(p) && (atrasado(p) || venceEm(p, 15)))
     .sort((a, b) => diasDeAtraso(b) - diasDeAtraso(a) || (a.fim_previsto ?? '').localeCompare(b.fim_previsto ?? '')),
-  [projetos]);
+  [carteira]);
 
   const usados = STATUS.filter((s) => indicadores.porStatus[s] > 0);
 

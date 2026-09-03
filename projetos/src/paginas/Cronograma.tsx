@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Aviso, SeloStatus, Vazio } from '@/componentes/ui';
 import { coresStatus } from '@/config/tokens';
 import { diasEntre, encerrado, formatarData, hoje, paraData } from '@/dominio/regras';
+import { folhas, nomeCompleto } from '@/dominio/arvore';
 import { listarMarcosGerais, mensagemDeErro } from '@/estado/dados';
 import type { Marco, Projeto } from '@/dominio/tipos';
 
@@ -51,7 +52,7 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
   }, []);
 
   const lista = useMemo(
-    () => projetos
+    () => folhas(projetos)
       .filter((p) => (mostrarEncerrados || !encerrado(p)) && (p.inicio_previsto || p.fim_previsto))
       .sort((a, b) => (a.inicio_previsto ?? a.fim_previsto ?? '').localeCompare(b.inicio_previsto ?? b.fim_previsto ?? '')),
     [projetos, mostrarEncerrados],
@@ -100,7 +101,9 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
             return (
               <div key={p.id} className="flex cursor-pointer items-center border-b border-linha hover:bg-papel" onClick={() => aoAbrir(p)}>
                 <div className="w-64 shrink-0 px-4 py-2">
-                  <p className="truncate text-sm font-semibold" title={p.nome}>{p.nome}</p>
+                  <p className="truncate text-sm font-semibold" title={nomeCompleto(projetos, p)}>
+                    {nomeCompleto(projetos, p)}
+                  </p>
                   <p className="text-xs text-tinta-suave">{formatarData(p.inicio_previsto)} → {formatarData(p.fim_previsto)}</p>
                 </div>
                 <div className="relative h-12 flex-1 pr-4">

@@ -30,6 +30,15 @@ export const coresStatus = {
   cancelado: '#D2453A',
 } as const;
 
+/* Situacao de tarefa no quadro. Reaproveita a paleta ja validada das
+   situacoes de projeto, para o modulo inteiro falar a mesma lingua. */
+export const coresStatusTarefa = {
+  pendente: '#6A6F94',
+  em_andamento: '#2F6FE0',
+  concluida: '#2E8B57',
+  bloqueada: '#D2453A',
+} as const;
+
 export const coresPrioridade = {
   baixa: '#6A6F94',
   media: '#2F6FE0',
