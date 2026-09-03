@@ -4,6 +4,7 @@ import { mensagemDeErro } from '@/estado/dados';
 import { excluirDocumento, proximoNumero, salvarDocumento, useDocumentos } from '@/estado/documentos';
 import { usePaginas } from '@/estado/paginas';
 import { montarBriefing, lerConteudoColado } from '@/dominio/briefing';
+import { faltamCamposParaRascunho, montarRascunho } from '@/dominio/rascunho';
 import {
   dataPorExtenso, documentoVazio, ESFORCOS, nomeDoArquivo,
 } from '@/dominio/documento';
@@ -209,6 +210,18 @@ function Formulario({
     }
   }
 
+  function gerarRascunho() {
+    const faltando = faltamCamposParaRascunho(dados!);
+    if (faltando.length) {
+      setErro(`Antes do rascunho, preencha: ${faltando.join(', ')}.`);
+      setAviso(null);
+      return;
+    }
+    setDados(montarRascunho(dados!, { projeto, marcos, tarefas }));
+    setErro(null);
+    setAviso('Rascunho montado. Revise as seções antes de gerar o Word.');
+  }
+
   function aplicarConteudo() {
     try {
       setDados(lerConteudoColado(textoColado, dados!));
@@ -302,8 +315,22 @@ function Formulario({
       </div>
 
       <div className="space-y-5 p-4">
+        <div className="rounded-xl border border-linha bg-papel p-3">
+          <p className="text-sm font-bold text-navy">Montar o documento a partir do objetivo</p>
+          <p className="mt-1 text-xs text-tinta-suave">
+            Preencha <strong>objetivo</strong>, <strong>dor atual</strong>, <strong>o que muda</strong> e
+            o <strong>problema central</strong>. O botão abaixo escreve as demais seções recombinando
+            esses textos e o que o projeto já tem: ganhos, impactos, riscos, critérios de aceite,
+            KPIs, rollout, ROI e resumo executivo. Onde não há base, deixa marcado como a definir.
+            Nada do que você já escreveu é sobrescrito.
+          </p>
+          <div className="mt-2">
+            <button className="botao-primario py-1 text-xs" onClick={gerarRascunho}>Gerar rascunho</button>
+          </div>
+        </div>
+
         <div className="rounded-xl border border-roxo-claro bg-roxo-suave p-3">
-          <p className="text-sm font-bold text-roxo-escuro">Escrever com ajuda do chat</p>
+          <p className="text-sm font-bold text-roxo-escuro">Escrever com ajuda do chat (opcional)</p>
           <p className="mt-1 text-xs text-tinta-suave">
             Preencha o objetivo abaixo, clique em <strong>Copiar briefing</strong> e cole no chat.
             O texto já leva marcos, tarefas, anexos e páginas deste projeto. Depois volte com

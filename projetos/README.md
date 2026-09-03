@@ -96,7 +96,14 @@ O formulário nasce preenchido com o que o projeto já sabe: título, categoria
 entram nas seções AS IS, TO BE ou nos anexos do fim, e os fluxogramas das
 páginas viram imagem na seção 7.
 
-**Ponte com o chat.** O site é estático e não guarda chave de IA, então ele não
+**Gerar rascunho.** Preenchidos objetivo, dor atual, o que muda e problema
+central, o botão escreve as demais seções recombinando esses textos e o que o
+projeto já tem: ganhos, impactos, riscos, critérios de aceite, KPIs, rollout,
+ROI e resumo executivo. Não é IA e não inventa conteúdo: onde não há base, deixa
+a marcação de pendência, porque uma frase bonita e falsa é pior do que um "a
+definir" honesto. Campo já escrito nunca é sobrescrito.
+
+**Ponte com o chat (opcional).** O site é estático e não guarda chave de IA, então ele não
 escreve o texto das seções. O botão *Copiar briefing* monta um texto com o
 objetivo mais todo o contexto do projeto (marcos, tarefas, anexos, páginas) e o
 JSON esperado de volta; cola-se no chat e o retorno entra pelo *Colar conteúdo*.
