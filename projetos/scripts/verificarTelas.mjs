@@ -103,7 +103,11 @@ const paginas = [
   },
 ];
 
-const porTabela = { pessoas, projetos, marcos, tarefas, atualizacoes, anexos, paginas };
+/* Sem documentos gerados: o que o teste confere aqui e o estado vazio
+   da secao, que e o primeiro que qualquer pessoa vai ver. */
+const documentos = [];
+
+const porTabela = { pessoas, projetos, marcos, tarefas, atualizacoes, anexos, paginas, documentos };
 
 /* Imagem de 1x1 no lugar do arquivo real: o teste confere o layout da
    galeria, nao o conteudo da foto. */
@@ -167,6 +171,9 @@ if (!texto.includes('Marcos') || !texto.includes('Migração dos itens')) {
   process.exitCode = 1;
 } else if (!texto.includes('Comportamento da tela de endereço') || !texto.includes('Busca de endereço')) {
   console.error('FALHOU: a seção de páginas não carregou o conteúdo.');
+  process.exitCode = 1;
+} else if (!texto.includes('Documentos') || !texto.includes('Criar documento')) {
+  console.error('FALHOU: a seção de documentos não apareceu.');
   process.exitCode = 1;
 } else if (!texto.includes('Antes e depois') || !texto.includes('plano-de-endereços.pdf')) {
   console.error('FALHOU: a seção de anexos não montou a comparação ou a lista de documentos.');

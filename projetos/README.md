@@ -40,6 +40,7 @@ banco. As migrations aplicadas estão em `supabase/migrations/`.
 | `anexos` | fotos e documentos, com o par antes/depois |
 | `paginas` | documentação do projeto em blocos de texto e fluxograma |
 | `paginas_versoes` | versão anterior de cada página, gravada a cada salvamento |
+| `documentos` | Propostas de Melhoria Sistêmica, com as 15 seções em jsonb |
 
 ### Anexos
 
@@ -82,6 +83,30 @@ módulo é aberto, alguém poderia gravar `<script>` direto pela API.
 
 O editor e o Mermaid somam alguns MB e entram por carregamento sob demanda —
 quem só consulta o painel não baixa nada disso.
+
+### Documentos (Proposta de Melhoria Sistêmica)
+
+O botão **Criar documento**, no detalhe do projeto, monta a proposta no padrão
+Bseller e baixa o `.docx`: capa, 15 seções, cabeçalho com logo, rodapé com
+"Página X de Y" e nome de arquivo `NN__Proposta_Melhoria_Sistemica_[Nome].docx`.
+A geração é feita no próprio navegador com a biblioteca `docx`, sem servidor.
+
+O formulário nasce preenchido com o que o projeto já sabe: título, categoria
+(a área), prioridade e as fases de implantação (os marcos). Prints dos anexos
+entram nas seções AS IS, TO BE ou nos anexos do fim, e os fluxogramas das
+páginas viram imagem na seção 7.
+
+**Ponte com o chat.** O site é estático e não guarda chave de IA, então ele não
+escreve o texto das seções. O botão *Copiar briefing* monta um texto com o
+objetivo mais todo o contexto do projeto (marcos, tarefas, anexos, páginas) e o
+JSON esperado de volta; cola-se no chat e o retorno entra pelo *Colar conteúdo*.
+Número, imagens e fluxogramas nunca vêm de fora: são decididos no formulário.
+
+Listas e tabelas são editadas como texto, uma linha por item e colunas separadas
+por barra (`Dimensão | Ganho`). Travessão é trocado na geração, porque a
+especificação o proíbe no conteúdo.
+
+O índice geral (documento `00`) ainda não é gerado.
 
 ### Acesso
 
