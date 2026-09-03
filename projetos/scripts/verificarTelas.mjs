@@ -59,7 +59,58 @@ const atualizacoes = [
   },
 ];
 
-const porTabela = { pessoas, projetos, marcos, tarefas, atualizacoes };
+const anexos = [
+  {
+    id: 'x1', projeto_id: 'j1', marco_id: null, atualizacao_id: null,
+    caminho: 'j1/antes.jpg', nome_arquivo: 'antes.jpg', tipo_mime: 'image/jpeg',
+    tamanho_bytes: 240000, momento: 'antes', legenda: 'Corredor C antes da revisão',
+    par: 'Corredor C', enviado_por: 'Danilo Lima', criado_em: iso(-10),
+  },
+  {
+    id: 'x2', projeto_id: 'j1', marco_id: null, atualizacao_id: null,
+    caminho: 'j1/depois.jpg', nome_arquivo: 'depois.jpg', tipo_mime: 'image/jpeg',
+    tamanho_bytes: 220000, momento: 'depois', legenda: 'Corredor C reetiquetado',
+    par: 'Corredor C', enviado_por: 'Danilo Lima', criado_em: iso(-1),
+  },
+  {
+    id: 'x3', projeto_id: 'j1', marco_id: null, atualizacao_id: 'a1',
+    caminho: 'j1/evidencia.jpg', nome_arquivo: 'evidencia.jpg', tipo_mime: 'image/jpeg',
+    tamanho_bytes: 180000, momento: 'evidencia', legenda: null, par: null,
+    enviado_por: 'Danilo Lima', criado_em: iso(-3),
+  },
+  {
+    id: 'x4', projeto_id: 'j1', marco_id: null, atualizacao_id: null,
+    caminho: 'j1/plano.pdf', nome_arquivo: 'plano-de-endereços.pdf', tipo_mime: 'application/pdf',
+    tamanho_bytes: 1240000, momento: 'documento', legenda: null, par: null,
+    enviado_por: 'Equipe Recebimento', criado_em: iso(-30),
+  },
+];
+
+const paginas = [
+  {
+    id: 'g1', projeto_id: 'j1', titulo: 'Comportamento da tela de endereço', ordem: 0,
+    atualizado_por: 'Danilo Lima', criado_em: iso(-8), atualizado_em: iso(-2),
+    blocos: [
+      {
+        id: 'b1', tipo: 'texto',
+        conteudo: '<h2>Busca de endereço</h2><p>Ao digitar o código, a tela deve destacar o corredor em <strong>laranja</strong> e mostrar a capacidade restante.</p><img src="https://exemplo/print.png" alt="print da tela">',
+      },
+      {
+        id: 'b2', tipo: 'fluxo',
+        conteudo: 'flowchart TD\n  A[Digita o código] --> B{Endereço existe?}\n  B -- Sim --> C[Mostra capacidade]\n  B -- Não --> D[Sugere endereços vizinhos]',
+      },
+    ],
+  },
+];
+
+const porTabela = { pessoas, projetos, marcos, tarefas, atualizacoes, anexos, paginas };
+
+/* Imagem de 1x1 no lugar do arquivo real: o teste confere o layout da
+   galeria, nao o conteudo da foto. */
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 const navegador = await chromium.launch(
   process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {},
@@ -82,6 +133,10 @@ await pagina.route('**/rest/v1/**', async (rota) => {
     ? linhas.filter((l) => l.projeto_id === filtro.replace('eq.', ''))
     : linhas;
   await rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(corpo) });
+});
+
+await pagina.route('**/storage/v1/object/public/**', async (rota) => {
+  await rota.fulfill({ status: 200, contentType: 'image/png', body: PIXEL });
 });
 
 await pagina.goto(url, { waitUntil: 'networkidle' });
@@ -109,6 +164,12 @@ await pagina.screenshot({ path: 'verificacao-detalhe.png', fullPage: true });
 const texto = (await pagina.textContent('body')) ?? '';
 if (!texto.includes('Marcos') || !texto.includes('Migração dos itens')) {
   console.error('FALHOU: o detalhe do projeto não carregou marcos.');
+  process.exitCode = 1;
+} else if (!texto.includes('Comportamento da tela de endereço') || !texto.includes('Busca de endereço')) {
+  console.error('FALHOU: a seção de páginas não carregou o conteúdo.');
+  process.exitCode = 1;
+} else if (!texto.includes('Antes e depois') || !texto.includes('plano-de-endereços.pdf')) {
+  console.error('FALHOU: a seção de anexos não montou a comparação ou a lista de documentos.');
   process.exitCode = 1;
 } else if (erros.length) {
   console.error('FALHOU: erros de JavaScript', erros);

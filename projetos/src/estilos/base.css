@@ -24,4 +24,31 @@
   .botao-primario { @apply botao bg-roxo-escuro text-white hover:bg-roxo-medio; }
   .botao-neutro { @apply botao border border-linha bg-white text-tinta hover:bg-papel; }
   .botao-perigo { @apply botao border border-vermelho/30 bg-white text-vermelho hover:bg-vermelho/5; }
+
+  /* Texto das paginas: a mesma folha vale no editor e na leitura, senao
+     o que se escreve nao e o que se ve depois de salvar. */
+  .prosa { @apply text-[15px] leading-relaxed text-tinta; }
+  .prosa h1 { @apply font-titulo text-2xl font-extrabold mt-5 mb-2; }
+  .prosa h2 { @apply font-titulo text-xl font-extrabold mt-5 mb-2; }
+  .prosa h3 { @apply font-titulo text-base font-extrabold mt-4 mb-1.5; }
+  .prosa h4 { @apply font-titulo text-sm font-extrabold mt-3 mb-1; }
+  .prosa p { @apply my-2; }
+  .prosa ul { @apply my-2 list-disc pl-6; }
+  .prosa ol { @apply my-2 list-decimal pl-6; }
+  .prosa li { @apply my-0.5; }
+  .prosa a { @apply text-roxo-escuro underline; }
+  .prosa blockquote { @apply my-3 border-l-4 border-roxo-claro pl-4 text-tinta-suave; }
+  .prosa code { @apply rounded bg-papel px-1 py-0.5 font-mono text-[13px]; }
+  .prosa pre { @apply my-3 overflow-x-auto rounded-lg bg-navy p-3 text-[13px] text-white; }
+  .prosa pre code { @apply bg-transparent p-0 text-white; }
+  .prosa img { @apply my-3 max-w-full rounded-lg border border-linha; }
+  .prosa hr { @apply my-4 border-linha; }
+  .prosa table { @apply my-3 w-full border-collapse text-sm; }
+  .prosa th { @apply border border-linha bg-papel px-2 py-1 text-left font-bold; }
+  .prosa td { @apply border border-linha px-2 py-1 align-top; }
+  /* Placeholder do editor: sem ele a folha em branco nao diz o que fazer. */
+  .prosa p.is-editor-empty:first-child::before {
+    @apply pointer-events-none float-left h-0 text-tinta-suave;
+    content: attr(data-placeholder);
+  }
 }

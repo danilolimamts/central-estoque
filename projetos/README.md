@@ -37,6 +37,51 @@ banco. As migrations aplicadas estão em `supabase/migrations/`.
 | `marcos` | etapas com data prevista e data real |
 | `tarefas` | itens de execução, com responsável e prazo |
 | `atualizacoes` | histórico de acompanhamento; nunca sobrescrito |
+| `anexos` | fotos e documentos, com o par antes/depois |
+| `paginas` | documentação do projeto em blocos de texto e fluxograma |
+| `paginas_versoes` | versão anterior de cada página, gravada a cada salvamento |
+
+### Anexos
+
+Arquivos ficam no bucket `anexos-projetos` do Storage (público na leitura,
+15 MB por arquivo, imagens e documentos de escritório). A tabela `anexos`
+guarda só o caminho — a URL pública é derivada dele, então trocar de projeto
+Supabase não quebra os links.
+
+Antes de subir, imagem maior que 1600 px é redimensionada e recomprimida no
+próprio navegador; foto de celular cai de alguns MB para algumas centenas de
+KB. O plano free dá 1 GB de armazenamento.
+
+O campo `momento` classifica cada anexo em **antes**, **depois**, **evidência**
+ou **documento**; o campo `par` nomeia a cena e é o que liga um antes ao seu
+depois na galeria comparativa. Anexo lançado junto com um acompanhamento fica
+preso a ele (`atualizacao_id`) e aparece dentro do próprio reporte.
+
+### Páginas
+
+Cada projeto tem páginas próprias — a folha onde se descreve o comportamento de
+uma tela, com print no meio do texto e fluxograma logo abaixo.
+
+Uma página é uma lista ordenada de blocos, guardada inteira em um `jsonb`: o
+salvamento fica atômico e reordenar bloco não vira várias escritas que podem
+falhar pela metade. Dois tipos de bloco:
+
+- **texto** — editor rico (TipTap): títulos, listas, citação, código, link,
+  tabela e imagem. Print colado com Ctrl+V é enviado para o Storage e entra como
+  URL, nunca como base64 dentro do HTML.
+- **fluxo** — fluxograma escrito em texto e desenhado pelo Mermaid
+  (`flowchart TD`, `A --> B`, `B{Decisão}`). O desenho é atualizado enquanto se
+  digita; erro de sintaxe mantém o último desenho válido e avisa embaixo.
+
+Cada salvamento grava a versão anterior em `paginas_versoes`, e o botão
+*Histórico* restaura qualquer uma delas (a restauração só preenche o editor — o
+salvamento continua explícito).
+
+O HTML é limpo na hora de exibir (`src/lib/html.ts`), não só ao salvar: como o
+módulo é aberto, alguém poderia gravar `<script>` direto pela API.
+
+O editor e o Mermaid somam alguns MB e entram por carregamento sob demanda —
+quem só consulta o painel não baixa nada disso.
 
 ### Acesso
 
