@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import FormularioProjeto from './FormularioProjeto';
 import Anexos from '@/componentes/Anexos';
-import { Aviso, Barra, Campo, Modal, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
+
+/* O editor de texto e o desenhista de fluxograma somam alguns MB. Quem
+   so consulta o painel nao deve baixar isso: entram sob demanda, quando
+   o detalhe do projeto abre. */
+const Paginas = lazy(() => import('@/componentes/paginas/Paginas'));
+import { Aviso, Barra, Campo, Carregando, Modal, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import {
   enviarAnexo, excluirAtualizacao, excluirMarco, excluirProjeto, excluirTarefa,
   lancarAtualizacao, mensagemDeErro, salvarMarco, salvarProjeto, salvarTarefa,
@@ -179,6 +184,10 @@ export default function DetalheProjeto({ projeto, pessoas, aoVoltar, recarregar 
           ) : <Vazio>Nenhuma tarefa cadastrada.</Vazio>}
         </section>
       </div>
+
+      <Suspense fallback={<div className="cartao"><Carregando /></div>}>
+        <Paginas projetoId={projeto.id} pessoas={pessoas} />
+      </Suspense>
 
       <Anexos
         projetoId={projeto.id} anexos={dados.anexos} marcos={dados.marcos}

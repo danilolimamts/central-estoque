@@ -101,6 +101,35 @@ export const rotuloMomento: Record<Momento, string> = {
 
 export const MOMENTOS: Momento[] = ['antes', 'depois', 'evidencia', 'documento'];
 
+export type TipoDeBloco = 'texto' | 'fluxo';
+
+export interface Bloco {
+  id: string;
+  tipo: TipoDeBloco;
+  /* Texto rico guarda HTML; fluxo guarda o codigo do diagrama. */
+  conteudo: string;
+}
+
+export interface Pagina {
+  id: string;
+  projeto_id: string;
+  titulo: string;
+  blocos: Bloco[];
+  ordem: number;
+  atualizado_por: string | null;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+export interface VersaoDePagina {
+  id: string;
+  pagina_id: string;
+  titulo: string;
+  blocos: Bloco[];
+  salvo_por: string | null;
+  criado_em: string;
+}
+
 export const rotuloStatus: Record<StatusProjeto, string> = {
   nao_iniciado: 'Não iniciado',
   em_andamento: 'Em andamento',

@@ -86,7 +86,24 @@ const anexos = [
   },
 ];
 
-const porTabela = { pessoas, projetos, marcos, tarefas, atualizacoes, anexos };
+const paginas = [
+  {
+    id: 'g1', projeto_id: 'j1', titulo: 'Comportamento da tela de endereço', ordem: 0,
+    atualizado_por: 'Danilo Lima', criado_em: iso(-8), atualizado_em: iso(-2),
+    blocos: [
+      {
+        id: 'b1', tipo: 'texto',
+        conteudo: '<h2>Busca de endereço</h2><p>Ao digitar o código, a tela deve destacar o corredor em <strong>laranja</strong> e mostrar a capacidade restante.</p><img src="https://exemplo/print.png" alt="print da tela">',
+      },
+      {
+        id: 'b2', tipo: 'fluxo',
+        conteudo: 'flowchart TD\n  A[Digita o código] --> B{Endereço existe?}\n  B -- Sim --> C[Mostra capacidade]\n  B -- Não --> D[Sugere endereços vizinhos]',
+      },
+    ],
+  },
+];
+
+const porTabela = { pessoas, projetos, marcos, tarefas, atualizacoes, anexos, paginas };
 
 /* Imagem de 1x1 no lugar do arquivo real: o teste confere o layout da
    galeria, nao o conteudo da foto. */
@@ -147,6 +164,9 @@ await pagina.screenshot({ path: 'verificacao-detalhe.png', fullPage: true });
 const texto = (await pagina.textContent('body')) ?? '';
 if (!texto.includes('Marcos') || !texto.includes('Migração dos itens')) {
   console.error('FALHOU: o detalhe do projeto não carregou marcos.');
+  process.exitCode = 1;
+} else if (!texto.includes('Comportamento da tela de endereço') || !texto.includes('Busca de endereço')) {
+  console.error('FALHOU: a seção de páginas não carregou o conteúdo.');
   process.exitCode = 1;
 } else if (!texto.includes('Antes e depois') || !texto.includes('plano-de-endereços.pdf')) {
   console.error('FALHOU: a seção de anexos não montou a comparação ou a lista de documentos.');
