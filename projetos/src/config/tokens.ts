@@ -39,6 +39,16 @@ export const coresStatusTarefa = {
   bloqueada: '#D2453A',
 } as const;
 
+/* Situacao da pagina de documentacao. Mesma familia de cores das outras
+   situacoes do modulo, para a leitura ser sempre a mesma. */
+export const coresStatusPagina = {
+  rascunho: '#6A6F94',
+  em_revisao: '#2F6FE0',
+  aprovada: '#7C3AED',
+  concluida: '#2E8B57',
+  cancelada: '#D2453A',
+} as const;
+
 export const coresPrioridade = {
   baixa: '#6A6F94',
   media: '#2F6FE0',
