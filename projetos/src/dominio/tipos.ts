@@ -118,10 +118,27 @@ export interface Bloco {
   conteudo: string;
 }
 
+export type StatusPagina = 'rascunho' | 'em_revisao' | 'aprovada' | 'concluida' | 'cancelada';
+
+export const rotuloStatusPagina: Record<StatusPagina, string> = {
+  rascunho: 'Rascunho',
+  em_revisao: 'Em revisão',
+  aprovada: 'Aprovada',
+  concluida: 'Concluída',
+  cancelada: 'Cancelada',
+};
+
+export const STATUS_PAGINA: StatusPagina[] = [
+  'rascunho', 'em_revisao', 'aprovada', 'concluida', 'cancelada',
+];
+
 export interface Pagina {
   id: string;
   projeto_id: string;
   titulo: string;
+  /* Onde a pagina esta no proprio ciclo: rascunho enquanto se escreve,
+     aprovada quando vale, cancelada quando foi abandonada. */
+  status: StatusPagina;
   blocos: Bloco[];
   ordem: number;
   atualizado_por: string | null;

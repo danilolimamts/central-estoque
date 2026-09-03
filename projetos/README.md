@@ -109,6 +109,11 @@ falhar pela metade. Dois tipos de bloco:
   (`flowchart TD`, `A --> B`, `B{Decisão}`). O desenho é atualizado enquanto se
   digita; erro de sintaxe mantém o último desenho válido e avisa embaixo.
 
+Cada página tem **situação** própria: rascunho, em revisão, aprovada, concluída
+ou cancelada. O seletor fica no canto superior direito da página e grava na hora,
+sem passar pelo modo de edição; a lista da esquerda mostra o selo colorido de
+cada uma, para saber o que já vale sem precisar abrir.
+
 Cada salvamento grava a versão anterior em `paginas_versoes`, e o botão
 *Histórico* restaura qualquer uma delas (a restauração só preenche o editor — o
 salvamento continua explícito).

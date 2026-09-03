@@ -109,7 +109,7 @@ const anexos = [
 
 const paginas = [
   {
-    id: 'g1', projeto_id: 'j1', titulo: 'Comportamento da tela de endereço', ordem: 0,
+    id: 'g1', projeto_id: 'j1', titulo: 'Comportamento da tela de endereço', ordem: 0, status: 'aprovada',
     atualizado_por: 'Danilo Lima', criado_em: iso(-8), atualizado_em: iso(-2),
     blocos: [
       {
@@ -221,6 +221,9 @@ await pagina.waitForTimeout(700);
 const texto = (await pagina.textContent('body')) ?? '';
 if (!texto.includes('Marcos') || !texto.includes('Migração dos itens')) {
   console.error('FALHOU: o detalhe do projeto não carregou marcos.');
+  process.exitCode = 1;
+} else if (!texto.includes('Aprovada')) {
+  console.error('FALHOU: a página não mostra a situação.');
   process.exitCode = 1;
 } else if (!texto.includes('Comportamento da tela de endereço') || !texto.includes('Busca de endereço')) {
   console.error('FALHOU: a seção de páginas não carregou o conteúdo.');

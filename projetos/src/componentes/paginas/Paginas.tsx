@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import EditorTexto from './EditorTexto';
 import Fluxograma from './Fluxograma';
-import { Aviso, Carregando, Modal, Vazio } from '@/componentes/ui';
+import { Aviso, Carregando, Modal, Selo, Vazio } from '@/componentes/ui';
+import { coresStatusPagina } from '@/config/tokens';
 import { mensagemDeErro } from '@/estado/dados';
 import {
-  blocoVazio, criarPagina, excluirPagina, listarVersoes, salvarPagina, usePaginas,
+  alterarStatusDaPagina, blocoVazio, criarPagina, excluirPagina, listarVersoes,
+  salvarPagina, usePaginas,
 } from '@/estado/paginas';
 import { limparHtml } from '@/lib/html';
 import { formatarData } from '@/dominio/regras';
-import type { Bloco, Pagina, Pessoa, VersaoDePagina } from '@/dominio/tipos';
+import type { Bloco, Pagina, Pessoa, StatusPagina, VersaoDePagina } from '@/dominio/tipos';
+import { STATUS_PAGINA, rotuloStatusPagina } from '@/dominio/tipos';
 
 interface Props {
   projetoId: string;
@@ -83,6 +86,16 @@ export default function Paginas({ projetoId, pessoas }: Props) {
     }
   }
 
+  async function trocarStatus(status: StatusPagina) {
+    if (!aberta) return;
+    try {
+      await alterarStatusDaPagina(aberta.id, status);
+      await carteira.recarregar();
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+    }
+  }
+
   async function abrirHistorico() {
     if (!aberta) return;
     try {
@@ -147,11 +160,16 @@ export default function Paginas({ projetoId, pessoas }: Props) {
                   if (sujo && !confirm('Há alterações não salvas nesta página. Sair mesmo assim?')) return;
                   setAbertaId(p.id);
                 }}
-                className={`mb-1 block w-full truncate rounded-lg px-3 py-2 text-left text-sm transition ${
+                className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
                   p.id === abertaId ? 'bg-roxo-suave font-bold text-roxo-escuro' : 'text-tinta hover:bg-papel'
                 }`}
                 title={p.titulo}
-              >{p.titulo}</button>
+              >
+                <span className="block truncate">{p.titulo}</span>
+                <span className="mt-1 block">
+                  <Selo cor={coresStatusPagina[p.status]}>{rotuloStatusPagina[p.status]}</Selo>
+                </span>
+              </button>
             ))}
           </nav>
 
@@ -167,6 +185,18 @@ export default function Paginas({ projetoId, pessoas }: Props) {
                   ) : (
                     <h3 className="flex-1 font-titulo text-lg font-extrabold">{aberta.titulo}</h3>
                   )}
+
+                  <select
+                    className="campo w-36 py-1.5 text-xs font-bold"
+                    value={aberta.status}
+                    style={{ color: coresStatusPagina[aberta.status] }}
+                    onChange={(e) => void trocarStatus(e.target.value as StatusPagina)}
+                    title="Situação da página"
+                  >
+                    {STATUS_PAGINA.map((s) => (
+                      <option key={s} value={s}>{rotuloStatusPagina[s]}</option>
+                    ))}
+                  </select>
 
                   {editando ? (
                     <>

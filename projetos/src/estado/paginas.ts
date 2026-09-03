@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { comprimirImagem } from '@/lib/imagem';
 import { mensagemDeErro } from '@/estado/dados';
-import type { Bloco, Pagina, VersaoDePagina } from '@/dominio/tipos';
+import type { Bloco, Pagina, StatusPagina, VersaoDePagina } from '@/dominio/tipos';
 
 const BALDE = 'anexos-projetos';
 
@@ -49,6 +49,13 @@ export async function salvarPagina(
   const { error } = await supabase.from('paginas')
     .update({ titulo, blocos, atualizado_por: salvoPor })
     .eq('id', pagina.id);
+  if (error) throw error;
+}
+
+/* A situacao muda direto no cabecalho da pagina, sem passar pelo modo
+   de edicao: e uma classificacao, nao conteudo. */
+export async function alterarStatusDaPagina(id: string, status: StatusPagina): Promise<void> {
+  const { error } = await supabase.from('paginas').update({ status }).eq('id', id);
   if (error) throw error;
 }
 
