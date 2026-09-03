@@ -32,7 +32,14 @@ export default function App() {
     <div className="min-h-screen">
       <header className="bg-navy text-white">
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-4 px-6 py-4">
-          <img src="./brand/Logo_LDM_hor_2_Branco.png" alt="Loja do Mecânico" className="h-8" />
+          {/* 48px de altura contra os 91px do arquivo: a marca cresce e
+              ainda sobra resolucao, entao a tela de retina nao borra.
+              Acima disso o PNG comeca a esticar. */}
+          <img
+            src="./brand/Logo_LDM_hor_2_Branco.png" alt="Loja do Mecânico"
+            width={125} height={48}
+            className="h-12 w-auto drop-shadow-[0_2px_6px_rgba(0,0,0,.35)]"
+          />
           <div className="mr-auto">
             <h1 className="font-titulo text-lg font-extrabold leading-tight">Projetos</h1>
             <p className="text-xs text-white/60">CD Cajamar · acompanhamento de projetos e iniciativas</p>
