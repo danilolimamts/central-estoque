@@ -18,6 +18,7 @@ import {
   lancarAtualizacao, mensagemDeErro, salvarMarco, salvarProjeto, salvarTarefa,
   urlDoAnexo, useDetalheProjeto,
 } from '@/estado/dados';
+import { usePermissoes } from '@/estado/sessao';
 import {
   formatarData, isoDeHoje, marcoAtrasado, percentualEsperado, progressoDeTarefas, saude, tarefaAtrasada,
 } from '@/dominio/regras';
@@ -52,6 +53,8 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
      que ha para fazer. Marcos, tarefas, paginas, anexos e documento
      pertencem a cada atividade, e so aparecem la dentro. */
   const grupo = ehRaiz(projeto);
+  const permissoes = usePermissoes();
+  const podeMexer = permissoes.podeEditar(projeto);
   /* Com atividades dentro, o avanco vem da conclusao delas: percentual
      digitado no projeto envelhece e ninguem lembra de corrigir. */
   const avanco = avancoPorConclusao(projetos, projeto.id);
@@ -117,15 +120,28 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
             >
               Exportar Excel
             </button>
-            <button className="botao-neutro" onClick={() => setReportando(true)}>Lançar acompanhamento</button>
-            <button className="botao-primario" onClick={() => setEditando(true)}>Editar</button>
-            <button
-                className="botao-perigo"
-                onClick={() => {
-                  if (!confirm(`Excluir "${projeto.nome}"? Marcos, tarefas e histórico serão apagados junto.`)) return;
-                  void comErro(async () => { await excluirProjeto(projeto.id); aoVoltar(); });
-                }}
-            >Excluir</button>
+            {/* Quem nao criou este item so consulta: o botao some em vez
+                de existir para depois o banco recusar. */}
+            {podeMexer && (
+              <>
+                <button className="botao-neutro" onClick={() => setReportando(true)}>Lançar acompanhamento</button>
+                <button className="botao-primario" onClick={() => setEditando(true)}>Editar</button>
+              </>
+            )}
+            {permissoes.ehAdmin && (
+              <button
+                  className="botao-perigo"
+                  onClick={() => {
+                    if (!confirm(`Excluir "${projeto.nome}"? Marcos, tarefas e histórico serão apagados junto.`)) return;
+                    void comErro(async () => { await excluirProjeto(projeto.id); aoVoltar(); });
+                  }}
+              >Excluir</button>
+            )}
+            {!podeMexer && (
+              <span className="self-center rounded-lg bg-papel px-3 py-1.5 text-xs font-bold text-tinta-suave">
+                Somente leitura
+              </span>
+            )}
           </div>
         </div>
 
@@ -165,7 +181,9 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
         <section className="cartao overflow-hidden">
           <div className="flex items-center justify-between border-b border-linha px-4 py-3">
             <h2 className="font-titulo text-sm font-extrabold">Marcos</h2>
-            <button className="text-sm font-bold text-roxo-escuro" onClick={() => setMarcoEmEdicao('novo')}>+ Novo marco</button>
+            {podeMexer && (
+              <button className="text-sm font-bold text-roxo-escuro" onClick={() => setMarcoEmEdicao('novo')}>+ Novo marco</button>
+            )}
           </div>
           {dados.marcos.length ? (
             <ul className="divide-y divide-linha">
@@ -206,7 +224,9 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
               <button className="text-xs font-bold text-tinta-suave hover:text-tinta" onClick={() => setTarefasEmQuadro(true)}>
                 Ver em quadro
               </button>
-              <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>
+              {podeMexer && (
+                <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>
+              )}
             </div>
           </div>
           {dados.tarefas.length ? (
@@ -255,7 +275,9 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
               <button className="text-xs font-bold text-tinta-suave hover:text-tinta" onClick={() => setTarefasEmQuadro(false)}>
                 Ver em lista
               </button>
-              <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>
+              {podeMexer && (
+                <button className="text-sm font-bold text-roxo-escuro" onClick={() => setTarefaEmEdicao('nova')}>+ Nova tarefa</button>
+              )}
             </div>
           </div>
           {dados.tarefas.length ? (

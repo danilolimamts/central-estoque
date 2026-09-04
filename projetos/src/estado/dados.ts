@@ -13,7 +13,7 @@ export function mensagemDeErro(erro: unknown): string {
   const e = erro as { code?: string; message?: string } | null;
   if (!e) return 'Erro desconhecido.';
   if (e.code === '42501' || e.message?.includes('row-level security')) {
-    return 'O banco recusou esta ação por falta de permissão.';
+    return 'Sem permissão: cada pessoa altera o que criou; o resto é só leitura.';
   }
   if (e.code === '23505') return 'Já existe um registro com este código ou e-mail.';
   if (e.message?.includes('exceeded the maximum allowed size')) {

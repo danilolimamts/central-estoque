@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Acesso from '@/paginas/Acesso';
 import Painel from '@/paginas/Painel';
 import ListaProjetos from '@/paginas/ListaProjetos';
@@ -7,7 +7,7 @@ import Cronograma from '@/paginas/Cronograma';
 import Pessoas from '@/paginas/Pessoas';
 import { Aviso, Carregando } from '@/componentes/ui';
 import { useCarteira } from '@/estado/dados';
-import { sair, useSessao } from '@/estado/sessao';
+import { ContextoPermissoes, permissoesDe, sair, useSessao } from '@/estado/sessao';
 import { rotuloPapel } from '@/dominio/tipos';
 import type { Projeto } from '@/dominio/tipos';
 
@@ -27,6 +27,7 @@ export default function App() {
   const [aberto, setAberto] = useState<Projeto | null>(null);
   const sessao = useSessao();
   const carteira = useCarteira();
+  const permissoes = useMemo(() => permissoesDe(sessao), [sessao]);
 
   /* O projeto aberto vem sempre da lista recarregada: guardar o objeto
      no estado deixaria a tela com dados velhos apos uma edicao. */
@@ -55,6 +56,7 @@ export default function App() {
   }
 
   return (
+    <ContextoPermissoes.Provider value={permissoes}>
     <div className="min-h-screen">
       <header className="bg-navy text-white">
         <div className="mx-auto flex max-w-tela flex-wrap items-center gap-5 px-6 py-5 xl:px-10">
@@ -124,5 +126,6 @@ export default function App() {
         Central de Estoque · Loja do Mecânico — versão {__VERSAO__}
       </footer>
     </div>
+    </ContextoPermissoes.Provider>
   );
 }

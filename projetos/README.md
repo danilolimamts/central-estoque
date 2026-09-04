@@ -237,19 +237,35 @@ administrador cadastra a pessoa em Pessoas com o e-mail exato, **depois** ela
 faz o primeiro acesso. O primeiro usuário do módulo nasce admin, senão não
 haveria quem cadastrasse os demais.
 
-O que cada papel pode (`002_rls_e_gatilhos.sql`, valendo desde `011`):
+O que cada papel pode (`002`, revisado em `012`):
 
 | | leitor | editor | admin |
 |---|---|---|---|
 | ver tudo | sim | sim | sim |
-| criar projeto | não | sim | sim |
-| editar projeto | só se for o responsável | só se for o responsável | qualquer um |
+| criar projeto ou atividade | não | sim | sim |
+| editar | não | só o que ele mesmo criou | qualquer um |
 | excluir projeto | não | não | sim |
 | cadastrar pessoas e trocar papéis | não | não | sim |
+
+A régua é a **autoria**, não o responsável: quem recebe o link acompanha tudo e
+mexe só no que lançou. A coluna `criado_por` é preenchida por um gatilho, nunca
+pelo app — assim vale também para linha criada por fora da tela, e ninguém se
+declara autor de outra pessoa. Projeto criado na época do acesso aberto não tem
+autor, então só o admin edita.
 
 Marcos, tarefas, páginas, anexos e documentos seguem a regra do projeto a que
 pertencem. Acompanhamento é do autor: só ele corrige o que lançou (e o admin
 apaga). Um gatilho impede autopromoção — ninguém muda o próprio papel.
+
+Arquivo segue o caminho: o balde é um só, e a permissão sai do prefixo, que
+começa pelo id do projeto (`<projeto>/arquivo` nos anexos,
+`paginas/<projeto>/arquivo` nas imagens do texto). Sem isso qualquer pessoa
+logada apagaria o arquivo de qualquer projeto, mesmo sem poder apagar a linha
+que aponta para ele.
+
+A tela repete a mesma regra — botão que vai ser recusado não aparece, campo de
+linha alheia fica travado, e o cartão do quadro avisa em vez de voltar sozinho.
+Quem protege continua sendo a policy; a tela só evita o erro.
 
 Arquivos: enviar e apagar exigem login; a **leitura continua pública**, porque o
 balde é público e a página exibe a miniatura direto pela URL (um UUID

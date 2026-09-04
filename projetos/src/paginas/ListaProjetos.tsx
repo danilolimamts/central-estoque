@@ -5,6 +5,7 @@ import { atrasado, diasDeAtraso, formatarData, percentualEsperado, saude } from 
 import { filhosDe, percentualEfetivo, rotuloDosFilhos } from '@/dominio/arvore';
 import type { Pessoa, Projeto, StatusProjeto } from '@/dominio/tipos';
 import { STATUS, rotuloStatus } from '@/dominio/tipos';
+import { usePermissoes } from '@/estado/sessao';
 
 interface Props {
   projetos: Projeto[];
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }: Props) {
+  const permissoes = usePermissoes();
   const [busca, setBusca] = useState('');
   const [status, setStatus] = useState<StatusProjeto | ''>('');
   const [responsavel, setResponsavel] = useState('');
@@ -91,7 +93,9 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
               exportarCarteira(filtrados, pessoas);
             }}
           >Exportar Excel</button>
-          <button className="botao-primario" onClick={() => setFormAberto(true)}>Novo projeto</button>
+          {permissoes.podeCriar && (
+            <button className="botao-primario" onClick={() => setFormAberto(true)}>Novo projeto</button>
+          )}
         </div>
       </div>
 
