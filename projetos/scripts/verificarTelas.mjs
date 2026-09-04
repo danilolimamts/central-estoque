@@ -118,7 +118,13 @@ const paginas = [
       },
       {
         id: 'b2', tipo: 'fluxo',
-        conteudo: 'flowchart TD\n  A[Digita o código] --> B{Endereço existe?}\n  B -- Sim --> C[Mostra capacidade]\n  B -- Não --> D[Sugere endereços vizinhos]',
+        conteudo: JSON.stringify({
+          nos: [
+            { id: 'n1', texto: 'Digita o código', x: 40, y: 40, largura: 180, altura: 64, forma: 'caixa', cor: '#7C3AED' },
+            { id: 'n2', texto: 'Endereço existe?', x: 320, y: 30, largura: 170, altura: 96, forma: 'decisao', cor: '#2F6FE0' },
+          ],
+          ligacoes: [{ id: 'l1', de: 'n1', para: 'n2', rotulo: 'Sim' }],
+        }),
       },
     ],
   },
@@ -193,8 +199,8 @@ await pagina.getByText('Melhoria Sistêmica Bseller').first().click();
 await pagina.waitForTimeout(800);
 await pagina.screenshot({ path: 'verificacao-melhorias.png', fullPage: true });
 const textoDoGrupo = (await pagina.textContent('body')) ?? '';
-if (!textoDoGrupo.includes('Entrada massiva') || !textoDoGrupo.includes('avanço médio')) {
-  console.error('FALHOU: o quadro de melhorias não montou.');
+if (!textoDoGrupo.includes('Entrada massiva') || !textoDoGrupo.includes('concluídas')) {
+  console.error('FALHOU: a lista de melhorias não montou.');
   process.exitCode = 1;
 }
 /* O projeto nao pode oferecer marcos, tarefas, paginas nem anexos:
@@ -221,6 +227,9 @@ await pagina.waitForTimeout(700);
 const texto = (await pagina.textContent('body')) ?? '';
 if (!texto.includes('Marcos') || !texto.includes('Migração dos itens')) {
   console.error('FALHOU: o detalhe do projeto não carregou marcos.');
+  process.exitCode = 1;
+} else if (!texto.includes('Endereço existe?')) {
+  console.error('FALHOU: o fluxo desenhado não apareceu na página.');
   process.exitCode = 1;
 } else if (!texto.includes('Aprovada')) {
   console.error('FALHOU: a página não mostra a situação.');

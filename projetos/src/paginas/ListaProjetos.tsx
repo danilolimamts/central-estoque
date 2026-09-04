@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import FormularioProjeto from './FormularioProjeto';
 import { Barra, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import { atrasado, diasDeAtraso, formatarData, percentualEsperado, saude } from '@/dominio/regras';
-import { filhosDe, rotuloDosFilhos } from '@/dominio/arvore';
+import { filhosDe, percentualEfetivo, rotuloDosFilhos } from '@/dominio/arvore';
 import type { Pessoa, Projeto, StatusProjeto } from '@/dominio/tipos';
 import { STATUS, rotuloStatus } from '@/dominio/tipos';
 
@@ -133,8 +133,10 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
                   <td className="px-4 py-2"><SeloSaude saude={saude(p)} /></td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                      <Barra valor={p.percentual} esperado={percentualEsperado(p)} />
-                      <span className="w-9 text-right text-xs font-bold">{p.percentual}%</span>
+                      <Barra valor={percentualEfetivo(projetos, p)} esperado={percentualEsperado(p)} />
+                      <span className="w-9 text-right text-xs font-bold">
+                        {percentualEfetivo(projetos, p)}%
+                      </span>
                     </div>
                   </td>
                 </tr>

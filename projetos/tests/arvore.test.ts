@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  avancoDoGrupo, ehRaiz, filhosDe, folhas, generoDoRotulo, nomeCompleto, raizes,
-  rotuloDosFilhos, singularDoRotulo, temFilhos,
+  avancoPorConclusao, ehRaiz, filhosDe, folhas, generoDoRotulo, nomeCompleto,
+  percentualEfetivo, porPrioridade, raizes, rotuloDosFilhos, singularDoRotulo, temFilhos,
 } from '../src/dominio/arvore';
 import type { Projeto } from '../src/dominio/tipos';
 
@@ -40,13 +40,26 @@ describe('árvore de projetos', () => {
     expect(nomeCompleto(carteira, carteira[4])).toBe('Reendereçamento');
   });
 
-  it('calcula o avanço do grupo ignorando cancelados', () => {
-    // (40 + 100) / 2, sem o cancelado.
-    expect(avancoDoGrupo(carteira, 'pai')).toBe(70);
+  it('conta o avanço pelas atividades concluídas, não pelo percentual digitado', () => {
+    // Uma concluída de duas que valem; a cancelada sai da conta.
+    expect(avancoPorConclusao(carteira, 'pai')).toEqual({ concluidas: 1, total: 2, percentual: 50 });
   });
 
-  it('não calcula avanço de quem não tem filhos', () => {
-    expect(avancoDoGrupo(carteira, 'solto')).toBeNull();
+  it('não calcula avanço de quem não tem atividades', () => {
+    expect(avancoPorConclusao(carteira, 'solto')).toBeNull();
+  });
+
+  it('o percentual que vale é o da conclusão no projeto e o digitado na atividade', () => {
+    expect(percentualEfetivo(carteira, carteira[0])).toBe(50);
+    expect(percentualEfetivo(carteira, carteira[4])).toBe(20);
+  });
+
+  it('ordena por prioridade e desempata pelo prazo', () => {
+    const alta = { ...carteira[1], prioridade: 'alta' as const, fim_previsto: '2026-12-01' };
+    const critica = { ...carteira[1], id: 'x', prioridade: 'critica' as const };
+    const altaAntes = { ...alta, id: 'y', fim_previsto: '2026-06-01' };
+    expect([alta, critica, altaAntes].sort(porPrioridade).map((p) => p.id))
+      .toEqual(['x', 'y', 'f1']);
   });
 });
 

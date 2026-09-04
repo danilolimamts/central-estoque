@@ -1,3 +1,5 @@
+import { fluxoParaSvg, lerFluxo } from '@/dominio/fluxo';
+
 /* O gerador do .docx precisa dos bytes da imagem, nao da URL. Estas
    funcoes baixam e convertem tudo para PNG, que e o unico formato que
    vale para print de tela, foto e fluxograma ao mesmo tempo. */
@@ -50,15 +52,17 @@ export async function baixarImagem(url: string): Promise<ImagemEmBytes> {
   return paraPng(await resposta.blob());
 }
 
-/* Fluxograma vira imagem: o Word nao desenha o diagrama, entao o
-   desenho e rasterizado em dobro do tamanho para nao serrilhar quando
-   o documento for impresso. */
-export async function fluxogramaEmPng(codigo: string): Promise<ImagemEmBytes> {
+/* Fluxograma vira imagem: o Word nao desenha o quadro, entao o desenho
+   e rasterizado em dobro do tamanho para nao serrilhar na impressao. */
+export async function fluxogramaEmPng(conteudo: string): Promise<ImagemEmBytes> {
+  const fluxo = lerFluxo(conteudo);
+  if (fluxo) return paraPng(new Blob([fluxoParaSvg(fluxo)], { type: 'image/svg+xml' }), 2);
+
+  /* Fluxo escrito no formato antigo, em texto: continua desenhado pela
+     biblioteca de diagramas, para documento antigo nao sair sem ele. */
   const { default: mermaid } = await import('mermaid');
   mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', fontFamily: 'Arial' });
-  const { svg } = await mermaid.render(`doc-${Math.random().toString(36).slice(2)}`, codigo);
-  /* O SVG do mermaid pode vir sem largura fixa; sem isso a imagem sai
-     com 0 px em alguns navegadores. */
+  const { svg } = await mermaid.render(`doc-${Math.random().toString(36).slice(2)}`, conteudo);
   const ajustado = svg.replace('<svg ', '<svg width="900" ');
   return paraPng(new Blob([ajustado], { type: 'image/svg+xml' }), 2);
 }

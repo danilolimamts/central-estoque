@@ -4,7 +4,10 @@ import type { CartaoDoQuadro, ColunaDoQuadro } from '@/componentes/Quadro';
 import { Aviso, Barra, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import { coresStatus } from '@/config/tokens';
 import { mensagemDeErro, salvarProjeto } from '@/estado/dados';
-import { avancoDoGrupo, filhosDe, generoDoRotulo, rotuloDosFilhos, singularDoRotulo } from '@/dominio/arvore';
+import {
+  avancoPorConclusao, filhosDe, generoDoRotulo, percentualEfetivo, porPrioridade,
+  rotuloDosFilhos, singularDoRotulo,
+} from '@/dominio/arvore';
 import { atrasado, diasDeAtraso, formatarData, percentualEsperado, saude } from '@/dominio/regras';
 import type { Pessoa, Prioridade, Projeto, StatusProjeto } from '@/dominio/tipos';
 import { PRIORIDADES, STATUS, rotuloPrioridade, rotuloStatus } from '@/dominio/tipos';
@@ -38,12 +41,23 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
   const [emQuadro, setEmQuadro] = useState(false);
   const [criando, setCriando] = useState<StatusProjeto | null>(null);
   const [nome, setNome] = useState('');
+  const [ordem, setOrdem] = useState<'prioridade' | 'prazo' | 'situacao' | 'nome'>('prioridade');
 
-  const filhos = useMemo(() => filhosDe(projetos, pai.id), [projetos, pai.id]);
+  /* Prioridade manda na ordem: o que e critico aparece primeiro, e o
+     prazo desempata. Quem preferir outra ordem troca no seletor. */
+  const filhos = useMemo(() => {
+    const lista = [...filhosDe(projetos, pai.id)];
+    if (ordem === 'prioridade') return lista.sort(porPrioridade);
+    if (ordem === 'prazo') {
+      return lista.sort((a, b) => (a.fim_previsto ?? '9999').localeCompare(b.fim_previsto ?? '9999'));
+    }
+    if (ordem === 'situacao') return lista.sort((a, b) => STATUS.indexOf(a.status) - STATUS.indexOf(b.status));
+    return lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [projetos, pai.id, ordem]);
   const plural = rotuloDosFilhos(pai);
   const singular = singularDoRotulo(pai);
   const artigo = generoDoRotulo(pai) === 'f' ? 'a' : 'o';
-  const avanco = avancoDoGrupo(projetos, pai.id);
+  const avanco = avancoPorConclusao(projetos, pai.id);
   const nomePessoa = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '—';
 
   const cartoes: CartaoDeAtividade[] = filhos.map((p) => ({ id: p.id, coluna: p.status, projeto: p }));
@@ -86,9 +100,23 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-linha px-4 py-3">
         <h2 className="font-titulo text-sm font-extrabold">
           {plural} {filhos.length > 0 && <span className="text-tinta-suave">({filhos.length})</span>}
-          {avanco !== null && <span className="ml-2 text-xs font-normal text-tinta-suave">avanço médio {avanco}%</span>}
+          {avanco && (
+            <span className="ml-2 text-xs font-normal text-tinta-suave">
+              {avanco.concluidas} de {avanco.total} concluídas · {avanco.percentual}%
+            </span>
+          )}
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="campo w-36 py-1 text-xs" value={ordem}
+            onChange={(e) => setOrdem(e.target.value as typeof ordem)}
+            title="Ordenar a lista"
+          >
+            <option value="prioridade">Por prioridade</option>
+            <option value="prazo">Por prazo</option>
+            <option value="situacao">Por situação</option>
+            <option value="nome">Por nome</option>
+          </select>
           <div className="flex rounded-lg border border-linha p-0.5 text-xs font-bold">
             <button
               className={`rounded px-2 py-1 ${!emQuadro ? 'bg-roxo-suave text-roxo-escuro' : 'text-tinta-suave'}`}
@@ -160,8 +188,10 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                 )}
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <Barra valor={c.projeto.percentual} />
-                <span className="text-[11px] font-bold text-tinta-suave">{c.projeto.percentual}%</span>
+                <Barra valor={percentualEfetivo(projetos, c.projeto)} />
+                <span className="text-[11px] font-bold text-tinta-suave">
+                  {percentualEfetivo(projetos, c.projeto)}%
+                </span>
               </div>
               <p className="mt-1.5 truncate text-[11px] text-tinta-suave">
                 {nomePessoa(c.projeto.responsavel_id)}
@@ -239,7 +269,7 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
 
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <Barra valor={p.percentual} esperado={percentualEsperado(p)} />
+                      <Barra valor={percentualEfetivo(projetos, p)} esperado={percentualEsperado(p)} />
                       <input
                         type="number" min={0} max={100} value={p.percentual}
                         className="campo w-14 px-1 py-0.5 text-center text-xs"
