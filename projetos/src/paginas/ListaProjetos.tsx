@@ -4,8 +4,8 @@ import { Barra, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/component
 import { atrasado, diasDeAtraso, formatarData, percentualEsperado, saude } from '@/dominio/regras';
 import { filhosDe, percentualEfetivo, rotuloDosFilhos } from '@/dominio/arvore';
 import type { Pessoa, Projeto, StatusProjeto } from '@/dominio/tipos';
-import { STATUS, rotuloStatus } from '@/dominio/tipos';
 import { usePermissoes } from '@/estado/sessao';
+import { statusEmUso, useStatusConfigurados } from '@/estado/configuracao';
 
 interface Props {
   projetos: Projeto[];
@@ -16,6 +16,10 @@ interface Props {
 
 export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }: Props) {
   const permissoes = usePermissoes();
+  const configStatus = useStatusConfigurados();
+  /* Situacao desligada some do filtro, menos se algum projeto ainda
+     estiver nela — filtrar por algo invisivel e pior que a coluna. */
+  const situacoes = statusEmUso(configStatus, projetos.map((p) => p.status));
   const [busca, setBusca] = useState('');
   const [status, setStatus] = useState<StatusProjeto | ''>('');
   const [responsavel, setResponsavel] = useState('');
@@ -58,7 +62,7 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
           <span className="rotulo">Situação</span>
           <select className="campo" value={status} onChange={(e) => setStatus(e.target.value as StatusProjeto | '')}>
             <option value="">Todas</option>
-            {STATUS.map((s) => <option key={s} value={s}>{rotuloStatus[s]}</option>)}
+            {situacoes.map((s) => <option key={s} value={s}>{configStatus[s].rotulo}</option>)}
           </select>
         </label>
         <label>

@@ -136,7 +136,8 @@ const paginas = [
    da secao, que e o primeiro que qualquer pessoa vai ver. */
 const documentos = [];
 
-const porTabela = { pessoas, projetos, marcos, tarefas, atualizacoes, anexos, paginas, documentos };
+const configuracoes = [];
+const porTabela = { pessoas, projetos, marcos, tarefas, atualizacoes, anexos, paginas, documentos, configuracoes };
 
 /* Imagem de 1x1 no lugar do arquivo real: o teste confere o layout da
    galeria, nao o conteudo da foto. */
@@ -271,6 +272,21 @@ for (const campo of ['Documentação', 'Documentada', 'Por formato', 'Páginas',
   }
 }
 await pagina.screenshot({ path: 'verificacao-filtros.png', fullPage: true });
+
+/* Configuracao das situacoes: so administrador ve o botao, e ele abre
+   a janela com as seis situacoes para ligar, renomear e colorir. */
+await pagina.getByRole('button', { name: 'Situações', exact: false }).first().click();
+await pagina.waitForTimeout(400);
+const configuracao = (await pagina.textContent('body')) ?? '';
+for (const campo of ['Situações das atividades', 'Voltar ao padrão', 'Em risco']) {
+  if (!configuracao.includes(campo)) {
+    console.error(`FALHOU: a configuração de situações não tem "${campo}".`);
+    process.exitCode = 1;
+  }
+}
+await pagina.screenshot({ path: 'verificacao-config-status.png', fullPage: true });
+await pagina.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
+await pagina.waitForTimeout(300);
 
 await pagina.getByRole('button', { name: 'Projetos', exact: true }).click();
 await pagina.getByText('Reendereçamento do mezanino').first().click();

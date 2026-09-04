@@ -1,9 +1,9 @@
 import { Selo } from '@/componentes/ui';
-import { coresStatus } from '@/config/tokens';
 import { CONTEUDOS, alternar, filtrosAtivos, filtrosVazios } from '@/dominio/filtros';
 import type { FiltroDePrazo, FiltrosDeAtividade, Presenca } from '@/dominio/filtros';
 import type { Pessoa, Prioridade, StatusProjeto } from '@/dominio/tipos';
-import { PRIORIDADES, STATUS, rotuloPrioridade, rotuloStatus } from '@/dominio/tipos';
+import { PRIORIDADES, rotuloPrioridade } from '@/dominio/tipos';
+import { statusEmUso, useStatusConfigurados } from '@/estado/configuracao';
 
 interface Props {
   filtros: FiltrosDeAtividade;
@@ -65,6 +65,8 @@ export default function FiltrosAtividades({
   filtros, aoMudar, pessoas, aberto, aoAlternar, mostrando, total,
 }: Props) {
   const ativos = filtrosAtivos(filtros);
+  const configStatus = useStatusConfigurados();
+  const situacoes = statusEmUso(configStatus, []);
 
   if (!aberto) {
     return (
@@ -129,7 +131,7 @@ export default function FiltrosAtividades({
 
       <Grupo titulo="Situação">
         <div className="flex flex-wrap gap-1">
-          {STATUS.map((s) => (
+          {situacoes.map((s) => (
             <button
               key={s}
               onClick={() => aoMudar({ ...filtros, status: alternar<StatusProjeto>(filtros.status, s) })}
@@ -138,8 +140,8 @@ export default function FiltrosAtividades({
                   ? 'border-transparent text-white'
                   : 'border-linha text-tinta-suave hover:border-roxo-claro'
               }`}
-              style={filtros.status.includes(s) ? { backgroundColor: coresStatus[s] } : undefined}
-            >{rotuloStatus[s]}</button>
+              style={filtros.status.includes(s) ? { backgroundColor: configStatus[s].cor } : undefined}
+            >{configStatus[s].rotulo}</button>
           ))}
         </div>
       </Grupo>

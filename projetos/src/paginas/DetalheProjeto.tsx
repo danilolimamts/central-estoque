@@ -23,7 +23,8 @@ import {
   formatarData, isoDeHoje, marcoAtrasado, percentualEsperado, progressoDeTarefas, saude, tarefaAtrasada,
 } from '@/dominio/regras';
 import type { Marco, Pessoa, Projeto, StatusProjeto, StatusTarefa, Tarefa } from '@/dominio/tipos';
-import { STATUS, STATUS_TAREFA, rotuloStatus, rotuloStatusTarefa } from '@/dominio/tipos';
+import { STATUS_TAREFA, rotuloStatusTarefa } from '@/dominio/tipos';
+import { statusEmUso, useStatusConfigurados } from '@/estado/configuracao';
 
 interface Props {
   projeto: Projeto;
@@ -34,9 +35,14 @@ interface Props {
   aoVoltar: () => void;
   aoAbrir: (p: Projeto) => void;
   recarregar: () => Promise<void>;
+  /* A configuracao das situacoes e editada de dentro da lista de
+     atividades, que e onde elas viram coluna. */
+  recarregarConfig: () => Promise<void>;
 }
 
-export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, aoAbrir, recarregar }: Props) {
+export default function DetalheProjeto({
+  projeto, projetos, pessoas, aoVoltar, aoAbrir, recarregar, recarregarConfig,
+}: Props) {
   const dados = useDetalheProjeto(projeto.id);
   const [editando, setEditando] = useState(false);
   const [marcoEmEdicao, setMarcoEmEdicao] = useState<Marco | 'novo' | null>(null);
@@ -172,7 +178,7 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
       {grupo && (
         <Atividades
           pai={projeto} projetos={projetos} pessoas={pessoas}
-          aoAbrir={aoAbrir} recarregar={recarregar}
+          aoAbrir={aoAbrir} recarregar={recarregar} recarregarConfig={recarregarConfig}
         />
       )}
 
@@ -519,6 +525,8 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
 }) {
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const configStatus = useStatusConfigurados();
+  const situacoes = statusEmUso(configStatus, [projeto.status]);
 
   async function enviar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -569,7 +577,7 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
           <Campo rotulo="Data"><input name="data" type="date" defaultValue={isoDeHoje()} className="campo" /></Campo>
           <Campo rotulo="Situação">
             <select name="status_reportado" defaultValue={projeto.status} className="campo">
-              {STATUS.map((s) => <option key={s} value={s}>{rotuloStatus[s]}</option>)}
+              {situacoes.map((s) => <option key={s} value={s}>{configStatus[s].rotulo}</option>)}
             </select>
           </Campo>
         </div>

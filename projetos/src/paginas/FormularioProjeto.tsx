@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Aviso, Campo, Modal } from '@/componentes/ui';
 import { mensagemDeErro, salvarProjeto } from '@/estado/dados';
 import type { Pessoa, Prioridade, Projeto, StatusProjeto } from '@/dominio/tipos';
-import { PRIORIDADES, STATUS, rotuloPrioridade, rotuloStatus } from '@/dominio/tipos';
+import { PRIORIDADES, rotuloPrioridade } from '@/dominio/tipos';
+import { statusEmUso, useStatusConfigurados } from '@/estado/configuracao';
 
 interface Props {
   aberto: boolean;
@@ -20,6 +21,10 @@ const vazio = (v: string) => (v.trim() === '' ? null : v.trim());
 export default function FormularioProjeto({ aberto, projeto, projetos = [], pessoas, aoFechar, aoSalvar }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const configStatus = useStatusConfigurados();
+  /* A situacao atual entra na lista mesmo desligada, senao editar o
+     projeto trocaria a situacao dele sem querer. */
+  const situacoes = statusEmUso(configStatus, projeto ? [projeto.status] : []);
 
   async function enviar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -102,7 +107,7 @@ export default function FormularioProjeto({ aberto, projeto, projetos = [], pess
         <div className="grid gap-3 sm:grid-cols-3">
           <Campo rotulo="Situação">
             <select name="status" defaultValue={projeto?.status ?? 'nao_iniciado'} className="campo">
-              {STATUS.map((s) => <option key={s} value={s}>{rotuloStatus[s]}</option>)}
+              {situacoes.map((s) => <option key={s} value={s}>{configStatus[s].rotulo}</option>)}
             </select>
           </Campo>
           <Campo rotulo="Prioridade">
