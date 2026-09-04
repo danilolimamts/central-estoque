@@ -1,14 +1,14 @@
 import { useMemo } from 'react';
 import Grafico from '@/componentes/Grafico';
 import { Barra, Indicador, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
-import { coresStatus } from '@/config/tokens';
 import {
   atrasado, calcularIndicadores, diasDeAtraso, encerrado, entregasPorMes,
   formatarData, percentualEsperado, saude, venceEm,
 } from '@/dominio/regras';
 import { folhas } from '@/dominio/arvore';
 import type { Pessoa, Projeto } from '@/dominio/tipos';
-import { STATUS, rotuloStatus } from '@/dominio/tipos';
+import { STATUS } from '@/dominio/tipos';
+import { useStatusConfigurados } from '@/estado/configuracao';
 
 interface Props {
   projetos: Projeto[];
@@ -17,6 +17,7 @@ interface Props {
 }
 
 export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
+  const configStatus = useStatusConfigurados();
   /* Projeto que agrupa outros nao entra na conta: senao o guarda-chuva
      e cada melhoria dentro dele contariam o mesmo trabalho duas vezes. */
   const carteira = useMemo(() => folhas(projetos), [projetos]);
@@ -51,9 +52,9 @@ export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
               serie="Projetos"
               horizontal
               altura={Math.max(160, usados.length * 42)}
-              rotulos={usados.map((s) => rotuloStatus[s])}
+              rotulos={usados.map((s) => configStatus[s].rotulo)}
               valores={usados.map((s) => indicadores.porStatus[s])}
-              cores={usados.map((s) => coresStatus[s])}
+              cores={usados.map((s) => configStatus[s].cor)}
             />
           ) : <Vazio>Nenhum projeto cadastrado ainda.</Vazio>}
         </div>

@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import FiltrosAtividades from '@/componentes/FiltrosAtividades';
 import Quadro from '@/componentes/Quadro';
 import type { CartaoDoQuadro, ColunaDoQuadro } from '@/componentes/Quadro';
 import { Aviso, Barra, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
-import { coresStatus } from '@/config/tokens';
 import { mensagemDeErro, salvarProjeto } from '@/estado/dados';
 import { conteudoDe, useConteudoDosProjetos } from '@/estado/conteudo';
 import { usePermissoes } from '@/estado/sessao';
+import ConfigStatus from '@/componentes/ConfigStatus';
+import { statusEmUso, useStatusConfigurados } from '@/estado/configuracao';
 import type { ConteudoDoProjeto } from '@/estado/conteudo';
 import { CONTEUDOS, aplicarFiltros, filtrosVazios } from '@/dominio/filtros';
 import {
@@ -15,7 +16,7 @@ import {
 } from '@/dominio/arvore';
 import { atrasado, diasDeAtraso, formatarData, percentualEsperado, saude } from '@/dominio/regras';
 import type { Pessoa, Prioridade, Projeto, StatusProjeto } from '@/dominio/tipos';
-import { PRIORIDADES, STATUS, rotuloPrioridade, rotuloStatus } from '@/dominio/tipos';
+import { PRIORIDADES, STATUS, rotuloPrioridade } from '@/dominio/tipos';
 
 interface Props {
   pai: Projeto;
@@ -23,11 +24,10 @@ interface Props {
   pessoas: Pessoa[];
   aoAbrir: (p: Projeto) => void;
   recarregar: () => Promise<void>;
+  recarregarConfig: () => Promise<void>;
 }
 
-const COLUNAS: ColunaDoQuadro[] = STATUS.map((s) => ({
-  id: s, rotulo: rotuloStatus[s], cor: coresStatus[s],
-}));
+
 
 interface CartaoDeAtividade extends CartaoDoQuadro {
   projeto: Projeto;
@@ -41,10 +41,16 @@ interface CartaoDeAtividade extends CartaoDoQuadro {
    situacao e avanco lado a lado; o quadro fica a um clique para quem
    quiser arrastar. O nome das atividades vem do proprio projeto:
    "Melhorias" no Bseller, "Frentes" ou "Etapas" em outro. */
-export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar }: Props) {
+export default function Atividades({
+  pai, projetos, pessoas, aoAbrir, recarregar, recarregarConfig,
+}: Props) {
   const permissoes = usePermissoes();
+  const configStatus = useStatusConfigurados();
+  const [configAberta, setConfigAberta] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [emQuadro, setEmQuadro] = useState(false);
+  /* Lista ou quadro e preferencia de quem trabalha, nao estado da tela:
+     quem prefere o quadro nao quer reescolher a cada projeto aberto. */
+  const [emQuadro, setEmQuadro] = useState(() => localStorage.getItem('projetos.visao') === 'quadro');
   const [criando, setCriando] = useState<StatusProjeto | null>(null);
   const [nome, setNome] = useState('');
   const [ordem, setOrdem] = useState<'prioridade' | 'prazo' | 'situacao' | 'nome'>('prioridade');
@@ -65,6 +71,8 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
       return lista.sort((a, b) => (a.fim_previsto ?? '9999').localeCompare(b.fim_previsto ?? '9999'));
     }
     if (ordem === 'situacao') return lista.sort((a, b) => STATUS.indexOf(a.status) - STATUS.indexOf(b.status));
+    /* STATUS continua mandando na ordem: e a sequencia natural do
+       trabalho (nao iniciado, em andamento, ...), nao a da configuracao. */
     return lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }, [projetos, pai.id, ordem]);
   /* Quanta coisa cada atividade tem dentro: e o que responde "quais
@@ -75,6 +83,17 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
     () => aplicarFiltros(filhos, carteiraDeConteudo.conteudo, filtros),
     [filhos, carteiraDeConteudo.conteudo, filtros],
   );
+
+  /* Situacao desligada na configuracao some das colunas e do seletor —
+     menos quando ainda ha atividade nela, que senao o cartao sumiria da
+     tela sem ninguem entender para onde foi. */
+  const situacoes = useMemo(
+    () => statusEmUso(configStatus, filhos.map((f) => f.status)),
+    [configStatus, filhos],
+  );
+  const colunas: ColunaDoQuadro[] = situacoes.map((s) => ({
+    id: s, rotulo: configStatus[s].rotulo, cor: configStatus[s].cor,
+  }));
 
   const plural = rotuloDosFilhos(pai);
   const singular = singularDoRotulo(pai);
@@ -153,13 +172,20 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
           <div className="flex rounded-lg border border-linha p-0.5 text-xs font-bold">
             <button
               className={`rounded px-2 py-1 ${!emQuadro ? 'bg-roxo-suave text-roxo-escuro' : 'text-tinta-suave'}`}
-              onClick={() => setEmQuadro(false)}
+              onClick={() => { setEmQuadro(false); localStorage.setItem('projetos.visao', 'lista'); }}
             >Lista</button>
             <button
               className={`rounded px-2 py-1 ${emQuadro ? 'bg-roxo-suave text-roxo-escuro' : 'text-tinta-suave'}`}
-              onClick={() => setEmQuadro(true)}
+              onClick={() => { setEmQuadro(true); localStorage.setItem('projetos.visao', 'quadro'); }}
             >Quadro</button>
           </div>
+          {permissoes.ehAdmin && (
+            <button
+              className="rounded-lg border border-linha px-2 py-1 text-xs font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
+              onClick={() => setConfigAberta(true)}
+              title="Configurar as situações"
+            >⚙ Situações</button>
+          )}
           {permissoes.podeCriar && (
             <button className="botao-primario py-1 text-xs" onClick={() => { setCriando('nao_iniciado'); setNome(''); }}>
               + Nov{artigo} {singular.toLowerCase()}
@@ -186,7 +212,7 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
           <label>
             <span className="rotulo">Situação</span>
             <select className="campo" value={criando} onChange={(e) => setCriando(e.target.value as StatusProjeto)}>
-              {STATUS.map((s) => <option key={s} value={s}>{rotuloStatus[s]}</option>)}
+              {situacoes.map((s) => <option key={s} value={s}>{configStatus[s].rotulo}</option>)}
             </select>
           </label>
           <button type="submit" className="botao-primario">Criar</button>
@@ -224,7 +250,7 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
           </Vazio>
         ) : emQuadro ? (
         <Quadro
-          colunas={COLUNAS}
+          colunas={colunas}
           itens={cartoes}
           aoMover={(c, coluna) => alterar(c.projeto, { status: coluna as StatusProjeto })}
           aoAbrir={(c) => aoAbrir(c.projeto)}
@@ -305,7 +331,12 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                       disabled={!permissoes.podeEditar(p)}
                       onChange={(e) => void alterar(p, { status: e.target.value as StatusProjeto })}
                     >
-                      {STATUS.map((s) => <option key={s} value={s}>{rotuloStatus[s]}</option>)}
+                      {/* A propria situacao da linha entra na lista mesmo se
+                          estiver desligada: sem ela o seletor mostraria outro
+                          valor e uma troca sem querer viraria escrita. */}
+                      {Array.from(new Set([...situacoes, p.status])).map((s) => (
+                        <option key={s} value={s}>{configStatus[s].rotulo}</option>
+                      ))}
                     </select>
                   </td>
 
@@ -323,18 +354,16 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                       documentacao foi feita. O fim vem do Bseller, nao
                       daqui, por isso so ele carrega o aviso de atraso. */}
                   <td className="px-3 py-2">
-                    <input
-                      type="date" className="campo w-36 py-1 text-xs" value={p.inicio_real ?? ''}
-                      disabled={!permissoes.podeEditar(p)}
-                      onChange={(e) => void alterar(p, { inicio_real: e.target.value || null })}
+                    <CampoData
+                      valor={p.inicio_real} desabilitado={!permissoes.podeEditar(p)}
+                      aoConfirmar={(v) => void alterar(p, { inicio_real: v })}
                     />
                   </td>
 
                   <td className="px-3 py-2">
-                    <input
-                      type="date" className="campo w-36 py-1 text-xs" value={p.fim_previsto ?? ''}
-                      disabled={!permissoes.podeEditar(p)}
-                      onChange={(e) => void alterar(p, { fim_previsto: e.target.value || null })}
+                    <CampoData
+                      valor={p.fim_previsto} desabilitado={!permissoes.podeEditar(p)}
+                      aoConfirmar={(v) => void alterar(p, { fim_previsto: v })}
                     />
                     {diasDeAtraso(p) > 0 && (
                       <span className="ml-1 text-[11px] font-bold text-vermelho">+{diasDeAtraso(p)}d</span>
@@ -378,10 +407,16 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
       </div>
       )}
 
+      <ConfigStatus
+        aberto={configAberta} config={configStatus}
+        emUso={Array.from(new Set(filhos.map((f) => f.status)))}
+        aoFechar={() => setConfigAberta(false)} recarregar={recarregarConfig}
+      />
+
       {/* Situação do projeto inteiro, num selo só, para quem chega pela lista. */}
       {filhos.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-t border-linha px-4 py-2 text-[11px] text-tinta-suave">
-          {STATUS.filter((s) => filhos.some((f) => f.status === s)).map((s) => (
+          {situacoes.filter((s) => filhos.some((f) => f.status === s)).map((s) => (
             <span key={s} className="flex items-center gap-1">
               <SeloStatus status={s} />
               <span className="font-bold">{filhos.filter((f) => f.status === s).length}</span>
@@ -415,5 +450,33 @@ function MarcasDeConteudo({ conteudo, discreto }: { conteudo: ConteudoDoProjeto;
         >{SIGLAS[campo]} {conteudo[campo]}</span>
       ))}
     </div>
+  );
+}
+
+/* Data que so grava quando a pessoa sai do campo.
+
+   Digitando "18/08/2026" o navegador dispara mudanca a cada pedaco, e
+   as incompletas chegam como texto vazio. Gravando na hora, cada
+   digito virava uma escrita no banco seguida de recarga da lista — a
+   tela piscava, o campo voltava ao valor antigo e o cursor saia dali.
+   Guardar em estado proprio e confirmar no blur (ou no Enter) resolve;
+   o valor de fora volta a mandar assim que ele muda de verdade. */
+function CampoData({ valor, desabilitado, aoConfirmar }: {
+  valor: string | null;
+  desabilitado?: boolean;
+  aoConfirmar: (valor: string | null) => void;
+}) {
+  const [texto, setTexto] = useState(valor ?? '');
+
+  useEffect(() => { setTexto(valor ?? ''); }, [valor]);
+
+  return (
+    <input
+      type="date" className="campo w-36 py-1 text-xs"
+      value={texto} disabled={desabilitado}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => { if ((texto || null) !== (valor ?? null)) aoConfirmar(texto || null); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+    />
   );
 }

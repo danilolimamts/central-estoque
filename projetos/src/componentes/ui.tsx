@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
+import { useStatusConfigurados } from '@/estado/configuracao';
 import { coresPrioridade, coresStatus } from '@/config/tokens';
 import { coresSaude, rotuloSaude } from '@/dominio/regras';
 import type { Saude } from '@/dominio/regras';
@@ -18,9 +19,12 @@ export function Selo({ cor, children }: { cor: string; children: ReactNode }) {
   );
 }
 
-export const SeloStatus = ({ status }: { status: StatusProjeto }) => (
-  <Selo cor={coresStatus[status]}>{rotuloStatus[status]}</Selo>
-);
+/* Nome e cor da situacao vem da configuracao da equipe; sem ela (ou
+   antes de carregar) valem os de fabrica. */
+export const SeloStatus = ({ status }: { status: StatusProjeto }) => {
+  const config = useStatusConfigurados();
+  return <Selo cor={config[status]?.cor ?? coresStatus[status]}>{config[status]?.rotulo ?? rotuloStatus[status]}</Selo>;
+};
 
 export const SeloPrioridade = ({ prioridade }: { prioridade: Prioridade }) => (
   <Selo cor={coresPrioridade[prioridade]}>{rotuloPrioridade[prioridade]}</Selo>

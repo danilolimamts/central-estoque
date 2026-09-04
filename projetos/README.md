@@ -53,6 +53,7 @@ banco. As migrations aplicadas estão em `supabase/migrations/`.
 | `paginas` | documentação do projeto em blocos de texto e fluxograma |
 | `paginas_versoes` | versão anterior de cada página, gravada a cada salvamento |
 | `documentos` | Propostas de Melhoria Sistêmica, com as 15 seções em jsonb |
+| `configuracoes` | ajustes da equipe em chave/valor (hoje: as situações) |
 
 ### Anexos
 
@@ -147,6 +148,25 @@ limitadas às atividades do projeto aberto — baixar páginas e anexos inteiros
 para contar linha seria caro. A coluna **Conteúdo** da lista (e uma linha no
 cartão do quadro) mostra as mesmas contagens em três letras: o filtro esconde a
 atividade, e a marca explica por quê.
+
+### Situações configuráveis
+
+O botão **⚙ Situações**, no cabeçalho da lista de atividades (só para admin),
+liga/desliga cada situação, renomeia e troca a cor. Serve para a equipe que não
+usa "Em risco" não ter uma coluna morta no quadro nem uma opção a mais no
+seletor.
+
+As seis situações continuam sendo o tipo do Postgres: esconder uma é decisão de
+tela, não de banco — mexer no tipo obrigaria a reescrever dado existente só para
+tirar uma coluna do quadro. O ajuste vive em `configuracoes` (chave
+`status_projeto`), vale para todo mundo e só administrador grava.
+
+Situação desligada **continua aparecendo enquanto houver atividade nela**, e o
+seletor da linha sempre inclui a situação atual daquela linha. Sem isso o cartão
+sumiria do quadro sem explicação, ou uma troca sem querer viraria escrita.
+
+A visão **Lista/Quadro** também é lembrada (no navegador de cada um): quem
+prefere o quadro não reescolhe a cada projeto aberto.
 
 ### Quadro (arrastar e soltar)
 
