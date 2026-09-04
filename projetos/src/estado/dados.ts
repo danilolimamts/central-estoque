@@ -102,7 +102,12 @@ export async function lancarAtualizacao(
      antigo mantem o numero que ja tinha. */
   dados: Omit<Atualizacao, 'id' | 'criado_em' | 'autor_id' | 'percentual'>,
 ): Promise<string> {
-  const { data, error } = await supabase.from('atualizacoes').insert(dados).select('id').single();
+  /* O autor sai da sessao, nao do formulario: a policy do banco exige
+     que autor_id seja quem esta logado, e e por ele que o proprio autor
+     consegue corrigir o lancamento depois. */
+  const { data: sessao } = await supabase.auth.getUser();
+  const { data, error } = await supabase.from('atualizacoes')
+    .insert({ ...dados, autor_id: sessao.user?.id ?? null }).select('id').single();
   if (error) throw error;
   return (data as { id: string }).id;
 }

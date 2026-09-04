@@ -4,8 +4,9 @@ Acompanhamento de projetos e iniciativas do CD Cajamar: carteira, marcos,
 tarefas, histórico de acompanhamento, painel e cronograma.
 
 Diferente dos outros módulos da Central, os dados **não** ficam no navegador:
-são compartilhados por toda a equipe em um banco Supabase. O acesso é aberto,
-igual ao restante da Central — quem abre o link do hub já entra.
+são compartilhados por toda a equipe em um banco Supabase — e, também diferente
+do restante da Central, **o acesso exige login**: e-mail e senha, com papel
+(admin, editor, leitor) definido no cadastro de Pessoas.
 
 - Fonte: `projetos/` (React + Vite + TypeScript + Tailwind)
 - Publicado em: `acompanhamento-projetos/` (servido pelo GitHub Pages)
@@ -225,30 +226,46 @@ O índice geral (documento `00`) ainda não é gerado.
 
 ### Acesso
 
-O módulo é aberto: sem login, como os demais da Central. Na prática, quem tiver
-o endereço lê, cria, edita e apaga qualquer projeto — a chave publicável do
-Supabase vai no bundle e o papel `anon` recebeu policy liberada em todas as
-tabelas (`003_acesso_aberto.sql`).
+O módulo exige login (e-mail e senha, Supabase Auth). Estar logado **não** é o
+mesmo que ter acesso: qualquer e-mail consegue criar conta, mas só lê a carteira
+quem tem cadastro **ativo** em `pessoas` ligado àquele login. Quem entra sem
+cadastro vê a tela "acesso ainda não liberado" em vez de uma carteira vazia.
 
-O cadastro de **Pessoas** existe para atribuir responsáveis e filtrar a
-carteira, não para controlar acesso. No histórico de acompanhamento, quem
-reporta se identifica escolhendo o próprio nome (`autor_nome`).
+O vínculo é automático: um gatilho em `auth.users` liga o login novo ao cadastro
+de mesmo e-mail (`vincular_novo_usuario`). Por isso a ordem é: **primeiro** o
+administrador cadastra a pessoa em Pessoas com o e-mail exato, **depois** ela
+faz o primeiro acesso. O primeiro usuário do módulo nasce admin, senão não
+haveria quem cadastrasse os demais.
 
-#### Como religar o login depois
+O que cada papel pode (`002_rls_e_gatilhos.sql`, valendo desde `011`):
 
-As regras por papel continuam no banco, intactas (`002_rls_e_gatilhos.sql`):
-ler exige cadastro ativo vinculado ao login, criar exige `admin`/`editor`,
-editar exige `admin` ou ser o responsável, e um gatilho impede autopromoção.
-Para voltar a exigir login basta derrubar as policies de `anon` e restaurar a
-tela de acesso:
+| | leitor | editor | admin |
+|---|---|---|---|
+| ver tudo | sim | sim | sim |
+| criar projeto | não | sim | sim |
+| editar projeto | só se for o responsável | só se for o responsável | qualquer um |
+| excluir projeto | não | não | sim |
+| cadastrar pessoas e trocar papéis | não | não | sim |
+
+Marcos, tarefas, páginas, anexos e documentos seguem a regra do projeto a que
+pertencem. Acompanhamento é do autor: só ele corrige o que lançou (e o admin
+apaga). Um gatilho impede autopromoção — ninguém muda o próprio papel.
+
+Arquivos: enviar e apagar exigem login; a **leitura continua pública**, porque o
+balde é público e a página exibe a miniatura direto pela URL (um UUID
+aleatório). Fechar a leitura exigiria URL assinada em todo lugar — página,
+documento e exportação — e quebraria os links já gravados.
+
+#### Como voltar a abrir o módulo
+
+Recriar as policies de `anon` (o conteúdo de `003_acesso_aberto.sql`) e devolver
+o grant:
 
 ```sql
-drop policy pessoas_aberto on projetos.pessoas;
-drop policy projetos_aberto on projetos.projetos;
-drop policy marcos_aberto on projetos.marcos;
-drop policy tarefas_aberto on projetos.tarefas;
-drop policy atualizacoes_aberto on projetos.atualizacoes;
-revoke select, insert, update, delete on all tables in schema projetos from anon;
+grant select, insert, update, delete on all tables in schema projetos to anon;
+create policy projetos_aberto on projetos.projetos for all to anon using (true) with check (true);
+-- e assim por diante para pessoas, marcos, tarefas, atualizacoes, anexos,
+-- paginas, paginas_versoes e documentos
 ```
 
 ## Configuração no painel do Supabase (uma vez só)
