@@ -15,6 +15,11 @@ export type FiltroDePrazo = 'tanto' | 'vencidas' | 'proximas' | 'sem_prazo';
 
 export interface FiltrosDeAtividade {
   texto: string;
+  /* A pergunta do dia a dia e "esta documentada ou nao", e tanto faz o
+     formato: pagina escrita aqui, proposta gerada aqui ou arquivo
+     anexado valem igual. Os filtros por formato continuam logo abaixo
+     para quem quiser separar. */
+  documentacao: Presenca;
   /* Lista vazia significa "todas": e o estado inicial e tambem o que
      sobra quando alguem desmarca tudo, que nao pode esconder a lista
      inteira sem querer. */
@@ -31,6 +36,7 @@ export interface FiltrosDeAtividade {
 
 export const filtrosVazios = (): FiltrosDeAtividade => ({
   texto: '',
+  documentacao: 'tanto',
   status: [],
   prioridades: [],
   responsavelId: '',
@@ -49,6 +55,12 @@ export const CONTEUDOS = [
   { campo: 'marcos', rotulo: 'Marcos' },
   { campo: 'anexos', rotulo: 'Anexos' },
 ] as const satisfies readonly { campo: keyof ConteudoDoProjeto; rotulo: string }[];
+
+/* Documentacao e a soma dos tres: escrita, gerada ou anexada. */
+export const documentosDe = (c?: ConteudoDoProjeto): number =>
+  (c ? c.paginas + c.documentos + c.anexos : 0);
+
+export const temDocumentacao = (c?: ConteudoDoProjeto): boolean => documentosDe(c) > 0;
 
 function combina(presenca: Presenca, quantidade: number): boolean {
   if (presenca === 'com') return quantidade > 0;
@@ -81,6 +93,7 @@ export function aplicarFiltros(
     if (!combinaPrazo(p, f.prazo)) return false;
 
     const tem = conteudo[p.id];
+    if (!combina(f.documentacao, documentosDe(tem))) return false;
     for (const { campo } of CONTEUDOS) {
       if (!combina(f[campo], tem?.[campo] ?? 0)) return false;
     }
@@ -97,6 +110,7 @@ export function filtrosAtivos(f: FiltrosDeAtividade): number {
   if (f.prioridades.length) contagem += 1;
   if (f.responsavelId) contagem += 1;
   if (f.prazo !== 'tanto') contagem += 1;
+  if (f.documentacao !== 'tanto') contagem += 1;
   for (const { campo } of CONTEUDOS) if (f[campo] !== 'tanto') contagem += 1;
   return contagem;
 }

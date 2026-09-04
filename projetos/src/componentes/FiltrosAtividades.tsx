@@ -108,7 +108,17 @@ export default function FiltrosAtividades({
         />
       </Grupo>
 
-      <Grupo titulo="Tem dentro">
+      <Grupo titulo="Documentação">
+        <Presente
+          rotulo="Documentada" valor={filtros.documentacao}
+          aoMudar={(v) => aoMudar({ ...filtros, documentacao: v })}
+        />
+        <p className="mt-1 text-[11px] leading-snug text-tinta-suave">
+          Vale página escrita aqui, proposta gerada aqui ou arquivo anexado.
+        </p>
+      </Grupo>
+
+      <Grupo titulo="Por formato">
         {CONTEUDOS.map(({ campo, rotulo }) => (
           <Presente
             key={campo} rotulo={rotulo} valor={filtros[campo]}

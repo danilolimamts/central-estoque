@@ -131,10 +131,13 @@ Ao lado da lista há uma barra retrátil (nasce fechada; a escolha fica no
 `localStorage` do navegador, porque o quadro precisa da largura toda quando
 ninguém está filtrando). Ela filtra por:
 
-- **tem dentro** — páginas, documento Word, tarefas, marcos e anexos, em três
-  estados: tanto faz, **com** ou **sem**. "Quais melhorias ainda estão sem
-  documentação" é a pergunta mais frequente, e uma caixa marcada só responderia
-  metade dela;
+- **documentação** — o filtro de cima, e o que se pergunta no dia a dia:
+  documentada é a atividade que tem página escrita aqui, proposta gerada aqui
+  **ou** arquivo anexado. O formato não importa; tarefa e marco não contam,
+  porque são execução, não registro;
+- **por formato** — páginas, documento Word, tarefas, marcos e anexos separados,
+  para quem quiser cortar mais fino. Todos em três estados: tanto faz, **com**
+  ou **sem** — uma caixa marcada só responderia metade da pergunta;
 - situação, prioridade, responsável, prazo (vencidas, vencem em 7 dias, sem
   prazo) e busca por nome/código/descrição, sem acento e sem caixa.
 
