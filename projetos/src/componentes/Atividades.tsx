@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react';
+import FiltrosAtividades from '@/componentes/FiltrosAtividades';
 import Quadro from '@/componentes/Quadro';
 import type { CartaoDoQuadro, ColunaDoQuadro } from '@/componentes/Quadro';
 import { Aviso, Barra, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import { coresStatus } from '@/config/tokens';
 import { mensagemDeErro, salvarProjeto } from '@/estado/dados';
+import { conteudoDe, useConteudoDosProjetos } from '@/estado/conteudo';
+import type { ConteudoDoProjeto } from '@/estado/conteudo';
+import { CONTEUDOS, aplicarFiltros, filtrosVazios } from '@/dominio/filtros';
 import {
   avancoPorConclusao, filhosDe, generoDoRotulo, percentualEfetivo, porPrioridade,
   rotuloDosFilhos, singularDoRotulo,
@@ -42,6 +46,13 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
   const [criando, setCriando] = useState<StatusProjeto | null>(null);
   const [nome, setNome] = useState('');
   const [ordem, setOrdem] = useState<'prioridade' | 'prazo' | 'situacao' | 'nome'>('prioridade');
+  const [filtros, setFiltros] = useState(filtrosVazios);
+  /* A barra nasce fechada e a escolha fica no proprio navegador: quem
+     filtra o dia inteiro nao quer reabrir a cada visita, e quem so
+     olha o quadro nao quer perder a largura. */
+  const [painelAberto, setPainelAberto] = useState(
+    () => localStorage.getItem('projetos.filtros') === 'aberto',
+  );
 
   /* Prioridade manda na ordem: o que e critico aparece primeiro, e o
      prazo desempata. Quem preferir outra ordem troca no seletor. */
@@ -54,13 +65,22 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
     if (ordem === 'situacao') return lista.sort((a, b) => STATUS.indexOf(a.status) - STATUS.indexOf(b.status));
     return lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }, [projetos, pai.id, ordem]);
+  /* Quanta coisa cada atividade tem dentro: e o que responde "quais
+     ainda estao sem documentacao". Uma consulta por tabela, so das
+     atividades deste projeto. */
+  const carteiraDeConteudo = useConteudoDosProjetos(useMemo(() => filhos.map((f) => f.id), [filhos]));
+  const visiveis = useMemo(
+    () => aplicarFiltros(filhos, carteiraDeConteudo.conteudo, filtros),
+    [filhos, carteiraDeConteudo.conteudo, filtros],
+  );
+
   const plural = rotuloDosFilhos(pai);
   const singular = singularDoRotulo(pai);
   const artigo = generoDoRotulo(pai) === 'f' ? 'a' : 'o';
   const avanco = avancoPorConclusao(projetos, pai.id);
   const nomePessoa = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '—';
 
-  const cartoes: CartaoDeAtividade[] = filhos.map((p) => ({ id: p.id, coluna: p.status, projeto: p }));
+  const cartoes: CartaoDeAtividade[] = visiveis.map((p) => ({ id: p.id, coluna: p.status, projeto: p }));
 
   async function criar(status: StatusProjeto) {
     const limpo = nome.trim();
@@ -99,7 +119,11 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
     <section className="cartao overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-linha px-4 py-3">
         <h2 className="font-titulo text-sm font-extrabold">
-          {plural} {filhos.length > 0 && <span className="text-tinta-suave">({filhos.length})</span>}
+          {plural} {filhos.length > 0 && (
+            <span className="text-tinta-suave">
+              ({visiveis.length === filhos.length ? filhos.length : `${visiveis.length} de ${filhos.length}`})
+            </span>
+          )}
           {avanco && (
             <span className="ml-2 text-xs font-normal text-tinta-suave">
               {avanco.concluidas} de {avanco.total} concluídas · {avanco.percentual}%
@@ -166,7 +190,28 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
           Nenhum item em {plural.toLowerCase()} ainda. Cada {singular.toLowerCase()} tem marcos,
           tarefas, páginas, anexos e gera o próprio documento em Word.
         </Vazio>
-      ) : emQuadro ? (
+      ) : (
+      <div className="lg:flex">
+        <FiltrosAtividades
+          filtros={filtros} aoMudar={setFiltros} pessoas={pessoas}
+          aberto={painelAberto}
+          aoAlternar={() => setPainelAberto((a) => {
+            localStorage.setItem('projetos.filtros', a ? 'fechado' : 'aberto');
+            return !a;
+          })}
+          mostrando={visiveis.length} total={filhos.length}
+        />
+
+        <div className="min-w-0 flex-1">
+        {carteiraDeConteudo.erro && <div className="p-4"><Aviso>{carteiraDeConteudo.erro}</Aviso></div>}
+        {!visiveis.length ? (
+          <Vazio>
+            Nenhum item com esses filtros.{' '}
+            <button className="font-bold text-roxo-escuro" onClick={() => setFiltros(filtrosVazios())}>
+              Limpar filtros
+            </button>
+          </Vazio>
+        ) : emQuadro ? (
         <Quadro
           colunas={COLUNAS}
           itens={cartoes}
@@ -193,6 +238,9 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                   {percentualEfetivo(projetos, c.projeto)}%
                 </span>
               </div>
+              <div className="mt-1.5">
+                <MarcasDeConteudo conteudo={conteudoDe(carteiraDeConteudo.conteudo, c.projeto.id)} discreto />
+              </div>
               <p className="mt-1.5 truncate text-[11px] text-tinta-suave">
                 {nomePessoa(c.projeto.responsavel_id)}
                 {c.projeto.fim_previsto && ` · ${formatarData(c.projeto.fim_previsto)}`}
@@ -211,12 +259,13 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                 <th className="px-3 py-2 font-bold">Prioridade</th>
                 <th className="px-3 py-2 font-bold">Prazo</th>
                 <th className="px-3 py-2 font-bold">Saúde</th>
+                <th className="px-3 py-2 font-bold">Conteúdo</th>
                 <th className="px-3 py-2 font-bold w-40">Avanço</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
-              {filhos.map((p) => (
+              {visiveis.map((p) => (
                 <tr key={p.id} className="border-t border-linha hover:bg-papel">
                   <td className="px-4 py-2">
                     <button
@@ -268,6 +317,10 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                   <td className="px-3 py-2"><SeloSaude saude={saude(p, projetos)} /></td>
 
                   <td className="px-3 py-2">
+                    <MarcasDeConteudo conteudo={conteudoDe(carteiraDeConteudo.conteudo, p.id)} />
+                  </td>
+
+                  <td className="px-3 py-2">
                     {/* Sem campo para digitar: o avanco e consequencia da
                         situacao, entao muda pelo seletor ao lado. */}
                     <div className="flex items-center gap-2">
@@ -291,6 +344,9 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
             >+ Adicionar {singular.toLowerCase()}</button>
           </div>
         </div>
+        )}
+        </div>
+      </div>
       )}
 
       {/* Situação do projeto inteiro, num selo só, para quem chega pela lista. */}
@@ -305,5 +361,30 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
         </div>
       )}
     </section>
+  );
+}
+
+const SIGLAS: Record<keyof ConteudoDoProjeto, string> = {
+  paginas: 'Pág', documentos: 'Doc', tarefas: 'Tar', marcos: 'Mar', anexos: 'Anx',
+};
+
+/* O que a atividade ja tem dentro, em tres letras. Sem isso o filtro
+   "sem documentacao" acha o item mas a linha nao explica por que, e
+   abrir uma a uma para conferir e o que se queria evitar. */
+function MarcasDeConteudo({ conteudo, discreto }: { conteudo: ConteudoDoProjeto; discreto?: boolean }) {
+  const marcas = CONTEUDOS.filter(({ campo }) => conteudo[campo] > 0);
+  if (!marcas.length) {
+    return discreto ? null : <span className="text-[11px] text-tinta-suave">—</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {marcas.map(({ campo, rotulo }) => (
+        <span
+          key={campo}
+          title={`${conteudo[campo]} · ${rotulo}`}
+          className="rounded border border-linha px-1.5 py-0.5 text-[11px] font-bold text-tinta-suave"
+        >{SIGLAS[campo]} {conteudo[campo]}</span>
+      ))}
+    </div>
   );
 }

@@ -160,9 +160,17 @@ await pagina.route('**/rest/v1/**', async (rota) => {
   const caminho = new URL(rota.request().url()).pathname.split('/').pop() ?? '';
   const linhas = porTabela[caminho] ?? [];
   const filtro = new URL(rota.request().url()).searchParams.get('projeto_id');
-  const corpo = filtro
-    ? linhas.filter((l) => l.projeto_id === filtro.replace('eq.', ''))
-    : linhas;
+  /* O app pergunta tanto por um projeto (eq.) quanto pelo conjunto de
+     atividades de uma vez (in.(a,b)) — a simulacao precisa entender os
+     dois, senao a contagem de conteudo volta vazia. */
+  const emLista = filtro?.startsWith('in.')
+    ? filtro.slice(4, -1).split(',').map((i) => i.replaceAll('"', ''))
+    : null;
+  const corpo = !filtro
+    ? linhas
+    : emLista
+      ? linhas.filter((l) => emLista.includes(l.projeto_id))
+      : linhas.filter((l) => l.projeto_id === filtro.replace('eq.', ''));
   await rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(corpo) });
 });
 
@@ -219,6 +227,19 @@ for (const coluna of ['Responsável', 'Prioridade', 'Prazo', 'Saúde', 'Avanço'
   }
 }
 await pagina.screenshot({ path: 'verificacao-melhorias.png', fullPage: true });
+
+/* Barra de filtros: nasce fechada e abre pela aba lateral. Filtrar por
+   "sem paginas" tem de esconder a melhoria que ja tem documentacao. */
+await pagina.getByRole('button', { name: 'Filtros', exact: false }).first().click();
+await pagina.waitForTimeout(300);
+const comFiltros = (await pagina.textContent('body')) ?? '';
+for (const campo of ['Tem dentro', 'Páginas', 'Documento Word', 'Prazo']) {
+  if (!comFiltros.includes(campo)) {
+    console.error(`FALHOU: a barra de filtros não tem "${campo}".`);
+    process.exitCode = 1;
+  }
+}
+await pagina.screenshot({ path: 'verificacao-filtros.png', fullPage: true });
 
 await pagina.getByRole('button', { name: 'Projetos', exact: true }).click();
 await pagina.getByText('Reendereçamento do mezanino').first().click();
