@@ -27,7 +27,12 @@
 
   /* Texto das paginas: a mesma folha vale no editor e na leitura, senao
      o que se escreve nao e o que se ve depois de salvar. */
-  .prosa { @apply text-[15px] leading-relaxed text-tinta; }
+  /* A tela acompanha a largura do monitor, mas a coluna de texto para
+     em torno de 90 caracteres: numa linha de 1700 px o olho perde o
+     comeco da proxima. O quadro de fluxo, que fica fora da prosa,
+     continua usando a largura toda. */
+  .prosa { @apply max-w-[90ch] text-[15px] leading-relaxed text-tinta; }
+  .prosa img, .prosa table, .prosa pre { @apply max-w-full; }
   .prosa h1 { @apply font-titulo text-2xl font-extrabold mt-5 mb-2; }
   .prosa h2 { @apply font-titulo text-xl font-extrabold mt-5 mb-2; }
   .prosa h3 { @apply font-titulo text-base font-extrabold mt-4 mb-1.5; }
