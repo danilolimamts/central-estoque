@@ -78,11 +78,42 @@ export function nomeCompleto(lista: Projeto[], projeto: Projeto): string {
   return pai ? `${pai.nome} · ${projeto.nome}` : projeto.nome;
 }
 
-/* Avanco do grupo: media do avanco dos filhos, ignorando cancelados.
-   O percentual digitado no pai nao acompanha a realidade quando sao
-   dezenas de melhorias. */
-export function avancoDoGrupo(lista: Projeto[], paiId: string): number | null {
+export interface AvancoDoProjeto {
+  concluidas: number;
+  total: number;
+  percentual: number;
+}
+
+/* Avanco do projeto: quantas atividades foram concluidas, nao a media
+   dos percentuais digitados. Percentual escrito a mao envelhece e
+   ninguem lembra de atualizar; atividade concluida e fato.
+   Cancelada sai da conta: nao e trabalho pendente nem entregue. */
+export function avancoPorConclusao(lista: Projeto[], paiId: string): AvancoDoProjeto | null {
   const filhos = filhosDe(lista, paiId).filter((f) => f.status !== 'cancelado');
   if (!filhos.length) return null;
-  return Math.round(filhos.reduce((soma, f) => soma + f.percentual, 0) / filhos.length);
+  const concluidas = filhos.filter((f) => f.status === 'concluido').length;
+  return {
+    concluidas,
+    total: filhos.length,
+    percentual: Math.round((concluidas / filhos.length) * 100),
+  };
+}
+
+/* O numero que vale na tela: projeto com atividades usa a conclusao
+   delas; atividade sozinha usa o proprio percentual. */
+export function percentualEfetivo(lista: Projeto[], projeto: Projeto): number {
+  return avancoPorConclusao(lista, projeto.id)?.percentual ?? projeto.percentual;
+}
+
+/* Ordem de urgencia para ordenar a lista de atividades. */
+const PESO_DA_PRIORIDADE: Record<string, number> = {
+  critica: 0, alta: 1, media: 2, baixa: 3,
+};
+
+export function porPrioridade(a: Projeto, b: Projeto): number {
+  const peso = PESO_DA_PRIORIDADE[a.prioridade] - PESO_DA_PRIORIDADE[b.prioridade];
+  if (peso !== 0) return peso;
+  /* Empate na prioridade: quem vence antes aparece antes, e quem nao
+     tem prazo vai para o fim. */
+  return (a.fim_previsto ?? '9999').localeCompare(b.fim_previsto ?? '9999');
 }

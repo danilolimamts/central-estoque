@@ -253,7 +253,7 @@ export default function Paginas({ projetoId, pessoas }: Props) {
                           <div className="prosa" dangerouslySetInnerHTML={{ __html: limparHtml(b.conteudo) }} />
                         )
                       ) : (
-                        <Fluxograma codigo={b.conteudo} editando={editando} aoMudar={(codigo) => trocarBloco(b.id, codigo)} />
+                        <Fluxograma conteudo={b.conteudo} editando={editando} aoMudar={(conteudo) => trocarBloco(b.id, conteudo)} />
                       )}
                     </div>
                   ))}

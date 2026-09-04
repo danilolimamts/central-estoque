@@ -75,3 +75,41 @@ describe('gerarDocumentoWord', () => {
     expect(blob.size).toBeGreaterThan(5000);
   });
 });
+
+describe('fluxo desenhado', () => {
+  it('lê o formato novo e ignora o texto do formato antigo', async () => {
+    const { lerFluxo } = await import('../src/dominio/fluxo');
+    expect(lerFluxo('{"nos":[],"ligacoes":[]}')).toEqual({ nos: [], ligacoes: [] });
+    expect(lerFluxo('flowchart TD\n A --> B')).toBeNull();
+    expect(lerFluxo('{quebrado')).toBeNull();
+  });
+
+  it('a seta sai da borda do bloco, não do centro', async () => {
+    const { bordaMaisProxima } = await import('../src/dominio/fluxo');
+    const de = { id: 'a', texto: '', x: 0, y: 0, largura: 100, altura: 100, forma: 'caixa' as const, cor: '#000' };
+    const para = { ...de, id: 'b', x: 300 };
+    // Blocos lado a lado: a seta sai pela lateral direita, no meio da altura.
+    expect(bordaMaisProxima(de, para)).toEqual({ x: 100, y: 50 });
+  });
+
+  it('gera o SVG do fluxo para o documento', async () => {
+    const { fluxoParaSvg, noNovo } = await import('../src/dominio/fluxo');
+    const a = noNovo('inicio', 20, 20);
+    const b = noNovo('decisao', 300, 20);
+    const svg = fluxoParaSvg({
+      nos: [a, b],
+      ligacoes: [{ id: 'l1', de: a.id, para: b.id, rotulo: 'Sim' }],
+    });
+    expect(svg.startsWith('<svg')).toBe(true);
+    expect(svg).toContain('marker-end="url(#ponta)"');
+    expect(svg).toContain('Sim');
+    expect(svg).toContain('rotate(45');
+  });
+
+  it('escapa texto que quebraria o SVG', async () => {
+    const { fluxoParaSvg, noNovo } = await import('../src/dominio/fluxo');
+    const no = { ...noNovo('caixa', 0, 0), texto: 'Saldo < 10 & pendente' };
+    const svg = fluxoParaSvg({ nos: [no], ligacoes: [] });
+    expect(svg).toContain('Saldo &lt; 10 &amp; pendente');
+  });
+});

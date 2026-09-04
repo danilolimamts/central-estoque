@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { comprimirImagem } from '@/lib/imagem';
 import { mensagemDeErro } from '@/estado/dados';
+import { escreverFluxo, fluxoVazio } from '@/dominio/fluxo';
 import type { Bloco, Pagina, StatusPagina, VersaoDePagina } from '@/dominio/tipos';
 
 const BALDE = 'anexos-projetos';
@@ -10,11 +11,8 @@ export function blocoVazio(tipo: Bloco['tipo']): Bloco {
   return {
     id: crypto.randomUUID(),
     tipo,
-    conteudo: tipo === 'texto'
-      ? ''
-      /* Um fluxo em branco nao renderiza e parece defeito; o exemplo
-         tambem ensina a sintaxe sem precisar de manual. */
-      : 'flowchart TD\n  A[Usuário abre a tela] --> B{Tem saldo?}\n  B -- Sim --> C[Mostra o item]\n  B -- Não --> D[Avisa indisponível]',
+    /* Fluxo novo nasce vazio: os blocos entram pela barra do quadro. */
+    conteudo: tipo === 'texto' ? '' : escreverFluxo(fluxoVazio()),
   };
 }
 

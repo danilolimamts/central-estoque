@@ -4,7 +4,7 @@ import Anexos from '@/componentes/Anexos';
 import Atividades from '@/componentes/Atividades';
 import Quadro from '@/componentes/Quadro';
 import { coresStatusTarefa } from '@/config/tokens';
-import { ehRaiz, rotuloDosFilhos, singularDoRotulo } from '@/dominio/arvore';
+import { avancoPorConclusao, ehRaiz, percentualEfetivo, rotuloDosFilhos, singularDoRotulo } from '@/dominio/arvore';
 
 /* O editor de texto e o desenhista de fluxograma somam alguns MB. Quem
    so consulta o painel nao deve baixar isso: entram sob demanda, quando
@@ -52,6 +52,9 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
      que ha para fazer. Marcos, tarefas, paginas, anexos e documento
      pertencem a cada atividade, e so aparecem la dentro. */
   const grupo = ehRaiz(projeto);
+  /* Com atividades dentro, o avanco vem da conclusao delas: percentual
+     digitado no projeto envelhece e ninguem lembra de corrigir. */
+  const avanco = avancoPorConclusao(projetos, projeto.id);
   /* Projeto antigo pode ter conteudo proprio de antes desta estrutura.
      Ele continua visivel para nada se perder, mas o novo vai para as
      atividades. */
@@ -135,14 +138,15 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
 
         <div className="mt-4">
           <div className="mb-1 flex items-center justify-between text-xs font-bold text-tinta-suave">
-            <span>Avanço informado</span>
+            <span>{avanco ? 'Avanço pelas atividades concluídas' : 'Avanço informado'}</span>
             <span>
-              {projeto.percentual}%
+              {percentualEfetivo(projetos, projeto)}%
+              {avanco && ` · ${avanco.concluidas} de ${avanco.total}`}
               {percentualEsperado(projeto) !== null && ` · esperado pelo prazo ${percentualEsperado(projeto)}%`}
-              {dados.tarefas.length > 0 && ` · tarefas concluídas ${progressoDeTarefas(dados.tarefas)}%`}
+              {!avanco && dados.tarefas.length > 0 && ` · tarefas concluídas ${progressoDeTarefas(dados.tarefas)}%`}
             </span>
           </div>
-          <Barra valor={projeto.percentual} esperado={percentualEsperado(projeto)} />
+          <Barra valor={percentualEfetivo(projetos, projeto)} esperado={percentualEsperado(projeto)} />
         </div>
       </div>
 
