@@ -11,6 +11,17 @@ igual ao restante da Central — quem abre o link do hub já entra.
 - Publicado em: `acompanhamento-projetos/` (servido pelo GitHub Pages)
 - Endereço: https://danilolimamts.github.io/central-estoque/acompanhamento-projetos/
 
+## Largura da tela
+
+O miolo acompanha o monitor até 1760 px (`max-w-tela`, em `tailwind.config.js`):
+em 1240 px sobrava um terço de cinza dos dois lados no monitor do escritório e o
+quadro de atividades mostrava só duas colunas. O teto existe para a linha da
+tabela não virar uma faixa perdida em monitor ultralargo.
+
+A coluna de texto das páginas continua parando em ~90 caracteres (`.prosa`):
+numa linha de 1700 px o olho perde o começo da próxima. O quadro de fluxo, que
+fica fora da prosa, usa a largura toda.
+
 ## Comandos
 
 ```bash

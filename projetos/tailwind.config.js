@@ -16,6 +16,12 @@ export default {
         ambar: '#C79212',
         vermelho: '#D2453A',
       },
+      /* A tela usa a largura do monitor: em 1240 px sobrava um terco de
+         cinza dos dois lados num monitor de escritorio, e o quadro de
+         atividades ficava com duas colunas visiveis. O teto existe para
+         a linha da tabela nao virar uma faixa perdida em monitor
+         ultralargo. */
+      maxWidth: { tela: '1760px' },
       fontFamily: { titulo: ['Poppins', 'Inter', 'sans-serif'], texto: ['Inter', 'sans-serif'] },
       boxShadow: {
         card: '0 1px 3px rgba(20,24,60,.08), 0 1px 2px rgba(20,24,60,.04)',

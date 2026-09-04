@@ -146,7 +146,7 @@ const PIXEL = Buffer.from(
 const navegador = await chromium.launch(
   process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {},
 );
-const pagina = await navegador.newPage({ viewport: { width: 1360, height: 1000 } });
+const pagina = await navegador.newPage({ viewport: { width: Number(process.env.LARGURA ?? 1360), height: 1000 } });
 
 const erros = [];
 /* Falha ao baixar recurso externo (a fonte do Google, por exemplo) nao
