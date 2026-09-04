@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Aviso, Campo, Modal, Selo, Vazio } from '@/componentes/ui';
 import { excluirPessoa, mensagemDeErro, salvarPessoa } from '@/estado/dados';
+import { usePermissoes } from '@/estado/sessao';
 import type { Pessoa } from '@/dominio/tipos';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function Pessoas({ pessoas, recarregar }: Props) {
+  const permissoes = usePermissoes();
   const [emEdicao, setEmEdicao] = useState<Pessoa | 'nova' | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -25,7 +27,9 @@ export default function Pessoas({ pessoas, recarregar }: Props) {
       <div className="cartao overflow-hidden">
         <div className="flex items-center justify-between border-b border-linha px-4 py-3">
           <h2 className="font-titulo text-sm font-extrabold">Pessoas</h2>
-          <button className="botao-primario" onClick={() => setEmEdicao('nova')}>Cadastrar pessoa</button>
+          {permissoes.ehAdmin && (
+            <button className="botao-primario" onClick={() => setEmEdicao('nova')}>Cadastrar pessoa</button>
+          )}
         </div>
         {pessoas.length ? (
           <table className="w-full text-sm">
@@ -48,6 +52,9 @@ export default function Pessoas({ pessoas, recarregar }: Props) {
                     <Selo cor={p.ativo ? '#2E8B57' : '#6A6F94'}>{p.ativo ? 'Ativa' : 'Inativa'}</Selo>
                   </td>
                   <td className="px-4 py-2 text-right text-xs">
+                    {/* Cadastro e papel sao coisa de administrador: quem
+                        nao e so consulta quem esta na equipe. */}
+                    {!permissoes.ehAdmin ? <span className="text-tinta-suave">—</span> : <>
                     <button className="mr-3 font-bold text-roxo-escuro" onClick={() => setEmEdicao(p)}>Editar</button>
                     <button
                       className="font-bold text-vermelho"
@@ -57,6 +64,7 @@ export default function Pessoas({ pessoas, recarregar }: Props) {
                         catch (falha) { setErro(mensagemDeErro(falha)); }
                       }}
                     >Remover</button>
+                    </>}
                   </td>
                 </tr>
               ))}

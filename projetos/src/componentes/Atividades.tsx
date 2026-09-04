@@ -6,6 +6,7 @@ import { Aviso, Barra, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/co
 import { coresStatus } from '@/config/tokens';
 import { mensagemDeErro, salvarProjeto } from '@/estado/dados';
 import { conteudoDe, useConteudoDosProjetos } from '@/estado/conteudo';
+import { usePermissoes } from '@/estado/sessao';
 import type { ConteudoDoProjeto } from '@/estado/conteudo';
 import { CONTEUDOS, aplicarFiltros, filtrosVazios } from '@/dominio/filtros';
 import {
@@ -41,6 +42,7 @@ interface CartaoDeAtividade extends CartaoDoQuadro {
    quiser arrastar. O nome das atividades vem do proprio projeto:
    "Melhorias" no Bseller, "Frentes" ou "Etapas" em outro. */
 export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar }: Props) {
+  const permissoes = usePermissoes();
   const [erro, setErro] = useState<string | null>(null);
   const [emQuadro, setEmQuadro] = useState(false);
   const [criando, setCriando] = useState<StatusProjeto | null>(null);
@@ -107,6 +109,13 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
   /* Mudar situacao, prioridade ou responsavel direto na linha: e o que
      se faz o dia inteiro, e nao deveria exigir abrir a atividade. */
   async function alterar(projeto: Projeto, mudanca: Partial<Projeto>) {
+    /* O quadro arrasta qualquer cartao; a recusa vem antes da ida ao
+       banco para a pessoa entender o motivo em vez de ver o cartao
+       voltar sozinho. */
+    if (!permissoes.podeEditar(projeto)) {
+      setErro(`Só quem criou "${projeto.nome}" (ou um administrador) pode alterá-la.`);
+      return;
+    }
     try {
       await salvarProjeto({ nome: projeto.nome, ...mudanca }, projeto.id);
       await recarregar();
@@ -151,9 +160,11 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
               onClick={() => setEmQuadro(true)}
             >Quadro</button>
           </div>
-          <button className="botao-primario py-1 text-xs" onClick={() => { setCriando('nao_iniciado'); setNome(''); }}>
-            + Nov{artigo} {singular.toLowerCase()}
-          </button>
+          {permissoes.podeCriar && (
+            <button className="botao-primario py-1 text-xs" onClick={() => { setCriando('nao_iniciado'); setNome(''); }}>
+              + Nov{artigo} {singular.toLowerCase()}
+            </button>
+          )}
         </div>
       </div>
 
@@ -278,6 +289,7 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                   <td className="px-3 py-2">
                     <select
                       className="campo w-36 py-1 text-xs" value={p.responsavel_id ?? ''}
+                      disabled={!permissoes.podeEditar(p)}
                       onChange={(e) => void alterar(p, { responsavel_id: e.target.value || null })}
                     >
                       <option value="">Sem responsável</option>
@@ -290,6 +302,7 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                   <td className="px-3 py-2">
                     <select
                       className="campo w-36 py-1 text-xs" value={p.status}
+                      disabled={!permissoes.podeEditar(p)}
                       onChange={(e) => void alterar(p, { status: e.target.value as StatusProjeto })}
                     >
                       {STATUS.map((s) => <option key={s} value={s}>{rotuloStatus[s]}</option>)}
@@ -299,6 +312,7 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                   <td className="px-3 py-2">
                     <select
                       className="campo w-28 py-1 text-xs" value={p.prioridade}
+                      disabled={!permissoes.podeEditar(p)}
                       onChange={(e) => void alterar(p, { prioridade: e.target.value as Prioridade })}
                     >
                       {PRIORIDADES.map((s) => <option key={s} value={s}>{rotuloPrioridade[s]}</option>)}
@@ -311,6 +325,7 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                   <td className="px-3 py-2">
                     <input
                       type="date" className="campo w-36 py-1 text-xs" value={p.inicio_real ?? ''}
+                      disabled={!permissoes.podeEditar(p)}
                       onChange={(e) => void alterar(p, { inicio_real: e.target.value || null })}
                     />
                   </td>
@@ -318,6 +333,7 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                   <td className="px-3 py-2">
                     <input
                       type="date" className="campo w-36 py-1 text-xs" value={p.fim_previsto ?? ''}
+                      disabled={!permissoes.podeEditar(p)}
                       onChange={(e) => void alterar(p, { fim_previsto: e.target.value || null })}
                     />
                     {diasDeAtraso(p) > 0 && (
@@ -348,12 +364,14 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
             </tbody>
           </table>
 
-          <div className="border-t border-linha px-4 py-2">
-            <button
-              className="text-xs font-bold text-tinta-suave hover:text-roxo-escuro"
-              onClick={() => { setCriando('nao_iniciado'); setNome(''); }}
-            >+ Adicionar {singular.toLowerCase()}</button>
-          </div>
+          {permissoes.podeCriar && (
+            <div className="border-t border-linha px-4 py-2">
+              <button
+                className="text-xs font-bold text-tinta-suave hover:text-roxo-escuro"
+                onClick={() => { setCriando('nao_iniciado'); setNome(''); }}
+              >+ Adicionar {singular.toLowerCase()}</button>
+            </div>
+          )}
         </div>
         )}
         </div>

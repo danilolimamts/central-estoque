@@ -80,3 +80,38 @@ export function useSessao(): Sessao {
 }
 
 export const sair = () => supabase.auth.signOut();
+
+/* A mesma regra do banco, repetida na tela — nao para proteger (quem
+   protege e a policy), mas para o botao nao existir quando a acao vai
+   ser recusada. Admin faz tudo; os demais mexem no que criaram. */
+import { createContext, useContext } from 'react';
+import type { Projeto } from '@/dominio/tipos';
+
+export interface Permissoes {
+  ehAdmin: boolean;
+  podeCriar: boolean;
+  podeEditar: (projeto: Projeto) => boolean;
+  usuarioId: string | null;
+}
+
+export const PERMISSOES_FECHADAS: Permissoes = {
+  ehAdmin: false, podeCriar: false, podeEditar: () => false, usuarioId: null,
+};
+
+export const ContextoPermissoes = createContext<Permissoes>(PERMISSOES_FECHADAS);
+
+export const usePermissoes = () => useContext(ContextoPermissoes);
+
+export function permissoesDe(sessao: Sessao): Permissoes {
+  const papel = sessao.pessoa?.ativo ? sessao.pessoa.papel : null;
+  const usuarioId = sessao.usuario?.id ?? null;
+  const ehAdmin = papel === 'admin';
+  return {
+    ehAdmin,
+    podeCriar: ehAdmin || papel === 'editor',
+    /* Projeto antigo, criado quando o modulo era aberto, nao tem autor:
+       so administrador mexe nele. */
+    podeEditar: (projeto) => ehAdmin || (!!usuarioId && projeto.criado_por === usuarioId),
+    usuarioId,
+  };
+}
