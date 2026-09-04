@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Acesso from '@/paginas/Acesso';
 import Painel from '@/paginas/Painel';
 import ListaProjetos from '@/paginas/ListaProjetos';
 import DetalheProjeto from '@/paginas/DetalheProjeto';
@@ -6,6 +7,8 @@ import Cronograma from '@/paginas/Cronograma';
 import Pessoas from '@/paginas/Pessoas';
 import { Aviso, Carregando } from '@/componentes/ui';
 import { useCarteira } from '@/estado/dados';
+import { sair, useSessao } from '@/estado/sessao';
+import { rotuloPapel } from '@/dominio/tipos';
 import type { Projeto } from '@/dominio/tipos';
 
 declare const __VERSAO__: string;
@@ -22,11 +25,34 @@ const ABAS: { id: Aba; rotulo: string }[] = [
 export default function App() {
   const [aba, setAba] = useState<Aba>('painel');
   const [aberto, setAberto] = useState<Projeto | null>(null);
+  const sessao = useSessao();
   const carteira = useCarteira();
 
   /* O projeto aberto vem sempre da lista recarregada: guardar o objeto
      no estado deixaria a tela com dados velhos apos uma edicao. */
   const selecionado = aberto ? carteira.projetos.find((p) => p.id === aberto.id) ?? aberto : null;
+
+  if (sessao.carregando) return <Carregando />;
+  if (!sessao.usuario) return <Acesso />;
+
+  /* Logado sem cadastro ativo: o banco nao devolve nada para essa
+     pessoa, entao a tela diz o motivo em vez de mostrar uma carteira
+     vazia que pareceria defeito. */
+  if (!sessao.pessoa?.ativo) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-navy px-4">
+        <div className="cartao max-w-sm p-6 text-center">
+          <h1 className="font-titulo text-lg font-extrabold">Acesso ainda não liberado</h1>
+          <p className="mt-2 text-sm text-tinta-suave">
+            O login de <strong>{sessao.usuario.email}</strong> funcionou, mas este e-mail não está
+            cadastrado como pessoa ativa do módulo. Peça a um administrador para cadastrá-lo
+            com exatamente este endereço.
+          </p>
+          <button className="botao-neutro mt-4" onClick={() => void sair()}>Sair</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -46,7 +72,14 @@ export default function App() {
             <h1 className="font-titulo text-2xl font-extrabold leading-tight">Projetos</h1>
             <p className="text-[13px] text-white/60">CD Cajamar · acompanhamento de projetos e iniciativas</p>
           </div>
-          <a href="../" className="text-xs font-bold text-white/70 hover:text-white">← Central</a>
+          <div className="text-right text-xs">
+            <p className="font-bold text-white/90">{sessao.pessoa.nome}</p>
+            <p className="text-white/50">{rotuloPapel[sessao.pessoa.papel]}</p>
+            <div className="mt-1 flex gap-3 font-bold text-white/70">
+              <a href="../" className="hover:text-white">← Central</a>
+              <button className="hover:text-white" onClick={() => void sair()}>Sair</button>
+            </div>
+          </div>
         </div>
         <nav className="mx-auto flex max-w-tela gap-1 px-6 xl:px-10">
           {ABAS.map((a) => (

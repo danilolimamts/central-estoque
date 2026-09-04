@@ -14,8 +14,10 @@ const iso = (deslocamentoEmDias) => {
   return d.toISOString().slice(0, 10);
 };
 
+const USUARIO = { id: 'u1', email: 'danilo@exemplo.com' };
+
 const pessoas = [
-  { id: 'p1', user_id: null, nome: 'Danilo Lima', email: 'danilo@exemplo.com', area: 'Estoque', papel: 'admin', ativo: true },
+  { id: 'p1', user_id: USUARIO.id, nome: 'Danilo Lima', email: 'danilo@exemplo.com', area: 'Estoque', papel: 'admin', ativo: true },
   { id: 'p2', user_id: null, nome: 'Equipe Recebimento', email: 'recebimento@exemplo.com', area: 'Recebimento', papel: 'editor', ativo: true },
 ];
 
@@ -148,6 +150,27 @@ const navegador = await chromium.launch(
 );
 const pagina = await navegador.newPage({ viewport: { width: Number(process.env.LARGURA ?? 1360), height: 1000 } });
 
+/* O modulo agora exige login. O teste entra com uma sessao ja pronta no
+   armazenamento do navegador e responde as rotas de autenticacao: o que
+   se quer verificar aqui sao as telas, nao o Supabase Auth. */
+const SESSAO = {
+  access_token: 'teste', refresh_token: 'teste', token_type: 'bearer',
+  expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600,
+  user: {
+    id: USUARIO.id, aud: 'authenticated', role: 'authenticated', email: USUARIO.email,
+    app_metadata: {}, user_metadata: {}, created_at: new Date().toISOString(),
+  },
+};
+await pagina.addInitScript(([chave, sessao]) => {
+  localStorage.setItem(chave, JSON.stringify(sessao));
+}, ['sb-jfvnswafpeshyfweoadg-auth-token', SESSAO]);
+
+await pagina.route('**/auth/v1/**', async (rota) => {
+  const url = rota.request().url();
+  const corpo = url.includes('/user') ? SESSAO.user : SESSAO;
+  await rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(corpo) });
+});
+
 const erros = [];
 /* Falha ao baixar recurso externo (a fonte do Google, por exemplo) nao
    e defeito do modulo: em maquina sem saida para a internet isso e
@@ -159,7 +182,15 @@ pagina.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
 await pagina.route('**/rest/v1/**', async (rota) => {
   const caminho = new URL(rota.request().url()).pathname.split('/').pop() ?? '';
   const linhas = porTabela[caminho] ?? [];
-  const filtro = new URL(rota.request().url()).searchParams.get('projeto_id');
+  const parametros = new URL(rota.request().url()).searchParams;
+  /* A tela pergunta pelo cadastro do proprio usuario logado antes de
+     qualquer outra coisa; sem esta resposta ela para no aviso de acesso
+     nao liberado. */
+  if (parametros.get('user_id')) {
+    await rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pessoas[0]) });
+    return;
+  }
+  const filtro = parametros.get('projeto_id');
   /* O app pergunta tanto por um projeto (eq.) quanto pelo conjunto de
      atividades de uma vez (in.(a,b)) — a simulacao precisa entender os
      dois, senao a contagem de conteudo volta vazia. */
@@ -270,5 +301,19 @@ if (!texto.includes('Marcos') || !texto.includes('Migração dos itens')) {
 } else {
   console.log('OK: painel, carteira, cronograma, pessoas e detalhe renderizados sem erros.');
 }
+
+/* Sem sessao guardada, a mesma tela tem de parar no login: e a
+   garantia de que o modulo deixou de ser aberto. */
+const anonima = await navegador.newPage({ viewport: { width: 1200, height: 900 } });
+await anonima.route('**/auth/v1/**', (r) => r.fulfill({ status: 401, contentType: 'application/json', body: '{}' }));
+await anonima.route('**/rest/v1/**', (r) => r.fulfill({ status: 401, contentType: 'application/json', body: '{}' }));
+await anonima.goto(url, { waitUntil: 'networkidle' });
+await anonima.waitForTimeout(800);
+const semLogin = (await anonima.textContent('body')) ?? '';
+if (!semLogin.includes('acesso restrito') || semLogin.includes('Cronograma')) {
+  console.error('FALHOU: sem sessão o módulo deveria parar na tela de acesso.');
+  process.exitCode = 1;
+}
+await anonima.screenshot({ path: 'verificacao-acesso.png', fullPage: true });
 
 await navegador.close();
