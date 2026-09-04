@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Aviso, Campo, Modal, Selo, Vazio } from '@/componentes/ui';
 import { excluirPessoa, mensagemDeErro, salvarPessoa } from '@/estado/dados';
 import { usePermissoes } from '@/estado/sessao';
-import type { Pessoa } from '@/dominio/tipos';
+import type { Papel, Pessoa } from '@/dominio/tipos';
+import { PAPEIS, explicacaoDoPapel, rotuloPapel } from '@/dominio/tipos';
 
 interface Props {
   pessoas: Pessoa[];
@@ -17,9 +18,11 @@ export default function Pessoas({ pessoas, recarregar }: Props) {
   return (
     <div className="space-y-4">
       <Aviso tipo="info">
-        Quem pode ser responsável por um projeto, marco ou tarefa. O módulo é aberto
-        como o resto da Central: este cadastro serve para atribuir responsabilidades e
-        filtrar a carteira, não para controlar acesso.
+        Este cadastro <strong>é</strong> o controle de acesso. Quem entra no módulo precisa
+        estar aqui, ativo, com o e-mail exatamente igual ao que vai usar no login — é por
+        ele que o sistema reconhece a pessoa no primeiro acesso. O papel decide o que cada
+        um faz: leitor {explicacaoDoPapel.leitor}; editor {explicacaoDoPapel.editor};
+        administrador {explicacaoDoPapel.admin}.
       </Aviso>
 
       {erro && <Aviso>{erro}</Aviso>}
@@ -38,7 +41,9 @@ export default function Pessoas({ pessoas, recarregar }: Props) {
                 <th className="px-4 py-2 font-bold">Nome</th>
                 <th className="px-4 py-2 font-bold">E-mail</th>
                 <th className="px-4 py-2 font-bold">Área</th>
+                <th className="px-4 py-2 font-bold">Papel</th>
                 <th className="px-4 py-2 font-bold">Situação</th>
+                <th className="px-4 py-2 font-bold">Login</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
@@ -49,7 +54,17 @@ export default function Pessoas({ pessoas, recarregar }: Props) {
                   <td className="px-4 py-2 text-tinta-suave">{p.email}</td>
                   <td className="px-4 py-2 text-tinta-suave">{p.area ?? '—'}</td>
                   <td className="px-4 py-2">
+                    <Selo cor={p.papel === 'admin' ? '#6D28D9' : p.papel === 'editor' ? '#2A3AA8' : '#6A6F94'}>
+                      {rotuloPapel[p.papel]}
+                    </Selo>
+                  </td>
+                  <td className="px-4 py-2">
                     <Selo cor={p.ativo ? '#2E8B57' : '#6A6F94'}>{p.ativo ? 'Ativa' : 'Inativa'}</Selo>
+                  </td>
+                  {/* Enquanto a pessoa nao faz o primeiro acesso, o cadastro
+                      existe mas ninguem entrou com ele ainda. */}
+                  <td className="px-4 py-2 text-xs text-tinta-suave">
+                    {p.user_id ? 'já entrou' : 'aguardando 1º acesso'}
                   </td>
                   <td className="px-4 py-2 text-right text-xs">
                     {/* Cadastro e papel sao coisa de administrador: quem
@@ -94,6 +109,7 @@ function FormularioPessoa({ pessoa, aoFechar, recarregar }: {
         nome: String(f.get('nome')),
         email: String(f.get('email')),
         area: String(f.get('area')) || null,
+        papel: f.get('papel') as Papel,
         ativo: f.get('ativo') === 'on',
       }, atual?.id);
       await recarregar();
@@ -112,9 +128,16 @@ function FormularioPessoa({ pessoa, aoFechar, recarregar }: {
             placeholder="nome@lojadomecanico.com.br" />
         </Campo>
         <Campo rotulo="Área"><input name="area" defaultValue={atual?.area ?? ''} className="campo" /></Campo>
+        <Campo rotulo="Papel *">
+          <select name="papel" defaultValue={atual?.papel ?? 'leitor'} className="campo">
+            {PAPEIS.map((p) => (
+              <option key={p} value={p}>{rotuloPapel[p]} — {explicacaoDoPapel[p]}</option>
+            ))}
+          </select>
+        </Campo>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="ativo" defaultChecked={atual?.ativo ?? true} />
-          Pessoa ativa (aparece nas listas de responsável)
+          Pessoa ativa (pode entrar no módulo e aparece nas listas de responsável)
         </label>
         {erro && <Aviso>{erro}</Aviso>}
         <div className="flex justify-end gap-2">

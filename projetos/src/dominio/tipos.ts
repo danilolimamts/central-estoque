@@ -176,6 +176,13 @@ export const rotuloPapel: Record<Papel, string> = {
   admin: 'Administrador', editor: 'Editor', leitor: 'Leitor',
 };
 
+export const PAPEIS: Papel[] = ['leitor', 'editor', 'admin'];
+export const explicacaoDoPapel: Record<Papel, string> = {
+  leitor: 'vê tudo, não altera nada',
+  editor: 'vê tudo e altera o que ele mesmo criar',
+  admin: 'vê e altera tudo, cadastra pessoas',
+};
+
 export const STATUS: StatusProjeto[] = ['nao_iniciado', 'em_andamento', 'em_risco', 'pausado', 'concluido', 'cancelado'];
 export const PRIORIDADES: Prioridade[] = ['baixa', 'media', 'alta', 'critica'];
 export const STATUS_TAREFA: StatusTarefa[] = ['pendente', 'em_andamento', 'concluida', 'bloqueada'];
