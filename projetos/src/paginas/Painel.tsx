@@ -7,8 +7,8 @@ import {
 } from '@/dominio/regras';
 import { folhas } from '@/dominio/arvore';
 import type { Pessoa, Projeto } from '@/dominio/tipos';
-import { STATUS } from '@/dominio/tipos';
-import { useStatusConfigurados } from '@/estado/configuracao';
+import { useSituacoes } from '@/estado/configuracao';
+import { situacaoDe } from '@/dominio/situacoes';
 
 interface Props {
   projetos: Projeto[];
@@ -17,7 +17,7 @@ interface Props {
 }
 
 export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
-  const configStatus = useStatusConfigurados();
+  useSituacoes();
   /* Projeto que agrupa outros nao entra na conta: senao o guarda-chuva
      e cada melhoria dentro dele contariam o mesmo trabalho duas vezes. */
   const carteira = useMemo(() => folhas(projetos), [projetos]);
@@ -32,7 +32,9 @@ export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
     .sort((a, b) => diasDeAtraso(b) - diasDeAtraso(a) || (a.fim_previsto ?? '').localeCompare(b.fim_previsto ?? '')),
   [carteira]);
 
-  const usados = STATUS.filter((s) => indicadores.porStatus[s] > 0);
+  /* So as situacoes com projeto entram no grafico, na ordem em que
+     aparecem na contagem (que ja vem na ordem da configuracao). */
+  const usados = Object.keys(indicadores.porStatus).filter((s) => indicadores.porStatus[s] > 0);
 
   return (
     <div className="space-y-5">
@@ -52,9 +54,9 @@ export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
               serie="Projetos"
               horizontal
               altura={Math.max(160, usados.length * 42)}
-              rotulos={usados.map((s) => configStatus[s].rotulo)}
+              rotulos={usados.map((s) => situacaoDe(s).rotulo)}
               valores={usados.map((s) => indicadores.porStatus[s])}
-              cores={usados.map((s) => configStatus[s].cor)}
+              cores={usados.map((s) => situacaoDe(s).cor)}
             />
           ) : <Vazio>Nenhum projeto cadastrado ainda.</Vazio>}
         </div>

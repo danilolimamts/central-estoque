@@ -24,7 +24,8 @@ import {
 } from '@/dominio/regras';
 import type { Marco, Pessoa, Projeto, StatusProjeto, StatusTarefa, Tarefa } from '@/dominio/tipos';
 import { STATUS_TAREFA, rotuloStatusTarefa } from '@/dominio/tipos';
-import { statusEmUso, useStatusConfigurados } from '@/estado/configuracao';
+import { useSituacoes } from '@/estado/configuracao';
+import { situacoesVisiveis } from '@/dominio/situacoes';
 
 interface Props {
   projeto: Projeto;
@@ -525,8 +526,8 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
 }) {
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const configStatus = useStatusConfigurados();
-  const situacoes = statusEmUso(configStatus, [projeto.status]);
+  useSituacoes();
+  const disponiveis = situacoesVisiveis([projeto.status]);
 
   async function enviar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -577,7 +578,7 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
           <Campo rotulo="Data"><input name="data" type="date" defaultValue={isoDeHoje()} className="campo" /></Campo>
           <Campo rotulo="Situação">
             <select name="status_reportado" defaultValue={projeto.status} className="campo">
-              {situacoes.map((s) => <option key={s} value={s}>{configStatus[s].rotulo}</option>)}
+              {disponiveis.map((s) => <option key={s.chave} value={s.chave}>{s.rotulo}</option>)}
             </select>
           </Campo>
         </div>

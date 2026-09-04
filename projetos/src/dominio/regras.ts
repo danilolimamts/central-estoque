@@ -1,5 +1,6 @@
 import { avancoPorConclusao } from './arvore';
-import type { Marco, Projeto, StatusProjeto, Tarefa } from './tipos';
+import { ehCancelada, ehConcluida, ehEncerrada, situacoes } from './situacoes';
+import type { Marco, Projeto, Tarefa } from './tipos';
 
 /* Datas do banco chegam como 'AAAA-MM-DD'. new Date('2026-03-01') e
    interpretado em UTC e volta um dia atras no fuso de Sao Paulo, entao
@@ -30,10 +31,10 @@ export function diasEntre(inicio: Date, fim: Date): number {
   return Math.round((fim.getTime() - inicio.getTime()) / 86400000);
 }
 
-const ENCERRADOS: StatusProjeto[] = ['concluido', 'cancelado'];
+
 
 export function encerrado(p: Projeto): boolean {
-  return ENCERRADOS.includes(p.status);
+  return ehEncerrada(p.status);
 }
 
 /* Atraso so faz sentido para projeto vivo: concluido e cancelado saem
@@ -107,30 +108,34 @@ export interface Indicadores {
   atrasados: number;
   vencendo: number;
   percentualConcluido: number;
-  porStatus: Record<StatusProjeto, number>;
+  porStatus: Record<string, number>;
 }
 
 export function calcularIndicadores(lista: Projeto[]): Indicadores {
-  const porStatus = {
-    nao_iniciado: 0, em_andamento: 0, em_risco: 0, pausado: 0, concluido: 0, cancelado: 0,
-  } as Record<StatusProjeto, number>;
+  /* A contagem por situacao nasce com as configuradas (para a coluna
+     zerada aparecer no grafico) e ganha as que so existem nos dados. */
+  const porStatus: Record<string, number> = {};
+  for (const s of situacoes()) porStatus[s.chave] = 0;
+
   let vivos = 0;
   /* O avanco da carteira e a fatia ja concluida, nao a media de
-     percentuais: cancelado sai do denominador porque nao e trabalho
+     percentuais: cancelada sai do denominador porque nao e trabalho
      pendente nem entregue. */
   let valem = 0;
+  let concluidos = 0;
   for (const p of lista) {
-    porStatus[p.status] += 1;
+    porStatus[p.status] = (porStatus[p.status] ?? 0) + 1;
     if (!encerrado(p)) vivos += 1;
-    if (p.status !== 'cancelado') valem += 1;
+    if (!ehCancelada(p.status)) valem += 1;
+    if (ehConcluida(p.status)) concluidos += 1;
   }
   return {
     total: lista.length,
     ativos: vivos,
-    concluidos: porStatus.concluido,
+    concluidos,
     atrasados: lista.filter(atrasado).length,
     vencendo: lista.filter((p) => venceEm(p, 15)).length,
-    percentualConcluido: valem ? Math.round((porStatus.concluido / valem) * 100) : 0,
+    percentualConcluido: valem ? Math.round((concluidos / valem) * 100) : 0,
     porStatus,
   };
 }
@@ -149,7 +154,7 @@ export function entregasPorMes(lista: Projeto[], meses = 12): { rotulo: string; 
     });
   }
   for (const p of lista) {
-    if (p.status !== 'concluido') continue;
+    if (!ehConcluida(p.status)) continue;
     const fim = (p.fim_real ?? p.fim_previsto)?.slice(0, 7);
     const alvo = chaves.find((c) => c.chave === fim);
     if (alvo) alvo.total += 1;

@@ -8,7 +8,7 @@ import Pessoas from '@/paginas/Pessoas';
 import { Aviso, Carregando } from '@/componentes/ui';
 import { useCarteira } from '@/estado/dados';
 import { ContextoPermissoes, permissoesDe, sair, useSessao } from '@/estado/sessao';
-import { ContextoStatus, useConfiguracao } from '@/estado/configuracao';
+import { ContextoSituacoes, useConfiguracao } from '@/estado/configuracao';
 import { rotuloPapel } from '@/dominio/tipos';
 import type { Projeto } from '@/dominio/tipos';
 
@@ -59,7 +59,7 @@ export default function App() {
 
   return (
     <ContextoPermissoes.Provider value={permissoes}>
-    <ContextoStatus.Provider value={configuracao.status}>
+    <ContextoSituacoes.Provider value={configuracao.situacoes}>
     <div className="min-h-screen">
       <header className="bg-navy text-white">
         <div className="mx-auto flex max-w-tela flex-wrap items-center gap-5 px-6 py-5 xl:px-10">
@@ -130,7 +130,7 @@ export default function App() {
         Central de Estoque · Loja do Mecânico — versão {__VERSAO__}
       </footer>
     </div>
-    </ContextoStatus.Provider>
+    </ContextoSituacoes.Provider>
     </ContextoPermissoes.Provider>
   );
 }

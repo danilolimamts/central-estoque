@@ -7,7 +7,8 @@ import { mensagemDeErro, salvarProjeto } from '@/estado/dados';
 import { conteudoDe, useConteudoDosProjetos } from '@/estado/conteudo';
 import { usePermissoes } from '@/estado/sessao';
 import ConfigStatus from '@/componentes/ConfigStatus';
-import { statusEmUso, useStatusConfigurados } from '@/estado/configuracao';
+import { useSituacoes } from '@/estado/configuracao';
+import { ordemDaSituacao, situacaoDe, situacoesVisiveis } from '@/dominio/situacoes';
 import type { ConteudoDoProjeto } from '@/estado/conteudo';
 import { CONTEUDOS, aplicarFiltros, filtrosVazios } from '@/dominio/filtros';
 import {
@@ -16,7 +17,7 @@ import {
 } from '@/dominio/arvore';
 import { atrasado, diasDeAtraso, formatarData, percentualEsperado, saude } from '@/dominio/regras';
 import type { Pessoa, Prioridade, Projeto, StatusProjeto } from '@/dominio/tipos';
-import { PRIORIDADES, STATUS, rotuloPrioridade } from '@/dominio/tipos';
+import { PRIORIDADES, rotuloPrioridade } from '@/dominio/tipos';
 
 interface Props {
   pai: Projeto;
@@ -45,7 +46,7 @@ export default function Atividades({
   pai, projetos, pessoas, aoAbrir, recarregar, recarregarConfig,
 }: Props) {
   const permissoes = usePermissoes();
-  const configStatus = useStatusConfigurados();
+  const configSituacoes = useSituacoes();
   const [configAberta, setConfigAberta] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   /* Lista ou quadro e preferencia de quem trabalha, nao estado da tela:
@@ -70,9 +71,9 @@ export default function Atividades({
     if (ordem === 'prazo') {
       return lista.sort((a, b) => (a.fim_previsto ?? '9999').localeCompare(b.fim_previsto ?? '9999'));
     }
-    if (ordem === 'situacao') return lista.sort((a, b) => STATUS.indexOf(a.status) - STATUS.indexOf(b.status));
-    /* STATUS continua mandando na ordem: e a sequencia natural do
-       trabalho (nao iniciado, em andamento, ...), nao a da configuracao. */
+    /* A ordem e a da configuracao: e a sequencia do processo da
+       equipe, que e quem sabe o que vem antes do que. */
+    if (ordem === 'situacao') return lista.sort((a, b) => ordemDaSituacao(a.status) - ordemDaSituacao(b.status));
     return lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }, [projetos, pai.id, ordem]);
   /* Quanta coisa cada atividade tem dentro: e o que responde "quais
@@ -87,12 +88,12 @@ export default function Atividades({
   /* Situacao desligada na configuracao some das colunas e do seletor —
      menos quando ainda ha atividade nela, que senao o cartao sumiria da
      tela sem ninguem entender para onde foi. */
-  const situacoes = useMemo(
-    () => statusEmUso(configStatus, filhos.map((f) => f.status)),
-    [configStatus, filhos],
+  const disponiveis = useMemo(
+    () => situacoesVisiveis(filhos.map((f) => f.status)),
+    [configSituacoes, filhos],
   );
-  const colunas: ColunaDoQuadro[] = situacoes.map((s) => ({
-    id: s, rotulo: configStatus[s].rotulo, cor: configStatus[s].cor,
+  const colunas: ColunaDoQuadro[] = disponiveis.map((s) => ({
+    id: s.chave, rotulo: s.rotulo, cor: s.cor,
   }));
 
   const plural = rotuloDosFilhos(pai);
@@ -212,7 +213,7 @@ export default function Atividades({
           <label>
             <span className="rotulo">Situação</span>
             <select className="campo" value={criando} onChange={(e) => setCriando(e.target.value as StatusProjeto)}>
-              {situacoes.map((s) => <option key={s} value={s}>{configStatus[s].rotulo}</option>)}
+              {disponiveis.map((s) => <option key={s.chave} value={s.chave}>{s.rotulo}</option>)}
             </select>
           </label>
           <button type="submit" className="botao-primario">Criar</button>
@@ -334,8 +335,8 @@ export default function Atividades({
                       {/* A propria situacao da linha entra na lista mesmo se
                           estiver desligada: sem ela o seletor mostraria outro
                           valor e uma troca sem querer viraria escrita. */}
-                      {Array.from(new Set([...situacoes, p.status])).map((s) => (
-                        <option key={s} value={s}>{configStatus[s].rotulo}</option>
+                      {Array.from(new Set([...disponiveis.map((s) => s.chave), p.status])).map((chave) => (
+                        <option key={chave} value={chave}>{situacaoDe(chave).rotulo}</option>
                       ))}
                     </select>
                   </td>
@@ -408,7 +409,7 @@ export default function Atividades({
       )}
 
       <ConfigStatus
-        aberto={configAberta} config={configStatus}
+        aberto={configAberta} situacoes={configSituacoes}
         emUso={Array.from(new Set(filhos.map((f) => f.status)))}
         aoFechar={() => setConfigAberta(false)} recarregar={recarregarConfig}
       />
@@ -416,10 +417,10 @@ export default function Atividades({
       {/* Situação do projeto inteiro, num selo só, para quem chega pela lista. */}
       {filhos.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-t border-linha px-4 py-2 text-[11px] text-tinta-suave">
-          {situacoes.filter((s) => filhos.some((f) => f.status === s)).map((s) => (
-            <span key={s} className="flex items-center gap-1">
-              <SeloStatus status={s} />
-              <span className="font-bold">{filhos.filter((f) => f.status === s).length}</span>
+          {disponiveis.filter((s) => filhos.some((f) => f.status === s.chave)).map((s) => (
+            <span key={s.chave} className="flex items-center gap-1">
+              <SeloStatus status={s.chave} />
+              <span className="font-bold">{filhos.filter((f) => f.status === s.chave).length}</span>
             </span>
           ))}
         </div>
