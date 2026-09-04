@@ -40,6 +40,17 @@ describe('aplicarFiltros', () => {
     expect(ids(aplicarFiltros(lista, conteudo, { ...filtrosVazios(), paginas: 'sem' }))).toEqual(['b', 'c']);
   });
 
+  it('documentada vale para página, proposta ou anexo', () => {
+    const so_anexo: MapaDeConteudo = {
+      a: { paginas: 0, tarefas: 0, marcos: 0, anexos: 1, documentos: 0 },
+      b: { paginas: 0, tarefas: 0, marcos: 0, anexos: 0, documentos: 1 },
+      c: { paginas: 0, tarefas: 2, marcos: 1, anexos: 0, documentos: 0 },
+    };
+    // 'c' tem tarefa e marco, mas nada que sirva de documentacao.
+    expect(ids(aplicarFiltros(lista, so_anexo, { ...filtrosVazios(), documentacao: 'com' }))).toEqual(['a', 'b']);
+    expect(ids(aplicarFiltros(lista, so_anexo, { ...filtrosVazios(), documentacao: 'sem' }))).toEqual(['c']);
+  });
+
   it('cruza dois conteúdos ao mesmo tempo', () => {
     // Sem páginas mas com tarefa: e a que esta sendo tocada sem documentar.
     const f = { ...filtrosVazios(), paginas: 'sem' as const, tarefas: 'com' as const };

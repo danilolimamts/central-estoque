@@ -233,7 +233,7 @@ await pagina.screenshot({ path: 'verificacao-melhorias.png', fullPage: true });
 await pagina.getByRole('button', { name: 'Filtros', exact: false }).first().click();
 await pagina.waitForTimeout(300);
 const comFiltros = (await pagina.textContent('body')) ?? '';
-for (const campo of ['Tem dentro', 'Páginas', 'Documento Word', 'Fim']) {
+for (const campo of ['Documentação', 'Documentada', 'Por formato', 'Páginas', 'Documento Word', 'Fim']) {
   if (!comFiltros.includes(campo)) {
     console.error(`FALHOU: a barra de filtros não tem "${campo}".`);
     process.exitCode = 1;
