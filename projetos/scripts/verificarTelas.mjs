@@ -278,7 +278,7 @@ await pagina.screenshot({ path: 'verificacao-filtros.png', fullPage: true });
 await pagina.getByRole('button', { name: 'Situações', exact: false }).first().click();
 await pagina.waitForTimeout(400);
 const configuracao = (await pagina.textContent('body')) ?? '';
-for (const campo of ['Situações das atividades', 'Voltar ao padrão', 'Em risco']) {
+for (const campo of ['Situações das atividades', 'Nova situação', 'Em risco', 'Concluída']) {
   if (!configuracao.includes(campo)) {
     console.error(`FALHOU: a configuração de situações não tem "${campo}".`);
     process.exitCode = 1;

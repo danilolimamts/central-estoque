@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
-import { useStatusConfigurados } from '@/estado/configuracao';
-import { coresPrioridade, coresStatus } from '@/config/tokens';
+import { useSituacoes } from '@/estado/configuracao';
+import { situacaoDe } from '@/dominio/situacoes';
+import { coresPrioridade } from '@/config/tokens';
 import { coresSaude, rotuloSaude } from '@/dominio/regras';
 import type { Saude } from '@/dominio/regras';
 import type { Prioridade, StatusProjeto } from '@/dominio/tipos';
-import { rotuloPrioridade, rotuloStatus } from '@/dominio/tipos';
+import { rotuloPrioridade } from '@/dominio/tipos';
 
 export function Selo({ cor, children }: { cor: string; children: ReactNode }) {
   return (
@@ -22,8 +23,11 @@ export function Selo({ cor, children }: { cor: string; children: ReactNode }) {
 /* Nome e cor da situacao vem da configuracao da equipe; sem ela (ou
    antes de carregar) valem os de fabrica. */
 export const SeloStatus = ({ status }: { status: StatusProjeto }) => {
-  const config = useStatusConfigurados();
-  return <Selo cor={config[status]?.cor ?? coresStatus[status]}>{config[status]?.rotulo ?? rotuloStatus[status]}</Selo>;
+  /* A leitura do contexto e so para redesenhar quando a configuracao
+     muda; o valor em si vem do registro do dominio. */
+  useSituacoes();
+  const s = situacaoDe(status);
+  return <Selo cor={s.cor}>{s.rotulo}</Selo>;
 };
 
 export const SeloPrioridade = ({ prioridade }: { prioridade: Prioridade }) => (

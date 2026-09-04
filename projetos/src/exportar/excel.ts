@@ -2,7 +2,8 @@ import * as XLSX from 'xlsx-js-style';
 import { formatarData, rotuloSaude, saude } from '@/dominio/regras';
 import { urlDoAnexo } from '@/estado/dados';
 import type { Anexo, Atualizacao, Marco, Pessoa, Projeto, Tarefa } from '@/dominio/tipos';
-import { rotuloMomento, rotuloPrioridade, rotuloStatus, rotuloStatusTarefa } from '@/dominio/tipos';
+import { rotuloMomento, rotuloPrioridade, rotuloStatusTarefa } from '@/dominio/tipos';
+import { rotuloDaSituacao } from '@/dominio/situacoes';
 
 const CABECALHO = {
   font: { bold: true, color: { rgb: 'FFFFFF' }, name: 'Calibri', sz: 11 },
@@ -36,7 +37,7 @@ export function exportarCarteira(projetos: Projeto[], pessoas: Pessoa[]) {
   for (const p of projetos) {
     linhas.push([
       p.codigo ?? '', p.nome, p.area ?? '', nome(p.responsavel_id),
-      rotuloStatus[p.status], rotuloPrioridade[p.prioridade],
+      rotuloDaSituacao(p.status), rotuloPrioridade[p.prioridade],
       formatarData(p.inicio_previsto), formatarData(p.fim_previsto),
       formatarData(p.inicio_real), formatarData(p.fim_real),
       p.percentual, rotuloSaude[saude(p, projetos)],
@@ -60,7 +61,7 @@ export function exportarProjeto(
     ['Código', projeto.codigo ?? ''],
     ['Área', projeto.area ?? ''],
     ['Responsável', nome(projeto.responsavel_id)],
-    ['Situação', rotuloStatus[projeto.status]],
+    ['Situação', rotuloDaSituacao(projeto.status)],
     ['Prioridade', rotuloPrioridade[projeto.prioridade]],
     ['Início previsto', formatarData(projeto.inicio_previsto)],
     ['Fim previsto', formatarData(projeto.fim_previsto)],
@@ -88,7 +89,7 @@ export function exportarProjeto(
   XLSX.utils.book_append_sheet(livro, aba([
     ['Data', 'Situação reportada', 'Avanço (%)', 'Acompanhamento', 'Riscos', 'Próximos passos'],
     ...atualizacoes.map((a) => [
-      formatarData(a.data), a.status_reportado ? rotuloStatus[a.status_reportado] : '',
+      formatarData(a.data), a.status_reportado ? rotuloDaSituacao(a.status_reportado) : '',
       a.percentual ?? '', a.texto, a.riscos ?? '', a.proximos_passos ?? '',
     ]),
   ], [13, 18, 11, 60, 40, 40]), 'Acompanhamento');

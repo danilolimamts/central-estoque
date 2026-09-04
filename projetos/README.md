@@ -152,14 +152,33 @@ atividade, e a marca explica por quê.
 ### Situações configuráveis
 
 O botão **⚙ Situações**, no cabeçalho da lista de atividades (só para admin),
-liga/desliga cada situação, renomeia e troca a cor. Serve para a equipe que não
-usa "Em risco" não ter uma coluna morta no quadro nem uma opção a mais no
-seletor.
+cria situações novas, renomeia, escolhe cor, ordem e liga/desliga cada uma. A
+equipe nomeia o próprio processo: "Aguardando Bseller", "Em homologação".
 
-As seis situações continuam sendo o tipo do Postgres: esconder uma é decisão de
-tela, não de banco — mexer no tipo obrigaria a reescrever dado existente só para
-tirar uma coluna do quadro. O ajuste vive em `configuracoes` (chave
-`status_projeto`), vale para todo mundo e só administrador grava.
+Cada situação tem um **significado**, e é ele que muda conta:
+
+| significado | efeito |
+|---|---|
+| em aberto | trabalho pendente (o padrão de qualquer situação nova) |
+| concluída | entra no avanço e encerra a atividade |
+| cancelada | sai da conta do avanço |
+
+Sem isso, criar "Entregue" deixaria o avanço e o semáforo de saúde errados —
+eles perguntam "isto está encerrado?", não "o nome é concluído?".
+
+A coluna `status` era um tipo fechado do Postgres e virou texto (`015`): a
+garantia de não gravar situação inválida passou do banco para a tela, que só
+oferece o que está configurado. É o preço de deixar a equipe criar as suas.
+
+Duas travas: situação **com atividade dentro não pode ser removida** (mova as
+atividades antes, ou desmarque *Usar* para escondê-la sem perder nada), e
+situação gravada que não está mais na configuração continua aparecendo, com a
+própria chave, contando como trabalho aberto.
+
+A configuração vive em `configuracoes` (chave `status_projeto`), vale para todo
+mundo e só administrador grava. O domínio lê de um registro em
+`dominio/situacoes.ts`, e não de contexto de React, porque quem pergunta
+"encerrado?" são funções puras (prazo, avanço, planilha).
 
 Situação desligada **continua aparecendo enquanto houver atividade nela**, e o
 seletor da linha sempre inclui a situação atual daquela linha. Sem isso o cartão

@@ -1,5 +1,8 @@
 export type Papel = 'admin' | 'editor' | 'leitor';
-export type StatusProjeto = 'nao_iniciado' | 'em_andamento' | 'em_risco' | 'pausado' | 'concluido' | 'cancelado';
+/* A situacao virou texto livre: a equipe cria as suas em Configuracao.
+   As seis de fabrica continuam em dominio/situacoes.ts, que tambem diz
+   o que cada uma significa (aberta, concluida ou cancelada). */
+export type StatusProjeto = string;
 export type Prioridade = 'baixa' | 'media' | 'alta' | 'critica';
 export type StatusTarefa = 'pendente' | 'em_andamento' | 'concluida' | 'bloqueada';
 
@@ -155,7 +158,9 @@ export interface VersaoDePagina {
   criado_em: string;
 }
 
-export const rotuloStatus: Record<StatusProjeto, string> = {
+/* Nomes de fabrica. A tela usa o que estiver configurado; isto e o
+   que sobra quando nao ha configuracao nenhuma. */
+export const rotuloStatus: Record<string, string> = {
   nao_iniciado: 'Não iniciado',
   em_andamento: 'Em andamento',
   em_risco: 'Em risco',

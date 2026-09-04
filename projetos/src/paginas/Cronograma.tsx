@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Aviso, SeloStatus, Vazio } from '@/componentes/ui';
-import { coresStatus } from '@/config/tokens';
+import { corDaSituacao } from '@/dominio/situacoes';
 import { diasEntre, encerrado, formatarData, hoje, paraData } from '@/dominio/regras';
 import { folhas, nomeCompleto } from '@/dominio/arvore';
 import { listarMarcosGerais, mensagemDeErro } from '@/estado/dados';
@@ -118,11 +118,11 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
                   )}
                   <div
                     className="absolute top-3 h-5 rounded-md"
-                    style={{ left: `${esquerda}%`, width: `${largura}%`, backgroundColor: `${coresStatus[p.status]}33` }}
+                    style={{ left: `${esquerda}%`, width: `${largura}%`, backgroundColor: `${corDaSituacao(p.status)}33` }}
                     title={`${p.nome} — ${p.percentual}%`}
                   >
                     {/* Preenchimento interno = avanco informado. */}
-                    <div className="h-full rounded-md" style={{ width: `${p.percentual}%`, backgroundColor: coresStatus[p.status] }} />
+                    <div className="h-full rounded-md" style={{ width: `${p.percentual}%`, backgroundColor: corDaSituacao(p.status) }} />
                   </div>
                   {doProjeto.map((m) => (
                     <span

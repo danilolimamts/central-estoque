@@ -1,3 +1,4 @@
+import { ehCancelada, ehConcluida } from './situacoes';
 import type { Projeto } from './tipos';
 
 /* Um projeto pode agrupar outros. Estas funcoes separam o que e grupo
@@ -89,9 +90,9 @@ export interface AvancoDoProjeto {
    ninguem lembra de atualizar; atividade concluida e fato.
    Cancelada sai da conta: nao e trabalho pendente nem entregue. */
 export function avancoPorConclusao(lista: Projeto[], paiId: string): AvancoDoProjeto | null {
-  const filhos = filhosDe(lista, paiId).filter((f) => f.status !== 'cancelado');
+  const filhos = filhosDe(lista, paiId).filter((f) => !ehCancelada(f.status));
   if (!filhos.length) return null;
-  const concluidas = filhos.filter((f) => f.status === 'concluido').length;
+  const concluidas = filhos.filter((f) => ehConcluida(f.status)).length;
   return {
     concluidas,
     total: filhos.length,
@@ -102,7 +103,7 @@ export function avancoPorConclusao(lista: Projeto[], paiId: string): AvancoDoPro
 /* Atividade sem filhos: concluida vale 100, o resto vale 0. Nao ha
    meio termo, porque nao ha mais campo para digitar meio termo. */
 export const percentualDoStatus = (projeto: Projeto): number =>
-  (projeto.status === 'concluido' ? 100 : 0);
+  (ehConcluida(projeto.status) ? 100 : 0);
 
 /* O numero que vale na tela: projeto com atividades usa a conclusao
    delas; atividade sozinha usa a propria situacao. */

@@ -3,7 +3,8 @@ import { CONTEUDOS, alternar, filtrosAtivos, filtrosVazios } from '@/dominio/fil
 import type { FiltroDePrazo, FiltrosDeAtividade, Presenca } from '@/dominio/filtros';
 import type { Pessoa, Prioridade, StatusProjeto } from '@/dominio/tipos';
 import { PRIORIDADES, rotuloPrioridade } from '@/dominio/tipos';
-import { statusEmUso, useStatusConfigurados } from '@/estado/configuracao';
+import { useSituacoes } from '@/estado/configuracao';
+import { situacoesVisiveis } from '@/dominio/situacoes';
 
 interface Props {
   filtros: FiltrosDeAtividade;
@@ -65,8 +66,8 @@ export default function FiltrosAtividades({
   filtros, aoMudar, pessoas, aberto, aoAlternar, mostrando, total,
 }: Props) {
   const ativos = filtrosAtivos(filtros);
-  const configStatus = useStatusConfigurados();
-  const situacoes = statusEmUso(configStatus, []);
+  useSituacoes();
+  const disponiveis = situacoesVisiveis();
 
   if (!aberto) {
     return (
@@ -131,17 +132,17 @@ export default function FiltrosAtividades({
 
       <Grupo titulo="Situação">
         <div className="flex flex-wrap gap-1">
-          {situacoes.map((s) => (
+          {disponiveis.map(({ chave, rotulo, cor }) => (
             <button
-              key={s}
-              onClick={() => aoMudar({ ...filtros, status: alternar<StatusProjeto>(filtros.status, s) })}
+              key={chave}
+              onClick={() => aoMudar({ ...filtros, status: alternar<StatusProjeto>(filtros.status, chave) })}
               className={`rounded-full border px-2 py-0.5 text-[11px] font-bold transition ${
-                filtros.status.includes(s)
+                filtros.status.includes(chave)
                   ? 'border-transparent text-white'
                   : 'border-linha text-tinta-suave hover:border-roxo-claro'
               }`}
-              style={filtros.status.includes(s) ? { backgroundColor: configStatus[s].cor } : undefined}
-            >{configStatus[s].rotulo}</button>
+              style={filtros.status.includes(chave) ? { backgroundColor: cor } : undefined}
+            >{rotulo}</button>
           ))}
         </div>
       </Grupo>

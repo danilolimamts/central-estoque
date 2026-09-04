@@ -1,6 +1,7 @@
 import { formatarData } from './regras';
 import type { Anexo, Marco, Pagina, Pessoa, Projeto, Tarefa } from './tipos';
-import { rotuloStatus, rotuloStatusTarefa } from './tipos';
+import { rotuloStatusTarefa } from './tipos';
+import { rotuloDaSituacao } from './situacoes';
 import { documentoVazio } from './documento';
 import type { DadosDoDocumento } from './documento';
 
@@ -49,7 +50,7 @@ export function montarBriefing(
     `- Projeto: ${projeto.nome}${projeto.codigo ? ` (${projeto.codigo})` : ''}`,
     `- Área: ${projeto.area ?? 'não informada'}`,
     `- Responsável: ${responsavel}`,
-    `- Situação: ${rotuloStatus[projeto.status]} · avanço ${projeto.percentual}%`,
+    `- Situação: ${rotuloDaSituacao(projeto.status)} · avanço ${projeto.percentual}%`,
     `- Prazo previsto: ${formatarData(projeto.inicio_previsto)} a ${formatarData(projeto.fim_previsto)}`,
     projeto.descricao ? `- Descrição: ${projeto.descricao}` : '',
     lista('MARCOS:', marcos.map((m) => `${m.nome} (previsto ${formatarData(m.data_prevista)}${m.concluido ? ', concluído' : ''})`)),
