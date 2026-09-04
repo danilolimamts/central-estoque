@@ -13,9 +13,15 @@ interface Props {
 
 interface Faixa { inicio: Date; fim: Date; total: number }
 
+/* A atividade costuma ter so a data que a pessoa digitou (inicio real) e
+   o fim que veio do Bseller; sem esta troca ela ficaria de fora do
+   cronograma por nao ter data prevista. */
+const comeco = (p: Projeto) => p.inicio_previsto ?? p.inicio_real;
+const termino = (p: Projeto) => p.fim_previsto ?? p.fim_real;
+
 function calcularFaixa(lista: Projeto[]): Faixa | null {
   const datas = lista
-    .flatMap((p) => [paraData(p.inicio_previsto), paraData(p.fim_previsto)])
+    .flatMap((p) => [paraData(comeco(p)), paraData(termino(p))])
     .filter((d): d is Date => d !== null);
   if (!datas.length) return null;
   const min = new Date(Math.min(...datas.map((d) => d.getTime())));
@@ -53,8 +59,8 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
 
   const lista = useMemo(
     () => folhas(projetos)
-      .filter((p) => (mostrarEncerrados || !encerrado(p)) && (p.inicio_previsto || p.fim_previsto))
-      .sort((a, b) => (a.inicio_previsto ?? a.fim_previsto ?? '').localeCompare(b.inicio_previsto ?? b.fim_previsto ?? '')),
+      .filter((p) => (mostrarEncerrados || !encerrado(p)) && (comeco(p) || termino(p)))
+      .sort((a, b) => (comeco(a) ?? termino(a) ?? '').localeCompare(comeco(b) ?? termino(b) ?? '')),
     [projetos, mostrarEncerrados],
   );
 
@@ -92,8 +98,8 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
           </div>
 
           {lista.map((p) => {
-            const ini = paraData(p.inicio_previsto) ?? paraData(p.fim_previsto)!;
-            const fim = paraData(p.fim_previsto) ?? ini;
+            const ini = paraData(comeco(p)) ?? paraData(termino(p))!;
+            const fim = paraData(termino(p)) ?? ini;
             const esquerda = posicao(ini);
             const largura = Math.max(1.2, posicao(fim) - esquerda);
             const doProjeto = marcos.filter((m) => m.projeto_id === p.id && m.data_prevista);
@@ -104,7 +110,7 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
                   <p className="truncate text-sm font-semibold" title={nomeCompleto(projetos, p)}>
                     {nomeCompleto(projetos, p)}
                   </p>
-                  <p className="text-xs text-tinta-suave">{formatarData(p.inicio_previsto)} → {formatarData(p.fim_previsto)}</p>
+                  <p className="text-xs text-tinta-suave">{formatarData(comeco(p))} → {formatarData(termino(p))}</p>
                 </div>
                 <div className="relative h-12 flex-1 pr-4">
                   {marcaHoje !== null && (

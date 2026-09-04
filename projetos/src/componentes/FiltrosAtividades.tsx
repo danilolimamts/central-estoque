@@ -16,10 +16,10 @@ interface Props {
 }
 
 const PRAZOS: { valor: FiltroDePrazo; rotulo: string }[] = [
-  { valor: 'tanto', rotulo: 'Qualquer prazo' },
-  { valor: 'vencidas', rotulo: 'Vencidas' },
-  { valor: 'proximas', rotulo: 'Vencem em 7 dias' },
-  { valor: 'sem_prazo', rotulo: 'Sem prazo' },
+  { valor: 'tanto', rotulo: 'Qualquer data' },
+  { valor: 'vencidas', rotulo: 'Passou do fim' },
+  { valor: 'proximas', rotulo: 'Vence em 7 dias' },
+  { valor: 'sem_prazo', rotulo: 'Sem data de fim' },
 ];
 
 /* Tres botoes em vez de caixa marcada: "tanto faz", "com" e "sem".
@@ -150,7 +150,7 @@ export default function FiltrosAtividades({
         </div>
       </Grupo>
 
-      <Grupo titulo="Prazo">
+      <Grupo titulo="Fim">
         <select
           className="campo py-1 text-xs" value={filtros.prazo}
           onChange={(e) => aoMudar({ ...filtros, prazo: e.target.value as FiltroDePrazo })}

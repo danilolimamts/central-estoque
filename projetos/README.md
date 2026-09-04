@@ -76,6 +76,11 @@ trabalho em si. Cada linha é uma atividade, com responsável, situação,
 prioridade, prazo, saúde e avanço editáveis ali mesmo; abrir a atividade leva à
 tela cheia, onde vivem marcos, tarefas, páginas, anexos e o documento em Word.
 
+As duas datas da linha têm donos diferentes: **Início** é a data real, digitada
+por quem fez o trabalho ("quando documentei"), e **Fim** é o prazo, que no
+Bseller vem de fora — por isso só ele carrega o aviso de atraso. O cronograma
+aceita as duas: sem data prevista, ele desenha a barra com a data real.
+
 A lista vem ordenada **por prioridade** (crítica, alta, média, baixa; prazo mais
 curto desempata), que é a ordem em que se decide o que fazer agora. O seletor
 *Ordenar* troca para prazo, situação ou nome.
