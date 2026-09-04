@@ -137,7 +137,7 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
             title="Ordenar a lista"
           >
             <option value="prioridade">Por prioridade</option>
-            <option value="prazo">Por prazo</option>
+            <option value="prazo">Por data de fim</option>
             <option value="situacao">Por situação</option>
             <option value="nome">Por nome</option>
           </select>
@@ -257,7 +257,8 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                 <th className="px-3 py-2 font-bold">Responsável</th>
                 <th className="px-3 py-2 font-bold">Situação</th>
                 <th className="px-3 py-2 font-bold">Prioridade</th>
-                <th className="px-3 py-2 font-bold">Prazo</th>
+                <th className="px-3 py-2 font-bold">Início</th>
+                <th className="px-3 py-2 font-bold">Fim</th>
                 <th className="px-3 py-2 font-bold">Saúde</th>
                 <th className="px-3 py-2 font-bold">Conteúdo</th>
                 <th className="px-3 py-2 font-bold w-40">Avanço</th>
@@ -302,6 +303,16 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                     >
                       {PRIORIDADES.map((s) => <option key={s} value={s}>{rotuloPrioridade[s]}</option>)}
                     </select>
+                  </td>
+
+                  {/* Inicio e a data que quem trabalha digita — quando a
+                      documentacao foi feita. O fim vem do Bseller, nao
+                      daqui, por isso so ele carrega o aviso de atraso. */}
+                  <td className="px-3 py-2">
+                    <input
+                      type="date" className="campo w-36 py-1 text-xs" value={p.inicio_real ?? ''}
+                      onChange={(e) => void alterar(p, { inicio_real: e.target.value || null })}
+                    />
                   </td>
 
                   <td className="px-3 py-2">

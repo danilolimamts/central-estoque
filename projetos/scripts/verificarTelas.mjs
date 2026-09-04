@@ -220,7 +220,7 @@ for (const secao of ['Marcos', 'Nova tarefa', 'Nova página', 'Arraste arquivos 
   }
 }
 /* A lista abre por padrao, com as colunas de acompanhamento. */
-for (const coluna of ['Responsável', 'Prioridade', 'Prazo', 'Saúde', 'Avanço']) {
+for (const coluna of ['Responsável', 'Prioridade', 'Início', 'Fim', 'Saúde', 'Avanço']) {
   if (!textoDoGrupo.includes(coluna)) {
     console.error(`FALHOU: a lista de melhorias não tem a coluna "${coluna}".`);
     process.exitCode = 1;
@@ -233,7 +233,7 @@ await pagina.screenshot({ path: 'verificacao-melhorias.png', fullPage: true });
 await pagina.getByRole('button', { name: 'Filtros', exact: false }).first().click();
 await pagina.waitForTimeout(300);
 const comFiltros = (await pagina.textContent('body')) ?? '';
-for (const campo of ['Tem dentro', 'Páginas', 'Documento Word', 'Prazo']) {
+for (const campo of ['Tem dentro', 'Páginas', 'Documento Word', 'Fim']) {
   if (!comFiltros.includes(campo)) {
     console.error(`FALHOU: a barra de filtros não tem "${campo}".`);
     process.exitCode = 1;
