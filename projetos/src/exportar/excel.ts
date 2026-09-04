@@ -39,7 +39,7 @@ export function exportarCarteira(projetos: Projeto[], pessoas: Pessoa[]) {
       rotuloStatus[p.status], rotuloPrioridade[p.prioridade],
       formatarData(p.inicio_previsto), formatarData(p.fim_previsto),
       formatarData(p.inicio_real), formatarData(p.fim_real),
-      p.percentual, rotuloSaude[saude(p)],
+      p.percentual, rotuloSaude[saude(p, projetos)],
     ]);
   }
   const livro = XLSX.utils.book_new();

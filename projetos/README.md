@@ -69,6 +69,25 @@ A lista vem ordenada **por prioridade** (crítica, alta, média, baixa; prazo ma
 curto desempata), que é a ordem em que se decide o que fazer agora. O seletor
 *Ordenar* troca para prazo, situação ou nome.
 
+### Avanço: não se digita, se conclui
+
+Não há campo de percentual em lugar nenhum — nem na linha da atividade, nem no
+cadastro, nem no lançamento de acompanhamento. O número sai da situação:
+
+- **atividade** (sem nada dentro): concluída vale 100%, o resto vale 0%;
+- **projeto**: atividades concluídas / atividades que valem (canceladas fora);
+- **carteira** (painel): mesma conta sobre todos os projetos e atividades.
+
+A conta é feita na leitura (`listarProjetos`), então painel, cronograma,
+planilha e semáforo mostram o mesmo número da lista, sem cada um refazer a
+conta e sem depender de uma coluna que envelheceria a cada mudança de situação.
+A coluna `percentual` do banco continua lá, mas nada mais escreve nela.
+
+O semáforo de saúde só cobra **ritmo** de quem tem atividades dentro — ali o
+percentual mede entrega parcial. Numa atividade solta o avanço é 0 até ela
+terminar, então comparar com o esperado marcaria "atenção" em tudo que passou
+de um quinto do prazo; lá quem cobra é a data.
+
 Isso é uma coluna `projeto_pai_id` na própria tabela de projetos: a atividade é
 um projeto filho e herda tudo o que o projeto já sabe fazer, sem uma entidade
 nova pela metade. Não há configuração: projeto de topo é sempre a pasta,
@@ -86,9 +105,7 @@ Consequências no resto do módulo:
 - **painel** e **cronograma** contam apenas as folhas, para o projeto e as
   atividades dentro dele não contarem o mesmo trabalho duas vezes;
 - o projeto mostra o **avanço pela conclusão**: quantas atividades já estão
-  concluídas sobre o total, ignorando as canceladas. Não é a média do avanço
-  informado em cada uma — atividade só conta quando termina, então a barra do
-  projeto não sobe com estimativa otimista de quem preenche o percentual;
+  concluídas sobre o total, ignorando as canceladas;
 - projeto antigo que tinha marcos ou tarefas próprios continua mostrando o que
   já tinha, para nada se perder.
 
@@ -216,10 +233,11 @@ VITE_SUPABASE_URL=https://xxx.supabase.co VITE_SUPABASE_ANON_KEY=sb_publishable_
 
 - **Atraso**: dias passados do fim previsto, contados só para projeto não encerrado.
 - **Avanço esperado**: quanto do prazo já correu. Aparece como marca cinza na
-  barra de progresso — o avanço informado abaixo dessa marca significa ritmo
-  atrasado mesmo sem estourar a data.
+  barra de progresso — o avanço abaixo dessa marca significa ritmo atrasado
+  mesmo sem estourar a data.
 - **Saúde**: `crítico` quando está em risco ou passou do prazo; `atenção` quando
-  está 20 pontos ou mais atrás do esperado, pausado, ou vence em até 7 dias;
+  o projeto está 20 pontos ou mais atrás do esperado (só para quem tem
+  atividades dentro), pausado, ou vence em até 7 dias;
   `no prazo` no restante; `encerrado` para concluído e cancelado.
 
 As cores de situação passaram pelo validador de daltonismo do guia de dataviz

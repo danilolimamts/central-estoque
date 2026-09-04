@@ -130,7 +130,7 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
                     {formatarData(p.fim_previsto)}
                     {diasDeAtraso(p) > 0 && <span className="ml-2 font-bold text-vermelho">+{diasDeAtraso(p)}d</span>}
                   </td>
-                  <td className="px-4 py-2"><SeloSaude saude={saude(p)} /></td>
+                  <td className="px-4 py-2"><SeloSaude saude={saude(p, projetos)} /></td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <Barra valor={percentualEfetivo(projetos, p)} esperado={percentualEsperado(p)} />

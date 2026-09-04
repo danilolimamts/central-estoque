@@ -265,18 +265,14 @@ export default function Atividades({ pai, projetos, pessoas, aoAbrir, recarregar
                     )}
                   </td>
 
-                  <td className="px-3 py-2"><SeloSaude saude={saude(p)} /></td>
+                  <td className="px-3 py-2"><SeloSaude saude={saude(p, projetos)} /></td>
 
                   <td className="px-3 py-2">
+                    {/* Sem campo para digitar: o avanco e consequencia da
+                        situacao, entao muda pelo seletor ao lado. */}
                     <div className="flex items-center gap-2">
                       <Barra valor={percentualEfetivo(projetos, p)} esperado={percentualEsperado(p)} />
-                      <input
-                        type="number" min={0} max={100} value={p.percentual}
-                        className="campo w-14 px-1 py-0.5 text-center text-xs"
-                        onChange={(e) => void alterar(p, {
-                          percentual: Math.min(100, Math.max(0, Number(e.target.value))),
-                        })}
-                      />
+                      <span className="w-9 text-right text-xs font-bold">{percentualEfetivo(projetos, p)}%</span>
                     </div>
                   </td>
 

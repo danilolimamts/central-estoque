@@ -1,3 +1,4 @@
+import { avancoPorConclusao } from './arvore';
 import type { Marco, Projeto, StatusProjeto, Tarefa } from './tipos';
 
 /* Datas do banco chegam como 'AAAA-MM-DD'. new Date('2026-03-01') e
@@ -83,12 +84,18 @@ export const coresSaude: Record<Saude, string> = {
 
 /* Semaforo do projeto. A defasagem contra o esperado entra junto com o
    atraso de prazo porque um projeto pode estar dentro da data e ainda
-   assim muito atras do ritmo necessario. */
-export function saude(p: Projeto): Saude {
+   assim muito atras do ritmo necessario.
+   O ritmo so vale para quem tem atividades dentro: ali o percentual
+   mede entrega parcial. Numa atividade solta o avanco e 0 ate ela ser
+   concluida, entao comparar com o esperado marcaria "atenção" em tudo
+   que passou de um quinto do prazo — a data ja e cobrada pelas outras
+   regras. */
+export function saude(p: Projeto, carteira: Projeto[] = []): Saude {
   if (encerrado(p)) return 'encerrado';
   if (p.status === 'em_risco' || atrasado(p)) return 'critico';
+  const avanco = avancoPorConclusao(carteira, p.id);
   const esperado = percentualEsperado(p);
-  if (esperado !== null && esperado - p.percentual >= 20) return 'atencao';
+  if (avanco && esperado !== null && esperado - avanco.percentual >= 20) return 'atencao';
   if (p.status === 'pausado' || venceEm(p, 7)) return 'atencao';
   return 'no_prazo';
 }
@@ -99,7 +106,7 @@ export interface Indicadores {
   concluidos: number;
   atrasados: number;
   vencendo: number;
-  percentualMedio: number;
+  percentualConcluido: number;
   porStatus: Record<StatusProjeto, number>;
 }
 
@@ -107,11 +114,15 @@ export function calcularIndicadores(lista: Projeto[]): Indicadores {
   const porStatus = {
     nao_iniciado: 0, em_andamento: 0, em_risco: 0, pausado: 0, concluido: 0, cancelado: 0,
   } as Record<StatusProjeto, number>;
-  let soma = 0;
   let vivos = 0;
+  /* O avanco da carteira e a fatia ja concluida, nao a media de
+     percentuais: cancelado sai do denominador porque nao e trabalho
+     pendente nem entregue. */
+  let valem = 0;
   for (const p of lista) {
     porStatus[p.status] += 1;
-    if (!encerrado(p)) { vivos += 1; soma += p.percentual; }
+    if (!encerrado(p)) vivos += 1;
+    if (p.status !== 'cancelado') valem += 1;
   }
   return {
     total: lista.length,
@@ -119,7 +130,7 @@ export function calcularIndicadores(lista: Projeto[]): Indicadores {
     concluidos: porStatus.concluido,
     atrasados: lista.filter(atrasado).length,
     vencendo: lista.filter((p) => venceEm(p, 15)).length,
-    percentualMedio: vivos ? Math.round(soma / vivos) : 0,
+    percentualConcluido: valem ? Math.round((porStatus.concluido / valem) * 100) : 0,
     porStatus,
   };
 }

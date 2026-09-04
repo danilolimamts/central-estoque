@@ -40,7 +40,7 @@ export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
         <Indicador titulo="Atrasados" valor={indicadores.atrasados} cor="#D2453A" detalhe="passaram do fim previsto" />
         <Indicador titulo="Vencendo" valor={indicadores.vencendo} cor="#C79212" detalhe="nos próximos 15 dias" />
         <Indicador titulo="Concluídos" valor={indicadores.concluidos} cor="#2E8B57" detalhe="no histórico" />
-        <Indicador titulo="Avanço médio" valor={`${indicadores.percentualMedio}%`} detalhe="projetos não encerrados" />
+        <Indicador titulo="Avanço" valor={`${indicadores.percentualConcluido}%`} detalhe="concluídos sobre o que vale" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -100,7 +100,7 @@ export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
                         <span className="ml-2 font-bold text-vermelho">+{diasDeAtraso(p)}d</span>
                       )}
                     </td>
-                    <td className="px-4 py-2"><SeloSaude saude={saude(p)} /></td>
+                    <td className="px-4 py-2"><SeloSaude saude={saude(p, projetos)} /></td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <Barra valor={p.percentual} esperado={percentualEsperado(p)} />

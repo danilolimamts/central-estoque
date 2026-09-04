@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { percentualEfetivo } from '@/dominio/arvore';
 import { comprimirImagem } from '@/lib/imagem';
 import type { Anexo, Atualizacao, Marco, Momento, Pessoa, Projeto, Tarefa } from '@/dominio/tipos';
 
@@ -28,7 +29,15 @@ async function selecionar<T>(tabela: string, ordem: string, ascendente = true): 
   return (data ?? []) as T[];
 }
 
-export const listarProjetos = () => selecionar<Projeto>('projetos', 'criado_em', false);
+/* O avanco nao e mais digitado: vem da conclusao das atividades (ou,
+   na folha, da propria situacao). Normalizar aqui deixa painel,
+   cronograma, planilha e regras de saude lendo o mesmo numero da tela,
+   sem cada um refazer a conta — e sem depender de uma coluna que
+   envelheceria a cada mudanca de situacao. */
+export async function listarProjetos(): Promise<Projeto[]> {
+  const lista = await selecionar<Projeto>('projetos', 'criado_em', false);
+  return lista.map((p) => ({ ...p, percentual: percentualEfetivo(lista, p) }));
+}
 export const listarPessoas = () => selecionar<Pessoa>('pessoas', 'nome');
 
 export async function salvarProjeto(dados: Partial<Projeto> & { nome: string }, id?: string) {
@@ -88,7 +97,10 @@ export async function excluirTarefa(id: string) {
 /* Devolve o id do lancamento para que as fotos do reporte sejam
    anexadas a ele, e nao soltas no projeto. */
 export async function lancarAtualizacao(
-  dados: Omit<Atualizacao, 'id' | 'criado_em' | 'autor_id'>,
+  /* O avanco saiu do formulario de reporte: quem lanca conta o que
+     aconteceu e a situacao; o percentual e consequencia dela. Lancamento
+     antigo mantem o numero que ja tinha. */
+  dados: Omit<Atualizacao, 'id' | 'criado_em' | 'autor_id' | 'percentual'>,
 ): Promise<string> {
   const { data, error } = await supabase.from('atualizacoes').insert(dados).select('id').single();
   if (error) throw error;

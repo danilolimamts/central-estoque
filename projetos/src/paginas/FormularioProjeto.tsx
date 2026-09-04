@@ -41,7 +41,6 @@ export default function FormularioProjeto({ aberto, projeto, projetos = [], pess
         rotulo_filhos: vazio(String(f.get('rotulo_filhos'))),
         inicio_real: vazio(String(f.get('inicio_real'))),
         fim_real: vazio(String(f.get('fim_real'))),
-        percentual: Number(f.get('percentual')),
       }, projeto?.id);
       await aoSalvar();
       aoFechar();
@@ -110,9 +109,6 @@ export default function FormularioProjeto({ aberto, projeto, projetos = [], pess
             <select name="prioridade" defaultValue={projeto?.prioridade ?? 'media'} className="campo">
               {PRIORIDADES.map((p) => <option key={p} value={p}>{rotuloPrioridade[p]}</option>)}
             </select>
-          </Campo>
-          <Campo rotulo="Avanço (%)">
-            <input name="percentual" type="number" min={0} max={100} defaultValue={projeto?.percentual ?? 0} className="campo" />
           </Campo>
         </div>
 
