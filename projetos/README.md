@@ -120,6 +120,25 @@ Consequências no resto do módulo:
 - projeto antigo que tinha marcos ou tarefas próprios continua mostrando o que
   já tinha, para nada se perder.
 
+### Filtros das atividades
+
+Ao lado da lista há uma barra retrátil (nasce fechada; a escolha fica no
+`localStorage` do navegador, porque o quadro precisa da largura toda quando
+ninguém está filtrando). Ela filtra por:
+
+- **tem dentro** — páginas, documento Word, tarefas, marcos e anexos, em três
+  estados: tanto faz, **com** ou **sem**. "Quais melhorias ainda estão sem
+  documentação" é a pergunta mais frequente, e uma caixa marcada só responderia
+  metade dela;
+- situação, prioridade, responsável, prazo (vencidas, vencem em 7 dias, sem
+  prazo) e busca por nome/código/descrição, sem acento e sem caixa.
+
+As contagens vêm de cinco consultas de uma coluna só (`estado/conteudo.ts`),
+limitadas às atividades do projeto aberto — baixar páginas e anexos inteiros só
+para contar linha seria caro. A coluna **Conteúdo** da lista (e uma linha no
+cartão do quadro) mostra as mesmas contagens em três letras: o filtro esconde a
+atividade, e a marca explica por quê.
+
 ### Quadro (arrastar e soltar)
 
 As melhorias de um grupo e as tarefas de um projeto aparecem em colunas por
