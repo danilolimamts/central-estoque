@@ -49,9 +49,12 @@ describe('árvore de projetos', () => {
     expect(avancoPorConclusao(carteira, 'solto')).toBeNull();
   });
 
-  it('o percentual que vale é o da conclusão no projeto e o digitado na atividade', () => {
+  it('o percentual vem da conclusão: das atividades no projeto, da situação na folha', () => {
     expect(percentualEfetivo(carteira, carteira[0])).toBe(50);
-    expect(percentualEfetivo(carteira, carteira[4])).toBe(20);
+    // Atividade solta em andamento vale zero mesmo tendo 20 gravado na coluna
+    // antiga: nao ha mais avanco digitado, so concluido ou nao.
+    expect(percentualEfetivo(carteira, carteira[4])).toBe(0);
+    expect(percentualEfetivo(carteira, carteira[2])).toBe(100);
   });
 
   it('ordena por prioridade e desempata pelo prazo', () => {

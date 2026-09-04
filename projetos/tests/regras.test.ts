@@ -61,13 +61,27 @@ describe('saude', () => {
     expect(saude(projeto({ fim_previsto: '2026-02-01' }))).toBe('critico');
   });
 
-  it('marca atencao quando o avanco esta muito atras do ritmo', () => {
-    // Esperado 66%, informado 40%: defasagem de 26 pontos.
-    expect(saude(projeto({ percentual: 40 }))).toBe('atencao');
+  it('marca atencao quando entregou pouco para o prazo ja corrido', () => {
+    // Esperado 66% do prazo; uma atividade concluída de quatro: 25%.
+    const pai = projeto({ id: 'pai' });
+    const dentro = ['a', 'b', 'c', 'd'].map((id, i) => projeto({
+      id, projeto_pai_id: 'pai', status: i === 0 ? 'concluido' : 'em_andamento',
+    }));
+    expect(saude(pai, [pai, ...dentro])).toBe('atencao');
   });
 
-  it('marca no prazo quando o avanco acompanha o ritmo', () => {
-    expect(saude(projeto({ percentual: 70 }))).toBe('no_prazo');
+  it('marca no prazo quando a conclusao acompanha o ritmo', () => {
+    const pai = projeto({ id: 'pai' });
+    const dentro = ['a', 'b', 'c', 'd'].map((id, i) => projeto({
+      id, projeto_pai_id: 'pai', status: i === 3 ? 'em_andamento' : 'concluido',
+    }));
+    expect(saude(pai, [pai, ...dentro])).toBe('no_prazo');
+  });
+
+  it('nao cobra ritmo de atividade sem nada dentro', () => {
+    // Sem atividades nao ha entrega parcial para comparar: quem cobra e
+    // a data, e ela ainda nao venceu.
+    expect(saude(projeto({}))).toBe('no_prazo');
   });
 
   it('separa o que ja foi encerrado', () => {
@@ -83,16 +97,18 @@ describe('venceEm', () => {
 });
 
 describe('calcularIndicadores', () => {
-  it('separa ativos de encerrados na media de avanco', () => {
+  it('mede o avanço pela fatia concluída, sem contar a cancelada', () => {
     const i = calcularIndicadores([
-      projeto({ id: 'a', percentual: 40 }),
-      projeto({ id: 'b', percentual: 60 }),
-      projeto({ id: 'c', percentual: 100, status: 'concluido' }),
+      projeto({ id: 'a' }),
+      projeto({ id: 'b' }),
+      projeto({ id: 'c', status: 'concluido' }),
+      projeto({ id: 'd', status: 'cancelado' }),
     ]);
-    expect(i.total).toBe(3);
+    expect(i.total).toBe(4);
     expect(i.ativos).toBe(2);
     expect(i.concluidos).toBe(1);
-    expect(i.percentualMedio).toBe(50);
+    // Uma concluída de três que valem; a cancelada fica de fora.
+    expect(i.percentualConcluido).toBe(33);
   });
 });
 

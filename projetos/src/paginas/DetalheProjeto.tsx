@@ -93,7 +93,7 @@ export default function DetalheProjeto({ projeto, projetos, pessoas, aoVoltar, a
               {projeto.codigo && <span className="text-xs font-bold text-tinta-suave">{projeto.codigo}</span>}
               <SeloStatus status={projeto.status} />
               <SeloPrioridade prioridade={projeto.prioridade} />
-              <SeloSaude saude={saude(projeto)} />
+              <SeloSaude saude={saude(projeto, projetos)} />
             </div>
             <h1 className="font-titulo text-xl font-extrabold">{projeto.nome}</h1>
             {projeto.descricao && <p className="mt-1 max-w-3xl text-sm text-tinta-suave">{projeto.descricao}</p>}
@@ -502,7 +502,6 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const status = f.get('status_reportado') as StatusProjeto;
-    const percentual = Number(f.get('percentual'));
     const autor = String(f.get('autor_nome')) || null;
     const fotos = (f.getAll('fotos') as File[]).filter((a) => a.size > 0);
     setEnviando(true);
@@ -512,7 +511,6 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
         data: String(f.get('data')),
         texto: String(f.get('texto')),
         status_reportado: status,
-        percentual,
         riscos: String(f.get('riscos')) || null,
         proximos_passos: String(f.get('proximos_passos')) || null,
         autor_nome: autor,
@@ -531,7 +529,7 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
       /* O lancamento e a fonte do status: sem espelhar no projeto, a
          lista e o painel continuariam mostrando o quadro antigo. */
       if (f.get('espelhar')) {
-        await salvarProjeto({ nome: projeto.nome, status, percentual }, projeto.id);
+        await salvarProjeto({ nome: projeto.nome, status }, projeto.id);
       }
       await recarregar();
       aoFechar();
@@ -545,15 +543,12 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
   return (
     <Modal aberto={aberto} aoFechar={aoFechar} titulo="Lançar acompanhamento" largura="max-w-lg">
       <form onSubmit={enviar} className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Campo rotulo="Data"><input name="data" type="date" defaultValue={isoDeHoje()} className="campo" /></Campo>
           <Campo rotulo="Situação">
             <select name="status_reportado" defaultValue={projeto.status} className="campo">
               {STATUS.map((s) => <option key={s} value={s}>{rotuloStatus[s]}</option>)}
             </select>
-          </Campo>
-          <Campo rotulo="Avanço (%)">
-            <input name="percentual" type="number" min={0} max={100} defaultValue={projeto.percentual} className="campo" />
           </Campo>
         </div>
         <Campo rotulo="Reportado por">
@@ -573,7 +568,7 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
         </Campo>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="espelhar" defaultChecked />
-          Atualizar situação e avanço do projeto com estes valores
+          Atualizar a situação do projeto com a situação reportada
         </label>
         {erro && <Aviso>{erro}</Aviso>}
         <div className="flex justify-end gap-2">

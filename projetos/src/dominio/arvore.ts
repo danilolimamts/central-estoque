@@ -99,10 +99,15 @@ export function avancoPorConclusao(lista: Projeto[], paiId: string): AvancoDoPro
   };
 }
 
+/* Atividade sem filhos: concluida vale 100, o resto vale 0. Nao ha
+   meio termo, porque nao ha mais campo para digitar meio termo. */
+export const percentualDoStatus = (projeto: Projeto): number =>
+  (projeto.status === 'concluido' ? 100 : 0);
+
 /* O numero que vale na tela: projeto com atividades usa a conclusao
-   delas; atividade sozinha usa o proprio percentual. */
+   delas; atividade sozinha usa a propria situacao. */
 export function percentualEfetivo(lista: Projeto[], projeto: Projeto): number {
-  return avancoPorConclusao(lista, projeto.id)?.percentual ?? projeto.percentual;
+  return avancoPorConclusao(lista, projeto.id)?.percentual ?? percentualDoStatus(projeto);
 }
 
 /* Ordem de urgencia para ordenar a lista de atividades. */
