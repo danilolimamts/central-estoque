@@ -1,4 +1,5 @@
 import { fluxoParaSvg, lerFluxo } from '@/dominio/fluxo';
+import { importarModulo } from '@/lib/importar';
 
 /* O gerador do .docx precisa dos bytes da imagem, nao da URL. Estas
    funcoes baixam e convertem tudo para PNG, que e o unico formato que
@@ -60,7 +61,7 @@ export async function fluxogramaEmPng(conteudo: string): Promise<ImagemEmBytes> 
 
   /* Fluxo escrito no formato antigo, em texto: continua desenhado pela
      biblioteca de diagramas, para documento antigo nao sair sem ele. */
-  const { default: mermaid } = await import('mermaid');
+  const { default: mermaid } = await importarModulo(() => import('mermaid'));
   mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', fontFamily: 'Arial' });
   const { svg } = await mermaid.render(`doc-${Math.random().toString(36).slice(2)}`, conteudo);
   const ajustado = svg.replace('<svg ', '<svg width="900" ');

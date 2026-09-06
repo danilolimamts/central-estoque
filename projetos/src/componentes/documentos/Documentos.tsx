@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Aviso, Campo, Carregando, Modal, Vazio } from '@/componentes/ui';
 import { mensagemDeErro } from '@/estado/dados';
+import { importarModulo } from '@/lib/importar';
 import { excluirDocumento, proximoNumero, salvarDocumento, useDocumentos } from '@/estado/documentos';
 import { usePaginas } from '@/estado/paginas';
 import { montarBriefing, lerConteudoColado } from '@/dominio/briefing';
@@ -257,8 +258,8 @@ function Formulario({
     setErro(null);
     try {
       const [{ gerarDocumentoWord }, { baixarImagem, fluxogramaEmPng }] = await Promise.all([
-        import('@/exportar/documentoWord'),
-        import('@/lib/imagensParaWord'),
+        importarModulo(() => import('@/exportar/documentoWord')),
+        importarModulo(() => import('@/lib/imagensParaWord')),
       ]);
 
       const recursos: { logo?: Awaited<ReturnType<typeof baixarImagem>>; imagens: Record<string, Awaited<ReturnType<typeof baixarImagem>>> } = { imagens: {} };
@@ -497,12 +498,30 @@ function Bloco({ titulo, children }: { titulo: string; children: React.ReactNode
   );
 }
 
+/* Campo de varias linhas que vira lista.
+
+   O valor que chega ja passou pela conversao texto -> lista -> texto, e
+   essa volta apara espacos e joga fora linha vazia. Ligado direto no
+   textarea, o espaco sumia no instante em que era digitado: "Tela no
+   bseller" virava "Telanobseller".
+
+   Enquanto o campo esta em foco vale o texto de quem digita; o valor de
+   fora so entra quando ninguem esta escrevendo — que e o caso de "Gerar
+   rascunho" e "Colar conteudo". Ao sair, o texto arrumado assume. */
 function Lista({ rotulo, valor, aoMudar }: { rotulo: string; valor: string; aoMudar: (t: string) => void }) {
+  const [texto, setTexto] = useState(valor);
+  const escrevendo = useRef(false);
+
+  useEffect(() => { if (!escrevendo.current) setTexto(valor); }, [valor]);
+
   return (
     <Campo rotulo={rotulo}>
       <textarea
-        rows={Math.min(10, Math.max(3, valor.split('\n').length + 1))}
-        className="campo" value={valor} onChange={(e) => aoMudar(e.target.value)}
+        rows={Math.min(10, Math.max(3, texto.split('\n').length + 1))}
+        className="campo" value={texto}
+        onFocus={() => { escrevendo.current = true; }}
+        onBlur={() => { escrevendo.current = false; setTexto(valor); }}
+        onChange={(e) => { setTexto(e.target.value); aoMudar(e.target.value); }}
       />
     </Campo>
   );

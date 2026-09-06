@@ -232,6 +232,23 @@ await pagina.getByText('Reendereçamento do mezanino').first().click();
 await pagina.waitForTimeout(700);
 await pagina.screenshot({ path: 'verificacao-detalhe.png', fullPage: true });
 
+/* Campo de lista do documento: o texto passa por lista e volta, e a
+   volta apara espacos. Sem cuidado, o espaco some enquanto se digita —
+   "Tela no bseller" virava "Telanobseller". */
+await pagina.getByRole('button', { name: 'Criar documento', exact: true }).first().click();
+await pagina.waitForTimeout(900);
+const regras = pagina.getByRole('textbox', { name: /Regras de negócio/i }).first();
+await regras.click();
+await pagina.keyboard.type('Tela no bseller');
+await pagina.waitForTimeout(200);
+const digitado = await regras.inputValue();
+if (digitado !== 'Tela no bseller') {
+  console.error(`FALHOU: o campo de lista comeu o espaço — ficou "${digitado}".`);
+  process.exitCode = 1;
+}
+await pagina.getByRole('button', { name: 'Fechar', exact: true }).first().click();
+await pagina.waitForTimeout(500);
+
 // Guarda-chuva: quadro de melhorias por situação.
 await pagina.getByRole('button', { name: 'Voltar', exact: false }).first().click();
 await pagina.waitForTimeout(400);

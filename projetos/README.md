@@ -261,6 +261,21 @@ Listas e tabelas são editadas como texto, uma linha por item e colunas separada
 por barra (`Dimensão | Ganho`). Travessão é trocado na geração, porque a
 especificação o proíbe no conteúdo.
 
+Esses campos guardam o próprio texto enquanto estão em foco. Ligados direto no
+valor convertido, o espaço sumia no instante em que era digitado — a volta
+lista → texto apara espaços, e "Tela no bseller" virava "Telanobseller". O valor
+de fora só entra quando ninguém está escrevendo, que é o caso de *Gerar
+rascunho* e *Colar conteúdo*.
+
+### Publicação nova com a aba aberta
+
+Cada publicação troca o hash dos pedaços do bundle. A aba que ficou aberta
+continua com o index antigo e, ao pedir um pedaço sob demanda (gerador de Word,
+planilha, editor), busca um arquivo que não existe mais: *Failed to fetch
+dynamically imported module*. `lib/importar.ts` intercepta isso e recarrega a
+página uma vez — com trava em `sessionStorage`, para não entrar em laço quando a
+falha for outra coisa, como internet caída.
+
 O índice geral (documento `00`) ainda não é gerado.
 
 ### Acesso

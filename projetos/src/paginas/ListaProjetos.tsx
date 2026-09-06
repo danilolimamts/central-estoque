@@ -6,6 +6,7 @@ import { filhosDe, percentualEfetivo, rotuloDosFilhos } from '@/dominio/arvore';
 import type { Pessoa, Projeto, StatusProjeto } from '@/dominio/tipos';
 import { usePermissoes } from '@/estado/sessao';
 import { useSituacoes } from '@/estado/configuracao';
+import { importarModulo } from '@/lib/importar';
 import { situacoesVisiveis } from '@/dominio/situacoes';
 
 interface Props {
@@ -94,7 +95,7 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
             onClick={async () => {
               /* Importacao tardia: a biblioteca de planilha so desce
                  quando alguem clica em exportar. */
-              const { exportarCarteira } = await import('@/exportar/excel');
+              const { exportarCarteira } = await importarModulo(() => import('@/exportar/excel'));
               exportarCarteira(filtrados, pessoas);
             }}
           >Exportar Excel</button>
