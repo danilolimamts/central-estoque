@@ -9,9 +9,9 @@ import { avancoPorConclusao, ehRaiz, percentualEfetivo, rotuloDosFilhos, singula
 /* O editor de texto e o desenhista de fluxograma somam alguns MB. Quem
    so consulta o painel nao deve baixar isso: entram sob demanda, quando
    o detalhe do projeto abre. */
-const Paginas = lazy(() => import('@/componentes/paginas/Paginas'));
+const Paginas = lazy(() => importarModulo(() => import('@/componentes/paginas/Paginas')));
 /* O gerador de .docx tambem so desce quando o projeto e aberto. */
-const Documentos = lazy(() => import('@/componentes/documentos/Documentos'));
+const Documentos = lazy(() => importarModulo(() => import('@/componentes/documentos/Documentos')));
 import { Aviso, Barra, Campo, Carregando, Modal, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import {
   enviarAnexo, excluirAtualizacao, excluirMarco, excluirProjeto, excluirTarefa,
@@ -19,6 +19,7 @@ import {
   urlDoAnexo, useDetalheProjeto,
 } from '@/estado/dados';
 import { usePermissoes } from '@/estado/sessao';
+import { importarModulo } from '@/lib/importar';
 import {
   formatarData, isoDeHoje, marcoAtrasado, percentualEsperado, progressoDeTarefas, saude, tarefaAtrasada,
 } from '@/dominio/regras';
@@ -121,7 +122,7 @@ export default function DetalheProjeto({
               onClick={() => void comErro(async () => {
                 /* A biblioteca de planilha pesa quase metade do bundle:
                    so e baixada quando alguem exporta de fato. */
-                const { exportarProjeto } = await import('@/exportar/excel');
+                const { exportarProjeto } = await importarModulo(() => import('@/exportar/excel'));
                 exportarProjeto(projeto, pessoas, dados.marcos, dados.tarefas, dados.atualizacoes, dados.anexos);
               })}
             >
