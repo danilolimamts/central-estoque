@@ -65,12 +65,15 @@ export interface Configuracao {
   recarregar: () => Promise<void>;
 }
 
-export function useConfiguracao(): Configuracao {
+export function useConfiguracao(pronto = true): Configuracao {
   const [lista, setLista] = useState<Situacao[]>(SITUACOES_PADRAO);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
   const recarregar = useCallback(async () => {
+    /* Mesma espera da carteira: sem sessao o banco recusa a leitura e a
+       equipe veria as situacoes de fabrica em vez das suas. */
+    if (!pronto) return;
     setCarregando(true);
     try {
       const nova = await lerSituacoes();
@@ -87,7 +90,7 @@ export function useConfiguracao(): Configuracao {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [pronto]);
 
   useEffect(() => { void recarregar(); }, [recarregar]);
 

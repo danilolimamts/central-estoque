@@ -12,6 +12,14 @@ const BALDE = 'anexos-projetos';
 export function mensagemDeErro(erro: unknown): string {
   const e = erro as { code?: string; message?: string } | null;
   if (!e) return 'Erro desconhecido.';
+  /* Duas negativas diferentes com o mesmo codigo: "permission denied
+     for table" e requisicao que chegou sem sessao (token ausente ou
+     vencido); a de policy e falta de direito sobre aquela linha. Dizer
+     "voce nao pode editar" para quem so precisa entrar de novo manda a
+     pessoa para o lado errado. */
+  if (e.message?.includes('permission denied for table')) {
+    return 'Sua sessão não chegou ao banco (expirou ou ainda não carregou). Recarregue a página e, se continuar, entre de novo.';
+  }
   if (e.code === '42501' || e.message?.includes('row-level security')) {
     return 'Sem permissão: cada pessoa altera o que criou; o resto é só leitura.';
   }
@@ -199,13 +207,20 @@ interface Carteira {
 /* Carteira inteira em memoria: sao dezenas de projetos, nao milhares.
    Carregar tudo de uma vez deixa filtro, painel e cronograma
    instantaneos e evita uma consulta por interacao. */
-export function useCarteira(): Carteira {
+/* "pronto" e a sessao ja resolvida. Sem essa espera, a carteira sai
+   pedindo dado no primeiro render, antes de o supabase-js ler o token
+   guardado no navegador: a consulta vai como visitante, o banco recusa
+   (permissao negada) e a tela abre vazia com aviso de permissao, mesmo
+   com a pessoa logada. Em maquina rapida a corrida costuma dar certo;
+   em maquina fria, nao — foi assim que o defeito apareceu. */
+export function useCarteira(pronto = true): Carteira {
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
   const recarregar = useCallback(async () => {
+    if (!pronto) return;
     setCarregando(true);
     try {
       const [p, q] = await Promise.all([listarProjetos(), listarPessoas()]);
@@ -217,7 +232,7 @@ export function useCarteira(): Carteira {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [pronto]);
 
   useEffect(() => { void recarregar(); }, [recarregar]);
 

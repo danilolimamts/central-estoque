@@ -27,9 +27,12 @@ export default function App() {
   const [aba, setAba] = useState<Aba>('painel');
   const [aberto, setAberto] = useState<Projeto | null>(null);
   const sessao = useSessao();
-  const carteira = useCarteira();
+  /* Nada de dado antes de a sessao estar resolvida: consulta enviada sem
+     token chega ao banco como visitante e volta recusada. */
+  const pronto = !sessao.carregando && !!sessao.usuario;
+  const carteira = useCarteira(pronto);
   const permissoes = useMemo(() => permissoesDe(sessao), [sessao]);
-  const configuracao = useConfiguracao();
+  const configuracao = useConfiguracao(pronto);
 
   /* O projeto aberto vem sempre da lista recarregada: guardar o objeto
      no estado deixaria a tela com dados velhos apos uma edicao. */
