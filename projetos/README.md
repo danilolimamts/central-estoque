@@ -311,6 +311,19 @@ balde é público e a página exibe a miniatura direto pela URL (um UUID
 aleatório). Fechar a leitura exigiria URL assinada em todo lugar — página,
 documento e exportação — e quebraria os links já gravados.
 
+#### A tela só pede dado depois da sessão
+
+`useCarteira` e `useConfiguracao` recebem um sinal de "sessão resolvida" e não
+consultam nada antes dele. Sem essa espera, o primeiro render dispara as
+consultas antes de o supabase-js ler o token guardado no navegador: elas chegam
+ao banco como visitante, o `anon` não tem grant nenhum desde `011`, e a tela
+abre vazia com aviso de permissão — mesmo com a pessoa logada. Em máquina
+rápida a corrida costuma dar certo; em máquina fria, não.
+
+Por isso também há duas mensagens diferentes para o mesmo código de erro do
+Postgres: `permission denied for table` é sessão que não chegou (recarregue,
+entre de novo), e a negativa de policy é falta de direito sobre aquela linha.
+
 #### Como voltar a abrir o módulo
 
 Recriar as policies de `anon` (o conteúdo de `003_acesso_aberto.sql`) e devolver
