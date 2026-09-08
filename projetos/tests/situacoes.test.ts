@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   SITUACOES_PADRAO, chaveNova, definirSituacoes, ehCancelada, ehConcluida, ehEncerrada,
-  ordemDaSituacao, situacaoDe, situacoesVisiveis,
+  moverSituacao, ordemDaSituacao, situacaoDe, situacoesVisiveis,
 } from '../src/dominio/situacoes';
+import type { Situacao } from '../src/dominio/situacoes';
 import { avancoPorConclusao, percentualEfetivo } from '../src/dominio/arvore';
 import { calcularIndicadores, encerrado } from '../src/dominio/regras';
 import type { Projeto } from '../src/dominio/tipos';
@@ -89,5 +90,33 @@ describe('chaveNova', () => {
     expect(chaveNova('Fazendo', ['fazendo'])).toBe('fazendo_2');
     expect(chaveNova('Fazendo', ['fazendo', 'fazendo_2'])).toBe('fazendo_3');
     expect(chaveNova('???', [])).toBe('situacao');
+  });
+});
+
+describe('moverSituacao', () => {
+  const lista = (): Situacao[] => [
+    { chave: 'a', rotulo: 'A', cor: '#000', usar: true, significado: 'aberta' },
+    { chave: 'oculta', rotulo: 'Oculta', cor: '#000', usar: false, significado: 'aberta' },
+    { chave: 'b', rotulo: 'B', cor: '#000', usar: true, significado: 'aberta' },
+    { chave: 'c', rotulo: 'C', cor: '#000', usar: true, significado: 'concluida' },
+  ];
+
+  const chaves = (l: Situacao[]) => l.map((s) => s.chave);
+
+  it('leva a concluída para o fim da fila', () => {
+    expect(chaves(moverSituacao(lista(), 'c', -1))).toEqual(['a', 'oculta', 'c', 'b']);
+  });
+
+  it('pula a situação desligada: um clique, uma casa visível', () => {
+    expect(chaves(moverSituacao(lista(), 'b', -1))).toEqual(['b', 'a', 'oculta', 'c']);
+  });
+
+  it('nas pontas não faz nada', () => {
+    expect(chaves(moverSituacao(lista(), 'a', -1))).toEqual(chaves(lista()));
+    expect(chaves(moverSituacao(lista(), 'c', 1))).toEqual(chaves(lista()));
+  });
+
+  it('situação que não está na configuração fica onde está', () => {
+    expect(chaves(moverSituacao(lista(), 'inexistente', 1))).toEqual(chaves(lista()));
   });
 });

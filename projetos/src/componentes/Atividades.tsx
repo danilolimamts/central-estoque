@@ -7,8 +7,8 @@ import { mensagemDeErro, salvarProjeto } from '@/estado/dados';
 import { conteudoDe, useConteudoDosProjetos } from '@/estado/conteudo';
 import { usePermissoes } from '@/estado/sessao';
 import ConfigStatus from '@/componentes/ConfigStatus';
-import { useSituacoes } from '@/estado/configuracao';
-import { ordemDaSituacao, situacaoDe, situacoesVisiveis } from '@/dominio/situacoes';
+import { salvarSituacoes, useSituacoes } from '@/estado/configuracao';
+import { moverSituacao, ordemDaSituacao, situacaoDe, situacoesVisiveis } from '@/dominio/situacoes';
 import type { ConteudoDoProjeto } from '@/estado/conteudo';
 import { CONTEUDOS, aplicarFiltros, filtrosVazios } from '@/dominio/filtros';
 import { cobertura, porcentagem } from '@/dominio/cobertura';
@@ -123,6 +123,20 @@ export default function Atividades({
       setNome('');
       setCriando(null);
       await recarregar();
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+    }
+  }
+
+  /* Trocar a coluna de lugar no proprio quadro. A ordem vale para todo
+     mundo — e configuracao da equipe, nao preferencia de quem olha —,
+     por isso so administrador move, e a gravacao e a mesma da tela de
+     situacoes. */
+  async function reordenar(chave: string, direcao: -1 | 1) {
+    try {
+      setErro(null);
+      await salvarSituacoes(moverSituacao(configSituacoes, chave, direcao));
+      await recarregarConfig();
     } catch (falha) {
       setErro(mensagemDeErro(falha));
     }
@@ -261,6 +275,11 @@ export default function Atividades({
           itens={cartoes}
           aoMover={(c, coluna) => alterar(c.projeto, { status: coluna as StatusProjeto })}
           aoAbrir={(c) => aoAbrir(c.projeto)}
+          /* Situacao que nao esta na configuracao (renomeada ou de antes
+             da mudanca) nao tem para onde ser movida: sem seta nela. */
+          aoReordenar={permissoes.ehAdmin
+            ? (coluna, direcao) => void reordenar(coluna.id, direcao)
+            : undefined}
           rodape={(coluna) => (
             <button
               className="w-full rounded-lg border border-dashed border-linha py-1.5 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"

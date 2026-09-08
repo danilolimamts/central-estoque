@@ -81,10 +81,12 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
   return (
     <Modal aberto={aberto} aoFechar={aoFechar} titulo="Situações das atividades" largura="max-w-3xl">
       <p className="mb-3 text-sm text-tinta-suave">
-        Crie as situações do seu processo, renomeie, escolha a cor e a ordem em que aparecem no
-        quadro. O <strong>significado</strong> é o que muda conta: só a situação marcada como
-        concluída entra no avanço, e a cancelada sai da conta. Vale para todo mundo que abre o
-        módulo.
+        Crie as situações do seu processo, renomeie e escolha a cor. A <strong>ordem desta
+        lista</strong> é a ordem das colunas no quadro e da lista ordenada por situação: use ▲▼
+        para, por exemplo, deixar <em>Concluído</em> por último. No próprio quadro as setas
+        ‹ › do cabeçalho fazem o mesmo. O <strong>significado</strong> é o que muda conta: só a
+        situação marcada como concluída entra no avanço, e a cancelada sai da conta. Vale para
+        todo mundo que abre o módulo.
       </p>
 
       <div className="space-y-2">
@@ -92,9 +94,12 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
           const usada = emUso.includes(s.chave);
           return (
             <div key={s.chave} className="flex flex-wrap items-center gap-2 rounded-lg border border-linha px-3 py-2">
+              {/* A posicao em numero: sem ela, "subir" e "descer" nao
+                  dizem onde a coluna vai parar no quadro. */}
+              <span className="w-5 shrink-0 text-center text-[11px] font-bold text-tinta-suave">{i + 1}º</span>
               <div className="flex flex-col text-[11px] leading-none text-tinta-suave">
-                <button className="hover:text-roxo-escuro" onClick={() => mover(i, -1)} title="Subir">▲</button>
-                <button className="hover:text-roxo-escuro" onClick={() => mover(i, 1)} title="Descer">▼</button>
+                <button className="hover:text-roxo-escuro" onClick={() => mover(i, -1)} title="Subir uma posição">▲</button>
+                <button className="hover:text-roxo-escuro" onClick={() => mover(i, 1)} title="Descer uma posição">▼</button>
               </div>
 
               <label className="flex shrink-0 items-center gap-1.5 text-xs font-bold" title="Aparece nas listas e no quadro">
