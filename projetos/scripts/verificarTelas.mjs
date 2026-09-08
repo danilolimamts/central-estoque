@@ -254,10 +254,35 @@ if (!(await destaque.count())) {
   }
 }
 await pagina.screenshot({ path: 'verificacao-guia.png', fullPage: true });
+
+/* A visita abre as telas de que fala. O passo da lista de projetos leva
+   para a aba Projetos, e o das paginas abre uma atividade de verdade:
+   guia que so troca o texto e continua parado nao ensina nada. */
+/* Ja se andou um passo na checagem do destaque; faltam dois ate a
+   carteira. */
+for (let i = 0; i < 2; i += 1) {
+  await pagina.getByRole('button', { name: 'Próximo', exact: true }).click();
+  await pagina.waitForTimeout(500);
+}
+if (!/#\/projetos/.test(pagina.url())) {
+  console.error(`FALHOU: o passo da carteira não abriu a aba Projetos — "${pagina.url()}".`);
+  process.exitCode = 1;
+}
+await pagina.getByRole('button', { name: 'Próximo', exact: true }).click();
+await pagina.waitForTimeout(900);
+if (!/#\/projeto\//.test(pagina.url())) {
+  console.error(`FALHOU: o passo das atividades não abriu um projeto — "${pagina.url()}".`);
+  process.exitCode = 1;
+}
+await pagina.screenshot({ path: 'verificacao-guia-projeto.png', fullPage: true });
 await pagina.getByRole('button', { name: 'Pular tudo', exact: true }).click();
 await pagina.waitForTimeout(300);
 if (((await pagina.textContent('body')) ?? '').includes('Pular tudo')) {
   console.error('FALHOU: "Pular tudo" não fechou o guia.');
+  process.exitCode = 1;
+}
+if (/#\/projeto\//.test(pagina.url())) {
+  console.error(`FALHOU: ao fechar, o guia deveria devolver a tela em que a pessoa estava — "${pagina.url()}".`);
   process.exitCode = 1;
 }
 

@@ -577,7 +577,7 @@ function Esteira({ numeros, plural }: { numeros: Cobertura; plural: string }) {
       rotulo: 'Já pedidas ao BSeller',
       parte: numeros.jaPedidas,
       cor: '#2E8B57',
-      ajuda: `${plural} com chamado anotado ou já numa situação a partir da abertura do chamado — marque essa situação em ⚙ Situações`,
+      ajuda: `${plural} com chamado anotado ou já numa situação a partir da abertura do chamado. Marque essa situação em ⚙ Situações`,
     },
     {
       rotulo: 'Prontas para abrir chamado',

@@ -131,7 +131,7 @@ function FormularioPessoa({ pessoa, aoFechar, recarregar }: {
         <Campo rotulo="Papel *">
           <select name="papel" defaultValue={atual?.papel ?? 'leitor'} className="campo">
             {PAPEIS.map((p) => (
-              <option key={p} value={p}>{rotuloPapel[p]} — {explicacaoDoPapel[p]}</option>
+              <option key={p} value={p}>{rotuloPapel[p]}: {explicacaoDoPapel[p]}</option>
             ))}
           </select>
         </Campo>

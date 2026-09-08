@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Aviso, Campo, Modal } from '@/componentes/ui';
 import { mensagemDeErro, salvarProjeto } from '@/estado/dados';
+import { proximoCodigo } from '@/dominio/arvore';
 import type { Pessoa, Prioridade, Projeto, StatusProjeto } from '@/dominio/tipos';
 import { PRIORIDADES, rotuloPrioridade } from '@/dominio/tipos';
 import { useSituacoes } from '@/estado/configuracao';
@@ -68,7 +69,7 @@ export default function FormularioProjeto({ aberto, projeto, projetos = [], pess
             <input name="nome" required defaultValue={projeto?.nome ?? ''} className="campo" />
           </Campo>
           <Campo rotulo="Código">
-            <input name="codigo" defaultValue={projeto?.codigo ?? ''} className="campo" placeholder="PRJ-001" />
+            <input name="codigo" defaultValue={projeto?.codigo ?? proximoCodigo(projetos ?? [])} className="campo" placeholder="PRJ-001" />
           </Campo>
         </div>
 
