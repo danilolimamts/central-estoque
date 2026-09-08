@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Acesso from '@/paginas/Acesso';
 import Painel from '@/paginas/Painel';
 import ListaProjetos from '@/paginas/ListaProjetos';
@@ -6,13 +6,14 @@ import DetalheProjeto from '@/paginas/DetalheProjeto';
 import Cronograma from '@/paginas/Cronograma';
 import Pessoas from '@/paginas/Pessoas';
 import Guia, { guiaJaVisto } from '@/componentes/Guia';
+import type { DestinoDoGuia } from '@/componentes/Guia';
 import { Aviso, Carregando } from '@/componentes/ui';
 import { useCarteira } from '@/estado/dados';
 import { ContextoPermissoes, permissoesDe, sair, useSessao } from '@/estado/sessao';
 import { ContextoSituacoes, useConfiguracao } from '@/estado/configuracao';
 import { rotuloPapel } from '@/dominio/tipos';
 import { escreverRota, lerRota } from '@/lib/rota';
-import type { Aba } from '@/lib/rota';
+import type { Aba, Rota } from '@/lib/rota';
 import type { Projeto } from '@/dominio/tipos';
 
 declare const __VERSAO__: string;
@@ -29,6 +30,12 @@ export default function App() {
      volta a mesma tela, e nao o painel. */
   const [rota, setRota] = useState(() => lerRota(window.location.hash));
   const [guiaAberto, setGuiaAberto] = useState(() => !guiaJaVisto());
+  /* Onde a pessoa estava quando a visita comecou: ela anda pelas telas
+     sozinha, e ao terminar tem de devolver o lugar. Na primeira visita,
+     que abre sozinha, o lugar e por onde a pessoa entrou. */
+  const rotaAntesDoGuia = useRef<Rota | null>(
+    guiaJaVisto() ? null : lerRota(window.location.hash),
+  );
   const sessao = useSessao();
 
   /* Voltar e avancar do navegador tambem mudam a tela. */
@@ -38,8 +45,12 @@ export default function App() {
     return () => window.removeEventListener('hashchange', ouvir);
   }, []);
 
-  const ir = useCallback((nova: { aba: Aba; projetoId: string | null }) => {
-    setRota(nova);
+  const ir = useCallback((nova: Rota) => {
+    /* Ir para onde ja se esta nao e navegacao: sem esta guarda, um
+       desenho a toa vira outro desenho a toa. */
+    setRota((atual) => (
+      atual.aba === nova.aba && atual.projetoId === nova.projetoId ? atual : nova
+    ));
     const endereco = escreverRota(nova);
     if (window.location.hash !== endereco) window.location.hash = endereco;
   }, []);
@@ -48,6 +59,13 @@ export default function App() {
     (p: Projeto) => ir({ aba: 'projetos', projetoId: p.id }),
     [ir],
   );
+
+  const fecharGuia = useCallback(() => {
+    /* De volta para onde a pessoa estava antes de pedir a visita. */
+    if (rotaAntesDoGuia.current) ir(rotaAntesDoGuia.current);
+    rotaAntesDoGuia.current = null;
+    setGuiaAberto(false);
+  }, [ir]);
   /* Nada de dado antes de a sessao estar resolvida: consulta enviada sem
      token chega ao banco como visitante e volta recusada. */
   const pronto = !sessao.carregando && !!sessao.usuario;
@@ -112,7 +130,10 @@ export default function App() {
             <div className="mt-1 flex gap-3 font-bold text-white/70">
               {/* O guia fica no alto, do lado direito: e onde se procura
                   ajuda, e nao atrapalha quem ja sabe usar. */}
-              <button data-guia="botao-guia" className="hover:text-white" onClick={() => setGuiaAberto(true)}>Guia</button>
+              <button
+                data-guia="botao-guia" className="hover:text-white"
+                onClick={() => { rotaAntesDoGuia.current = rota; setGuiaAberto(true); }}
+              >Guia</button>
               <a href="../" className="hover:text-white">← Central</a>
               <button className="hover:text-white" onClick={() => void sair()}>Sair</button>
             </div>
@@ -160,15 +181,20 @@ export default function App() {
 
       <Guia
         aberto={guiaAberto}
-        aoFechar={() => setGuiaAberto(false)}
-        /* A visita troca de aba sozinha, mas nunca fecha o projeto que
-           esta aberto: quem pediu o guia de dentro de uma atividade
-           volta para ela ao terminar. */
-        aoNavegar={(destino) => { if (!rota.projetoId) ir({ aba: destino, projetoId: null }); }}
+        aoFechar={fecharGuia}
+        aoNavegar={(destino: DestinoDoGuia) => {
+          if (destino !== 'projeto') { ir({ aba: destino, projetoId: null }); return; }
+          /* Passo que fala do que vive dentro de uma atividade: a visita
+             abre uma de verdade. Projeto guarda-chuva nao serve, porque
+             paginas, anexos e documento ficam nas atividades dele. */
+          const exemplo = carteira.projetos.find((p) => p.projeto_pai_id)
+            ?? carteira.projetos[0];
+          if (exemplo) ir({ aba: 'projetos', projetoId: exemplo.id });
+        }}
       />
 
       <footer className="pb-8 text-center text-[11px] text-tinta-suave">
-        Central de Estoque · Loja do Mecânico — versão {__VERSAO__}
+        Central de Estoque · Loja do Mecânico · versão {__VERSAO__}
       </footer>
     </div>
     </ContextoSituacoes.Provider>

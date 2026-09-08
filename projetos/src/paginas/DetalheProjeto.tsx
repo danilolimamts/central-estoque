@@ -210,7 +210,9 @@ export default function DetalheProjeto({
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="cartao overflow-hidden">
           <div className="flex items-center justify-between border-b border-linha px-4 py-3">
-            <h2 className="font-titulo text-sm font-extrabold">Marcos</h2>
+            <h2 className="font-titulo text-sm font-extrabold">
+              Marcos <span className="font-normal text-tinta-suave">(checklist de entregas)</span>
+            </h2>
             {podeMexer && (
               <button className="text-sm font-bold text-roxo-escuro" onClick={() => setMarcoEmEdicao('novo')}>+ Novo marco</button>
             )}

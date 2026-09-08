@@ -204,7 +204,7 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
       </div>
 
       <p className="mt-2 text-[11px] text-tinta-suave">
-        Situação com atividade dentro não pode ser removida — mova as atividades antes, ou apenas
+        Situação com atividade dentro não pode ser removida. Mova as atividades antes, ou apenas
         desmarque <strong>Usar</strong> para ela sumir das telas sem perder o que já existe.
       </p>
 

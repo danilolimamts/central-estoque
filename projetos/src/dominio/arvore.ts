@@ -115,6 +115,26 @@ export function percentualEfetivo(lista: Projeto[], projeto: Projeto): number {
   return avancoPorConclusao(lista, projeto.id)?.percentual ?? percentualDoStatus(projeto);
 }
 
+/* Proximo codigo da carteira.
+
+   O codigo e o apelido curto do projeto ("PRJ-002"), e ninguem devia
+   ter de abrir a lista para descobrir qual e o proximo livre. A conta
+   olha o maior numero ja usado, mantem o prefixo e o tamanho com zeros
+   a esquerda, e soma um. Sem nenhum codigo na carteira, comeca em
+   PRJ-001. Continua editavel: o campo so nasce preenchido. */
+export function proximoCodigo(lista: Projeto[]): string {
+  const partes = lista
+    .map((p) => p.codigo?.trim().match(/^(.*?)(\d+)$/))
+    .filter((m): m is RegExpMatchArray => !!m);
+
+  if (!partes.length) return 'PRJ-001';
+
+  const maior = partes.reduce((a, b) => (Number(a[2]) >= Number(b[2]) ? a : b));
+  const prefixo = maior[1] || 'PRJ-';
+  const digitos = maior[2].length;
+  return `${prefixo}${String(Number(maior[2]) + 1).padStart(digitos, '0')}`;
+}
+
 /* Ordem de urgencia para ordenar a lista de atividades. */
 const PESO_DA_PRIORIDADE: Record<string, number> = {
   critica: 0, alta: 1, media: 2, baixa: 3,

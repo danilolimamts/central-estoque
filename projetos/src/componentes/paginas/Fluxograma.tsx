@@ -354,7 +354,7 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
           {!fluxo.nos.length && (
             <p className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-tinta-suave">
               {editando
-                ? 'Comece adicionando uma etapa ou uma decisão na barra acima — ou clique aqui e cole um print com Ctrl+V.'
+                ? 'Comece adicionando uma etapa ou uma decisão na barra acima, ou clique aqui e cole um print com Ctrl+V.'
                 : 'Fluxo ainda vazio.'}
             </p>
           )}

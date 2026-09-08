@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   avancoPorConclusao, ehRaiz, filhosDe, folhas, generoDoRotulo, nomeCompleto,
-  percentualEfetivo, porPrioridade, raizes, rotuloDosFilhos, singularDoRotulo, temFilhos,
+  percentualEfetivo, porPrioridade, proximoCodigo, raizes, rotuloDosFilhos, singularDoRotulo,
+  temFilhos,
 } from '../src/dominio/arvore';
 import type { Projeto } from '../src/dominio/tipos';
 
@@ -96,5 +97,28 @@ describe('rótulo dos itens do grupo', () => {
   it('projeto de topo é pasta de atividades; o filho é o trabalho', () => {
     expect(ehRaiz(carteira[0])).toBe(true);
     expect(ehRaiz(carteira[1])).toBe(false);
+  });
+});
+
+describe('próximo código', () => {
+  const com = (codigos: (string | null)[]): Projeto[] =>
+    codigos.map((codigo, i) => ({ ...base, id: `p${i}`, nome: `P${i}`, codigo } as Projeto));
+
+  it('carteira sem código nenhum começa em PRJ-001', () => {
+    expect(proximoCodigo([])).toBe('PRJ-001');
+    expect(proximoCodigo(com([null, null]))).toBe('PRJ-001');
+  });
+
+  it('soma um ao maior número, mantendo prefixo e zeros', () => {
+    expect(proximoCodigo(com(['PRJ-001', 'PRJ-002']))).toBe('PRJ-003');
+    expect(proximoCodigo(com(['PRJ-009']))).toBe('PRJ-010');
+  });
+
+  it('não se perde com a ordem nem com códigos sem número', () => {
+    expect(proximoCodigo(com(['PRJ-007', 'PRJ-002', 'avulso']))).toBe('PRJ-008');
+  });
+
+  it('respeita outro prefixo da casa', () => {
+    expect(proximoCodigo(com(['INV-12']))).toBe('INV-13');
   });
 });

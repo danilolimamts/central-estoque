@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Aviso, SeloStatus, Vazio } from '@/componentes/ui';
 import { corDaSituacao } from '@/dominio/situacoes';
 import { diasEntre, encerrado, formatarData, hoje, paraData } from '@/dominio/regras';
-import { folhas, nomeCompleto } from '@/dominio/arvore';
+import { folhas, percentualEfetivo } from '@/dominio/arvore';
 import { listarMarcosGerais, mensagemDeErro } from '@/estado/dados';
 import type { Marco, Projeto } from '@/dominio/tipos';
 
@@ -68,6 +68,9 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
   const colunas = faixa ? meses(faixa) : [];
   const posicao = (d: Date) => (faixa ? (diasEntre(faixa.inicio, d) / faixa.total) * 100 : 0);
   const marcaHoje = faixa && hoje() >= faixa.inicio && hoje() <= faixa.fim ? posicao(hoje()) : null;
+  /* Nome do projeto ao qual a atividade pertence, quando ela esta dentro
+     de um. */
+  const pai = (p: Projeto) => projetos.find((x) => x.id === p.projeto_pai_id)?.nome ?? null;
 
   if (erro) return <Aviso>{erro}</Aviso>;
   if (!faixa || !lista.length) {
@@ -75,7 +78,7 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
   }
 
   return (
-    <div className="cartao overflow-hidden">
+    <div data-guia="cronograma" className="cartao overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-linha px-4 py-3">
         <h2 className="font-titulo text-sm font-extrabold">Cronograma</h2>
         <label className="flex items-center gap-2 text-sm">
@@ -87,7 +90,7 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
       <div className="overflow-x-auto">
         <div className="min-w-[820px]">
           <div className="flex border-b border-linha bg-papel text-[11px] font-bold uppercase tracking-wider text-tinta-suave">
-            <div className="w-64 shrink-0 px-4 py-2">Projeto</div>
+            <div className="w-72 shrink-0 px-4 py-2">Atividade</div>
             <div className="relative flex flex-1 pr-4">
               {colunas.map((m) => (
                 <div key={m.rotulo} className="border-l border-linha px-1 py-2" style={{ width: `${m.largura}%` }}>
@@ -105,34 +108,53 @@ export default function Cronograma({ projetos, aoAbrir }: Props) {
             const doProjeto = marcos.filter((m) => m.projeto_id === p.id && m.data_prevista);
 
             return (
-              <div key={p.id} className="flex cursor-pointer items-center border-b border-linha hover:bg-papel" onClick={() => aoAbrir(p)}>
-                <div className="w-64 shrink-0 px-4 py-2">
-                  <p className="truncate text-sm font-semibold" title={nomeCompleto(projetos, p)}>
-                    {nomeCompleto(projetos, p)}
-                  </p>
+              <div key={p.id} className="flex cursor-pointer items-stretch border-b border-linha hover:bg-papel" onClick={() => aoAbrir(p)}>
+                {/* O nome da atividade em cima e o do projeto embaixo, em
+                    linhas separadas: junto num "pai · filho" so cabia o
+                    pai, e a atividade, que e o que importa aqui, ficava
+                    cortada com reticencias. */}
+                <div className="w-72 shrink-0 px-4 py-2">
+                  <p className="text-sm font-semibold leading-snug" title={p.nome}>{p.nome}</p>
+                  {pai(p) && <p className="truncate text-[11px] text-tinta-suave">{pai(p)}</p>}
                   <p className="text-xs text-tinta-suave">{formatarData(comeco(p))} → {formatarData(termino(p))}</p>
                 </div>
-                <div className="relative h-12 flex-1 pr-4">
+                <div className="relative min-h-[56px] flex-1 self-center pr-4">
                   {marcaHoje !== null && (
                     <span className="absolute top-0 h-full border-l border-dashed border-vermelho/60" style={{ left: `${marcaHoje}%` }} />
                   )}
+                  {/* A barra pedia contraste: o fundo quase branco sumia
+                      contra a linha, e o preenchimento vinha da coluna
+                      antiga de percentual, que hoje e sempre zero. */}
                   <div
-                    className="absolute top-3 h-5 rounded-md"
-                    style={{ left: `${esquerda}%`, width: `${largura}%`, backgroundColor: `${corDaSituacao(p.status)}33` }}
-                    title={`${p.nome} — ${p.percentual}%`}
+                    className="absolute top-1/2 flex h-6 -translate-y-1/2 items-center overflow-hidden rounded-md border"
+                    style={{
+                      left: `${esquerda}%`,
+                      width: `${largura}%`,
+                      backgroundColor: `${corDaSituacao(p.status)}1F`,
+                      borderColor: `${corDaSituacao(p.status)}66`,
+                    }}
+                    title={`${p.nome}: ${percentualEfetivo(projetos, p)}%`}
                   >
-                    {/* Preenchimento interno = avanco informado. */}
-                    <div className="h-full rounded-md" style={{ width: `${p.percentual}%`, backgroundColor: corDaSituacao(p.status) }} />
+                    <div
+                      className="h-full"
+                      style={{
+                        width: `${percentualEfetivo(projetos, p)}%`,
+                        backgroundColor: corDaSituacao(p.status),
+                      }}
+                    />
+                    <span className="absolute left-2 text-[11px] font-bold text-tinta">
+                      {percentualEfetivo(projetos, p)}%
+                    </span>
                   </div>
                   {doProjeto.map((m) => (
                     <span
                       key={m.id}
-                      className="absolute top-[18px] h-3 w-3 rotate-45 border-2 border-white"
+                      className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rotate-45 border-2 border-white"
                       style={{
                         left: `calc(${posicao(paraData(m.data_prevista)!)}% - 6px)`,
                         backgroundColor: m.concluido ? '#2E8B57' : '#161933',
                       }}
-                      title={`${m.nome} — ${formatarData(m.data_prevista)}${m.concluido ? ' (concluído)' : ''}`}
+                      title={`${m.nome}: ${formatarData(m.data_prevista)}${m.concluido ? ' (concluído)' : ''}`}
                     />
                   ))}
                 </div>
