@@ -324,6 +324,24 @@ await pagina.waitForTimeout(400);
 await pagina.getByText('Melhoria Sistêmica Bseller').first().click();
 await pagina.waitForTimeout(800);
 await pagina.screenshot({ path: 'verificacao-melhorias.png', fullPage: true });
+
+/* A esteira em numeros substitui os selos do cabecalho: e por ela que
+   se responde quantas melhorias ja foram documentadas e quantas ja
+   viraram chamado. */
+const corpoDaEsteira = (await pagina.textContent('body')) ?? '';
+for (const rotulo of ['Documentadas', 'Com chamado aberto', 'Prontas para abrir chamado']) {
+  if (!corpoDaEsteira.includes(rotulo)) {
+    console.error(`FALHOU: a faixa da esteira não trouxe "${rotulo}".`);
+    process.exitCode = 1;
+  }
+}
+/* Os selos continuam em cada linha da lista; o que saiu foi o trio do
+   cabecalho, entao a checagem olha so o bloco do titulo. */
+const blocoDoTitulo = await pagina.locator('h1.font-titulo').first().locator('xpath=..').innerText();
+if (/No prazo|Atenção|Crítico/.test(blocoDoTitulo)) {
+  console.error(`FALHOU: o selo de saúde ficou no cabeçalho — "${blocoDoTitulo}".`);
+  process.exitCode = 1;
+}
 const textoDoGrupo = (await pagina.textContent('body')) ?? '';
 if (!textoDoGrupo.includes('Entrada massiva') || !textoDoGrupo.includes('concluídas')) {
   console.error('FALHOU: a lista de melhorias não montou.');
