@@ -17,9 +17,9 @@ const IR = {
   files:{f390:null, f843:[null,null,null,null], fCong:[null,null,null,null], f278:[null,null,null,null], f051:[null,null,null,null]},
   processing:false, progress:{stage:'', pct:0},
   divergencias:[], locais:[], contagens:[],
-  divFilters:{search:'', local:''},
-  divEscopo:{tipo:'ciclo'}, divEscopoDados:null, divSelecionados:null,
-  divMostrarAnulados:false, divAuditoria:null,
+  divEscopo:{tipo:'ciclo'}, divEscopoDados:null, divAnoCache:null, divSelecionados:null,
+  divCorte:null, divBusca:'', divVerCompensados:false, divExpandido:null,
+  divOrdem:{col:'netValor', dir:'desc'}, divAuditoria:null,
   auditFilters:{minPrioridade:0},
   prodFilters:{de:'', ate:'', usuario:'', setor:''},
   prodSort:{col:'locaisHora', dir:'desc'},
@@ -266,7 +266,6 @@ function irRenderView(){
     importacao: irRenderImportacao, configuracoes: irRenderConfiguracoes
   };
   root.innerHTML = (renderers[IR.currentTab] || (()=>''))();
-  if(IR.currentTab==='divergencias') irMountDivergenciasScroll();
   if(IR.currentTab==='auditoria') irMountAuditoriaScroll();
   if(IR.currentTab==='dashboard') irScrollVBarsToEnd();
   irFitKpiNumbers();
@@ -2149,6 +2148,7 @@ function irRenderGestaoCiclo(){
       </table></div>
     </div>` : ''}
     ${irRenderNet410Panel()}
+    ${irRenderNetDistorcaoPanel()}
   `;
 }
 async function irEncerrarCiclo(){
@@ -3197,20 +3197,6 @@ function irCompartilharProdutividade(){
 /* ============================================================
    DIVERGÊNCIAS
    ============================================================ */
-const IR_DIV_ROW_H = 32;
-function irDivergenciasFiltered(){
-  const f = IR.divFilters;
-  const search = f.search.trim().toLowerCase();
-  return IR.divergencias.filter(d=>{
-    if(d.diferenca===0) return false;
-    if(f.local && d.local!==f.local) return false;
-    if(search){
-      const hay = (d.item+' '+d.itemNome+' '+d.local).toLowerCase();
-      if(!hay.includes(search)) return false;
-    }
-    return true;
-  }).sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia));
-}
 // Descrição completa só cabe truncada — junta palavras do início até ~42 caracteres
 // (o suficiente pra identificar o item na maioria dos casos, sem quebrar a linha) e
 // fecha com a última palavra; o texto completo fica no title (tooltip ao passar o
@@ -3598,20 +3584,21 @@ function irRenderNetDistorcaoPanel(){
   </div>`;
 }
 /* ============================================================
-   DIVERGÊNCIAS — quem está distorcendo o NET, e a auditoria de validação
+   DIVERGÊNCIAS — ofensores do NET
 
-   A pergunta da aba: das peças divergentes do período, quais ITENS puxam o NET
-   e por onde começar. Item que perdeu num local e ganhou em outro fecha o NET
-   perto de zero — não precisa auditoria, e some do topo da lista.
+   A tela responde uma coisa só: o NET do período está em X; quais itens
+   causaram isso. Uma linha por ITEM.
 
-   Da lista o usuário marca os itens e gera a auditoria de validação, que sai em
-   dois blocos por item:
-     • LOCAIS DIVERGENTES — onde a diferença apareceu no ciclo.
-     • LOCAIS COM SALDO   — onde o item tem estoque hoje (QRY0390), inclusive
-       posições que ninguém contou. Cada linha aponta os locais divergentes do
-       mesmo item, pra o auditor saber de onde a suspeita veio.
+   Um item só é OFENSOR quando a perda (ou a sobra) sobrevive ao ano. Perder
+   R$ 5.000 no mês e ganhar os mesmos R$ 5.000 em outro ciclo do ano deixa o
+   ano em zero — houve erro de contagem, mas não houve perda: o item vira
+   COMPENSADO e sai da lista.
+
+   Rotina do auditor: abre a tela, lê os ofensores de perda e de ganho, marca,
+   gera a auditoria e imprime. A auditoria lista os locais onde o item TEM
+   SALDO hoje (QRY0390) — é onde ele vai conferir.
    ============================================================ */
-const IR_DIV_AUTOANULA_LIM = 0.25; // |NET| < 25% do ABS => sobra e falta se anularam
+const IR_DIV_CORTE_PADRAO = 1000;   // |NET R$| mínimo para o item ser ofensor
 
 function irDivSetEscopo(value){
   IR.divEscopo = value.startsWith('ano:') ? {tipo:'ano', ano:value.slice(4)}
@@ -3619,20 +3606,28 @@ function irDivSetEscopo(value){
               : value.startsWith('ciclo:') ? {tipo:'ciclo', cicloId:value.slice(6)}
               : value==='dia' ? {tipo:'dia', dia:IR.divEscopo.dia || ''}
               : {tipo:'ciclo'};
-  IR.divEscopoDados = null;
-  IR.divSelecionados = new Set();
-  IR.divAuditoria = null;
+  IR.divEscopoDados = null; IR.divSelecionados = new Set(); IR.divAuditoria = null;
   irRenderView();
   irCarregarDivEscopo();
 }
 function irDivSetDia(dia){
   IR.divEscopo = {tipo:'dia', dia};
-  IR.divSelecionados = new Set();
-  IR.divAuditoria = null;
+  IR.divSelecionados = new Set(); IR.divAuditoria = null;
   irCarregarDivEscopo();
 }
-/* Ano do escopo — é o recorte da coluna "NET ano", que fica visível em qualquer
-   filtro: pode ter ganhado 42 peças no ciclo 3 e perdido as mesmas 42 no ciclo 1. */
+function irDivSetCorte(v){
+  const n = parseFloat(String(v).replace(/\./g,'').replace(',','.'));
+  IR.divCorte = isNaN(n) ? 0 : Math.max(0, n);
+  irRenderView();
+}
+function irDivSetBusca(v){ IR.divBusca = String(v||'').trim(); irRenderView(); }
+function irDivToggleCompensados(){ IR.divVerCompensados = !IR.divVerCompensados; irRenderView(); }
+/* Cabeçalho clicável: 1º clique ordena decrescente, 2º inverte. */
+function irDivOrdenar(col){
+  const o = IR.divOrdem || {col:'netValor', dir:'desc'};
+  IR.divOrdem = (o.col===col) ? {col, dir: o.dir==='desc'?'asc':'desc'} : {col, dir:'desc'};
+  irRenderView();
+}
 function irDivAnoDoEscopo(){
   const e = IR.divEscopo;
   if(e.tipo==='ano') return String(e.ano);
@@ -3644,8 +3639,6 @@ function irDivAnoDoEscopo(){
 function irDivCiclosDoAno(ano){
   return IR.ciclos.filter(c=>String(c.dataAbertura||'').slice(0,4)===String(ano));
 }
-/* Carrega as divergências do escopo E as do ANO inteiro (uma vez por ano, em
-   cache) — a coluna do ano precisa de todos os ciclos, não só do escopo. */
 async function irCarregarDivEscopo(){
   const e = IR.divEscopo;
   const ano = irDivAnoDoEscopo();
@@ -3653,33 +3646,28 @@ async function irCarregarDivEscopo(){
     const listas = await Promise.all(irDivCiclosDoAno(ano).map(c=>irGetByCiclo(IR_STORES.divergencias, c.id)));
     IR.divAnoCache = {ano, divs: listas.flat()};
   }
-  if(e.tipo==='ciclo' && (!e.cicloId || e.cicloId===(IR.cicloAtivo||{}).id)){
-    IR.divEscopoDados = IR.divergencias;
-  } else if(e.tipo==='ciclo'){
-    IR.divEscopoDados = await irGetByCiclo(IR_STORES.divergencias, e.cicloId);
-  } else {
-    IR.divEscopoDados = (IR.divAnoCache||{}).divs || [];
-  }
+  if(e.tipo==='ciclo' && (!e.cicloId || e.cicloId===(IR.cicloAtivo||{}).id)) IR.divEscopoDados = IR.divergencias;
+  else if(e.tipo==='ciclo') IR.divEscopoDados = await irGetByCiclo(IR_STORES.divergencias, e.cicloId);
+  else IR.divEscopoDados = (IR.divAnoCache||{}).divs || [];
   irRenderView();
 }
-/* Dia em que a divergência fechou. Ciclos processados antes do campo existir caem
-   no fallback pelas contagens do ciclo carregado. */
+/* Dia do fechamento da visita. Ciclos processados antes do campo existir caem no
+   fallback pelas contagens do ciclo carregado. */
 function irDivDiaDa(d){
   if(d.diaFechamento) return d.diaFechamento;
   return irDivDiaPorLocalLegado().get(d.local) || '';
 }
 function irDivDiaPorLocalLegado(){
   if(IR._divDiaLegado && IR._divDiaLegadoCiclo===(IR.cicloAtivo||{}).id) return IR._divDiaLegado;
-  const finalPorLocal = new Map();
+  const fim = new Map();
   for(const c of (IR.contagens||[])){
     if(c.idConferencia<2 || !c.dataSituacao) continue;
-    const atual = finalPorLocal.get(c.local);
-    if(!atual || c.idConferencia>atual.rodada) finalPorLocal.set(c.local, {rodada:c.idConferencia, dia:c.dataSituacao.slice(0,10)});
+    const a = fim.get(c.local);
+    if(!a || c.idConferencia>a.rodada) fim.set(c.local, {rodada:c.idConferencia, dia:c.dataSituacao.slice(0,10)});
   }
   const m = new Map();
-  for(const [local, v] of finalPorLocal) m.set(local, v.dia);
-  IR._divDiaLegado = m;
-  IR._divDiaLegadoCiclo = (IR.cicloAtivo||{}).id;
+  for(const [local, v] of fim) m.set(local, v.dia);
+  IR._divDiaLegado = m; IR._divDiaLegadoCiclo = (IR.cicloAtivo||{}).id;
   return m;
 }
 function irDivMesesDisponiveis(){
@@ -3690,67 +3678,68 @@ function irDivDiasDisponiveis(){
   const base = (IR.divAnoCache||{}).divs || IR.divergencias || [];
   return Array.from(new Set(base.map(d=>irDivDiaDa(d)).filter(Boolean))).sort();
 }
-/* Agrega por item uma lista de divergências: NET e ABS, em peças e valor. */
 function irDivAgruparPorItem(divs){
   const map = new Map();
   for(const d of divs){
     let g = map.get(d.item);
-    if(!g){ g = {item:d.item, descricao:d.itemNome, netQtd:0, netValor:0, absQtd:0, absValor:0, locais:[]}; map.set(d.item, g); }
+    if(!g){ g = {item:d.item, descricao:d.itemNome, netQtd:0, netValor:0, locais:[]}; map.set(d.item, g); }
     g.netQtd += d.diferenca;
     g.netValor += d.vlDivergencia;
-    g.absQtd += Math.abs(d.diferenca);
-    g.absValor += Math.abs(d.vlDivergencia);
     g.locais.push(d);
     if(!g.descricao && d.itemNome) g.descricao = d.itemNome;
   }
   return map;
 }
-/* Consolida o escopo selecionado e cruza com o NET do ano inteiro. */
+/* Núcleo: NET do escopo + NET do ano, e a classificação em ofensor/compensado. */
 function irDivCalcItens(){
   const e = IR.divEscopo;
-  const base = IR.divEscopoDados || IR.divergencias || [];
-  let divs = irSoLocaisConcluidos(base).filter(d=>d.diferenca!==0);
+  const corte = IR.divCorte==null ? IR_DIV_CORTE_PADRAO : IR.divCorte;
+  let divs = irSoLocaisConcluidos(IR.divEscopoDados || IR.divergencias || []).filter(d=>d.diferenca!==0);
   if(e.tipo==='mes') divs = divs.filter(d=>irDivDiaDa(d).slice(0,7)===e.mes);
   if(e.tipo==='dia') divs = e.dia ? divs.filter(d=>irDivDiaDa(d)===e.dia) : [];
-  const map = irDivAgruparPorItem(divs);
-  const anoMap = irDivAgruparPorItem(irSoLocaisConcluidos((IR.divAnoCache||{}).divs || []).filter(d=>d.diferenca!==0));
-  const itens = Array.from(map.values()).map(g=>{
-    const a = anoMap.get(g.item);
+  const noEscopo = irDivAgruparPorItem(divs);
+  const noAno = irDivAgruparPorItem(irSoLocaisConcluidos((IR.divAnoCache||{}).divs || []).filter(d=>d.diferenca!==0));
+  const busca = (IR.divBusca||'').toLowerCase();
+  const itens = Array.from(noEscopo.values()).map(g=>{
+    const a = noAno.get(g.item) || {netQtd:g.netQtd, netValor:g.netValor};
+    const relevante = Math.abs(g.netValor) >= corte;
+    // Compensado = pesou no escopo, mas o ano desmancha. Erro de contagem houve;
+    // perda não. Não é ofensor.
+    const compensado = relevante && Math.abs(a.netValor) < corte;
     return {...g,
       nLocais: g.locais.length,
-      netQtdAno: a ? a.netQtd : g.netQtd,
-      netValorAno: a ? a.netValor : g.netValor,
-      absQtdAno: a ? a.absQtd : g.absQtd,
-      autoAnulado: g.absQtd>0 && Math.abs(g.netQtd)/g.absQtd < IR_DIV_AUTOANULA_LIM,
-      // Vira o jogo quando o ano desmente o escopo: ganhou no ciclo, mas no ano
-      // o item está zerado (ou invertido).
-      anoAnula: a && a.absQtd>0 && Math.abs(a.netQtd)/a.absQtd < IR_DIV_AUTOANULA_LIM
+      netQtdAno: a.netQtd, netValorAno: a.netValor,
+      relevante, compensado,
+      ofensor: relevante && !compensado,
+      sentido: g.netValor<0 ? 'perda' : 'ganho'
     };
-  }).sort((a,b)=>Math.abs(b.netValor)-Math.abs(a.netValor));
-  const totalNetAbs = itens.reduce((s,i)=>s+Math.abs(i.netValor), 0);
-  let acum = 0;
-  for(const i of itens){ acum += Math.abs(i.netValor); i.pctAcumulado = totalNetAbs>0 ? acum/totalNetAbs : 0; }
-  return {itens, totalNetAbs,
-    netQtd: itens.reduce((s,i)=>s+i.netQtd,0),
-    absQtd: itens.reduce((s,i)=>s+i.absQtd,0),
-    netValor: itens.reduce((s,i)=>s+i.netValor,0),
-    absValor: itens.reduce((s,i)=>s+i.absValor,0)};
-}
-function irDivToggleAnulados(){ IR.divMostrarAnulados = !IR.divMostrarAnulados; irRenderView(); }
-function irDivToggleItem(item){
-  if(!IR.divSelecionados) IR.divSelecionados = new Set();
-  if(IR.divSelecionados.has(item)) IR.divSelecionados.delete(item); else IR.divSelecionados.add(item);
-  irRenderView();
-}
-function irDivSelecionarTop(){
-  const n = Math.max(1, parseInt((document.getElementById('ir-div-topn')||{}).value, 10) || 10);
-  IR.divSelecionados = new Set(irDivListaVisivel().slice(0, n).map(i=>i.item));
-  irRenderView();
-}
-function irDivLimparSelecao(){ IR.divSelecionados = new Set(); IR.divAuditoria = null; irRenderView(); }
-function irDivListaVisivel(){
-  const {itens} = irDivCalcItens();
-  return IR.divMostrarAnulados ? itens : itens.filter(i=>!i.autoAnulado);
+  }).filter(i=>{
+    if(!busca) return true;
+    return String(i.item).toLowerCase().includes(busca) || String(i.descricao||'').toLowerCase().includes(busca);
+  });
+  const o = IR.divOrdem || {col:'netValor', dir:'desc'};
+  const dir = o.dir==='desc' ? -1 : 1;
+  itens.sort((x,y)=>{
+    if(o.col==='item') return dir*String(x.item).localeCompare(String(y.item));
+    if(o.col==='descricao') return dir*String(x.descricao||'').localeCompare(String(y.descricao||''));
+    if(o.col==='situacao') return dir*String(x.ofensor?x.sentido:'compensado').localeCompare(String(y.ofensor?y.sentido:'compensado'));
+    // Colunas numéricas ordenam por MÓDULO: o auditor quer o maior impacto no topo,
+    // seja perda ou ganho. O sinal continua visível na própria célula.
+    return dir*(Math.abs(x[o.col]||0) - Math.abs(y[o.col]||0));
+  });
+  const ofensores = itens.filter(i=>i.ofensor);
+  return {
+    itens, ofensores,
+    compensados: itens.filter(i=>i.compensado),
+    netValor: Array.from(noEscopo.values()).reduce((s,i)=>s+i.netValor,0),
+    netQtd: Array.from(noEscopo.values()).reduce((s,i)=>s+i.netQtd,0),
+    totalItens: noEscopo.size,
+    perdaOfensores: ofensores.filter(i=>i.netValor<0).reduce((s,i)=>s+i.netValor,0),
+    ganhoOfensores: ofensores.filter(i=>i.netValor>0).reduce((s,i)=>s+i.netValor,0),
+    nPerda: ofensores.filter(i=>i.netValor<0).length,
+    nGanho: ofensores.filter(i=>i.netValor>0).length,
+    corte
+  };
 }
 function irDivEscopoLabel(){
   const e = IR.divEscopo;
@@ -3760,323 +3749,279 @@ function irDivEscopoLabel(){
   const c = e.cicloId ? IR.ciclos.find(x=>x.id===e.cicloId) : IR.cicloAtivo;
   return c ? irCicloLabel(c) : 'ciclo atual';
 }
-
-/* ---------- AUDITORIA DE VALIDAÇÃO ---------- */
-/* Monta as linhas da auditoria de um conjunto de itens. O bloco de saldo depende
-   da QRY0390 estar importada e do ciclo reprocessado; se o store não existir ou
-   falhar, a auditoria ainda sai com os locais divergentes e a tela avisa. */
-async function irDivMontarAuditoria(itensSel){
-  const {itens} = irDivCalcItens();
-  const porItem = new Map(itens.map(i=>[i.item, i]));
-  const cicloId = (IR.cicloAtivo||{}).id;
-  const descricaoLocal = new Map((IR.locais||[]).map(l=>[l.idLocal, l]));
-  const linhas = [];
-  let semEstoque = 0;
-  for(const item of itensSel){
-    const g = porItem.get(item);
-    if(!g) continue;
-    const locaisDivergentes = new Set(g.locais.map(l=>l.local));
-    const refDivergentes = Array.from(locaisDivergentes).join(', ');
-    for(const d of g.locais.slice().sort((a,b)=>Math.abs(b.diferenca)-Math.abs(a.diferenca))){
-      const l = descricaoLocal.get(d.local) || {};
-      linhas.push({origem:'divergente', item, descricao:g.descricao, local:d.local,
-        descricaoLocal:l.descricao||'', rua:l.x1||'', log:l.grupoClasse||'',
-        dia:irDivDiaDa(d), qtdeSistema:d.qtdeSistema, qtdeFisica:d.qtdeFisica,
-        diferenca:d.diferenca, vlDivergencia:d.vlDivergencia, saldoAtual:null, refDivergentes:''});
-    }
-    let est = null;
-    try{ est = cicloId ? await irGetEstoqueItem(cicloId, item) : null; }
-    catch(err){ est = null; }
-    if(!est || !est.locais || !est.locais.length){ semEstoque++; continue; }
-    for(const sl of est.locais){
-      if(locaisDivergentes.has(sl.local)) continue;
-      const l = descricaoLocal.get(sl.local) || {};
-      linhas.push({origem:'saldo', item, descricao:g.descricao, local:sl.local,
-        descricaoLocal:l.descricao||'', rua:l.x1||'', log:l.grupoClasse||'',
-        dia:'', qtdeSistema:sl.qtd, qtdeFisica:null, diferenca:null, vlDivergencia:null,
-        saldoAtual:sl.qtd, refDivergentes});
-    }
-  }
-  return {linhas, semEstoque};
+function irDivToggleItem(item){
+  if(!IR.divSelecionados) IR.divSelecionados = new Set();
+  if(IR.divSelecionados.has(item)) IR.divSelecionados.delete(item); else IR.divSelecionados.add(item);
+  irRenderView();
 }
+function irDivMarcarTodos(){
+  const {ofensores} = irDivCalcItens();
+  IR.divSelecionados = new Set(ofensores.map(i=>i.item));
+  irRenderView();
+}
+function irDivLimparSelecao(){ IR.divSelecionados = new Set(); IR.divAuditoria = null; irRenderView(); }
+function irDivExpandir(item){
+  IR.divExpandido = IR.divExpandido===item ? null : item;
+  irRenderView();
+}
+
+/* ---------- AUDITORIA — locais com saldo (QRY0390) ---------- */
 async function irDivGerarAuditoria(){
   const sel = Array.from(IR.divSelecionados||[]);
   if(!sel.length){ irShowToast('Marque ao menos um item.', true); return; }
   try{
-    irShowToast('Gerando auditoria de '+sel.length+' item(ns)...');
-    const {linhas, semEstoque} = await irDivMontarAuditoria(sel);
-    if(!linhas.length){ irShowToast('Nenhum local encontrado para os itens marcados.', true); return; }
+    const {itens} = irDivCalcItens();
+    const porItem = new Map(itens.map(i=>[i.item, i]));
+    const cicloId = (IR.cicloAtivo||{}).id;
+    const descLocal = new Map((IR.locais||[]).map(l=>[l.idLocal, l]));
+    const linhas = [];
+    let semEstoque = 0;
+    for(const item of sel){
+      const g = porItem.get(item);
+      if(!g) continue;
+      let est = null;
+      try{ est = cicloId ? await irGetEstoqueItem(cicloId, item) : null; }catch(err){ est = null; }
+      if(!est || !est.locais || !est.locais.length){
+        semEstoque++;
+        linhas.push({item, descricao:g.descricao, local:null, descricaoLocal:'', saldo:null, diferenca:g.netQtd});
+        continue;
+      }
+      for(const s of est.locais){
+        const l = descLocal.get(s.local) || {};
+        linhas.push({item, descricao:g.descricao, local:s.local, descricaoLocal:l.descricao||'', saldo:s.qtd, diferenca:g.netQtd});
+      }
+    }
     IR.divAuditoria = {
       geradoEm: new Date().toLocaleString('pt-BR'),
       escopo: irDivEscopoLabel(),
-      itens: sel.length, linhas, semEstoque,
-      divergentes: linhas.filter(l=>l.origem==='divergente').length,
-      saldo: linhas.filter(l=>l.origem==='saldo').length
+      itens: sel.length, linhas, semEstoque
     };
     irRenderView();
-    const el = document.querySelector('.div-aud-panel');
+    const el = document.querySelector('.aud-panel');
     if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
   }catch(err){
     irShowToast('Falha ao gerar auditoria: '+(err && err.message || err), true);
   }
 }
-/* Botão da linha: exporta em Excel os ajustes daquele item — mesmos dois blocos
-   da auditoria (locais divergentes e locais com saldo), só que de um item só. */
-async function irDivExportarItem(item){
-  try{
-    const {linhas} = await irDivMontarAuditoria([item]);
-    if(!linhas.length){ irShowToast('Sem locais para esse item.', true); return; }
-    irDivBaixarPlanilha(linhas, 'ajustes_'+String(item).replace(/\W+/g,'_'));
-  }catch(err){
-    irShowToast('Falha ao exportar: '+(err && err.message || err), true);
-  }
+function irDivImprimirAuditoria(){ window.print(); }
+function irDivExportarAuditoria(){
+  const g = IR.divAuditoria;
+  if(!g || !g.linhas.length){ irShowToast('Nada para exportar.', true); return; }
+  const data = (document.getElementById('ir-aud-data')||{}).value || '';
+  const auditor = (document.getElementById('ir-aud-auditor')||{}).value || '';
+  const cols = [['item','Item'],['descricao','Descrição'],['local','Local'],
+    ['descricaoLocal','Descrição do Local'],['saldo','Saldo no Sistema'],['diferenca','Diferença do Item']];
+  const cab = cols.map(c=>c[1]).concat(['Contagem do Auditor','Data','Auditor']);
+  const linhas = g.linhas.map(l=>cols.map(([k])=>l[k]==null?'':l[k]).concat(['', data, auditor]));
+  irDivBaixarPlanilha(cab, linhas, 'auditoria_'+String(g.escopo).replace(/\W+/g,'_'));
 }
-const IR_DIV_AUD_COLS = [
-  ['origem','Origem'], ['item','Item'], ['descricao','Descrição'], ['local','Local'],
-  ['descricaoLocal','Descrição do Local'], ['rua','Rua'], ['log','Log'], ['dia','Dia do Fechamento'],
-  ['qtdeSistema','Qtde Sistema'], ['qtdeFisica','Qtde Física'], ['diferenca','Diferença'],
-  ['vlDivergencia','Valor Divergente'], ['saldoAtual','Saldo Atual'],
-  ['refDivergentes','Locais com divergência do item']
-];
-/* Gera .xlsx pelo SheetJS que o app já carrega; sem ele (offline, CDN bloqueado)
-   cai pra CSV, que abre no Excel do mesmo jeito. */
-function irDivBaixarPlanilha(linhas, nomeBase){
-  const cabecalho = IR_DIV_AUD_COLS.map(c=>c[1]).concat(['Contagem do Auditor']);
-  const dados = linhas.map(l=>IR_DIV_AUD_COLS.map(([k])=>l[k]==null?'':l[k]).concat(['']));
+/* Excel de um item: onde ele divergiu, com a descrição do local. */
+function irDivExportarItem(item){
+  const {itens} = irDivCalcItens();
+  const g = itens.find(i=>i.item===item);
+  if(!g){ irShowToast('Item fora do recorte atual.', true); return; }
+  const descLocal = new Map((IR.locais||[]).map(l=>[l.idLocal, l]));
+  const cab = ['Item','Descrição','Local','Descrição do Local','Rua','Log','Dia do Fechamento',
+    'Qtde Sistema','Qtde Física','Diferença','Valor Divergente'];
+  const linhas = g.locais.slice().sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia)).map(d=>{
+    const l = descLocal.get(d.local) || {};
+    return [g.item, g.descricao||'', d.local, l.descricao||'', l.x1||'', l.grupoClasse||'',
+      irDivDiaDa(d), d.qtdeSistema, d.qtdeFisica, d.diferenca, d.vlDivergencia];
+  });
+  irDivBaixarPlanilha(cab, linhas, 'item_'+String(item).replace(/\W+/g,'_'));
+}
+/* .xlsx pelo SheetJS que o app já carrega; CSV quando ele não estiver disponível. */
+function irDivBaixarPlanilha(cabecalho, linhas, nomeBase){
   if(typeof XLSX!=='undefined' && XLSX.utils){
-    const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...dados]);
-    ws['!cols'] = cabecalho.map((h,i)=>({wch: i===2||i===4||i===13 ? 34 : Math.max(12, h.length+2)}));
+    const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+    ws['!cols'] = cabecalho.map(h=>({wch: /Descrição/.test(h) ? 40 : Math.max(12, h.length+2)}));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Auditoria');
+    XLSX.utils.book_append_sheet(wb, ws, 'Dados');
     XLSX.writeFile(wb, nomeBase+'.xlsx');
     return;
   }
-  const esc = v => typeof v==='string' ? '"'+v.replace(/"/g,'""')+'"' : String(v).replace('.', ',');
-  const csv = '\ufeff'+cabecalho.join(';')+'\n'+dados.map(r=>r.map(esc).join(';')).join('\n');
+  const esc = v => typeof v==='string' ? '"'+v.replace(/"/g,'""')+'"' : String(v==null?'':v).replace('.', ',');
+  const csv = '﻿'+cabecalho.join(';')+'\n'+linhas.map(r=>r.map(esc).join(';')).join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = nomeBase+'.csv'; a.click();
   URL.revokeObjectURL(a.href);
 }
-function irDivExportarAuditoriaCsv(){
-  const g = IR.divAuditoria;
-  if(!g || !g.linhas.length){ irShowToast('Nada para exportar.', true); return; }
-  irDivBaixarPlanilha(g.linhas, 'auditoria_validacao_'+String(g.escopo).replace(/\W+/g,'_'));
-}
-function irRenderDivAuditoria(){
-  const g = IR.divAuditoria;
-  if(!g) return '';
-  const row = l=>`<tr class="${l.origem==='saldo'?'div-aud-saldo':''}">
-    <td><span class="tag ${l.origem==='saldo'?'tag-blue':'tag-orange'}">${l.origem==='saldo'?'saldo':'divergente'}</span></td>
-    <td class="mono">${irEsc(l.item)}</td>
-    <td title="${irEsc(l.descricao||'')}">${irEsc(irResumirDescricao(l.descricao))}</td>
-    <td class="mono">${irEsc(l.local)}</td>
-    <td>${irEsc(l.descricaoLocal||'—')}</td>
-    <td class="mono">${l.qtdeSistema!=null?irFmtInt(l.qtdeSistema):'—'}</td>
-    <td class="mono">${l.qtdeFisica!=null?irFmtInt(l.qtdeFisica):'—'}</td>
-    <td class="mono">${l.diferenca!=null?(l.diferenca>0?'+':'')+irFmtInt(l.diferenca):'—'}</td>
-    <td class="mono field-hint">${irEsc(l.refDivergentes||'')}</td>
-  </tr>`;
-  return `<div class="panel div-aud-panel" style="background:var(--surface2);">
-    <div class="panel-head-row">
-      <h3>🔍 Auditoria de validação — ${irEsc(g.escopo)}</h3>
-      <button class="btn btn-primary" onclick="irDivExportarAuditoriaCsv()">📥 Exportar Excel</button>
-    </div>
-    <p class="field-hint" style="margin-bottom:10px;">
-      ${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} ·
-      ${irFmtInt(g.divergentes)} ${g.divergentes===1?'local divergente':'locais divergentes'} ·
-      ${irFmtInt(g.saldo)} ${g.saldo===1?'local com saldo':'locais com saldo'} ·
-      gerado em ${irEsc(g.geradoEm)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} item(ns) sem QRY0390 importada`:''}
-    </p>
-    <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
-      <table class="table-dense">
-        <thead><tr><th>Origem</th><th>Item</th><th>Descrição</th><th>Local</th><th>Descrição do Local</th>
-          <th>Qtde Sistema</th><th>Qtde Física</th><th>Diferença</th><th>Locais com divergência</th></tr></thead>
-        <tbody>${g.linhas.map(row).join('')}</tbody>
-      </table>
-    </div></div>
-  </div>`;
-}
 
-/* ---------- PAINEL PRINCIPAL ---------- */
-function irRenderDivDistorcaoNet(){
-  const {itens, netQtd, absQtd, netValor, absValor} = irDivCalcItens();
-  const visiveis = IR.divMostrarAnulados ? itens : itens.filter(i=>!i.autoAnulado);
-  const anulados = itens.length - itens.filter(i=>!i.autoAnulado).length;
-  const sel = IR.divSelecionados || new Set();
-  const idx80 = visiveis.findIndex(i=>i.pctAcumulado>=0.8);
-  const itens80 = idx80===-1 ? visiveis.length : idx80+1;
+/* ---------- RENDER ---------- */
+function irRenderDivFiltros(){
   const e = IR.divEscopo;
-  const ano = irDivAnoDoEscopo();
   const meses = irDivMesesDisponiveis();
   const dias = irDivDiasDisponiveis();
   const anos = Array.from(new Set(IR.ciclos.map(c=>String(c.dataAbertura||'').slice(0,4)).filter(Boolean))).sort((a,b)=>b.localeCompare(a));
-  const valorEscopo = e.tipo==='ano' ? 'ano:'+e.ano
-    : e.tipo==='mes' ? 'mes:'+e.mes
-    : e.tipo==='dia' ? 'dia'
-    : 'ciclo:'+(e.cicloId || (IR.cicloAtivo||{}).id || '');
-  const maxNet = Math.max(1, ...visiveis.map(i=>Math.abs(i.netValor)));
-  const row = i=>`<tr class="${sel.has(i.item)?'div-sel':''}">
-    <td><input type="checkbox" ${sel.has(i.item)?'checked':''} onchange="irDivToggleItem('${irEsc(i.item)}')"></td>
-    <td class="mono">${irEsc(i.item)}</td>
-    <td title="${irEsc(i.descricao||'')}">${irEsc(irResumirDescricao(i.descricao))}</td>
-    <td class="mono" style="font-weight:700;color:${i.netQtd>=0?'var(--success)':'var(--danger)'};">${i.netQtd>0?'+':''}${irFmtInt(i.netQtd)}</td>
-    <td class="mono" style="font-weight:700;color:${i.netValor>=0?'var(--success)':'var(--danger)'};">${i.netValor>0?'+':''}${irFmtMoney(i.netValor)}</td>
-    <td class="mono div-col-ano" style="color:${i.netQtdAno>=0?'var(--success)':'var(--danger)'};">${i.netQtdAno>0?'+':''}${irFmtInt(i.netQtdAno)}${i.anoAnula?' <span class="tag tag-blue" title="No ano o item se anula">≈0</span>':''}</td>
-    <td class="mono div-col-ano" style="color:${i.netValorAno>=0?'var(--success)':'var(--danger)'};">${i.netValorAno>0?'+':''}${irFmtMoney(i.netValorAno)}</td>
-    <td class="mono field-hint">${irFmtInt(i.absQtd)}</td>
-    <td class="mono">${irFmtInt(i.nLocais)}</td>
-    <td>
-      <div class="div-acum-track"><div class="div-acum-fill" style="width:${Math.round(Math.abs(i.netValor)/maxNet*100)}%;"></div></div>
-      <span class="field-hint mono">${irFmtPct(i.pctAcumulado)} acum.</span>
-    </td>
-    <td>${i.autoAnulado?'<span class="tag tag-blue" title="Sobra e falta quase se anulam no escopo">auto-anulado</span>':''}</td>
-    <td><button class="btn-link" title="Exportar em Excel os ajustes deste item" onclick="irDivExportarItem('${irEsc(i.item)}')">📊 Excel</button></td>
-  </tr>`;
-  return `<div class="panel dash-filter-bar" style="margin-bottom:14px;">
-    <div class="dash-filter-group">
-      <label>Escopo</label>
+  const val = e.tipo==='ano' ? 'ano:'+e.ano : e.tipo==='mes' ? 'mes:'+e.mes
+            : e.tipo==='dia' ? 'dia' : 'ciclo:'+(e.cicloId || (IR.cicloAtivo||{}).id || '');
+  return `<div class="panel ofe-filtros">
+    <div class="ofe-filtro">
+      <label>Período</label>
       <select onchange="irDivSetEscopo(this.value)">
-        <optgroup label="Ciclo">
-          ${IR.ciclos.map(c=>`<option value="ciclo:${irEsc(c.id)}" ${valorEscopo==='ciclo:'+c.id?'selected':''}>${irEsc(irCicloLabel(c))}${c.id===(IR.cicloAtivo||{}).id?' (atual)':''}</option>`).join('')}
-        </optgroup>
-        <optgroup label="Mês">
-          ${meses.map(m=>`<option value="mes:${m}" ${valorEscopo==='mes:'+m?'selected':''}>${irEsc(irMesLabel(m))}</option>`).join('')}
-        </optgroup>
-        <optgroup label="Ano">
-          ${anos.map(a=>`<option value="ano:${a}" ${valorEscopo==='ano:'+a?'selected':''}>${a}</option>`).join('')}
-        </optgroup>
-        <optgroup label="Dia">
-          <option value="dia" ${valorEscopo==='dia'?'selected':''}>Escolher um dia</option>
-        </optgroup>
+        <optgroup label="Ciclo">${IR.ciclos.map(c=>`<option value="ciclo:${irEsc(c.id)}" ${val==='ciclo:'+c.id?'selected':''}>${irEsc(irCicloLabel(c))}</option>`).join('')}</optgroup>
+        <optgroup label="Mês">${meses.map(m=>`<option value="mes:${m}" ${val==='mes:'+m?'selected':''}>${irEsc(irMesLabel(m))}</option>`).join('')}</optgroup>
+        <optgroup label="Ano">${anos.map(a=>`<option value="ano:${a}" ${val==='ano:'+a?'selected':''}>${a}</option>`).join('')}</optgroup>
+        <optgroup label="Dia"><option value="dia" ${val==='dia'?'selected':''}>Escolher um dia</option></optgroup>
       </select>
     </div>
-    ${e.tipo==='dia' ? `<div class="dash-filter-group">
+    ${e.tipo==='dia' ? `<div class="ofe-filtro">
       <label>Dia</label>
       <select onchange="irDivSetDia(this.value)">
         <option value="">Selecione</option>
         ${dias.map(d=>`<option value="${d}" ${e.dia===d?'selected':''}>${irFmtDate(d)}</option>`).join('')}
       </select>
     </div>` : ''}
-    <label class="prod-filtro-check">
-      <input type="checkbox" ${IR.divMostrarAnulados?'checked':''} onchange="irDivToggleAnulados()">
-      Mostrar auto-anulados (${irFmtInt(anulados)})
+    <div class="ofe-filtro">
+      <label>Corte (R$)</label>
+      <input type="number" min="0" step="100" value="${IR.divCorte==null?IR_DIV_CORTE_PADRAO:IR.divCorte}" onchange="irDivSetCorte(this.value)">
+    </div>
+    <div class="ofe-filtro ofe-filtro-busca">
+      <label>Item</label>
+      <input type="text" placeholder="código ou descrição" value="${irEsc(IR.divBusca||'')}" oninput="irDivSetBusca(this.value)">
+    </div>
+    <label class="ofe-check">
+      <input type="checkbox" ${IR.divVerCompensados?'checked':''} onchange="irDivToggleCompensados()">
+      Ver compensados no ano
     </label>
-    <span class="field-hint" style="margin-left:auto;">Coluna do ano sempre em ${irEsc(ano||'—')}</span>
-  </div>
-  <div class="kpi-grid">
-    <div class="kpi-card orange"><div class="num mono">${netQtd>0?'+':''}${irFmtInt(netQtd)}</div><div class="label">NET peças</div><div class="sub">${irEsc(irDivEscopoLabel())}</div></div>
-    <div class="kpi-card"><div class="num mono">${irFmtInt(absQtd)}</div><div class="label">Peças divergentes (ABS)</div></div>
-    <div class="kpi-card orange"><div class="num mono">${netValor>0?'+':''}${irFmtMoneyCompact(netValor)}</div><div class="label">NET valor</div><div class="sub">${irFmtMoneyInt(netValor)}</div></div>
-    <div class="kpi-card"><div class="num mono">${irFmtMoneyCompact(absValor)}</div><div class="label">Valor divergente (ABS)</div><div class="sub">${irFmtMoneyInt(absValor)}</div></div>
-    <div class="kpi-card"><div class="num mono">${irFmtInt(itens.length)}</div><div class="label">Itens divergentes</div><div class="sub">${irFmtInt(anulados)} auto-anulados</div></div>
-    <div class="kpi-card bad"><div class="num mono">${irFmtInt(itens80)}</div><div class="label">Itens = 80% do NET</div><div class="sub">ataque por aqui</div></div>
-  </div>
-  <div class="panel">
-    <div class="panel-head-row">
-      <h3>🎯 Itens que distorcem o NET — ${irEsc(irDivEscopoLabel())}</h3>
-      <div class="div-acoes">
-        <input type="number" id="ir-div-topn" min="1" max="500" value="${itens80}" style="width:72px;">
-        <button class="btn btn-secondary" onclick="irDivSelecionarTop()">Marcar top N</button>
+  </div>`;
+}
+function irRenderDivResumo(c){
+  const cell = (rot, val, cls, sub) => `<div class="ofe-num ${cls||''}">
+    <span class="ofe-num-lbl">${irEsc(rot)}</span>
+    <strong class="mono">${val}</strong>
+    ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}
+  </div>`;
+  return `<div class="panel ofe-resumo">
+    ${cell('NET do período', (c.netValor>0?'+':'')+irFmtMoney(c.netValor), c.netValor<0?'neg':'pos', irFmtInt(c.netQtd)+' peças')}
+    ${cell('Ofensores de perda', irFmtInt(c.nPerda), 'neg', irFmtMoney(c.perdaOfensores))}
+    ${cell('Ofensores de ganho', irFmtInt(c.nGanho), 'pos', '+'+irFmtMoney(c.ganhoOfensores))}
+    ${cell('Compensados no ano', irFmtInt(c.compensados.length), '', 'saem da lista')}
+    ${cell('Itens com divergência', irFmtInt(c.totalItens), '', 'corte de '+irFmtMoney(c.corte))}
+  </div>`;
+}
+const IR_OFE_COLS = [
+  {key:'item',        lbl:'Item'},
+  {key:'descricao',   lbl:'Descrição'},
+  {key:'netValor',    lbl:'NET R$ (período)', num:true},
+  {key:'netQtd',      lbl:'NET peças',        num:true},
+  {key:'netValorAno', lbl:'NET R$ (ano)',     num:true, ano:true},
+  {key:'netQtdAno',   lbl:'NET peças (ano)',  num:true, ano:true},
+  {key:'nLocais',     lbl:'Locais',           num:true},
+  {key:'situacao',    lbl:'Situação'}
+];
+function irRenderDivTabela(c){
+  const sel = IR.divSelecionados || new Set();
+  const lista = IR.divVerCompensados ? c.itens.filter(i=>i.relevante) : c.ofensores;
+  const o = IR.divOrdem || {col:'netValor', dir:'desc'};
+  const seta = k => o.col===k ? (o.dir==='desc'?' ▾':' ▴') : '';
+  const num = (v, fmt) => `<td class="mono ${v<0?'neg':(v>0?'pos':'')}">${v>0?'+':''}${fmt(v)}</td>`;
+  const descLocal = new Map((IR.locais||[]).map(l=>[l.idLocal, l]));
+  const linha = i=>{
+    const aberto = IR.divExpandido===i.item;
+    const tag = i.compensado
+      ? '<span class="ofe-tag comp">compensado</span>'
+      : `<span class="ofe-tag ${i.netValor<0?'perda':'ganho'}">${i.netValor<0?'perda':'ganho'}</span>`;
+    let html = `<tr class="${sel.has(i.item)?'sel':''} ${i.compensado?'comp':''}">
+      <td><input type="checkbox" ${sel.has(i.item)?'checked':''} onchange="irDivToggleItem('${irEsc(i.item)}')"></td>
+      <td class="mono">${irEsc(i.item)}</td>
+      <td title="${irEsc(i.descricao||'')}">${irEsc(irResumirDescricao(i.descricao))}</td>
+      ${num(i.netValor, irFmtMoney)}
+      ${num(i.netQtd, irFmtInt)}
+      <td class="mono ofe-ano ${i.netValorAno<0?'neg':(i.netValorAno>0?'pos':'')}">${i.netValorAno>0?'+':''}${irFmtMoney(i.netValorAno)}</td>
+      <td class="mono ofe-ano ${i.netQtdAno<0?'neg':(i.netQtdAno>0?'pos':'')}">${i.netQtdAno>0?'+':''}${irFmtInt(i.netQtdAno)}</td>
+      <td class="mono"><button class="btn-link" onclick="irDivExpandir('${irEsc(i.item)}')">${irFmtInt(i.nLocais)} ${aberto?'▾':'▸'}</button></td>
+      <td>${tag}</td>
+      <td><button class="btn-link" onclick="irDivExportarItem('${irEsc(i.item)}')">Excel</button></td>
+    </tr>`;
+    if(aberto){
+      const locais = i.locais.slice().sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia));
+      html += `<tr class="ofe-detalhe"><td></td><td colspan="9">
+        <table class="ofe-sub"><thead><tr>
+          <th>Local</th><th>Descrição do Local</th><th>Dia</th><th>Sistema</th><th>Físico</th><th>Diferença</th><th>Valor</th>
+        </tr></thead><tbody>${locais.map(d=>{
+          const l = descLocal.get(d.local) || {};
+          return `<tr>
+            <td class="mono">${irEsc(d.local)}</td>
+            <td>${irEsc(l.descricao||'—')}</td>
+            <td class="mono">${irFmtDate(irDivDiaDa(d))}</td>
+            <td class="mono">${irFmtInt(d.qtdeSistema)}</td>
+            <td class="mono">${irFmtInt(d.qtdeFisica)}</td>
+            <td class="mono ${d.diferenca<0?'neg':'pos'}">${d.diferenca>0?'+':''}${irFmtInt(d.diferenca)}</td>
+            <td class="mono ${d.vlDivergencia<0?'neg':'pos'}">${d.vlDivergencia>0?'+':''}${irFmtMoney(d.vlDivergencia)}</td>
+          </tr>`;
+        }).join('')}</tbody></table>
+      </td></tr>`;
+    }
+    return html;
+  };
+  return `<div class="panel">
+    <div class="ofe-head">
+      <h3>Ofensores do NET — ${irEsc(irDivEscopoLabel())}</h3>
+      <div class="ofe-acoes">
         ${sel.size?`<button class="btn-link" onclick="irDivLimparSelecao()">Limpar (${sel.size})</button>`:''}
-        <button class="btn btn-primary" onclick="irDivGerarAuditoria()">🔍 Gerar auditoria (${sel.size})</button>
+        <button class="btn btn-secondary" onclick="irDivMarcarTodos()">Marcar todos</button>
+        <button class="btn btn-primary" onclick="irDivGerarAuditoria()">Gerar auditoria (${sel.size})</button>
       </div>
     </div>
-    <p class="panel-sub">Ordenado por |NET| do escopo. As colunas do ano mostram o mesmo item somando todos os ciclos de ${irEsc(ano||'—')} — ganhar 42 num ciclo e perder 42 em outro deixa o ano em zero.</p>
-    ${visiveis.length ? `<div class="table-wrap"><div class="table-scroll" style="max-height:560px;">
-      <table class="table-dense div-net-table">
+    ${lista.length ? `<div class="table-wrap"><div class="table-scroll" style="max-height:620px;">
+      <table class="ofe-table">
         <thead><tr>
-          <th></th><th>Item</th><th>Descrição</th>
-          <th>NET peças</th><th>NET valor</th>
-          <th class="div-col-ano">NET peças (ano)</th><th class="div-col-ano">NET valor (ano)</th>
-          <th>ABS peças</th><th>Locais</th><th>Peso no NET</th><th></th><th></th>
+          <th></th>
+          ${IR_OFE_COLS.map(col=>`<th class="${col.num?'num':''} ${col.ano?'ofe-ano':''}" onclick="irDivOrdenar('${col.key}')">${irEsc(col.lbl)}${seta(col.key)}</th>`).join('')}
+          <th></th>
         </tr></thead>
-        <tbody>${visiveis.map(row).join('')}</tbody>
+        <tbody>${lista.map(linha).join('')}</tbody>
       </table>
-    </div></div>` : `<p class="field-hint">${e.tipo==='dia'&&!e.dia?'Selecione um dia.':'Nenhum item divergente nesse escopo.'}</p>`}
-  </div>
-  ${irRenderDivAuditoria()}`;
+    </div></div>` : `<p class="field-hint">${
+      IR.divEscopo.tipo==='dia' && !IR.divEscopo.dia ? 'Selecione um dia.'
+      : 'Nenhum item acima de '+irFmtMoney(c.corte)+' neste período.'}</p>`}
+  </div>`;
+}
+function irRenderDivAuditoria(){
+  const g = IR.divAuditoria;
+  if(!g) return '';
+  return `<div class="panel aud-panel">
+    <div class="ofe-head">
+      <h3>Auditoria de validação</h3>
+      <div class="ofe-acoes">
+        <button class="btn btn-secondary" onclick="irDivExportarAuditoria()">Excel</button>
+        <button class="btn btn-primary" onclick="irDivImprimirAuditoria()">Imprimir</button>
+      </div>
+    </div>
+    <div class="aud-cab">
+      <div class="ofe-filtro"><label>Data</label><input type="date" id="ir-aud-data" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="ofe-filtro"><label>Auditor</label><input type="text" id="ir-aud-auditor" placeholder="nome de quem vai conferir"></div>
+      <span class="field-hint">${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo na QRY0390`:''}</span>
+    </div>
+    <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
+      <table class="aud-table">
+        <thead><tr><th>Item</th><th>Descrição</th><th>Local</th><th>Descrição do Local</th>
+          <th>Saldo no Sistema</th><th>Diferença do Item</th><th>Contagem do Auditor</th></tr></thead>
+        <tbody>${g.linhas.map(l=>`<tr>
+          <td class="mono">${irEsc(l.item)}</td>
+          <td title="${irEsc(l.descricao||'')}">${irEsc(irResumirDescricao(l.descricao))}</td>
+          <td class="mono">${l.local?irEsc(l.local):'<span class="field-hint">sem saldo</span>'}</td>
+          <td>${irEsc(l.descricaoLocal||'—')}</td>
+          <td class="mono">${l.saldo!=null?irFmtInt(l.saldo):'—'}</td>
+          <td class="mono ${l.diferenca<0?'neg':'pos'}">${l.diferenca>0?'+':''}${irFmtInt(l.diferenca)}</td>
+          <td class="aud-vazio"></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div></div>
+  </div>`;
 }
 function irRenderDivergencias(){
-  const semDivergencias = !IR.divergencias.length;
-  if(semDivergencias && !IR.net410Anos.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  if(semDivergencias) return irRenderNetDistorcaoPanel();
-  // Carrega o ano inteiro na primeira entrada da aba — a coluna do ano precisa de
-  // todos os ciclos, não só do que está em memória.
+  if(!IR.divergencias.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
   if(!IR.divAnoCache) irCarregarDivEscopo();
-  const locais = Array.from(new Set(IR.divergencias.map(d=>d.local))).sort();
+  const c = irDivCalcItens();
   return `
-    ${irRenderDivDistorcaoNet()}
-    <button class="btn-link" style="margin-bottom:10px;" onclick="irToggleDivRawTable(this)">📋 Ver lista completa de divergências do ciclo atual (${irFmtInt(irDivergenciasFiltered().length)} itens, item × local)</button>
-    <div id="ir-div-raw-wrap" style="display:none;">
-    <div class="filter-bar">
-      <input type="text" placeholder="Buscar por item, descrição ou local..." value="${irEsc(IR.divFilters.search)}" oninput="irDivSetSearch(this.value)">
-      <select onchange="irDivSetFilter('local', this.value)">
-        <option value="">Todos os locais</option>${locais.map(l=>`<option value="${irEsc(l)}" ${IR.divFilters.local===l?'selected':''}>${irEsc(l)}</option>`).join('')}
-      </select>
-      <button class="btn btn-secondary" onclick="irExportDivergenciasCsv()">Exportar CSV</button>
-    </div>
-    <p class="field-hint" id="ir-div-count" style="margin-bottom:8px;">${irFmtInt(irDivergenciasFiltered().length)} itens divergentes</p>
-    <div class="table-wrap">
-      <div class="table-scroll" id="ir-div-scroll" style="height:calc(100vh - 300px);">
-        <table><thead><tr><th>Item</th><th>Descrição</th><th>Local</th><th>Qtde Sistema</th><th>Qtde Física</th><th>Diferença</th><th>Valor</th></tr></thead>
-        <tbody id="ir-div-window"></tbody></table>
-      </div>
-    </div>
-    </div>
-    <details style="margin-top:16px;">
-      <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-soft);">Análise do NET de Perdas e Ganhos (QRY410) — outra base, movimentação do CD</summary>
-      <div style="margin-top:12px;">${irRenderNetDistorcaoPanel()}</div>
-    </details>
+    ${irRenderDivFiltros()}
+    ${irRenderDivResumo(c)}
+    ${irRenderDivTabela(c)}
+    ${irRenderDivAuditoria()}
   `;
-}
-function irToggleDivRawTable(btn){
-  const el = document.getElementById('ir-div-raw-wrap');
-  if(!el) return;
-  const abrindo = el.style.display==='none';
-  el.style.display = abrindo ? '' : 'none';
-  if(abrindo) irMountDivergenciasScroll(false);
-}
-function irDivSetSearch(val){ IR.divFilters.search = val; irMountDivergenciasScroll(true); irUpdateDivCount(); }
-function irDivSetFilter(k,v){ IR.divFilters[k]=v; irRenderView(); }
-function irUpdateDivCount(){ const el = document.getElementById('ir-div-count'); if(el) el.textContent = irFmtInt(irDivergenciasFiltered().length)+' itens divergentes'; }
-function irMountDivergenciasScroll(keepScroll){
-  const el = document.getElementById('ir-div-scroll');
-  if(!el) return;
-  if(IR.__divScrollHandler) el.removeEventListener('scroll', IR.__divScrollHandler);
-  let ticking=false;
-  IR.__divScrollHandler = ()=>{ if(ticking) return; ticking=true; requestAnimationFrame(()=>{ irRenderDivWindow(); ticking=false; }); };
-  el.addEventListener('scroll', IR.__divScrollHandler);
-  if(!keepScroll) el.scrollTop = 0;
-  irRenderDivWindow();
-}
-function irRenderDivWindow(){
-  const el = document.getElementById('ir-div-scroll'); const winEl = document.getElementById('ir-div-window');
-  if(!el || !winEl) return;
-  const rows = irDivergenciasFiltered();
-  if(!rows.length){ winEl.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:20px;">Nenhum item encontrado.</td></tr>`; return; }
-  const viewH = el.clientHeight||400, scrollTop = el.scrollTop, buffer=8;
-  const start = Math.max(0, Math.floor(scrollTop/IR_DIV_ROW_H)-buffer);
-  const end = Math.min(rows.length, start+Math.ceil(viewH/IR_DIV_ROW_H)+buffer*2);
-  const top=start*IR_DIV_ROW_H, bottom=(rows.length-end)*IR_DIV_ROW_H;
-  winEl.innerHTML = `<tr style="height:${top}px;"><td colspan="7" style="padding:0;border:none;"></td></tr>`
-    + rows.slice(start,end).map(d=>`<tr style="height:${IR_DIV_ROW_H}px;">
-        <td class="mono">${irEsc(d.item)}</td><td>${irEsc(d.itemNome)}</td><td>${irEsc(d.local)}</td>
-        <td class="mono">${irFmtInt(d.qtdeSistema)}</td><td class="mono">${irFmtInt(d.qtdeFisica)}</td>
-        <td class="mono ${d.diferenca>=0?'pos':'neg'}">${d.diferenca>0?'+':''}${irFmtInt(d.diferenca)}</td>
-        <td class="mono ${d.vlDivergencia>=0?'pos':'neg'}">${irFmtMoney(d.vlDivergencia)}</td>
-      </tr>`).join('')
-    + `<tr style="height:${bottom}px;"><td colspan="7" style="padding:0;border:none;"></td></tr>`;
-}
-function irExportDivergenciasCsv(){
-  const rows = irDivergenciasFiltered();
-  if(!rows.length){ irShowToast('Nada para exportar.', true); return; }
-  const cols = ['item','itemNome','local','qtdeSistema','qtdeFisica','diferenca','precoUnitario','vlFisico','vlDivergencia'];
-  const header = cols.join(';');
-  const lines = rows.map(r=>cols.map(c=>{ let v=r[c]; if(typeof v==='string') v='"'+v.replace(/"/g,'""')+'"'; return v??''; }).join(';'));
-  const csv = '﻿'+header+'\n'+lines.join('\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'divergencias_ciclo_'+IR.cicloAtivo.numero+'.csv'; a.click(); URL.revokeObjectURL(a.href);
 }
 // Locais pendentes de CONTAGEM no ciclo VIGENTE — cruza a Base Congelada com a
 // QRY0843: se existe qualquer linha do local com Situação Local e Situação Inventário

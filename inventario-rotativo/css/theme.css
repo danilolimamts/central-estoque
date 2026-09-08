@@ -578,20 +578,86 @@ table.prod-rank td{ white-space:nowrap; }
 .tag-blue{ color:var(--blue); background:var(--blue-light); }
 .tag-orange{ color:var(--orange); background:var(--orange-light); }
 
-/* ---------- ABA DIVERGÊNCIAS — distorção do NET e auditoria ---------- */
-.div-acoes{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.div-acoes input[type=number]{ border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12px; background:var(--surface); color:var(--ink); font-family:'SFMono-Regular',Consolas,monospace; }
-table.div-net-table td{ vertical-align:middle; }
-table.div-net-table tr.div-sel{ background:var(--orange-light); }
-.div-acum-track{ height:6px; border-radius:100px; background:var(--surface2); overflow:hidden; min-width:70px; }
-.div-acum-fill{ height:100%; border-radius:100px; background:var(--orange); }
-/* Colunas do ano ficam num fundo próprio — é o contraponto ao escopo escolhido. */
-table.div-net-table th.div-col-ano, table.div-net-table td.div-col-ano{ background:var(--surface2); }
-:root[data-theme="dark"] table.div-net-table th.div-col-ano,
-:root[data-theme="dark"] table.div-net-table td.div-col-ano{ background:rgba(255,255,255,.04); }
-tr.div-aud-saldo{ background:var(--blue-light); }
-:root[data-theme="dark"] table.div-net-table tr.div-sel{ background:rgba(250,70,22,.16); }
-:root[data-theme="dark"] tr.div-aud-saldo{ background:rgba(90,131,214,.14); }
+/* ---------- ABA DIVERGÊNCIAS — ofensores do NET ----------
+   Tela de trabalho: filtro numa linha, cinco números, uma tabela. Sem card
+   decorativo — o auditor lê a tabela, marca, gera e imprime. */
+.ofe-filtros{ display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; padding:12px 18px; margin-bottom:12px; }
+.ofe-filtro{ display:flex; flex-direction:column; gap:3px; }
+.ofe-filtro label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); }
+.ofe-filtro select, .ofe-filtro input{
+  border:1px solid var(--line); border-radius:8px; padding:7px 10px; font-size:12.5px; font-weight:600;
+  background:var(--surface); color:var(--ink); font-family:inherit; min-width:150px;
+}
+.ofe-filtro-busca input{ min-width:230px; font-weight:400; }
+.ofe-check{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); cursor:pointer; margin-bottom:7px; }
+.ofe-check input{ width:auto; }
+
+.ofe-resumo{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:0; padding:0; overflow:hidden; margin-bottom:12px; }
+.ofe-num{ padding:14px 18px; border-right:1px solid var(--line); }
+.ofe-num:last-child{ border-right:none; }
+.ofe-num-lbl{ display:block; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); }
+.ofe-num strong{ display:block; font-size:22px; font-weight:800; color:var(--ink); line-height:1.2; margin-top:4px; letter-spacing:-.01em; }
+.ofe-num-sub{ display:block; font-size:10.5px; color:var(--ink-soft); margin-top:2px; }
+.ofe-num.neg strong{ color:var(--danger); }
+.ofe-num.pos strong{ color:var(--success); }
+
+.ofe-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.ofe-head h3{ margin:0; }
+.ofe-acoes{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+table.ofe-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+table.ofe-table th{
+  position:sticky; top:0; z-index:1; background:var(--surface2); color:var(--ink-soft);
+  font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+  padding:9px 10px; text-align:left; cursor:pointer; user-select:none; white-space:nowrap;
+  border-bottom:1px solid var(--line);
+}
+table.ofe-table th:hover{ color:var(--ink); }
+table.ofe-table th.num{ text-align:right; }
+table.ofe-table td{ padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+table.ofe-table td.mono{ text-align:right; }
+table.ofe-table td:nth-child(2), table.ofe-table td:nth-child(3){ text-align:left; }
+table.ofe-table tr.sel{ background:var(--orange-light); }
+table.ofe-table tr.comp{ opacity:.62; }
+table.ofe-table .neg{ color:var(--danger); font-weight:700; }
+table.ofe-table .pos{ color:var(--success); font-weight:700; }
+/* Colunas do ano num fundo próprio: é o contraponto ao período escolhido. */
+table.ofe-table th.ofe-ano, table.ofe-table td.ofe-ano{ background:var(--surface2); }
+:root[data-theme="dark"] table.ofe-table th.ofe-ano,
+:root[data-theme="dark"] table.ofe-table td.ofe-ano{ background:rgba(255,255,255,.04); }
+:root[data-theme="dark"] table.ofe-table tr.sel{ background:rgba(250,70,22,.16); }
+
+.ofe-tag{ font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:100px; white-space:nowrap; }
+.ofe-tag.perda{ color:var(--danger); background:var(--danger-light); }
+.ofe-tag.ganho{ color:var(--success); background:var(--success-light); }
+.ofe-tag.comp{ color:var(--ink-soft); background:var(--surface2); }
+
+tr.ofe-detalhe > td{ background:var(--surface2); padding:0 10px 10px; }
+table.ofe-sub{ width:100%; border-collapse:collapse; font-size:11.5px; }
+table.ofe-sub th{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); padding:6px 8px; text-align:left; }
+table.ofe-sub td{ padding:5px 8px; border-top:1px solid var(--line); }
+table.ofe-sub td.mono{ text-align:right; }
+table.ofe-sub td:nth-child(2){ text-align:left; }
+
+.aud-cab{ display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; margin-bottom:12px; }
+table.aud-table{ width:100%; border-collapse:collapse; font-size:12px; }
+table.aud-table th{ background:var(--surface2); color:var(--ink-soft); font-size:9.5px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.05em; padding:8px 10px; text-align:left; border-bottom:1px solid var(--line); }
+table.aud-table td{ padding:7px 10px; border-bottom:1px solid var(--line); }
+table.aud-table td.mono{ text-align:right; }
+table.aud-table td:nth-child(2), table.aud-table td:nth-child(4){ text-align:left; }
+.aud-vazio{ min-width:130px; border-bottom:1px solid var(--line); }
+
+/* Impressão: sai só a auditoria, em preto no branco, sem menu nem botões. */
+@media print{
+  .sidebar, .topbar, .ofe-filtros, .ofe-resumo, .ofe-acoes, .zoom-ctrl, .toast{ display:none !important; }
+  .panel:not(.aud-panel){ display:none !important; }
+  .aud-panel{ box-shadow:none; border:none; padding:0; }
+  .aud-panel .table-scroll{ max-height:none !important; overflow:visible !important; }
+  table.aud-table th{ background:#EEE !important; color:#000 !important; -webkit-print-color-adjust:exact; }
+  table.aud-table td, table.aud-table th{ border-bottom:1px solid #999 !important; }
+  .aud-vazio{ border-bottom:1px solid #000 !important; }
+}
 .tag-good{ color:var(--success); background:var(--success-light); }
 .tag-bad{ color:var(--danger); background:var(--danger-light); }
 .tag-muted{ color:var(--ink-soft); background:var(--surface2); }
