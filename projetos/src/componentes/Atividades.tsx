@@ -161,7 +161,7 @@ export default function Atividades({
   }
 
   return (
-    <section className="cartao overflow-hidden">
+    <section data-guia="atividades" className="cartao overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-linha px-4 py-3">
         <h2 className="font-titulo text-sm font-extrabold">
           {plural} {filhos.length > 0 && (
@@ -186,7 +186,7 @@ export default function Atividades({
             <option value="situacao">Por situação</option>
             <option value="nome">Por nome</option>
           </select>
-          <div className="flex rounded-lg border border-linha p-0.5 text-xs font-bold">
+          <div data-guia="visao" className="flex rounded-lg border border-linha p-0.5 text-xs font-bold">
             <button
               className={`rounded px-2 py-1 ${!emQuadro ? 'bg-roxo-suave text-roxo-escuro' : 'text-tinta-suave'}`}
               onClick={() => { setEmQuadro(false); localStorage.setItem('projetos.visao', 'lista'); }}
@@ -198,6 +198,7 @@ export default function Atividades({
           </div>
           {permissoes.ehAdmin && (
             <button
+              data-guia="situacoes"
               className="rounded-lg border border-linha px-2 py-1 text-xs font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
               onClick={() => setConfigAberta(true)}
               title="Configurar as situações"
@@ -587,7 +588,7 @@ function Esteira({ numeros, plural }: { numeros: Cobertura; plural: string }) {
   ];
 
   return (
-    <div className="grid gap-2 border-b border-linha bg-papel px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div data-guia="esteira" className="grid gap-2 border-b border-linha bg-papel px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
       {cartoes.map((c) => (
         <div key={c.rotulo} className="rounded-lg bg-white px-3 py-2" title={c.ajuda}>
           <p className="text-[11px] font-bold uppercase tracking-wider text-tinta-suave">{c.rotulo}</p>

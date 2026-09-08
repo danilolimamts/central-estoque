@@ -233,6 +233,26 @@ if (!comGuia.includes('Bem-vindo ao módulo Projetos')) {
   console.error('FALHOU: o guia não abriu na primeira visita.');
   process.exitCode = 1;
 }
+if (/BSeller|Bseller/.test(comGuia)) {
+  console.error('FALHOU: a abertura do guia não deve tratar um sistema específico como o assunto do módulo.');
+  process.exitCode = 1;
+}
+/* A visita aponta para a tela: cada passo com alvo tem de destacar o
+   elemento de verdade, e nao so trocar o texto do cartao. */
+await pagina.getByRole('button', { name: 'Próximo', exact: true }).click();
+await pagina.waitForTimeout(500);
+const destaque = pagina.locator('.ring-roxo').first();
+if (!(await destaque.count())) {
+  console.error('FALHOU: o guia não destacou o elemento apontado pelo passo.');
+  process.exitCode = 1;
+} else {
+  const alvo = await pagina.locator('[data-guia="abas"]').boundingBox();
+  const marca = await destaque.boundingBox();
+  if (!alvo || !marca || Math.abs(alvo.y - marca.y) > 20 || Math.abs(alvo.x - marca.x) > 20) {
+    console.error('FALHOU: o destaque do guia não caiu sobre as abas.');
+    process.exitCode = 1;
+  }
+}
 await pagina.screenshot({ path: 'verificacao-guia.png', fullPage: true });
 await pagina.getByRole('button', { name: 'Pular tudo', exact: true }).click();
 await pagina.waitForTimeout(300);

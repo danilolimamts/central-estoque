@@ -105,7 +105,7 @@ export default function ListaProjetos({ projetos, pessoas, aoAbrir, recarregar }
         </div>
       </div>
 
-      <div className="cartao overflow-hidden">
+      <div data-guia="lista-projetos" className="cartao overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-papel text-left text-[11px] uppercase tracking-wider text-tinta-suave">
