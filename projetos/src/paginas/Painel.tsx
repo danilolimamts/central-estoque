@@ -1,11 +1,14 @@
 import { useMemo } from 'react';
 import Grafico from '@/componentes/Grafico';
+import Esteira from '@/componentes/Esteira';
 import { Barra, Indicador, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
 import {
   atrasado, calcularIndicadores, diasDeAtraso, encerrado, entregasPorMes,
   formatarData, percentualEsperado, saude, venceEm,
 } from '@/dominio/regras';
 import { folhas } from '@/dominio/arvore';
+import { cobertura } from '@/dominio/cobertura';
+import { useConteudoDosProjetos } from '@/estado/conteudo';
 import type { Pessoa, Projeto } from '@/dominio/tipos';
 import { useSituacoes } from '@/estado/configuracao';
 import { situacaoDe } from '@/dominio/situacoes';
@@ -23,6 +26,14 @@ export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
   const carteira = useMemo(() => folhas(projetos), [projetos]);
   const indicadores = useMemo(() => calcularIndicadores(carteira), [carteira]);
   const entregas = useMemo(() => entregasPorMes(carteira), [carteira]);
+  /* A mesma faixa que aparece dentro de um projeto, agora sobre a
+     carteira inteira: quem abre o painel quer saber como esta a fila
+     antes de escolher onde entrar. */
+  const conteudo = useConteudoDosProjetos(useMemo(() => carteira.map((p) => p.id), [carteira]));
+  const esteira = useMemo(
+    () => cobertura(carteira, conteudo.conteudo),
+    [carteira, conteudo.conteudo],
+  );
   const nomePessoa = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '—';
 
   /* Fila de atencao: atrasados primeiro, depois o que vence em 15 dias.
@@ -45,6 +56,8 @@ export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
         <Indicador titulo="Concluídos" valor={indicadores.concluidos} cor="#2E8B57" detalhe="no histórico" />
         <Indicador titulo="Avanço" valor={`${indicadores.percentualConcluido}%`} detalhe="concluídos sobre o que vale" />
       </div>
+
+      <Esteira numeros={esteira} plural="atividades" />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="cartao p-4">

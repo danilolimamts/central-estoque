@@ -46,7 +46,7 @@ describe('cobertura', () => {
 
   it('sem atividade, tudo é zero e a porcentagem não estoura', () => {
     const c = cobertura([], {});
-    expect(c).toEqual({ total: 0, documentadas: 0, comChamado: 0, jaPedidas: 0, aAbrir: 0, semDocumento: 0 });
+    expect(c).toEqual({ total: 0, documentadas: 0, comChamado: 0, aAbrir: 0, concluidas: 0, semDocumento: 0 });
     expect(porcentagem(0, 0)).toBe(0);
   });
 
@@ -56,7 +56,7 @@ describe('cobertura', () => {
     expect(porcentagem(12, 12)).toBe(100);
   });
 
-  it('conta como pedida quem passou da situação de chamado, mesmo sem o número', () => {
+  it('conta como chamado aberto quem passou daquela situação, mesmo sem o número', () => {
     definirSituacoes(SITUACOES_PADRAO.map((s) => (
       s.chave === 'em_risco' ? { ...s, chamado: true } : s
     )));
@@ -66,14 +66,23 @@ describe('cobertura', () => {
       conteudo({ a: { documentos: 1 }, b: { documentos: 1 } }),
     );
     /* "Pausado" vem depois de "Em risco" na fila padrão. */
-    expect(c.jaPedidas).toBe(2);
-    expect(c.comChamado).toBe(1);
+    expect(c.comChamado).toBe(2);
     /* Só "b" continua na fila do que dá para pedir. */
     expect(c.aAbrir).toBe(1);
   });
 
-  it('sem situação marcada, pedida é só quem tem o número', () => {
+  it('sem situação marcada, chamado é só quem tem o número', () => {
     const c = cobertura([projeto('a', '1'), { ...projeto('b'), status: 'concluido' }], {});
-    expect(c.jaPedidas).toBe(1);
+    expect(c.comChamado).toBe(1);
+  });
+
+  it('conta as concluídas pela situação', () => {
+    const c = cobertura([
+      { ...projeto('a'), status: 'concluido' },
+      { ...projeto('b'), status: 'concluido' },
+      projeto('c'),
+    ], {});
+    expect(c.concluidas).toBe(2);
+    expect(porcentagem(c.concluidas, c.total)).toBe(67);
   });
 });

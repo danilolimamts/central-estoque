@@ -385,17 +385,24 @@ if (!(await pagina.getByTitle('Arraste para mudar o tamanho').count())) {
   console.error('FALHOU: o bloco selecionado deveria ter alça de tamanho.');
   process.exitCode = 1;
 }
-/* Tamanho da tela do quadro: afastar tem de encolher o desenho de
-   verdade, nao so trocar o rotulo do botao. */
-const larguraAntes = (await pagina.locator('[data-quadro="fluxo"]').first().boundingBox())?.width ?? 0;
-await pagina.locator('[title="Tamanho da tela do quadro"] button', { hasText: '−' }).first().click();
+/* Espaço da prancheta: "+" tem de dar mais chão sem encolher o que já
+   foi desenhado. */
+const quadro = pagina.locator('[data-quadro="fluxo"]').first();
+const antes = await quadro.evaluate((el) => ({ largura: el.offsetWidth, escala: getComputedStyle(el).transform }));
+const blocoAntes = (await pagina.locator('[data-quadro="fluxo"] >> text=Digita o código').first().boundingBox())?.width ?? 0;
+await pagina.getByTitle('Mais espaço').click();
 await pagina.waitForTimeout(300);
-const larguraDepois = (await pagina.locator('[data-quadro="fluxo"]').first().boundingBox())?.width ?? 0;
-if (!(larguraDepois < larguraAntes)) {
-  console.error(`FALHOU: o botão de afastar não mudou o tamanho do quadro (${larguraAntes} → ${larguraDepois}).`);
+const depois = await quadro.evaluate((el) => ({ largura: el.offsetWidth, escala: getComputedStyle(el).transform }));
+const blocoDepois = (await pagina.locator('[data-quadro="fluxo"] >> text=Digita o código').first().boundingBox())?.width ?? 0;
+if (!(depois.largura > antes.largura)) {
+  console.error(`FALHOU: "+" não aumentou a área de trabalho (${antes.largura} → ${depois.largura}).`);
   process.exitCode = 1;
 }
-await pagina.getByTitle('Voltar a 100%').click();
+if (Math.abs(blocoDepois - blocoAntes) > 1 || depois.escala !== antes.escala) {
+  console.error('FALHOU: dar mais espaço não deveria mexer no tamanho do desenho.');
+  process.exitCode = 1;
+}
+await pagina.getByTitle('Voltar ao espaço do desenho').click();
 await pagina.waitForTimeout(300);
 
 if (!(await pagina.getByTitle('Ponta dos dois lados').count())) {
@@ -515,7 +522,7 @@ if (!((await pagina.textContent('body')) ?? '').includes('Melhoria Sistêmica Bs
    se responde quantas melhorias ja foram documentadas e quantas ja
    viraram chamado. */
 const corpoDaEsteira = (await pagina.textContent('body')) ?? '';
-for (const rotulo of ['Documentadas', 'Com chamado aberto', 'Já pedidas ao BSeller', 'Prontas para abrir chamado']) {
+for (const rotulo of ['Documentadas', 'Com chamado aberto', 'Prontas para abrir chamado', 'Concluídas']) {
   if (!corpoDaEsteira.includes(rotulo)) {
     console.error(`FALHOU: a faixa da esteira não trouxe "${rotulo}".`);
     process.exitCode = 1;
