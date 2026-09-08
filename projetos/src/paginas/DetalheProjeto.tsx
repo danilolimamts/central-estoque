@@ -333,6 +333,7 @@ export default function DetalheProjeto({
             <Documentos
               projeto={projeto} pessoas={pessoas} marcos={dados.marcos}
               tarefas={dados.tarefas} anexos={dados.anexos}
+              recarregarAnexos={dados.recarregar}
             />
           </Suspense>
         </>

@@ -3,6 +3,9 @@ import { supabase } from '@/lib/supabase';
 import { mensagemDeErro } from '@/estado/dados';
 import type { DadosDoDocumento, Documento } from '@/dominio/documento';
 
+const BALDE = 'anexos-projetos';
+const TIPO_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
 export async function listarDocumentos(projetoId: string): Promise<Documento[]> {
   const { data, error } = await supabase
     .from('documentos').select('*').eq('projeto_id', projetoId).order('numero');
@@ -75,4 +78,39 @@ export function useDocumentos(projetoId: string): Carteira {
   useEffect(() => { void recarregar(); }, [recarregar]);
 
   return { documentos, carregando, erro, recarregar };
+}
+
+/* O .docx gerado vira anexo da atividade, no caminho fixo do documento:
+   gerar de novo substitui o arquivo e atualiza a mesma linha, em vez de
+   empilhar copias com nomes parecidos. Assim "o documento" e sempre um
+   so, e quem abre a atividade acha a ultima versao sem escolher entre
+   tres arquivos iguais. */
+export async function anexarDocumentoGerado(
+  projetoId: string, documentoId: string, arquivo: Blob, nome: string, autor: string | null,
+): Promise<void> {
+  const caminho = `${projetoId}/documentos/${documentoId}.docx`;
+
+  const envio = await supabase.storage.from(BALDE)
+    .upload(caminho, arquivo, { contentType: TIPO_DOCX, upsert: true });
+  if (envio.error) throw envio.error;
+
+  const existente = await supabase.from('anexos')
+    .select('id').eq('projeto_id', projetoId).eq('caminho', caminho).maybeSingle();
+  if (existente.error) throw existente.error;
+
+  const linha = {
+    projeto_id: projetoId,
+    caminho,
+    nome_arquivo: nome,
+    tipo_mime: TIPO_DOCX,
+    tamanho_bytes: arquivo.size,
+    momento: 'documento' as const,
+    legenda: 'Proposta gerada pelo módulo',
+    enviado_por: autor,
+  };
+
+  const { error } = existente.data
+    ? await supabase.from('anexos').update(linha).eq('id', (existente.data as { id: string }).id)
+    : await supabase.from('anexos').insert(linha);
+  if (error) throw error;
 }
