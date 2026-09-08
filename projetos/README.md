@@ -276,6 +276,17 @@ dynamically imported module*. `lib/importar.ts` intercepta isso e recarrega a
 página uma vez — com trava em `sessionStorage`, para não entrar em laço quando a
 falha for outra coisa, como internet caída.
 
+**O arquivo fica anexado.** *Gerar Word e anexar* salva o documento, baixa o
+`.docx` e o guarda nos Anexos da atividade, sempre no mesmo caminho
+(`<projeto>/documentos/<documento>.docx`): gerar de novo **substitui** a versão
+anterior e atualiza a mesma linha, em vez de empilhar cópias com nomes
+parecidos. Assim "o documento" é sempre um só, e quem abre a atividade acha a
+última versão sem escolher entre três arquivos iguais.
+
+O salvamento acontece **antes** da geração: se a geração falhar (imagem que não
+baixa, versão nova do app numa aba antiga), o que foi preenchido não se perde
+junto.
+
 O índice geral (documento `00`) ainda não é gerado.
 
 ### Acesso

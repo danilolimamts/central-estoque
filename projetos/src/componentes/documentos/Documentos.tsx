@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Aviso, Campo, Carregando, Modal, Vazio } from '@/componentes/ui';
 import { mensagemDeErro } from '@/estado/dados';
 import { importarModulo } from '@/lib/importar';
-import { excluirDocumento, proximoNumero, salvarDocumento, useDocumentos } from '@/estado/documentos';
+import {
+  anexarDocumentoGerado, excluirDocumento, proximoNumero, salvarDocumento, useDocumentos,
+} from '@/estado/documentos';
 import { usePaginas } from '@/estado/paginas';
 import { montarBriefing, lerConteudoColado } from '@/dominio/briefing';
 import { faltamCamposParaRascunho, montarRascunho } from '@/dominio/rascunho';
@@ -22,6 +24,9 @@ interface Props {
   marcos: Marco[];
   tarefas: Tarefa[];
   anexos: Anexo[];
+  /* O documento gerado entra na lista de anexos; sem recarregar, a
+     secao de cima continuaria dizendo que nao ha nada. */
+  recarregarAnexos: () => Promise<void>;
 }
 
 /* Listas e tabelas do documento sao editadas como texto: uma linha por
@@ -54,7 +59,9 @@ function baixar(blob: Blob, nome: string) {
   URL.revokeObjectURL(endereco);
 }
 
-export default function Documentos({ projeto, pessoas, marcos, tarefas, anexos }: Props) {
+export default function Documentos({
+  projeto, pessoas, marcos, tarefas, anexos, recarregarAnexos,
+}: Props) {
   const carteira = useDocumentos(projeto.id);
   const carteiraDePaginas = usePaginas(projeto.id);
   const [editando, setEditando] = useState<Documento | 'novo' | null>(null);
@@ -83,6 +90,7 @@ export default function Documentos({ projeto, pessoas, marcos, tarefas, anexos }
     return (
       <Formulario
         projeto={projeto} pessoas={pessoas} marcos={marcos} tarefas={tarefas} anexos={anexos}
+        recarregarAnexos={recarregarAnexos}
         paginas={carteiraDePaginas.paginas}
         documento={editando === 'novo' ? null : editando}
         aoFechar={() => setEditando(null)}
@@ -142,6 +150,7 @@ interface PropsDoFormulario extends Props {
 
 function Formulario({
   projeto, pessoas, marcos, tarefas, anexos, paginas, documento, aoFechar, aoSalvar,
+  recarregarAnexos,
 }: PropsDoFormulario) {
   const [dados, setDados] = useState<DadosDoDocumento | null>(null);
   const [id, setId] = useState<string | undefined>(documento?.id);
@@ -257,6 +266,13 @@ function Formulario({
     setOcupado('gerando');
     setErro(null);
     try {
+      /* Salvar antes de gerar: se a geracao falhar (imagem que nao baixa,
+         versao nova do app na aba antiga), o que foi preenchido nao se
+         perde junto. */
+      const documentoId = await salvar();
+      if (!documentoId) return;
+      setOcupado('gerando');
+
       const [{ gerarDocumentoWord }, { baixarImagem, fluxogramaEmPng }] = await Promise.all([
         importarModulo(() => import('@/exportar/documentoWord')),
         importarModulo(() => import('@/lib/imagensParaWord')),
@@ -278,7 +294,17 @@ function Formulario({
 
       const { blob, nome } = await gerarDocumentoWord(dados!, recursos);
       baixar(blob, nome);
-      await salvar();
+
+      /* O arquivo tambem fica guardado na atividade, sempre no mesmo
+         lugar: gerar de novo substitui a versao anterior. */
+      try {
+        await anexarDocumentoGerado(projeto.id, documentoId, blob, nome, autor || null);
+        await recarregarAnexos();
+        setAviso(`Documento salvo, baixado e anexado à atividade como ${nome}.`);
+      } catch (falhaNoAnexo) {
+        setAviso(null);
+        setErro(`O Word foi gerado e baixado, mas não consegui anexá-lo: ${mensagemDeErro(falhaNoAnexo)}`);
+      }
     } catch (falha) {
       setErro(mensagemDeErro(falha));
     } finally {
@@ -310,7 +336,7 @@ function Formulario({
             {ocupado === 'salvando' ? 'Salvando…' : 'Salvar'}
           </button>
           <button className="botao-primario" onClick={() => void gerar()} disabled={!!ocupado}>
-            {ocupado === 'gerando' ? 'Gerando…' : 'Gerar Word'}
+            {ocupado === 'gerando' ? 'Gerando…' : 'Gerar Word e anexar'}
           </button>
         </div>
       </div>

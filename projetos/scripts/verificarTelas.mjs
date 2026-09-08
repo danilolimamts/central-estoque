@@ -246,6 +246,11 @@ if (digitado !== 'Tela no bseller') {
   console.error(`FALHOU: o campo de lista comeu o espaço — ficou "${digitado}".`);
   process.exitCode = 1;
 }
+const botoesDoDocumento = (await pagina.textContent('body')) ?? '';
+if (!botoesDoDocumento.includes('Gerar Word e anexar')) {
+  console.error('FALHOU: o documento deveria oferecer gerar e anexar num botão só.');
+  process.exitCode = 1;
+}
 await pagina.getByRole('button', { name: 'Fechar', exact: true }).first().click();
 await pagina.waitForTimeout(500);
 
