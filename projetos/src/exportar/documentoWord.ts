@@ -278,6 +278,17 @@ function barra(cor: string, altura = 80): Table {
   });
 }
 
+/* A marca entra pela largura, e a altura sai da proporcao do arquivo.
+   Altura fixa (era 220x58 na capa, para um arquivo de 237x91) achatava
+   o desenho e deixava a logo esticada, fora do padrao. */
+function marca(img: Imagem, largura: number): ImageRun {
+  return new ImageRun({
+    data: img.dados,
+    type: 'png',
+    transformation: { width: largura, height: Math.round(largura * (img.altura / img.largura)) },
+  });
+}
+
 function imagem(img: Imagem, largura = 520): Paragraph[] {
   const escala = largura / img.largura;
   const partes = [new Paragraph({
@@ -306,11 +317,7 @@ function capa(dados: DadosDoDocumento, recursos: RecursosDoDocumento) {
   if (recursos.logo) {
     partes.push(new Paragraph({
       spacing: { after: 240 },
-      children: [new ImageRun({
-        data: recursos.logo.dados,
-        type: 'png',
-        transformation: { width: 220, height: 58 },
-      })],
+      children: [marca(recursos.logo, 200)],
     }));
   }
 
@@ -594,11 +601,7 @@ export async function gerarDocumentoWord(
             children: [recursos.logo
               ? new Paragraph({
                 spacing: { after: 60 },
-                children: [new ImageRun({
-                  data: recursos.logo.dados,
-                  type: 'png',
-                  transformation: { width: 140, height: 37 },
-                })],
+                children: [marca(recursos.logo, 120)],
               })
               : new Paragraph({ children: [new TextRun({ text: 'Loja do Mecânico', font: FONTE, size: 18, bold: true, color: C.navy })] })],
           }),
