@@ -59,6 +59,23 @@ export function ordemDaSituacao(chave: string): number {
   return i < 0 ? registro.length : i;
 }
 
+/* Mover uma situacao na ordem, pulando as desligadas: quem clica na
+   seta da coluna espera ve-la andar uma casa no quadro, e uma situacao
+   escondida no meio faria o clique parecer sem efeito. */
+export function moverSituacao(lista: Situacao[], chave: string, direcao: -1 | 1): Situacao[] {
+  const de = lista.findIndex((s) => s.chave === chave);
+  if (de < 0) return lista;
+
+  let para = de + direcao;
+  while (para >= 0 && para < lista.length && !lista[para].usar) para += direcao;
+  if (para < 0 || para >= lista.length) return lista;
+
+  const copia = [...lista];
+  const [movida] = copia.splice(de, 1);
+  copia.splice(para, 0, movida);
+  return copia;
+}
+
 /* O que a tela oferece: as ligadas, mais as que já estão em uso — quem
    tem atividade numa situação desligada precisa continuar vendo o
    cartão. */

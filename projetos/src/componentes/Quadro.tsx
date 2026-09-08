@@ -20,6 +20,9 @@ interface Props<T extends CartaoDoQuadro> {
   cartao: (item: T) => ReactNode;
   /* Rodape opcional da coluna, para o "+ Adicionar" de cada situacao. */
   rodape?: (coluna: ColunaDoQuadro) => ReactNode;
+  /* Trocar a coluna de lugar. Quando existe, o cabecalho ganha as setas
+     — e a ordem do quadro deixa de exigir uma ida a configuracao. */
+  aoReordenar?: (coluna: ColunaDoQuadro, direcao: -1 | 1) => void | Promise<void>;
 }
 
 /* Quadro de colunas com arrastar e soltar, no espirito do Jira. Usa a
@@ -29,7 +32,7 @@ interface Props<T extends CartaoDoQuadro> {
    No celular nao ha arrastar - por isso todo cartao tambem tem o seletor
    de situacao na propria lista, que continua sendo o caminho garantido. */
 export default function Quadro<T extends CartaoDoQuadro>({
-  colunas, itens, aoMover, aoAbrir, cartao, rodape,
+  colunas, itens, aoMover, aoAbrir, cartao, rodape, aoReordenar,
 }: Props<T>) {
   const [arrastado, setArrastado] = useState<string | null>(null);
   const [alvo, setAlvo] = useState<string | null>(null);
@@ -37,7 +40,7 @@ export default function Quadro<T extends CartaoDoQuadro>({
   return (
     <div className="overflow-x-auto">
       <div className="flex min-w-max gap-3 p-3">
-        {colunas.map((coluna) => {
+        {colunas.map((coluna, indice) => {
           const daColuna = itens.filter((i) => i.coluna === coluna.id);
           return (
             <div
@@ -61,6 +64,22 @@ export default function Quadro<T extends CartaoDoQuadro>({
                   {coluna.rotulo}
                 </span>
                 <span className="ml-auto text-[11px] font-bold text-tinta-suave">{daColuna.length}</span>
+                {aoReordenar && (
+                  <span className="flex items-center gap-0.5">
+                    <button
+                      className="rounded px-1 text-xs font-bold text-tinta-suave hover:bg-white hover:text-roxo-escuro disabled:opacity-30"
+                      disabled={indice === 0}
+                      onClick={() => void aoReordenar(coluna, -1)}
+                      title={`Mover ${coluna.rotulo} para a esquerda`}
+                    >‹</button>
+                    <button
+                      className="rounded px-1 text-xs font-bold text-tinta-suave hover:bg-white hover:text-roxo-escuro disabled:opacity-30"
+                      disabled={indice === colunas.length - 1}
+                      onClick={() => void aoReordenar(coluna, 1)}
+                      title={`Mover ${coluna.rotulo} para a direita`}
+                    >›</button>
+                  </span>
+                )}
               </div>
 
               <div className="flex-1 space-y-2">

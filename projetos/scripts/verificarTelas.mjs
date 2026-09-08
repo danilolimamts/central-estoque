@@ -184,6 +184,17 @@ pagina.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
 await pagina.route('**/rest/v1/**', async (rota) => {
   const caminho = new URL(rota.request().url()).pathname.split('/').pop() ?? '';
   const linhas = porTabela[caminho] ?? [];
+  /* Gravacao da configuracao: a ordem das colunas so pode ser conferida
+     se a simulacao guardar o que o app mandou e devolver na releitura. */
+  if (caminho === 'configuracoes' && rota.request().method() !== 'GET') {
+    const corpo = JSON.parse(rota.request().postData() ?? '[]');
+    for (const linha of [].concat(corpo)) {
+      const i = configuracoes.findIndex((c) => c.chave === linha.chave);
+      if (i < 0) configuracoes.push(linha); else configuracoes[i] = linha;
+    }
+    await rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(configuracoes) });
+    return;
+  }
   const parametros = new URL(rota.request().url()).searchParams;
   /* A tela pergunta pelo cadastro do proprio usuario logado antes de
      qualquer outra coisa; sem esta resposta ela para no aviso de acesso
@@ -389,7 +400,26 @@ for (const campo of ['Situações das atividades', 'Nova situação', 'Em risco'
   }
 }
 await pagina.screenshot({ path: 'verificacao-config-status.png', fullPage: true });
-await pagina.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
+
+/* Ordem das colunas: as setas do cabecalho do quadro gravam a
+   configuracao, entao a coluna tem de continuar no lugar novo depois da
+   releitura. */
+await pagina.keyboard.press('Escape');
+await pagina.waitForTimeout(300);
+await pagina.getByRole('button', { name: 'Quadro', exact: true }).first().click();
+await pagina.waitForTimeout(400);
+const tituloDaColuna = async (i) =>
+  (await pagina.locator('.overflow-x-auto .w-64 .uppercase').nth(i).innerText()).trim();
+const primeira = await tituloDaColuna(0);
+const segunda = await tituloDaColuna(1);
+await pagina.getByTitle(`Mover ${segunda} para a esquerda`).click();
+await pagina.waitForTimeout(700);
+if (await tituloDaColuna(0) !== segunda || await tituloDaColuna(1) !== primeira) {
+  console.error(`FALHOU: a coluna não trocou de lugar — ficou "${await tituloDaColuna(0)}, ${await tituloDaColuna(1)}".`);
+  process.exitCode = 1;
+}
+await pagina.screenshot({ path: 'verificacao-quadro.png', fullPage: true });
+await pagina.getByRole('button', { name: 'Lista', exact: true }).first().click();
 await pagina.waitForTimeout(300);
 
 await pagina.getByRole('button', { name: 'Projetos', exact: true }).click();
