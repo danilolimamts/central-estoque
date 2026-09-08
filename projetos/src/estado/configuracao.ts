@@ -28,6 +28,7 @@ function normalizar(valor: unknown): Situacao[] {
         significado: SIGNIFICADOS.includes(item.significado as Significado)
           ? (item.significado as Significado)
           : 'aberta',
+        avanco: avancoLido(item),
       }));
     return lista.length ? lista : SITUACOES_PADRAO;
   }
@@ -43,6 +44,15 @@ function normalizar(valor: unknown): Situacao[] {
   }
 
   return SITUACOES_PADRAO;
+}
+
+/* Configuracao gravada antes do avanco por situacao nao tem o campo.
+   Nesse caso vale o padrao de fabrica da mesma chave — e o que mantem
+   Pausado em zero para quem ja tinha ajustado as situacoes. */
+function avancoLido(item: Partial<Situacao>): number | null {
+  if (typeof item.avanco === 'number') return item.avanco;
+  if (item.avanco === null) return null;
+  return SITUACOES_PADRAO.find((p) => p.chave === item.chave)?.avanco ?? null;
 }
 
 export async function lerSituacoes(): Promise<Situacao[]> {

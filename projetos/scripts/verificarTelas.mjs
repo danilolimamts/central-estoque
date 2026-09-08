@@ -353,6 +353,14 @@ if (/No prazo|Atenção|Crítico/.test(blocoDoTitulo)) {
   console.error(`FALHOU: o selo de saúde ficou no cabeçalho — "${blocoDoTitulo}".`);
   process.exitCode = 1;
 }
+/* Avanco pela situacao: "Entrada massiva" esta em andamento, o segundo
+   dos cinco passos da esteira padrao, entao a linha mostra 25%. */
+const linhaDaMelhoria = await pagina.getByRole('row', { name: /Entrada massiva/ }).first().innerText();
+if (!linhaDaMelhoria.includes('25%')) {
+  console.error(`FALHOU: a melhoria em andamento deveria avançar pela situação — "${linhaDaMelhoria}".`);
+  process.exitCode = 1;
+}
+
 const textoDoGrupo = (await pagina.textContent('body')) ?? '';
 if (!textoDoGrupo.includes('Entrada massiva') || !textoDoGrupo.includes('concluídas')) {
   console.error('FALHOU: a lista de melhorias não montou.');

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Aviso, Modal, Selo } from '@/componentes/ui';
 import { mensagemDeErro } from '@/estado/dados';
 import { salvarSituacoes } from '@/estado/configuracao';
-import { SITUACOES_PADRAO, chaveNova } from '@/dominio/situacoes';
+import { SITUACOES_PADRAO, chaveNova, definirSituacoes, percentualDaSituacao, situacoes } from '@/dominio/situacoes';
 import type { Significado, Situacao } from '@/dominio/situacoes';
 
 interface Props {
@@ -23,6 +23,8 @@ const SIGNIFICADOS: { valor: Significado; rotulo: string; explica: string }[] = 
 
 const CORES = ['#9E86D8', '#2F6FE0', '#C79212', '#B0568F', '#2E8B57', '#D2453A', '#6A6F94', '#0F766E'];
 
+const situacoesDoRegistro = () => situacoes();
+
 export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recarregar }: Props) {
   const [rascunho, setRascunho] = useState<Situacao[]>(situacoes);
   const [novo, setNovo] = useState('');
@@ -30,6 +32,19 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => { if (aberto) { setRascunho(situacoes); setNovo(''); setErro(null); } }, [aberto, situacoes]);
+
+  /* O numero que apareceria se o campo ficasse vazio. Vem do proprio
+     rascunho — mexer na ordem ou ligar uma situacao muda a divisao na
+     hora —, entao o registro do dominio e emprestado e devolvido. */
+  function automatico(chave: string): number {
+    const guardado = situacoesDoRegistro();
+    try {
+      definirSituacoes(rascunho.map((s) => ({ ...s, avanco: null })));
+      return percentualDaSituacao(chave);
+    } finally {
+      definirSituacoes(guardado);
+    }
+  }
 
   function mudar(chave: string, mudanca: Partial<Situacao>) {
     setRascunho((atual) => atual.map((s) => (s.chave === chave ? { ...s, ...mudanca } : s)));
@@ -51,6 +66,7 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
     const chave = chaveNova(rotulo, rascunho.map((s) => s.chave));
     setRascunho((atual) => [...atual, {
       chave, rotulo, cor: CORES[atual.length % CORES.length], usar: true, significado: 'aberta',
+      avanco: null,
     }]);
     setNovo('');
   }
@@ -118,6 +134,21 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
                 value={s.cor} onChange={(e) => mudar(s.chave, { cor: e.target.value })}
                 title="Cor"
               />
+
+              {/* Avanco da situacao: vazio significa "divida a esteira em
+                  partes iguais", e o numero cinza mostra quanto isso da. */}
+              <label className="flex shrink-0 items-center gap-1 text-[11px] text-tinta-suave" title="Quanto a atividade vale de avanço nesta situação. Vazio: divide a esteira em partes iguais.">
+                <input
+                  type="number" min={0} max={100}
+                  className="campo w-16 py-1 text-xs"
+                  value={s.avanco ?? ''}
+                  placeholder={`${automatico(s.chave)}`}
+                  onChange={(e) => mudar(s.chave, {
+                    avanco: e.target.value === '' ? null : Number(e.target.value),
+                  })}
+                />
+                %
+              </label>
 
               <select
                 className="campo w-40 py-1 text-xs"

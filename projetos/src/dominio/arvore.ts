@@ -1,4 +1,4 @@
-import { ehCancelada, ehConcluida } from './situacoes';
+import { ehCancelada, ehConcluida, percentualDaSituacao } from './situacoes';
 import type { Projeto } from './tipos';
 
 /* Um projeto pode agrupar outros. Estas funcoes separam o que e grupo
@@ -100,10 +100,14 @@ export function avancoPorConclusao(lista: Projeto[], paiId: string): AvancoDoPro
   };
 }
 
-/* Atividade sem filhos: concluida vale 100, o resto vale 0. Nao ha
-   meio termo, porque nao ha mais campo para digitar meio termo. */
+/* Atividade sem filhos: o avanco vem da situacao em que ela esta.
+
+   Nao ha campo para digitar meio termo, e nao deveria haver: a
+   situacao ja diz em que ponto da esteira o trabalho esta, e cada passo
+   dado vale a sua fatia. Quem define quanto vale cada situacao e a
+   configuracao da equipe. */
 export const percentualDoStatus = (projeto: Projeto): number =>
-  (ehConcluida(projeto.status) ? 100 : 0);
+  percentualDaSituacao(projeto.status);
 
 /* O numero que vale na tela: projeto com atividades usa a conclusao
    delas; atividade sozinha usa a propria situacao. */
