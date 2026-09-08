@@ -38,7 +38,7 @@ export default function Painel({ projetos, pessoas, aoAbrir }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div data-guia="indicadores" className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Indicador titulo="Em andamento" valor={indicadores.ativos} detalhe={`${indicadores.total} no total`} />
         <Indicador titulo="Atrasados" valor={indicadores.atrasados} cor="#D2453A" detalhe="passaram do fim previsto" />
         <Indicador titulo="Vencendo" valor={indicadores.vencendo} cor="#C79212" detalhe="nos próximos 15 dias" />

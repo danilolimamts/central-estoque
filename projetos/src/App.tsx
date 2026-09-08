@@ -112,13 +112,13 @@ export default function App() {
             <div className="mt-1 flex gap-3 font-bold text-white/70">
               {/* O guia fica no alto, do lado direito: e onde se procura
                   ajuda, e nao atrapalha quem ja sabe usar. */}
-              <button className="hover:text-white" onClick={() => setGuiaAberto(true)}>Guia</button>
+              <button data-guia="botao-guia" className="hover:text-white" onClick={() => setGuiaAberto(true)}>Guia</button>
               <a href="../" className="hover:text-white">← Central</a>
               <button className="hover:text-white" onClick={() => void sair()}>Sair</button>
             </div>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-tela gap-1 px-6 xl:px-10">
+        <nav data-guia="abas" className="mx-auto flex max-w-tela gap-1 px-6 xl:px-10">
           {ABAS.map((a) => (
             <button
               key={a.id}
@@ -158,7 +158,14 @@ export default function App() {
         )}
       </main>
 
-      <Guia aberto={guiaAberto} aoFechar={() => setGuiaAberto(false)} />
+      <Guia
+        aberto={guiaAberto}
+        aoFechar={() => setGuiaAberto(false)}
+        /* A visita troca de aba sozinha, mas nunca fecha o projeto que
+           esta aberto: quem pediu o guia de dentro de uma atividade
+           volta para ela ao terminar. */
+        aoNavegar={(destino) => { if (!rota.projetoId) ir({ aba: destino, projetoId: null }); }}
+      />
 
       <footer className="pb-8 text-center text-[11px] text-tinta-suave">
         Central de Estoque · Loja do Mecânico — versão {__VERSAO__}

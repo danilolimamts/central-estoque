@@ -114,7 +114,7 @@ export default function Anexos({ projetoId, anexos, marcos, pessoas, recarregar 
   }
 
   return (
-    <section className="cartao overflow-hidden">
+    <section data-guia="anexos" className="cartao overflow-hidden">
       <div className="flex items-center justify-between border-b border-linha px-4 py-3">
         <h2 className="font-titulo text-sm font-extrabold">
           Anexos {anexos.length > 0 && <span className="text-tinta-suave">({anexos.length})</span>}

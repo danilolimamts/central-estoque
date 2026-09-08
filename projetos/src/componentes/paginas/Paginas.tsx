@@ -143,7 +143,7 @@ export default function Paginas({ projetoId, pessoas }: Props) {
   }
 
   return (
-    <section className="cartao overflow-hidden">
+    <section data-guia="paginas" className="cartao overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-linha px-4 py-3">
         <h2 className="font-titulo text-sm font-extrabold">
           Páginas {carteira.paginas.length > 0 && <span className="text-tinta-suave">({carteira.paginas.length})</span>}
