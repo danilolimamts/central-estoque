@@ -254,6 +254,26 @@ if (!botoesDoDocumento.includes('Gerar Word e anexar')) {
 await pagina.getByRole('button', { name: 'Fechar', exact: true }).first().click();
 await pagina.waitForTimeout(500);
 
+/* Rascunho local: o que foi digitado e nao salvo tem de ser oferecido de
+   volta ao reabrir o formulario, em vez de a tela voltar em branco. */
+await pagina.getByRole('button', { name: 'Criar documento', exact: true }).first().click();
+await pagina.waitForTimeout(900);
+const comRascunho = (await pagina.textContent('body')) ?? '';
+if (!comRascunho.includes('Há um rascunho não salvo')) {
+  console.error('FALHOU: o rascunho digitado não foi oferecido ao reabrir o documento.');
+  process.exitCode = 1;
+}
+await pagina.getByRole('button', { name: 'Recuperar', exact: true }).first().click();
+await pagina.waitForTimeout(300);
+const recuperado = await pagina.getByRole('textbox', { name: /Regras de negócio/i }).first().inputValue();
+if (recuperado !== 'Tela no bseller') {
+  console.error(`FALHOU: o rascunho recuperado veio diferente — "${recuperado}".`);
+  process.exitCode = 1;
+}
+await pagina.screenshot({ path: 'verificacao-rascunho.png', fullPage: true });
+await pagina.getByRole('button', { name: 'Fechar', exact: true }).first().click();
+await pagina.waitForTimeout(400);
+
 // Guarda-chuva: quadro de melhorias por situação.
 await pagina.getByRole('button', { name: 'Voltar', exact: false }).first().click();
 await pagina.waitForTimeout(400);
