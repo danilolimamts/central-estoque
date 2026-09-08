@@ -27,6 +27,9 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [ligandoDe, setLigandoDe] = useState<string | null>(null);
   const arrastando = useRef<{ id: string; dx: number; dy: number } | null>(null);
+  /* Puxar o canto muda o tamanho; e o gesto que se espera de um quadro
+     assim, e evita ficar clicando em + e − para chegar ao tamanho certo. */
+  const esticando = useRef<{ id: string; x: number; y: number; largura: number; altura: number } | null>(null);
   const tela = useRef<HTMLDivElement>(null);
   const [avisoDaImagem, setAvisoDaImagem] = useState<string | null>(null);
 
@@ -99,12 +102,18 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
     }
   }
 
-  /* Print grande estica o bloco; estas duas mudam o tamanho sem mexer na
-     proporcao, que e o que se quer ao encaixar a imagem no desenho. */
+  /* Mudar o tamanho sem mexer na proporcao, que e o que se quer tanto
+     para encaixar um print quanto para dar espaco a um texto maior. */
   function redimensionar(no: NoDoFluxo, fator: number) {
-    const largura = Math.round(Math.min(900, Math.max(80, no.largura * fator)));
-    const altura = Math.round((no.altura * largura) / no.largura);
+    const largura = Math.round(Math.min(900, Math.max(60, no.largura * fator)));
+    const altura = Math.round(Math.min(700, Math.max(30, (no.altura * largura) / no.largura)));
     alterarNo(no.id, { largura, altura });
+  }
+
+  /* O giro fica entre 0 e 359 para o rotulo do botao nao virar "-45°"
+     nem "375°". */
+  function girar(no: NoDoFluxo, graus: number) {
+    alterarNo(no.id, { rotacao: (((no.rotacao ?? 0) + graus) % 360 + 360) % 360 });
   }
 
   function comecarArrasto(e: React.MouseEvent, no: NoDoFluxo) {
@@ -120,6 +129,17 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   }
 
   function moverArrasto(e: React.MouseEvent) {
+    const puxando = esticando.current;
+    if (puxando) {
+      const largura = Math.round(Math.min(900, Math.max(60, puxando.largura + (e.clientX - puxando.x))));
+      const altura = Math.round(Math.min(700, Math.max(30, puxando.altura + (e.clientY - puxando.y))));
+      setFluxo((f) => ({
+        ...f,
+        nos: f.nos.map((n) => (n.id === puxando.id ? { ...n, largura, altura } : n)),
+      }));
+      return;
+    }
+
     const atual = arrastando.current;
     const area = tela.current?.getBoundingClientRect();
     if (!atual || !area) return;
@@ -135,8 +155,9 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   }
 
   function terminarArrasto() {
-    if (!arrastando.current) return;
+    if (!arrastando.current && !esticando.current) return;
     arrastando.current = null;
+    esticando.current = null;
     aoMudar(escreverFluxo(fluxo));
   }
 
@@ -177,32 +198,68 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
           {noSelecionado ? (
             <>
               {noSelecionado.forma === 'imagem' ? (
-                <>
-                  <span className="text-[11px] font-bold text-tinta-suave">Imagem colada</span>
-                  <button
-                    className="rounded-lg border border-linha px-2 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
-                    onClick={() => redimensionar(noSelecionado, 0.8)}
-                  >− Menor</button>
-                  <button
-                    className="rounded-lg border border-linha px-2 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
-                    onClick={() => redimensionar(noSelecionado, 1.25)}
-                  >+ Maior</button>
-                </>
+                <span className="text-[11px] font-bold text-tinta-suave">Imagem colada</span>
               ) : (
                 <>
                   <input
-                    className="campo w-48 py-1 text-xs" value={noSelecionado.texto}
+                    className="campo w-44 py-1 text-xs" value={noSelecionado.texto}
                     onChange={(e) => alterarNo(noSelecionado.id, { texto: e.target.value })}
                     placeholder="Texto do bloco"
                   />
-                  <select
-                    className="campo w-28 py-1 text-xs" value={noSelecionado.cor}
-                    onChange={(e) => alterarNo(noSelecionado.id, { cor: e.target.value })}
-                  >
-                    {CORES_DO_FLUXO.map((c) => <option key={c.valor} value={c.valor}>{c.nome}</option>)}
-                  </select>
+                  {/* Cores da casa a um clique e, ao lado, o seletor do
+                      sistema para qualquer outra. */}
+                  <span className="flex items-center gap-1">
+                    {CORES_DO_FLUXO.map((c) => (
+                      <button
+                        key={c.valor}
+                        title={c.nome}
+                        onClick={() => alterarNo(noSelecionado.id, { cor: c.valor })}
+                        className={`h-5 w-5 rounded-full border-2 ${
+                          noSelecionado.cor === c.valor ? 'border-navy' : 'border-white'
+                        }`}
+                        style={{ backgroundColor: c.valor }}
+                      />
+                    ))}
+                    <input
+                      type="color" className="h-6 w-7 cursor-pointer rounded border border-linha"
+                      value={noSelecionado.cor} title="Outra cor"
+                      onChange={(e) => alterarNo(noSelecionado.id, { cor: e.target.value })}
+                    />
+                  </span>
                 </>
               )}
+
+              {/* Girar e redimensionar valem para qualquer bloco, print
+                  incluido: e o que se espera de um quadro deste tipo. */}
+              <span className="flex items-center gap-1">
+                <button
+                  className="rounded-lg border border-linha px-1.5 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
+                  title="Girar 15° à esquerda"
+                  onClick={() => girar(noSelecionado, -15)}
+                >↺</button>
+                <button
+                  className="rounded-lg border border-linha px-1.5 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
+                  title="Girar 15° à direita"
+                  onClick={() => girar(noSelecionado, 15)}
+                >↻</button>
+                {!!noSelecionado.rotacao && (
+                  <button
+                    className="rounded-lg px-1.5 py-1 text-[11px] font-bold text-tinta-suave hover:text-roxo-escuro"
+                    title="Voltar ao ângulo original"
+                    onClick={() => alterarNo(noSelecionado.id, { rotacao: 0 })}
+                  >{noSelecionado.rotacao}°</button>
+                )}
+                <button
+                  className="rounded-lg border border-linha px-1.5 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
+                  title="Diminuir"
+                  onClick={() => redimensionar(noSelecionado, 0.85)}
+                >−</button>
+                <button
+                  className="rounded-lg border border-linha px-1.5 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
+                  title="Aumentar"
+                  onClick={() => redimensionar(noSelecionado, 1.18)}
+                >+</button>
+              </span>
               <button
                 className={`rounded-lg px-2 py-1 text-[11px] font-bold ${
                   ligandoDe === noSelecionado.id
@@ -211,7 +268,7 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
                 }`}
                 onClick={() => setLigandoDe(ligandoDe === noSelecionado.id ? null : noSelecionado.id)}
               >
-                {ligandoDe === noSelecionado.id ? 'Clique no destino' : 'Ligar a outro'}
+                {ligandoDe === noSelecionado.id ? 'Clique no bloco de destino' : '→ Seta para outro bloco'}
               </button>
               <button
                 className="rounded-lg px-2 py-1 text-[11px] font-bold text-vermelho hover:bg-vermelho/5"
@@ -256,6 +313,9 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
               <marker id="ponta" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
                 <path d="M0,0 L9,4.5 L0,9 z" fill="#6A6F94" />
               </marker>
+              <marker id="ponta-inicio" markerWidth="9" markerHeight="9" refX="1" refY="4.5" orient="auto">
+                <path d="M9,0 L0,4.5 L9,9 z" fill="#6A6F94" />
+              </marker>
             </defs>
             {fluxo.ligacoes.map((l) => {
               const de = fluxo.nos.find((n) => n.id === l.de);
@@ -268,6 +328,8 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
                   <line
                     x1={inicio.x} y1={inicio.y} x2={fim.x} y2={fim.y}
                     stroke="#6A6F94" strokeWidth={2} markerEnd="url(#ponta)"
+                    strokeDasharray={l.tracejada ? '6 4' : undefined}
+                    markerStart={l.dupla ? 'url(#ponta-inicio)' : undefined}
                   />
                   {l.rotulo && (
                     <text
@@ -291,7 +353,7 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
               <div
                 key={l.id}
                 className="absolute flex items-center gap-1"
-                style={{ left: (inicio.x + fim.x) / 2 - 40, top: (inicio.y + fim.y) / 2 + 2 }}
+                style={{ left: (inicio.x + fim.x) / 2 - 62, top: (inicio.y + fim.y) / 2 + 2 }}
               >
                 <input
                   className="w-20 rounded border border-linha bg-white px-1 py-0.5 text-[10px]"
@@ -301,6 +363,26 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
                     ligacoes: fluxo.ligacoes.map((x) => (x.id === l.id ? { ...x, rotulo: e.target.value } : x)),
                   })}
                 />
+                <button
+                  className={`rounded border px-1 text-[10px] font-bold ${
+                    l.dupla ? 'border-roxo bg-roxo-suave text-roxo-escuro' : 'border-linha bg-white text-tinta-suave'
+                  }`}
+                  title="Ponta dos dois lados"
+                  onClick={() => gravar({
+                    ...fluxo,
+                    ligacoes: fluxo.ligacoes.map((x) => (x.id === l.id ? { ...x, dupla: !x.dupla } : x)),
+                  })}
+                >↔</button>
+                <button
+                  className={`rounded border px-1 text-[10px] font-bold ${
+                    l.tracejada ? 'border-roxo bg-roxo-suave text-roxo-escuro' : 'border-linha bg-white text-tinta-suave'
+                  }`}
+                  title="Linha tracejada"
+                  onClick={() => gravar({
+                    ...fluxo,
+                    ligacoes: fluxo.ligacoes.map((x) => (x.id === l.id ? { ...x, tracejada: !x.tracejada } : x)),
+                  })}
+                >┄</button>
                 <button
                   className="rounded bg-white px-1 text-[10px] font-bold text-vermelho"
                   title="Remover seta"
@@ -321,7 +403,10 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
               className={`absolute rounded-lg border-2 bg-white object-contain ${
                 editando ? 'cursor-grab active:cursor-grabbing' : ''
               } ${selecionado === no.id ? 'border-roxo shadow-alto' : 'border-linha shadow-card'}`}
-              style={{ left: no.x, top: no.y, width: no.largura, height: no.altura }}
+              style={{
+                left: no.x, top: no.y, width: no.largura, height: no.altura,
+                transform: no.rotacao ? `rotate(${no.rotacao}deg)` : undefined,
+              }}
             />
           ) : (
             <div
@@ -342,14 +427,39 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
                 border: `2px solid ${no.cor}`,
                 color: '#161933',
                 borderRadius: no.forma === 'inicio' ? 999 : no.forma === 'nota' ? 4 : 10,
-                transform: no.forma === 'decisao' ? 'rotate(45deg)' : undefined,
+                transform: `rotate(${(no.forma === 'decisao' ? 45 : 0) + (no.rotacao ?? 0)}deg)`,
               }}
             >
-              <span style={{ transform: no.forma === 'decisao' ? 'rotate(-45deg)' : undefined }}>
+              {/* O texto desgira o quanto a forma girou: losango com a
+                  palavra de cabeca para baixo nao se le. */}
+              <span style={{ transform: `rotate(${-((no.forma === 'decisao' ? 45 : 0) + (no.rotacao ?? 0))}deg)` }}>
                 {no.texto}
               </span>
             </div>
           )))}
+
+          {/* Alca de tamanho: so no bloco selecionado, para nao poluir o
+              desenho com quadradinhos em cada caixa. */}
+          {editando && noSelecionado && (
+            <div
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                esticando.current = {
+                  id: noSelecionado.id,
+                  x: e.clientX,
+                  y: e.clientY,
+                  largura: noSelecionado.largura,
+                  altura: noSelecionado.altura,
+                };
+              }}
+              title="Arraste para mudar o tamanho"
+              className="absolute h-3 w-3 cursor-nwse-resize rounded-sm border-2 border-roxo bg-white"
+              style={{
+                left: noSelecionado.x + noSelecionado.largura - 6,
+                top: noSelecionado.y + noSelecionado.altura - 6,
+              }}
+            />
+          )}
 
           {!fluxo.nos.length && (
             <p className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-tinta-suave">

@@ -123,7 +123,10 @@ export default function DetalheProjeto({
                 /* A biblioteca de planilha pesa quase metade do bundle:
                    so e baixada quando alguem exporta de fato. */
                 const { exportarProjeto } = await importarModulo(() => import('@/exportar/excel'));
-                exportarProjeto(projeto, pessoas, dados.marcos, dados.tarefas, dados.atualizacoes, dados.anexos);
+                exportarProjeto(
+                  projeto, pessoas, dados.marcos, dados.tarefas, dados.atualizacoes,
+                  dados.anexos, projetos,
+                );
               })}
             >
               Exportar Excel
