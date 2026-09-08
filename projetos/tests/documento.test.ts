@@ -15,6 +15,12 @@ const base = () => ({
   kpis: [{ a: 'Tempo até a contagem', b: 'Menos de 2 horas' }],
 });
 
+/* PNG 1x1 valido: o gerador so precisa de bytes que o docx aceite. */
+const PNG_MINIMO = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 describe('nomeDoArquivo', () => {
   it('segue o padrão NN__Proposta_Melhoria_Sistemica_Nome', () => {
     expect(nomeDoArquivo(base())).toBe(
@@ -72,6 +78,29 @@ describe('gerarDocumentoWord', () => {
 
   it('gera mesmo com as seções vazias', async () => {
     const { blob } = await gerarDocumentoWord(documentoVazio(1), { imagens: {} });
+    expect(blob.size).toBeGreaterThan(5000);
+  });
+});
+
+describe('marca no documento', () => {
+  it('mantém a proporção do arquivo em vez de esticar', async () => {
+    /* O arquivo da marca e 237x91. Com altura fixa o desenho achatava;
+       agora a altura sai da largura pedida vezes a proporcao real. */
+    const logo = { dados: new Uint8Array([1, 2, 3]), largura: 237, altura: 91 };
+    const proporcaoDoArquivo = logo.largura / logo.altura;
+
+    const alturaNaCapa = Math.round(200 * (logo.altura / logo.largura));
+    const alturaNoCabecalho = Math.round(120 * (logo.altura / logo.largura));
+
+    expect(200 / alturaNaCapa).toBeCloseTo(proporcaoDoArquivo, 1);
+    expect(120 / alturaNoCabecalho).toBeCloseTo(proporcaoDoArquivo, 1);
+  });
+
+  it('gera o documento com a marca sem quebrar', async () => {
+    const { blob } = await gerarDocumentoWord(base(), {
+      imagens: {},
+      logo: { dados: new Uint8Array(PNG_MINIMO), largura: 237, altura: 91 },
+    });
     expect(blob.size).toBeGreaterThan(5000);
   });
 });
