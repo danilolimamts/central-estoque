@@ -3,7 +3,7 @@
    codigo de um diagrama escrito em texto, que ninguem conseguia editar
    sem aprender a sintaxe. */
 
-export type FormaDoNo = 'caixa' | 'decisao' | 'inicio' | 'nota';
+export type FormaDoNo = 'caixa' | 'decisao' | 'inicio' | 'nota' | 'imagem';
 
 export interface NoDoFluxo {
   id: string;
@@ -14,6 +14,11 @@ export interface NoDoFluxo {
   altura: number;
   forma: FormaDoNo;
   cor: string;
+  /* Print colado no quadro, guardado como data URI dentro do proprio
+     bloco. Fica no JSON da pagina, e nao nos anexos, porque a imagem e
+     parte do desenho: quem abre o fluxo tem de ve-la sem procurar
+     arquivo. Por isso ela e reduzida antes de entrar. */
+  imagem?: string;
 }
 
 export interface LigacaoDoFluxo {
@@ -42,6 +47,7 @@ export const rotuloDaForma: Record<FormaDoNo, string> = {
   decisao: 'Decisão',
   inicio: 'Início ou fim',
   nota: 'Anotação',
+  imagem: 'Imagem',
 };
 
 const TAMANHOS: Record<FormaDoNo, { largura: number; altura: number }> = {
@@ -49,7 +55,25 @@ const TAMANHOS: Record<FormaDoNo, { largura: number; altura: number }> = {
   decisao: { largura: 170, altura: 96 },
   inicio: { largura: 150, altura: 52 },
   nota: { largura: 190, altura: 72 },
+  imagem: { largura: 320, altura: 200 },
 };
+
+/* Bloco de print: nasce do tamanho da imagem colada, limitado a 420 px
+   de largura para nao empurrar o resto do quadro para fora da tela. */
+export function noDeImagem(imagem: string, larguraReal: number, alturaReal: number, x: number, y: number): NoDoFluxo {
+  /* O piso de 80 px evita o bloco virar um risco na tela quando o que
+     foi colado e minusculo. */
+  const largura = Math.min(420, Math.max(80, larguraReal));
+  const altura = Math.max(40, Math.round((alturaReal * largura) / (larguraReal || 1)));
+  return {
+    id: crypto.randomUUID(),
+    texto: '',
+    x, y, largura, altura,
+    forma: 'imagem',
+    cor: '#6A6F94',
+    imagem,
+  };
+}
 
 export function fluxoVazio(): Fluxo {
   return { nos: [], ligacoes: [] };
@@ -142,6 +166,13 @@ export function fluxoParaSvg(fluxo: Fluxo): string {
   }).join('');
 
   const blocos = fluxo.nos.map((n) => {
+    /* Print colado: entra no SVG como imagem embutida, e o Word recebe o
+       desenho igual ao da tela. */
+    if (n.forma === 'imagem') {
+      return n.imagem
+        ? `<image href="${n.imagem}" x="${n.x}" y="${n.y}" width="${n.largura}" height="${n.altura}" preserveAspectRatio="xMidYMid meet"/>`
+        : '';
+    }
     const cx = n.x + n.largura / 2;
     const cy = n.y + n.altura / 2;
     const raio = n.forma === 'inicio' ? n.altura / 2 : n.forma === 'nota' ? 4 : 10;

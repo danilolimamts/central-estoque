@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   bordaMaisProxima, CORES_DO_FLUXO, escreverFluxo, fluxoVazio, lerFluxo, limitesDoFluxo,
-  noNovo, proximaPosicao, rotuloDaForma,
+  noDeImagem, noNovo, proximaPosicao, rotuloDaForma,
 } from '@/dominio/fluxo';
+import { imagemDoEvento, reduzirImagem } from '@/lib/imagemColada';
 import type { Fluxo, FormaDoNo, NoDoFluxo } from '@/dominio/fluxo';
 
 interface Props {
@@ -27,6 +28,7 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   const [ligandoDe, setLigandoDe] = useState<string | null>(null);
   const arrastando = useRef<{ id: string; dx: number; dy: number } | null>(null);
   const tela = useRef<HTMLDivElement>(null);
+  const [avisoDaImagem, setAvisoDaImagem] = useState<string | null>(null);
 
   const legado = lerFluxo(conteudo) === null && conteudo.trim() !== '';
 
@@ -74,6 +76,35 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
       });
     }
     setLigandoDe(null);
+  }
+
+  /* Colar print direto no quadro. Sem botao e sem anexo: copia-se a
+     tela do coletor e cola-se aqui, que e como a pessoa ja trabalha.
+     A imagem entra reduzida, como um bloco que se arrasta e se liga
+     como qualquer outro. */
+  async function colar(evento: React.ClipboardEvent) {
+    if (!editando) return;
+    const arquivo = imagemDoEvento(evento);
+    if (!arquivo) return;
+    evento.preventDefault();
+    setAvisoDaImagem(null);
+    try {
+      const reduzida = await reduzirImagem(arquivo);
+      const posicao = proximaPosicao(fluxo);
+      const no = noDeImagem(reduzida.dados, reduzida.largura, reduzida.altura, posicao.x, posicao.y);
+      gravar({ ...fluxo, nos: [...fluxo.nos, no] });
+      setSelecionado(no.id);
+    } catch (falha) {
+      setAvisoDaImagem(falha instanceof Error ? falha.message : 'Não consegui colar esta imagem.');
+    }
+  }
+
+  /* Print grande estica o bloco; estas duas mudam o tamanho sem mexer na
+     proporcao, que e o que se quer ao encaixar a imagem no desenho. */
+  function redimensionar(no: NoDoFluxo, fator: number) {
+    const largura = Math.round(Math.min(900, Math.max(80, no.largura * fator)));
+    const altura = Math.round((no.altura * largura) / no.largura);
+    alterarNo(no.id, { largura, altura });
   }
 
   function comecarArrasto(e: React.MouseEvent, no: NoDoFluxo) {
@@ -145,17 +176,33 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
 
           {noSelecionado ? (
             <>
-              <input
-                className="campo w-48 py-1 text-xs" value={noSelecionado.texto}
-                onChange={(e) => alterarNo(noSelecionado.id, { texto: e.target.value })}
-                placeholder="Texto do bloco"
-              />
-              <select
-                className="campo w-28 py-1 text-xs" value={noSelecionado.cor}
-                onChange={(e) => alterarNo(noSelecionado.id, { cor: e.target.value })}
-              >
-                {CORES_DO_FLUXO.map((c) => <option key={c.valor} value={c.valor}>{c.nome}</option>)}
-              </select>
+              {noSelecionado.forma === 'imagem' ? (
+                <>
+                  <span className="text-[11px] font-bold text-tinta-suave">Imagem colada</span>
+                  <button
+                    className="rounded-lg border border-linha px-2 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
+                    onClick={() => redimensionar(noSelecionado, 0.8)}
+                  >− Menor</button>
+                  <button
+                    className="rounded-lg border border-linha px-2 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
+                    onClick={() => redimensionar(noSelecionado, 1.25)}
+                  >+ Maior</button>
+                </>
+              ) : (
+                <>
+                  <input
+                    className="campo w-48 py-1 text-xs" value={noSelecionado.texto}
+                    onChange={(e) => alterarNo(noSelecionado.id, { texto: e.target.value })}
+                    placeholder="Texto do bloco"
+                  />
+                  <select
+                    className="campo w-28 py-1 text-xs" value={noSelecionado.cor}
+                    onChange={(e) => alterarNo(noSelecionado.id, { cor: e.target.value })}
+                  >
+                    {CORES_DO_FLUXO.map((c) => <option key={c.valor} value={c.valor}>{c.nome}</option>)}
+                  </select>
+                </>
+              )}
               <button
                 className={`rounded-lg px-2 py-1 text-[11px] font-bold ${
                   ligandoDe === noSelecionado.id
@@ -174,19 +221,29 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
           ) : (
             <span className="text-[11px] text-tinta-suave">
               Clique num bloco para editar o texto, mudar a cor ou ligar a outro. Arraste para mover.
+              Para pôr um print, copie a tela e cole aqui dentro com Ctrl+V.
             </span>
           )}
         </div>
       )}
 
+      {avisoDaImagem && (
+        <p className="border-b border-linha bg-vermelho/5 px-3 py-1.5 text-[11px] font-bold text-vermelho">
+          {avisoDaImagem}
+        </p>
+      )}
+
       <div className="overflow-auto p-2">
         <div
           ref={tela}
+          data-quadro="fluxo"
+          tabIndex={editando ? 0 : undefined}
+          onPaste={(e) => void colar(e)}
           onMouseMove={moverArrasto}
           onMouseUp={terminarArrasto}
           onMouseLeave={terminarArrasto}
           onClick={(e) => { if (e.target === e.currentTarget) { setSelecionado(null); setLigandoDe(null); } }}
-          className="relative rounded-lg"
+          className="relative rounded-lg outline-none"
           style={{
             width: largura,
             height: altura,
@@ -253,7 +310,20 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
             );
           })}
 
-          {fluxo.nos.map((no) => (
+          {fluxo.nos.map((no) => (no.forma === 'imagem' ? (
+            <img
+              key={no.id}
+              src={no.imagem}
+              alt={no.texto || 'Print colado no fluxo'}
+              draggable={false}
+              onMouseDown={(e) => comecarArrasto(e, no)}
+              onClick={() => (ligandoDe ? ligar(no.id) : setSelecionado(no.id))}
+              className={`absolute rounded-lg border-2 bg-white object-contain ${
+                editando ? 'cursor-grab active:cursor-grabbing' : ''
+              } ${selecionado === no.id ? 'border-roxo shadow-alto' : 'border-linha shadow-card'}`}
+              style={{ left: no.x, top: no.y, width: no.largura, height: no.altura }}
+            />
+          ) : (
             <div
               key={no.id}
               onMouseDown={(e) => comecarArrasto(e, no)}
@@ -279,12 +349,12 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
                 {no.texto}
               </span>
             </div>
-          ))}
+          )))}
 
           {!fluxo.nos.length && (
-            <p className="absolute inset-0 flex items-center justify-center text-xs text-tinta-suave">
+            <p className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-tinta-suave">
               {editando
-                ? 'Comece adicionando uma etapa ou uma decisão na barra acima.'
+                ? 'Comece adicionando uma etapa ou uma decisão na barra acima — ou clique aqui e cole um print com Ctrl+V.'
                 : 'Fluxo ainda vazio.'}
             </p>
           )}

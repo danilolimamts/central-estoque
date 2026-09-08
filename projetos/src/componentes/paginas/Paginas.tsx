@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import EditorTexto from './EditorTexto';
 import Fluxograma from './Fluxograma';
 import { Aviso, Carregando, Modal, Selo, Vazio } from '@/componentes/ui';
@@ -28,6 +28,11 @@ export default function Paginas({ projetoId, pessoas }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [versoes, setVersoes] = useState<VersaoDePagina[] | null>(null);
+  /* Pagina recem-criada ja abre em edicao: quem clicou em "Nova pagina"
+     nao devia ter de clicar em "Editar" logo em seguida. Sem esta
+     marca, o efeito que roda quando a pagina termina de carregar
+     desligava a edicao no mesmo instante. */
+  const recemCriada = useRef<string | null>(null);
 
   const aberta = useMemo(
     () => carteira.paginas.find((p) => p.id === abertaId) ?? null,
@@ -44,7 +49,9 @@ export default function Paginas({ projetoId, pessoas }: Props) {
     if (!aberta) return;
     setTitulo(aberta.titulo);
     setBlocos(aberta.blocos?.length ? aberta.blocos : [blocoVazio('texto')]);
-    setEditando(false);
+    const nascendo = recemCriada.current === aberta.id;
+    recemCriada.current = null;
+    setEditando(nascendo);
   }, [aberta?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sujo = !!aberta && (titulo !== aberta.titulo || JSON.stringify(blocos) !== JSON.stringify(aberta.blocos));
@@ -52,9 +59,11 @@ export default function Paginas({ projetoId, pessoas }: Props) {
   async function nova() {
     try {
       const pagina = await criarPagina(projetoId, carteira.paginas.length);
+      recemCriada.current = pagina.id;
       await carteira.recarregar();
       setAbertaId(pagina.id);
       setEditando(true);
+      setTitulo(pagina.titulo);
     } catch (falha) {
       setErro(mensagemDeErro(falha));
     }

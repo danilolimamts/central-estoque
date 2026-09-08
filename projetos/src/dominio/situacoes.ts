@@ -22,6 +22,12 @@ export interface Situacao {
      Preenchido, manda — e como Pausado fica em zero mesmo estando no
      meio da fila. */
   avanco: number | null;
+  /* Marca o passo em que o chamado passa a existir. A partir dele — e
+     em tudo que vem depois na fila — a atividade conta como ja pedida
+     ao BSeller, mesmo que o numero do chamado nao tenha sido digitado.
+     Nenhuma situacao vem marcada de fabrica: e a equipe que sabe onde
+     fica esse ponto no seu processo. */
+  chamado?: boolean;
 }
 
 export const SITUACOES_PADRAO: Situacao[] = [
@@ -93,6 +99,17 @@ export function percentualDaSituacao(chave: string): number {
      de onde tirar fracao. */
   if (i < 0 || fila.length < 2) return 0;
   return Math.round((i * 100) / (fila.length - 1));
+}
+
+/* A atividade nesta situacao ja foi pedida ao BSeller? Vale a situacao
+   marcada e todas as seguintes: quem esta em desenvolvimento passou
+   pela abertura do chamado, mesmo que ninguem tenha anotado o numero. */
+export function passouDoChamado(chave: string): boolean {
+  const fila = etapas();
+  const marco = fila.findIndex((s) => s.chamado);
+  if (marco < 0) return false;
+  const i = fila.findIndex((s) => s.chave === chave);
+  return i >= 0 && i >= marco;
 }
 
 /* Mover uma situacao na ordem, pulando as desligadas: quem clica na

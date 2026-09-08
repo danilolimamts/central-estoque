@@ -570,18 +570,24 @@ function Esteira({ numeros, plural }: { numeros: Cobertura; plural: string }) {
       rotulo: 'Com chamado aberto',
       parte: numeros.comChamado,
       cor: '#2F6FE0',
-      ajuda: `${plural} que já têm número de chamado ou link do BSeller`,
+      ajuda: `${plural} com o número do chamado ou o link do BSeller preenchido`,
+    },
+    {
+      rotulo: 'Já pedidas ao BSeller',
+      parte: numeros.jaPedidas,
+      cor: '#2E8B57',
+      ajuda: `${plural} com chamado anotado ou já numa situação a partir da abertura do chamado — marque essa situação em ⚙ Situações`,
     },
     {
       rotulo: 'Prontas para abrir chamado',
       parte: numeros.aAbrir,
       cor: '#C79212',
-      ajuda: 'documentadas e ainda sem chamado: a fila do que dá para pedir',
+      ajuda: 'documentadas e ainda não pedidas: a fila do que dá para pedir',
     },
   ];
 
   return (
-    <div className="grid gap-2 border-b border-linha bg-papel px-4 py-3 sm:grid-cols-3">
+    <div className="grid gap-2 border-b border-linha bg-papel px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
       {cartoes.map((c) => (
         <div key={c.rotulo} className="rounded-lg bg-white px-3 py-2" title={c.ajuda}>
           <p className="text-[11px] font-bold uppercase tracking-wider text-tinta-suave">{c.rotulo}</p>
