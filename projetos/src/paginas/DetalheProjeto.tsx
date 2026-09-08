@@ -12,7 +12,7 @@ import { avancoPorConclusao, ehRaiz, percentualEfetivo, rotuloDosFilhos, singula
 const Paginas = lazy(() => importarModulo(() => import('@/componentes/paginas/Paginas')));
 /* O gerador de .docx tambem so desce quando o projeto e aberto. */
 const Documentos = lazy(() => importarModulo(() => import('@/componentes/documentos/Documentos')));
-import { Aviso, Barra, Campo, Carregando, Modal, SeloPrioridade, SeloSaude, SeloStatus, Vazio } from '@/componentes/ui';
+import { Aviso, Barra, Campo, Carregando, Modal, SeloStatus, Vazio } from '@/componentes/ui';
 import {
   enviarAnexo, excluirAtualizacao, excluirMarco, excluirProjeto, excluirTarefa,
   lancarAtualizacao, mensagemDeErro, salvarMarco, salvarProjeto, salvarTarefa,
@@ -21,7 +21,7 @@ import {
 import { usePermissoes } from '@/estado/sessao';
 import { importarModulo } from '@/lib/importar';
 import {
-  formatarData, isoDeHoje, marcoAtrasado, percentualEsperado, progressoDeTarefas, saude, tarefaAtrasada,
+  formatarData, isoDeHoje, marcoAtrasado, percentualEsperado, progressoDeTarefas, tarefaAtrasada,
 } from '@/dominio/regras';
 import type { Marco, Pessoa, Projeto, StatusProjeto, StatusTarefa, Tarefa } from '@/dominio/tipos';
 import { STATUS_TAREFA, rotuloStatusTarefa } from '@/dominio/tipos';
@@ -101,10 +101,10 @@ export default function DetalheProjeto({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="mb-1 flex flex-wrap items-center gap-2">
+              {/* Situacao, prioridade e saude saem do cabecalho: repetem o
+                  que a linha da atividade e o formulario ja mostram, e o
+                  espaco de cima vale mais para os numeros da esteira. */}
               {projeto.codigo && <span className="text-xs font-bold text-tinta-suave">{projeto.codigo}</span>}
-              <SeloStatus status={projeto.status} />
-              <SeloPrioridade prioridade={projeto.prioridade} />
-              <SeloSaude saude={saude(projeto, projetos)} />
             </div>
             <h1 className="font-titulo text-xl font-extrabold">{projeto.nome}</h1>
             {projeto.descricao && <p className="mt-1 max-w-3xl text-sm text-tinta-suave">{projeto.descricao}</p>}

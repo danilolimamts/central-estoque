@@ -11,6 +11,8 @@ import { useSituacoes } from '@/estado/configuracao';
 import { ordemDaSituacao, situacaoDe, situacoesVisiveis } from '@/dominio/situacoes';
 import type { ConteudoDoProjeto } from '@/estado/conteudo';
 import { CONTEUDOS, aplicarFiltros, filtrosVazios } from '@/dominio/filtros';
+import { cobertura, porcentagem } from '@/dominio/cobertura';
+import type { Cobertura } from '@/dominio/cobertura';
 import {
   avancoPorConclusao, filhosDe, generoDoRotulo, percentualEfetivo, porPrioridade,
   rotuloDosFilhos, singularDoRotulo,
@@ -194,6 +196,10 @@ export default function Atividades({
           )}
         </div>
       </div>
+
+      {filhos.length > 0 && (
+        <Esteira numeros={cobertura(filhos, carteiraDeConteudo.conteudo)} plural={plural.toLowerCase()} />
+      )}
 
       {erro && <div className="p-4"><Aviso>{erro}</Aviso></div>}
 
@@ -522,5 +528,58 @@ function CampoTexto({ valor, desabilitado, largura, espaco, aoConfirmar }: {
       onBlur={() => { if ((texto.trim() || null) !== (valor ?? null)) aoConfirmar(texto.trim() || null); }}
       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
     />
+  );
+}
+
+
+/* A esteira em numeros: quanto ja foi documentado e quanto ja virou
+   chamado no BSeller.
+
+   A situacao de cada linha diz o que esta acontecendo com ela; esta
+   faixa responde a pergunta que se faz de fora da lista — "quantas ja
+   escrevi" e "quantas ja pedi". O terceiro numero e o unico acionavel:
+   documentada e sem chamado e o que da para abrir hoje. */
+function Esteira({ numeros, plural }: { numeros: Cobertura; plural: string }) {
+  const cartoes = [
+    {
+      rotulo: 'Documentadas',
+      parte: numeros.documentadas,
+      cor: '#6D28D9',
+      ajuda: `${plural} com página escrita, proposta gerada ou arquivo anexado`,
+    },
+    {
+      rotulo: 'Com chamado aberto',
+      parte: numeros.comChamado,
+      cor: '#2F6FE0',
+      ajuda: `${plural} que já têm número de chamado ou link do BSeller`,
+    },
+    {
+      rotulo: 'Prontas para abrir chamado',
+      parte: numeros.aAbrir,
+      cor: '#C79212',
+      ajuda: 'documentadas e ainda sem chamado: a fila do que dá para pedir',
+    },
+  ];
+
+  return (
+    <div className="grid gap-2 border-b border-linha bg-papel px-4 py-3 sm:grid-cols-3">
+      {cartoes.map((c) => (
+        <div key={c.rotulo} className="rounded-lg bg-white px-3 py-2" title={c.ajuda}>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-tinta-suave">{c.rotulo}</p>
+          <p className="mt-0.5 flex items-baseline gap-1.5">
+            <span className="font-titulo text-xl font-extrabold" style={{ color: c.cor }}>
+              {porcentagem(c.parte, numeros.total)}%
+            </span>
+            <span className="text-xs text-tinta-suave">{c.parte} de {numeros.total}</span>
+          </p>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-papel">
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${porcentagem(c.parte, numeros.total)}%`, backgroundColor: c.cor }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
