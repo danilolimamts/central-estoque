@@ -215,6 +215,12 @@ function Formulario({
         prioridade: (projeto.prioridade === 'critica' || projeto.prioridade === 'alta'
           ? 'ALTA'
           : projeto.prioridade === 'baixa' ? 'BAIXA' : 'MÉDIA') as PrioridadeDoDocumento,
+        /* O chamado e o vinculo com o BSeller: quem le a proposta
+           precisa saber a qual pedido ela responde. */
+        documento_relacionado: [
+          projeto.chamado ? `Chamado BSeller #${projeto.chamado.replace(/^#/, '')}` : '',
+          projeto.ticket_jira ? `Jira ${projeto.ticket_jira}` : '',
+        ].filter(Boolean).join(' · '),
         rollout: marcos.map((m, i) => ({
           a: `Fase ${i + 1} | ${m.nome}`,
           b: m.data_prevista ? `Previsto para ${formatarData(m.data_prevista)}` : 'Data a definir',

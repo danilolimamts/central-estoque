@@ -27,6 +27,11 @@ export interface Projeto {
      projeto comum, com marcos, tarefas, paginas e anexos proprios. */
   rotulo_filhos: string | null;
   codigo: string | null;
+  /* Ligacao com o mundo de fora: o chamado aberto no BSeller e, quando
+     existe, o ticket do time de desenvolvimento. */
+  chamado: string | null;
+  chamado_url: string | null;
+  ticket_jira: string | null;
   nome: string;
   descricao: string | null;
   area: string | null;
