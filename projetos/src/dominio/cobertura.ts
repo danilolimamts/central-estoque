@@ -1,15 +1,15 @@
 import { temDocumentacao } from './filtros';
-import { passouDoChamado } from './situacoes';
+import { ehConcluida, passouDoChamado } from './situacoes';
 import type { MapaDeConteudo } from '@/estado/conteudo';
 import type { Projeto } from './tipos';
 
-/* Onde a esteira esta, em numero: quantas melhorias ja tem documento
-   escrito e quantas ja viraram chamado no BSeller.
+/* Onde a esteira esta, em numero: quanto ja foi escrito, quanto ja foi
+   pedido e quanto ja foi entregue.
 
    A situacao de cada atividade responde "o que estou fazendo"; isto
-   responde "quanto do caminho ja andou" — que e a pergunta de quem
-   precisa dizer ao gestor o que ja foi documentado e o que ja foi
-   pedido. Fica fora do componente para ser testado sem montar tela. */
+   responde "quanto do caminho ja andou", que e a pergunta de quem
+   precisa dizer ao gestor como esta a fila. Fica fora do componente
+   para ser testado sem montar tela. */
 
 export const temChamado = (p: Projeto): boolean =>
   !!(p.chamado?.trim() || p.chamado_url?.trim());
@@ -17,40 +17,38 @@ export const temChamado = (p: Projeto): boolean =>
 export interface Cobertura {
   total: number;
   documentadas: number;
-  /* Numero do chamado (ou link) preenchido na atividade. */
+  /* Chamado aberto: numero (ou link) anotado, ou situacao a partir da
+     abertura do chamado. Quem ja esta em desenvolvimento passou por ali,
+     mesmo que ninguem tenha copiado o numero para a linha. */
   comChamado: number;
-  /* Ja saiu da nossa mao: tem chamado anotado ou esta numa situacao a
-     partir da abertura do chamado. Quem ja esta em desenvolvimento
-     conta aqui mesmo sem o numero digitado. */
-  jaPedidas: number;
-  /* Documentada e ainda nao pedida: e a fila de trabalho, o que da
+  /* Documentada e ainda sem chamado: e a fila de trabalho, o que da
      para pedir hoje. */
   aAbrir: number;
+  concluidas: number;
   semDocumento: number;
 }
 
 export function cobertura(atividades: Projeto[], conteudo: MapaDeConteudo): Cobertura {
   let documentadas = 0;
   let comChamado = 0;
-  let jaPedidas = 0;
   let aAbrir = 0;
+  let concluidas = 0;
 
   for (const p of atividades) {
     const documentada = temDocumentacao(conteudo[p.id]);
-    const chamado = temChamado(p);
-    const pedida = chamado || passouDoChamado(p.status);
+    const chamado = temChamado(p) || passouDoChamado(p.status);
     if (documentada) documentadas += 1;
     if (chamado) comChamado += 1;
-    if (pedida) jaPedidas += 1;
-    if (documentada && !pedida) aAbrir += 1;
+    if (documentada && !chamado) aAbrir += 1;
+    if (ehConcluida(p.status)) concluidas += 1;
   }
 
   return {
     total: atividades.length,
     documentadas,
     comChamado,
-    jaPedidas,
     aAbrir,
+    concluidas,
     semDocumento: atividades.length - documentadas,
   };
 }

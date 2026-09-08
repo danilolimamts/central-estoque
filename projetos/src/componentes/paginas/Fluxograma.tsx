@@ -42,19 +42,23 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   const comecouNoFundo = useRef(false);
   const tela = useRef<HTMLDivElement>(null);
   const [avisoDaImagem, setAvisoDaImagem] = useState<string | null>(null);
-  /* Aproximacao do quadro. O desenho cresce para os lados conforme se
-     adicionam blocos, e a altura do bloco na pagina e fixa: sem afastar,
-     um fluxo grande so se ve pela barra de rolagem. Fica no navegador
-     porque e preferencia de quem olha, nao parte do desenho. */
-  const [zoom, setZoom] = useState(() => {
-    const guardado = Number(localStorage.getItem('projetos.zoom-fluxo'));
-    return guardado >= 0.4 && guardado <= 2 ? guardado : 1;
+  /* Tamanho da area de trabalho.
+
+     A tela do quadro cresce sozinha para caber os blocos, mas so ate
+     onde eles estao: para espalhar um fluxo grande falta chao. Estes
+     botoes acrescentam e tiram espaco em volta, como esticar a prancheta
+     — nao encolhem o desenho. A escolha fica no navegador porque e de
+     quem esta desenhando, nao parte do fluxo. */
+  const PASSO_DE_ESPACO = 320;
+  const [espaco, setEspaco] = useState(() => {
+    const guardado = Number(localStorage.getItem('projetos.espaco-fluxo'));
+    return Number.isFinite(guardado) && guardado >= 0 && guardado <= 4000 ? guardado : 0;
   });
 
-  function aproximar(passo: number) {
-    setZoom((atual) => {
-      const novo = Math.min(2, Math.max(0.4, Math.round((atual + passo) * 10) / 10));
-      try { localStorage.setItem('projetos.zoom-fluxo', String(novo)); } catch { /* sem espaço: só não lembra */ }
+  function mudarEspaco(passo: number) {
+    setEspaco((atual) => {
+      const novo = Math.min(4000, Math.max(0, atual + passo));
+      try { localStorage.setItem('projetos.espaco-fluxo', String(novo)); } catch { /* sem espaço: só não lembra */ }
       return novo;
     });
   }
@@ -148,8 +152,8 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
     if (!area) return;
     arrastando.current = {
       id: no.id,
-      dx: (e.clientX - area.left) / zoom - no.x,
-      dy: (e.clientY - area.top) / zoom - no.y,
+      dx: e.clientX - area.left - no.x,
+      dy: e.clientY - area.top - no.y,
       x: e.clientX,
       y: e.clientY,
       moveu: false,
@@ -160,8 +164,8 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   function moverArrasto(e: React.MouseEvent) {
     const puxando = esticando.current;
     if (puxando) {
-      const largura = Math.round(Math.min(900, Math.max(60, puxando.largura + (e.clientX - puxando.x) / zoom)));
-      const altura = Math.round(Math.min(700, Math.max(30, puxando.altura + (e.clientY - puxando.y) / zoom)));
+      const largura = Math.round(Math.min(900, Math.max(60, puxando.largura + (e.clientX - puxando.x))));
+      const altura = Math.round(Math.min(700, Math.max(30, puxando.altura + (e.clientY - puxando.y))));
       setFluxo((f) => ({
         ...f,
         nos: f.nos.map((n) => (n.id === puxando.id ? { ...n, largura, altura } : n)),
@@ -176,8 +180,8 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
       if (Math.abs(e.clientX - atual.x) < FOLGA && Math.abs(e.clientY - atual.y) < FOLGA) return;
       atual.moveu = true;
     }
-    const x = Math.max(0, (e.clientX - area.left) / zoom - atual.dx);
-    const y = Math.max(0, (e.clientY - area.top) / zoom - atual.dy);
+    const x = Math.max(0, e.clientX - area.left - atual.dx);
+    const y = Math.max(0, e.clientY - area.top - atual.dy);
     /* Encaixe de 10 em 10 px: alinha os blocos sem precisar de mira. */
     setFluxo((f) => ({
       ...f,
@@ -196,7 +200,11 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
     if (mexeu) aoMudar(escreverFluxo(fluxo));
   }
 
-  const { largura, altura } = limitesDoFluxo(fluxo);
+  const medida = limitesDoFluxo(fluxo);
+  /* A altura cresce menos que a largura: o fluxo se espalha mais para os
+     lados, e altura demais so gera rolagem vazia. */
+  const largura = medida.largura + espaco;
+  const altura = medida.altura + Math.round(espaco * 0.6);
   const noSelecionado = fluxo.nos.find((n) => n.id === selecionado) ?? null;
 
   if (legado) {
@@ -230,20 +238,22 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
 
           <span className="mx-1 h-4 w-px bg-linha" />
 
-          {/* Tamanho da tela do quadro: afastar cabe mais desenho na
-              mesma altura de bloco; aproximar volta ao detalhe. */}
-          <span className="flex items-center gap-1" title="Tamanho da tela do quadro">
+          {/* Espaco da prancheta: mais chao para espalhar os blocos, sem
+              mexer no tamanho de nada que ja foi desenhado. */}
+          <span className="flex items-center gap-1" title="Tamanho da área de trabalho">
             <button
               className="rounded-lg border border-linha px-2 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
-              onClick={() => aproximar(-0.1)} disabled={zoom <= 0.4}
+              onClick={() => mudarEspaco(-PASSO_DE_ESPACO)} disabled={espaco === 0}
+              title="Menos espaço"
             >−</button>
             <button
               className="rounded-lg px-1 text-[11px] font-bold text-tinta-suave hover:text-roxo-escuro"
-              onClick={() => aproximar(1 - zoom)} title="Voltar a 100%"
-            >{Math.round(zoom * 100)}%</button>
+              onClick={() => mudarEspaco(-espaco)} title="Voltar ao espaço do desenho"
+            >{largura} × {altura}</button>
             <button
               className="rounded-lg border border-linha px-2 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
-              onClick={() => aproximar(0.1)} disabled={zoom >= 2}
+              onClick={() => mudarEspaco(PASSO_DE_ESPACO)} disabled={espaco >= 4000}
+              title="Mais espaço"
             >+</button>
           </span>
 
@@ -344,11 +354,10 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
         </p>
       )}
 
-      <div className="overflow-auto p-2">
-        {/* A caixa de fora fica do tamanho ja aproximado, para a barra de
-            rolagem acompanhar o desenho; a de dentro guarda as
-            coordenadas de verdade do fluxo. */}
-        <div style={{ width: largura * zoom, height: altura * zoom }}>
+      {/* A janela e presa a altura da tela: prancheta grande rola por
+          dentro, em vez de empurrar o resto da pagina para baixo e levar
+          a barra de rolagem lateral para longe. */}
+      <div className="max-h-[70vh] overflow-auto p-2">
         <div
           ref={tela}
           data-quadro="fluxo"
@@ -368,8 +377,6 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
           style={{
             width: largura,
             height: altura,
-            transform: zoom === 1 ? undefined : `scale(${zoom})`,
-            transformOrigin: 'top left',
             backgroundImage: 'radial-gradient(#E7E8F5 1px, transparent 1px)',
             backgroundSize: '20px 20px',
           }}
@@ -534,7 +541,6 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
                 : 'Fluxo ainda vazio.'}
             </p>
           )}
-        </div>
         </div>
       </div>
     </div>
