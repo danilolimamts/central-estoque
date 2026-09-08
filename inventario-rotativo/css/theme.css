@@ -806,3 +806,74 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .rp-table-dense th:first-child, .rp-table-dense td:first-child{ text-align:left; }
 .rp-cols2{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 .rp-footer{ margin-top:28px; padding:14px 16px 0; border-top:1px solid #E4E7EE; font-size:9.5px; color:#9AA1B4; text-align:center; }
+
+/* ============================================================
+   Tema "Projetos" — só na aba de Divergências.
+
+   O pedido foi trazer a cara do módulo Projetos para esta aba, sem
+   mexer no resto do dash. Como o app inteiro lê cores de variáveis,
+   basta redefini-las neste galho da árvore: tudo o que estiver dentro
+   de .tema-projetos passa a desenhar com a paleta de lá (roxo e navy no
+   lugar de azul e laranja), e as demais abas continuam como estavam.
+
+   Os valores espelham projetos/tailwind.config.js.
+   ============================================================ */
+.tema-projetos{
+  --blue:#6D28D9; --blue-light:#F1EAFE; --blue-soft:#7C3AED;
+  --orange:#6D28D9; --orange-light:#F1EAFE; --orange-soft:#8B5CF6;
+  --success:#2E8B57; --danger:#D2453A;
+  --paper:#F3F4FB; --surface:#FFFFFF; --surface2:#F3F4FB;
+  --ink:#161933; --ink-soft:#6A6F94; --line:#E7E8F5;
+  --radius:10px; --radius-lg:16px;
+  --primary-shadow:rgba(109,40,217,.22); --accent-shadow:rgba(109,40,217,.22);
+  --accent-glow:rgba(139,92,246,.18);
+}
+:root[data-theme="dark"] .tema-projetos{
+  --paper:#12141C; --surface:#1A1D28; --surface2:#20232F;
+  --ink:#EEEDF5; --ink-soft:#9AA1B4; --line:#2C3040;
+  --blue-light:rgba(109,40,217,.28); --orange-light:rgba(109,40,217,.28);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .tema-projetos{
+    --paper:#12141C; --surface:#1A1D28; --surface2:#20232F;
+    --ink:#EEEDF5; --ink-soft:#9AA1B4; --line:#2C3040;
+    --blue-light:rgba(109,40,217,.28); --orange-light:rgba(109,40,217,.28);
+  }
+}
+
+/* Cartão do Projetos: canto mais redondo, borda visível e sombra baixa,
+   no lugar da sombra alta do dash. */
+.tema-projetos .panel,
+.tema-projetos .kpi-card,
+.tema-projetos .table-wrap{
+  border-radius:var(--radius-lg);
+  border:1px solid var(--line);
+  box-shadow:0 1px 3px rgba(20,24,60,.08), 0 1px 2px rgba(20,24,60,.04);
+}
+.tema-projetos .kpi-card:hover{ transform:none; box-shadow:0 14px 30px -20px rgba(20,24,60,.35); }
+/* A faixa colorida no topo da tile some: no Projetos quem dá a cor é o
+   próprio número. */
+.tema-projetos .kpi-card::before{ display:none; }
+.tema-projetos .kpi-card .num{ color:var(--blue); }
+.tema-projetos .kpi-card.bad .num{ color:var(--danger); }
+.tema-projetos .kpi-card.good .num{ color:var(--success); }
+.tema-projetos .kpi-card .label{ text-transform:uppercase; letter-spacing:.06em; font-size:11px; font-weight:700; color:var(--ink-soft); }
+
+/* Cabeçalho de tabela do Projetos: fundo de papel e texto miúdo, em vez
+   da faixa laranja cheia. */
+.tema-projetos thead th{
+  background:var(--paper); color:var(--ink-soft);
+  border-bottom:1px solid var(--line); font-size:11px; font-weight:700;
+}
+.tema-projetos tbody tr:hover{ background:var(--paper); }
+
+.tema-projetos .panel h3{ text-transform:none; letter-spacing:0; font-size:15px; color:var(--ink); font-weight:800; }
+.tema-projetos .btn{ border-radius:10px; font-weight:700; }
+.tema-projetos .btn-primary{ background:var(--blue); box-shadow:none; }
+.tema-projetos .btn-primary:hover{ background:var(--blue-soft); filter:none; }
+.tema-projetos .btn-secondary{ background:#fff; }
+.tema-projetos .btn-secondary:hover{ background:var(--paper); filter:none; }
+.tema-projetos .btn-link{ color:var(--blue); font-weight:700; }
+.tema-projetos input, .tema-projetos select{ border-radius:10px; }
+.tema-projetos .tag{ border-radius:999px; font-weight:700; }
+.tema-projetos .div-acum-fill{ background:var(--blue); }
