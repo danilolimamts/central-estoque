@@ -639,6 +639,22 @@ table.ofe-sub td{ padding:5px 8px; border-top:1px solid var(--line); }
 table.ofe-sub td.mono{ text-align:right; }
 table.ofe-sub td:nth-child(2){ text-align:left; }
 
+table.cen-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+table.cen-table th{ background:var(--surface2); color:var(--ink-soft); font-size:9.5px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.05em; padding:9px 10px; text-align:right; border-bottom:1px solid var(--line); }
+table.cen-table th:first-child{ text-align:left; }
+table.cen-table td{ padding:9px 10px; border-bottom:1px solid var(--line); text-align:right; }
+table.cen-table td:first-child, table.cen-table td:nth-child(2){ text-align:left; }
+table.cen-table .neg{ color:var(--danger); }
+table.cen-table .pos{ color:var(--success); }
+.cen-sub{ display:block; font-size:10.5px; color:var(--ink-soft); font-weight:400; margin-top:1px; }
+tr.cen-topo td{ background:var(--surface2); }
+/* As duas linhas do meio são o que SAI da conta — recuadas e apagadas de propósito. */
+tr.cen-fora td:first-child{ padding-left:26px; }
+tr.cen-fora td{ color:var(--ink-soft); }
+tr.cen-final td{ background:var(--surface2); font-weight:700; border-top:2px solid var(--line); }
+.cen-det summary{ cursor:pointer; font-size:12px; font-weight:600; color:var(--ink-soft); margin-top:10px; }
+
 table.sim-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
 table.sim-table th{
   position:sticky; top:0; z-index:1; background:var(--surface2); color:var(--ink-soft);
