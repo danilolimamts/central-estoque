@@ -19,6 +19,9 @@ export interface NoDoFluxo {
      parte do desenho: quem abre o fluxo tem de ve-la sem procurar
      arquivo. Por isso ela e reduzida antes de entrar. */
   imagem?: string;
+  /* Giro do bloco, em graus. A decisao ja nasce virada 45 graus pela
+     forma; este e o giro que a pessoa da por cima disso. */
+  rotacao?: number;
 }
 
 export interface LigacaoDoFluxo {
@@ -26,6 +29,10 @@ export interface LigacaoDoFluxo {
   de: string;
   para: string;
   rotulo: string;
+  /* Seta tracejada para dependencia fraca, e ponta dos dois lados para
+     ida e volta: e o que se desenha a mao num quadro. */
+  tracejada?: boolean;
+  dupla?: boolean;
 }
 
 export interface Fluxo {
@@ -159,7 +166,9 @@ export function fluxoParaSvg(fluxo: Fluxo): string {
     const i = bordaMaisProxima(de, para);
     const f = bordaMaisProxima(para, de);
     const meio = { x: (i.x + f.x) / 2, y: (i.y + f.y) / 2 - 6 };
-    return `<line x1="${i.x}" y1="${i.y}" x2="${f.x}" y2="${f.y}" stroke="#6A6F94" stroke-width="2" marker-end="url(#ponta)"/>`
+    const traco = l.tracejada ? ' stroke-dasharray="6 4"' : '';
+    const inicioDaSeta = l.dupla ? ' marker-start="url(#ponta-inicio)"' : '';
+    return `<line x1="${i.x}" y1="${i.y}" x2="${f.x}" y2="${f.y}" stroke="#6A6F94" stroke-width="2"${traco}${inicioDaSeta} marker-end="url(#ponta)"/>`
       + (l.rotulo
         ? `<text x="${meio.x}" y="${meio.y}" text-anchor="middle" font-size="11" fill="#6A6F94" font-family="Arial">${escapar(l.rotulo)}</text>`
         : '');
@@ -176,9 +185,11 @@ export function fluxoParaSvg(fluxo: Fluxo): string {
     const cx = n.x + n.largura / 2;
     const cy = n.y + n.altura / 2;
     const raio = n.forma === 'inicio' ? n.altura / 2 : n.forma === 'nota' ? 4 : 10;
-    const forma = n.forma === 'decisao'
-      ? `<g transform="rotate(45 ${cx} ${cy})"><rect x="${n.x}" y="${n.y}" width="${n.largura}" height="${n.altura}" rx="10" fill="${n.cor}14" stroke="${n.cor}" stroke-width="2"/></g>`
-      : `<rect x="${n.x}" y="${n.y}" width="${n.largura}" height="${n.altura}" rx="${raio}" fill="${n.cor}14" stroke="${n.cor}" stroke-width="2"/>`;
+    const giro = (n.forma === 'decisao' ? 45 : 0) + (n.rotacao ?? 0);
+    const caixa = `<rect x="${n.x}" y="${n.y}" width="${n.largura}" height="${n.altura}" rx="${n.forma === 'decisao' ? 10 : raio}" fill="${n.cor}14" stroke="${n.cor}" stroke-width="2"/>`;
+    const forma = giro
+      ? `<g transform="rotate(${giro} ${cx} ${cy})">${caixa}</g>`
+      : caixa;
     /* Texto longo quebra em duas linhas: sem isso ele vaza da caixa. */
     const palavras = n.texto.split(' ');
     const meio = Math.ceil(palavras.length / 2);
@@ -193,6 +204,8 @@ export function fluxoParaSvg(fluxo: Fluxo): string {
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${largura}" height="${altura}" viewBox="0 0 ${largura} ${altura}">`
     + '<defs><marker id="ponta" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">'
-    + '<path d="M0,0 L9,4.5 L0,9 z" fill="#6A6F94"/></marker></defs>'
+    + '<path d="M0,0 L9,4.5 L0,9 z" fill="#6A6F94"/></marker>'
+    + '<marker id="ponta-inicio" markerWidth="9" markerHeight="9" refX="1" refY="4.5" orient="auto">'
+    + '<path d="M9,0 L0,4.5 L9,9 z" fill="#6A6F94"/></marker></defs>'
     + `<rect width="${largura}" height="${altura}" fill="#FFFFFF"/>${setas}${blocos}</svg>`;
 }

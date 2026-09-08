@@ -6,6 +6,12 @@
    detalhe de projeto de verdade.
    Uso: node scripts/verificarTelas.mjs [url] */
 import { chromium } from 'playwright';
+import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+
+/* A biblioteca de planilha e CommonJS: aqui ela so serve para reabrir o
+   arquivo baixado e conferir que veio com conteudo. */
+const XLSX = createRequire(import.meta.url)('xlsx-js-style');
 
 const url = process.argv[2] ?? 'http://127.0.0.1:8099/';
 const hoje = new Date();
@@ -305,6 +311,26 @@ await pagina.getByText('Reendereçamento do mezanino').first().click();
 await pagina.waitForTimeout(700);
 await pagina.screenshot({ path: 'verificacao-detalhe.png', fullPage: true });
 
+/* Exportar Excel: o arquivo tem de chegar com conteudo. Planilha vazia
+   parece defeito do Excel e some com a confianca no relatorio. */
+const [baixado] = await Promise.all([
+  pagina.waitForEvent('download', { timeout: 15000 }).catch(() => null),
+  pagina.getByRole('button', { name: 'Exportar Excel', exact: true }).first().click(),
+]);
+if (!baixado) {
+  console.error('FALHOU: clicar em Exportar Excel não baixou arquivo nenhum.');
+  process.exitCode = 1;
+} else {
+  const caminho = await baixado.path();
+  const livro = XLSX.read(await readFile(caminho));
+  const abas = livro.SheetNames;
+  const linhas = abas.flatMap((n) => XLSX.utils.sheet_to_json(livro.Sheets[n], { header: 1 }));
+  if (!abas.length || linhas.length < 2) {
+    console.error(`FALHOU: a planilha veio vazia — abas ${JSON.stringify(abas)}, ${linhas.length} linha(s).`);
+    process.exitCode = 1;
+  }
+}
+
 /* Print colado no fluxograma: sem botao e sem anexo, so Ctrl+V dentro
    do quadro. O teste cola uma imagem de verdade e confere que ela virou
    bloco do desenho. */
@@ -323,6 +349,32 @@ await pagina.waitForTimeout(900);
 const imagemColada = await pagina.locator('img[alt="Print colado no fluxo"]').count();
 if (imagemColada < 1) {
   console.error('FALHOU: a imagem colada não virou bloco do fluxograma.');
+  process.exitCode = 1;
+}
+/* Controles de quadro: girar, mudar a cor, esticar pelo canto e mudar o
+   estilo da seta. */
+await pagina.locator('[data-quadro="fluxo"] >> text=Digita o código').first().click();
+await pagina.waitForTimeout(300);
+const barra = (await pagina.textContent('body')) ?? '';
+for (const controle of ['Seta para outro bloco', 'Excluir bloco']) {
+  if (!barra.includes(controle)) {
+    console.error(`FALHOU: a barra do fluxograma não tem "${controle}".`);
+    process.exitCode = 1;
+  }
+}
+await pagina.getByTitle('Girar 15° à direita').click();
+await pagina.waitForTimeout(250);
+const girado = await pagina.locator('[data-quadro="fluxo"] div[style*="rotate(15deg)"]').count();
+if (!girado) {
+  console.error('FALHOU: o bloco não girou.');
+  process.exitCode = 1;
+}
+if (!(await pagina.getByTitle('Arraste para mudar o tamanho').count())) {
+  console.error('FALHOU: o bloco selecionado deveria ter alça de tamanho.');
+  process.exitCode = 1;
+}
+if (!(await pagina.getByTitle('Ponta dos dois lados').count())) {
+  console.error('FALHOU: a seta deveria oferecer ponta dos dois lados.');
   process.exitCode = 1;
 }
 await pagina.screenshot({ path: 'verificacao-fluxo-imagem.png', fullPage: true });
