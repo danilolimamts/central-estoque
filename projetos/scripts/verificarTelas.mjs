@@ -409,6 +409,43 @@ if (!(await pagina.getByTitle('Ponta dos dois lados').count())) {
   console.error('FALHOU: a seta deveria oferecer ponta dos dois lados.');
   process.exitCode = 1;
 }
+/* Teclado no quadro: seta move o bloco selecionado e Delete apaga. */
+const posicaoAntes = await pagina.locator('[data-quadro="fluxo"] >> text=Digita o código').first().boundingBox();
+await pagina.keyboard.press('ArrowRight');
+await pagina.waitForTimeout(250);
+const posicaoDepois = await pagina.locator('[data-quadro="fluxo"] >> text=Digita o código').first().boundingBox();
+if (!posicaoAntes || !posicaoDepois || Math.round(posicaoDepois.x - posicaoAntes.x) !== 10) {
+  console.error(`FALHOU: a seta do teclado não moveu o bloco 10 px (${posicaoAntes?.x} → ${posicaoDepois?.x}).`);
+  process.exitCode = 1;
+}
+const formas = (await pagina.textContent('body')) ?? '';
+for (const forma of ['+ Círculo', '+ Triângulo']) {
+  if (!formas.includes(forma)) {
+    console.error(`FALHOU: a barra do fluxograma não oferece "${forma}".`);
+    process.exitCode = 1;
+  }
+}
+const blocosAntes = await pagina.locator('[data-quadro="fluxo"] > div').count();
+await pagina.keyboard.press('Delete');
+await pagina.waitForTimeout(300);
+if (await pagina.locator('[data-quadro="fluxo"] >> text=Digita o código').count()) {
+  console.error('FALHOU: o Delete não apagou o bloco selecionado.');
+  process.exitCode = 1;
+}
+if (!(await pagina.locator('[data-quadro="fluxo"] > div').count() < blocosAntes)) {
+  console.error('FALHOU: o quadro deveria ter um bloco a menos depois do Delete.');
+  process.exitCode = 1;
+}
+
+/* Formas novas: entram no quadro e desenham de verdade. */
+await pagina.getByRole('button', { name: '+ Círculo', exact: true }).click();
+await pagina.getByRole('button', { name: '+ Triângulo', exact: true }).click();
+await pagina.waitForTimeout(400);
+if (!(await pagina.locator('[data-quadro="fluxo"] svg polygon').count())) {
+  console.error('FALHOU: o triângulo não desenhou o contorno.');
+  process.exitCode = 1;
+}
+
 await pagina.screenshot({ path: 'verificacao-fluxo-imagem.png', fullPage: true });
 await secaoPaginas.getByRole('button', { name: 'Cancelar', exact: true }).click();
 await pagina.waitForTimeout(300);

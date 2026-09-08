@@ -3,7 +3,7 @@
    codigo de um diagrama escrito em texto, que ninguem conseguia editar
    sem aprender a sintaxe. */
 
-export type FormaDoNo = 'caixa' | 'decisao' | 'inicio' | 'nota' | 'imagem';
+export type FormaDoNo = 'caixa' | 'decisao' | 'inicio' | 'nota' | 'circulo' | 'triangulo' | 'imagem';
 
 export interface NoDoFluxo {
   id: string;
@@ -22,6 +22,9 @@ export interface NoDoFluxo {
   /* Giro do bloco, em graus. A decisao ja nasce virada 45 graus pela
      forma; este e o giro que a pessoa da por cima disso. */
   rotacao?: number;
+  /* Espessura da linha da forma, em pixels. Serve para destacar o
+     caminho principal do fluxo sem precisar de outra cor. */
+  espessura?: number;
 }
 
 export interface LigacaoDoFluxo {
@@ -54,14 +57,22 @@ export const rotuloDaForma: Record<FormaDoNo, string> = {
   decisao: 'Decisão',
   inicio: 'Início ou fim',
   nota: 'Anotação',
+  circulo: 'Círculo',
+  triangulo: 'Triângulo',
   imagem: 'Imagem',
 };
+
+export const ESPESSURAS = [1, 2, 3, 5, 8];
+
+export const espessuraDo = (no: NoDoFluxo): number => no.espessura ?? 2;
 
 const TAMANHOS: Record<FormaDoNo, { largura: number; altura: number }> = {
   caixa: { largura: 180, altura: 64 },
   decisao: { largura: 170, altura: 96 },
   inicio: { largura: 150, altura: 52 },
   nota: { largura: 190, altura: 72 },
+  circulo: { largura: 120, altura: 120 },
+  triangulo: { largura: 140, altura: 120 },
   imagem: { largura: 320, altura: 200 },
 };
 
@@ -186,7 +197,12 @@ export function fluxoParaSvg(fluxo: Fluxo): string {
     const cy = n.y + n.altura / 2;
     const raio = n.forma === 'inicio' ? n.altura / 2 : n.forma === 'nota' ? 4 : 10;
     const giro = (n.forma === 'decisao' ? 45 : 0) + (n.rotacao ?? 0);
-    const caixa = `<rect x="${n.x}" y="${n.y}" width="${n.largura}" height="${n.altura}" rx="${n.forma === 'decisao' ? 10 : raio}" fill="${n.cor}14" stroke="${n.cor}" stroke-width="2"/>`;
+    const linha = espessuraDo(n);
+    const caixa = n.forma === 'circulo'
+      ? `<ellipse cx="${cx}" cy="${cy}" rx="${n.largura / 2}" ry="${n.altura / 2}" fill="${n.cor}14" stroke="${n.cor}" stroke-width="${linha}"/>`
+      : n.forma === 'triangulo'
+        ? `<polygon points="${cx},${n.y} ${n.x + n.largura},${n.y + n.altura} ${n.x},${n.y + n.altura}" fill="${n.cor}14" stroke="${n.cor}" stroke-width="${linha}" stroke-linejoin="round"/>`
+        : `<rect x="${n.x}" y="${n.y}" width="${n.largura}" height="${n.altura}" rx="${n.forma === 'decisao' ? 10 : raio}" fill="${n.cor}14" stroke="${n.cor}" stroke-width="${linha}"/>`;
     const forma = giro
       ? `<g transform="rotate(${giro} ${cx} ${cy})">${caixa}</g>`
       : caixa;

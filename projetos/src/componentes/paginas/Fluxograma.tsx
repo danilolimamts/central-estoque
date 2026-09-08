@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  bordaMaisProxima, CORES_DO_FLUXO, escreverFluxo, fluxoVazio, lerFluxo, limitesDoFluxo,
-  noDeImagem, noNovo, proximaPosicao, rotuloDaForma,
+  bordaMaisProxima, CORES_DO_FLUXO, ESPESSURAS, escreverFluxo, espessuraDo, fluxoVazio, lerFluxo,
+  limitesDoFluxo, noDeImagem, noNovo, proximaPosicao, rotuloDaForma,
 } from '@/dominio/fluxo';
 import { imagemDoEvento, reduzirImagem } from '@/lib/imagemColada';
 import type { Fluxo, FormaDoNo, NoDoFluxo } from '@/dominio/fluxo';
@@ -12,7 +12,7 @@ interface Props {
   aoMudar: (conteudo: string) => void;
 }
 
-const FORMAS: FormaDoNo[] = ['inicio', 'caixa', 'decisao', 'nota'];
+const FORMAS: FormaDoNo[] = ['inicio', 'caixa', 'decisao', 'circulo', 'triangulo', 'nota'];
 
 /* Quadro de fluxo com blocos que se arrastam e setas que os ligam, no
    espirito do Miro. Usa mouse e SVG direto, sem biblioteca de diagrama:
@@ -26,6 +26,9 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   const [fluxo, setFluxo] = useState<Fluxo>(() => lerFluxo(conteudo) ?? fluxoVazio());
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [ligandoDe, setLigandoDe] = useState<string | null>(null);
+  /* A seta tambem se seleciona: sem isso, o Delete do teclado nao teria
+     como saber que e ela que deve sair. */
+  const [ligacaoSelecionada, setLigacaoSelecionada] = useState<string | null>(null);
   /* O arrasto so comeca depois de alguns pixels de movimento. Sem essa
      folga, um clique simples ja empurrava o bloco para o encaixe de 10
      em 10 px: o ponteiro terminava fora dele, o navegador mandava o
@@ -146,6 +149,61 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
     alterarNo(no.id, { rotacao: (((no.rotacao ?? 0) + graus) % 360 + 360) % 360 });
   }
 
+  /* Teclado: setas empurram o bloco selecionado de 10 em 10 px, que e o
+     encaixe da grade, e com Shift de 1 em 1 para o ajuste fino. Delete
+     apaga o que estiver selecionado, bloco ou seta. */
+  function aoTeclar(e: KeyboardEvent) {
+    if (!editando) return;
+    /* Quem esta digitando num campo tem prioridade: apagar letra e mover
+       o cursor nao podem virar comando do quadro. */
+    const alvo = e.target as HTMLElement | null;
+    const escrevendo = !!alvo && (
+      alvo.isContentEditable
+      || ['INPUT', 'TEXTAREA', 'SELECT'].includes(alvo.tagName)
+    );
+    if (escrevendo) return;
+
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (ligacaoSelecionada) {
+        e.preventDefault();
+        gravar({ ...fluxo, ligacoes: fluxo.ligacoes.filter((l) => l.id !== ligacaoSelecionada) });
+        setLigacaoSelecionada(null);
+        return;
+      }
+      if (selecionado) {
+        e.preventDefault();
+        removerNo(selecionado);
+      }
+      return;
+    }
+
+    if (e.key === 'Escape') { setSelecionado(null); setLigacaoSelecionada(null); setLigandoDe(null); return; }
+
+    const passos: Record<string, [number, number]> = {
+      ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    };
+    const passo = passos[e.key];
+    if (!passo || !selecionado) return;
+    e.preventDefault();
+    const distancia = e.shiftKey ? 1 : 10;
+    const no = fluxo.nos.find((n) => n.id === selecionado);
+    if (!no) return;
+    alterarNo(no.id, {
+      x: Math.max(0, no.x + passo[0] * distancia),
+      y: Math.max(0, no.y + passo[1] * distancia),
+    });
+  }
+
+  /* O ouvinte fica na janela, e nao no quadro: depois de clicar num
+     botao da barra o foco esta nele, e as setas nao chegariam ao
+     desenho. So age quando ha algo selecionado neste quadro. */
+  useEffect(() => {
+    if (!editando || (!selecionado && !ligacaoSelecionada)) return;
+    const ouvir = (e: KeyboardEvent) => aoTeclar(e);
+    window.addEventListener('keydown', ouvir);
+    return () => window.removeEventListener('keydown', ouvir);
+  });
+
   function comecarArrasto(e: React.MouseEvent, no: NoDoFluxo) {
     if (!editando) return;
     const area = tela.current?.getBoundingClientRect();
@@ -159,6 +217,10 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
       moveu: false,
     };
     setSelecionado(no.id);
+    setLigacaoSelecionada(null);
+    /* Sem foco no quadro, as setas do teclado rolariam a pagina em vez
+       de mover o bloco. */
+    tela.current?.focus({ preventScroll: true });
   }
 
   function moverArrasto(e: React.MouseEvent) {
@@ -293,6 +355,18 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
                 </>
               )}
 
+              {noSelecionado.forma !== 'imagem' && (
+                <label className="flex shrink-0 items-center gap-1 text-[11px] text-tinta-suave" title="Espessura da linha">
+                  <select
+                    className="campo w-20 py-1 text-xs"
+                    value={espessuraDo(noSelecionado)}
+                    onChange={(e) => alterarNo(noSelecionado.id, { espessura: Number(e.target.value) })}
+                  >
+                    {ESPESSURAS.map((v) => <option key={v} value={v}>{v} px</option>)}
+                  </select>
+                </label>
+              )}
+
               {/* Girar e redimensionar valem para qualquer bloco, print
                   incluido: e o que se espera de um quadro deste tipo. */}
               <span className="flex items-center gap-1">
@@ -341,8 +415,9 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
             </>
           ) : (
             <span className="text-[11px] text-tinta-suave">
-              Clique num bloco para editar o texto, mudar a cor ou ligar a outro. Arraste para mover.
-              Para pôr um print, copie a tela e cole aqui dentro com Ctrl+V.
+              Clique num bloco para editar o texto, mudar a cor ou ligar a outro. Arraste ou use as
+              setas do teclado para mover, Delete para apagar o que estiver selecionado, e Ctrl+V
+              para colar um print.
             </span>
           )}
         </div>
@@ -366,10 +441,16 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
           onMouseMove={moverArrasto}
           onMouseUp={terminarArrasto}
           onMouseLeave={terminarArrasto}
-          onMouseDown={(e) => { comecouNoFundo.current = e.target === e.currentTarget; }}
+          onMouseDown={(e) => {
+            comecouNoFundo.current = e.target === e.currentTarget;
+            /* O quadro precisa do foco para o teclado valer nele, e nao
+               na rolagem da pagina. */
+            if (editando) tela.current?.focus({ preventScroll: true });
+          }}
           onClick={(e) => {
             if (e.target === e.currentTarget && comecouNoFundo.current) {
               setSelecionado(null);
+              setLigacaoSelecionada(null);
               setLigandoDe(null);
             }
           }}
@@ -425,7 +506,14 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
             return (
               <div
                 key={l.id}
-                className="absolute flex items-center gap-1"
+                onMouseDown={() => {
+                  setLigacaoSelecionada(l.id);
+                  setSelecionado(null);
+                  tela.current?.focus({ preventScroll: true });
+                }}
+                className={`absolute flex items-center gap-1 rounded ${
+                  ligacaoSelecionada === l.id ? 'ring-2 ring-roxo' : ''
+                }`}
                 style={{ left: (inicio.x + fim.x) / 2 - 62, top: (inicio.y + fim.y) / 2 + 2 }}
               >
                 <input
@@ -496,16 +584,34 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
                 top: no.y,
                 width: no.largura,
                 height: no.altura,
-                backgroundColor: `${no.cor}14`,
-                border: `2px solid ${no.cor}`,
+                backgroundColor: no.forma === 'triangulo' ? undefined : `${no.cor}14`,
+                border: no.forma === 'triangulo' ? undefined : `${espessuraDo(no)}px solid ${no.cor}`,
                 color: '#161933',
-                borderRadius: no.forma === 'inicio' ? 999 : no.forma === 'nota' ? 4 : 10,
+                borderRadius: no.forma === 'inicio' || no.forma === 'circulo'
+                  ? 999
+                  : no.forma === 'nota' ? 4 : 10,
                 transform: `rotate(${(no.forma === 'decisao' ? 45 : 0) + (no.rotacao ?? 0)}deg)`,
               }}
             >
               {/* O texto desgira o quanto a forma girou: losango com a
                   palavra de cabeca para baixo nao se le. */}
-              <span style={{ transform: `rotate(${-((no.forma === 'decisao' ? 45 : 0) + (no.rotacao ?? 0))}deg)` }}>
+              {/* Triangulo nao se faz com borda de caixa: o contorno vem
+                  de um poligono desenhado atras do texto. */}
+              {no.forma === 'triangulo' && (
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+                  <polygon
+                    points="50,4 96,96 4,96" fill={`${no.cor}14`} stroke={no.cor}
+                    strokeWidth={espessuraDo(no)} strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+                  />
+                </svg>
+              )}
+              <span
+                className="relative"
+                style={{
+                  transform: `rotate(${-((no.forma === 'decisao' ? 45 : 0) + (no.rotacao ?? 0))}deg)`,
+                  marginTop: no.forma === 'triangulo' ? '18%' : undefined,
+                }}
+              >
                 {no.texto}
               </span>
             </div>
