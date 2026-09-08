@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   SITUACOES_PADRAO, chaveNova, definirSituacoes, ehCancelada, ehConcluida, ehEncerrada,
-  moverSituacao, ordemDaSituacao, situacaoDe, situacoesVisiveis,
+  moverSituacao, ordemDaSituacao, percentualDaSituacao, situacaoDe, situacoesVisiveis,
 } from '../src/dominio/situacoes';
 import type { Situacao } from '../src/dominio/situacoes';
 import { avancoPorConclusao, percentualEfetivo } from '../src/dominio/arvore';
@@ -118,5 +118,61 @@ describe('moverSituacao', () => {
 
   it('situação que não está na configuração fica onde está', () => {
     expect(chaves(moverSituacao(lista(), 'inexistente', 1))).toEqual(chaves(lista()));
+  });
+});
+
+describe('percentualDaSituacao', () => {
+  afterEach(() => definirSituacoes(SITUACOES_PADRAO));
+
+  it('divide a esteira em partes iguais: primeira em zero, concluída em cem', () => {
+    /* Padrão: não iniciado, em andamento, em risco, pausado e concluído
+       formam a fila; cancelado fica de fora por não ser passo. */
+    expect(percentualDaSituacao('nao_iniciado')).toBe(0);
+    expect(percentualDaSituacao('em_andamento')).toBe(25);
+    expect(percentualDaSituacao('em_risco')).toBe(50);
+    expect(percentualDaSituacao('concluido')).toBe(100);
+  });
+
+  it('pausado fica em zero mesmo no meio da fila', () => {
+    expect(percentualDaSituacao('pausado')).toBe(0);
+  });
+
+  it('cancelado não conta avanço', () => {
+    expect(percentualDaSituacao('cancelado')).toBe(0);
+  });
+
+  it('mais situações, passos menores', () => {
+    definirSituacoes([
+      ...SITUACOES_PADRAO.slice(0, 3),
+      { chave: 'homologacao', rotulo: 'Homologação', cor: '#000', usar: true, significado: 'aberta', avanco: null },
+      ...SITUACOES_PADRAO.slice(3),
+    ]);
+    expect(percentualDaSituacao('em_andamento')).toBe(20);
+    expect(percentualDaSituacao('homologacao')).toBe(60);
+    expect(percentualDaSituacao('concluido')).toBe(100);
+  });
+
+  it('o avanço escrito na configuração manda mais do que a posição', () => {
+    definirSituacoes(SITUACOES_PADRAO.map((s) => (
+      s.chave === 'em_andamento' ? { ...s, avanco: 70 } : s
+    )));
+    expect(percentualDaSituacao('em_andamento')).toBe(70);
+  });
+
+  it('concluída vale cem mesmo fora do fim da fila', () => {
+    definirSituacoes([SITUACOES_PADRAO[4], SITUACOES_PADRAO[0], SITUACOES_PADRAO[1]]);
+    expect(percentualDaSituacao('concluido')).toBe(100);
+  });
+
+  it('situação desligada não ocupa passo na conta', () => {
+    definirSituacoes(SITUACOES_PADRAO.map((s) => (
+      s.chave === 'em_risco' ? { ...s, usar: false } : s
+    )));
+    /* Sobram quatro passos: não iniciado, em andamento, pausado e concluído. */
+    expect(percentualDaSituacao('em_andamento')).toBe(33);
+  });
+
+  it('situação que não está na configuração vale zero', () => {
+    expect(percentualDaSituacao('inventada')).toBe(0);
   });
 });

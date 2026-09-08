@@ -17,15 +17,21 @@ export interface Situacao {
   cor: string;
   usar: boolean;
   significado: Significado;
+  /* Quanto a atividade ja andou quando esta nesta situacao. Nulo quer
+     dizer "calcule pela posicao": a esteira dividida em partes iguais.
+     Preenchido, manda — e como Pausado fica em zero mesmo estando no
+     meio da fila. */
+  avanco: number | null;
 }
 
 export const SITUACOES_PADRAO: Situacao[] = [
-  { chave: 'nao_iniciado', rotulo: 'Não iniciado', cor: '#9E86D8', usar: true, significado: 'aberta' },
-  { chave: 'em_andamento', rotulo: 'Em andamento', cor: '#2F6FE0', usar: true, significado: 'aberta' },
-  { chave: 'em_risco', rotulo: 'Em risco', cor: '#C79212', usar: true, significado: 'aberta' },
-  { chave: 'pausado', rotulo: 'Pausado', cor: '#B0568F', usar: true, significado: 'aberta' },
-  { chave: 'concluido', rotulo: 'Concluído', cor: '#2E8B57', usar: true, significado: 'concluida' },
-  { chave: 'cancelado', rotulo: 'Cancelado', cor: '#D2453A', usar: true, significado: 'cancelada' },
+  { chave: 'nao_iniciado', rotulo: 'Não iniciado', cor: '#9E86D8', usar: true, significado: 'aberta', avanco: 0 },
+  { chave: 'em_andamento', rotulo: 'Em andamento', cor: '#2F6FE0', usar: true, significado: 'aberta', avanco: null },
+  { chave: 'em_risco', rotulo: 'Em risco', cor: '#C79212', usar: true, significado: 'aberta', avanco: null },
+  /* Parado nao e progresso: quem pausou nao andou mais um passo. */
+  { chave: 'pausado', rotulo: 'Pausado', cor: '#B0568F', usar: true, significado: 'aberta', avanco: 0 },
+  { chave: 'concluido', rotulo: 'Concluído', cor: '#2E8B57', usar: true, significado: 'concluida', avanco: null },
+  { chave: 'cancelado', rotulo: 'Cancelado', cor: '#D2453A', usar: true, significado: 'cancelada', avanco: null },
 ];
 
 let registro: Situacao[] = SITUACOES_PADRAO;
@@ -41,7 +47,7 @@ export const situacoes = (): Situacao[] => registro;
    a própria chave e conta como trabalho aberto. */
 export function situacaoDe(chave: string): Situacao {
   return registro.find((s) => s.chave === chave)
-    ?? { chave, rotulo: chave, cor: '#6A6F94', usar: false, significado: 'aberta' };
+    ?? { chave, rotulo: chave, cor: '#6A6F94', usar: false, significado: 'aberta', avanco: null };
 }
 
 export const rotuloDaSituacao = (chave: string) => situacaoDe(chave).rotulo;
@@ -57,6 +63,36 @@ export const ehEncerrada = (chave: string) => significadoDe(chave) !== 'aberta';
 export function ordemDaSituacao(chave: string): number {
   const i = registro.findIndex((s) => s.chave === chave);
   return i < 0 ? registro.length : i;
+}
+
+/* As situacoes que formam a esteira: as ligadas, menos a cancelada, que
+   e saida do processo e nao um passo dele. */
+const etapas = (): Situacao[] => registro.filter((s) => s.usar && s.significado !== 'cancelada');
+
+/* Quanto uma atividade ja andou so por estar nesta situacao.
+
+   A regra que a equipe pediu: a esteira dividida em partes iguais, a
+   primeira situacao em zero e a concluida em cem. Com seis etapas, cada
+   passo vale 20% — estar "em andamento" ja e um passo dado.
+
+   Concluida vale 100 esteja onde estiver na ordem, e cancelada vale
+   zero: significado manda mais do que posicao. E quem quiser fugir da
+   divisao igual preenche o avanco da situacao na configuracao (e o que
+   deixa Pausado em zero no meio da fila). */
+export function percentualDaSituacao(chave: string): number {
+  const situacao = situacaoDe(chave);
+  if (situacao.avanco !== null && situacao.avanco !== undefined) {
+    return Math.min(100, Math.max(0, Math.round(situacao.avanco)));
+  }
+  if (situacao.significado === 'concluida') return 100;
+  if (situacao.significado === 'cancelada') return 0;
+
+  const fila = etapas();
+  const i = fila.findIndex((s) => s.chave === chave);
+  /* Situacao apagada da configuracao, ou esteira de um passo so: nao ha
+     de onde tirar fracao. */
+  if (i < 0 || fila.length < 2) return 0;
+  return Math.round((i * 100) / (fila.length - 1));
 }
 
 /* Mover uma situacao na ordem, pulando as desligadas: quem clica na
