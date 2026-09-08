@@ -20,6 +20,7 @@ const IR = {
   divEscopo:{tipo:'ciclo'}, divEscopoDados:null, divAnoCache:null, divSelecionados:null,
   divCorte:null, divBusca:'', divVerCompensados:false, divExpandido:null,
   divOrdem:{col:'netValor', dir:'desc'}, divAuditoria:null,
+  divSimFiltro:{de:'', ate:''},
   auditFilters:{minPrioridade:0},
   prodFilters:{de:'', ate:'', usuario:'', setor:''},
   prodSort:{col:'locaisHora', dir:'desc'},
@@ -3775,24 +3776,62 @@ function irDivSemelhanca(a, b){
   for(const t of A) if(B.has(t)) inter++;
   return inter / (A.size + B.size - inter);   // Jaccard
 }
+/* Palavras iguais no COMEÇO da descrição. A família do produto vem na frente
+   ("COMPRESSOR DE AR ...", "SERRA CIRCULAR ...") e a especificação depois, então
+   prefixo separa variante de produto diferente melhor que contagem de palavras:
+   "COMPRESSOR DE AR 3HP 15/175L" e "COMPRESSOR DE AR 2HP 10/100L" dividem só 2 de
+   6 palavras — Jaccard baixo — mas são claramente o mesmo produto. */
+function irDivPrefixoComum(a, b){
+  const A = String(a||'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().split(' ').filter(Boolean);
+  const B = String(b||'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().split(' ').filter(Boolean);
+  let n = 0;
+  while(n<A.length && n<B.length && A[n]===B[n]) n++;
+  return n;
+}
+const IR_DIV_PREFIXO_MIN = 2;
 function irDivCodigosVizinhos(a, b){
   const x = String(a).replace(/\D/g,''), y = String(b).replace(/\D/g,'');
   if(x.length!==y.length || x.length<4) return false;
   return x.slice(0,-2)===y.slice(0,-2);       // diferem só nos 2 últimos dígitos
 }
 const IR_DIV_SEMELHANCA_MIN = 0.45;
+/* Id Inventário da divergência. Ciclos processados antes do campo existir têm o
+   id no formato ciclo|local|inventario|item — dá pra recuperar de lá. */
+function irDivInventario(d){
+  if(d.inventario) return d.inventario;
+  const p = String(d.id||'').split('|');
+  return p.length>=4 ? p[2] : '';
+}
+function irDivSimSetFiltro(k, v){
+  if(!IR.divSimFiltro) IR.divSimFiltro = {de:'', ate:''};
+  IR.divSimFiltro[k] = v;
+  irRenderView();
+}
+function irDivSimLimpar(){ IR.divSimFiltro = {de:'', ate:''}; irRenderView(); }
+/* Pares de troca. Dois cuidados que a primeira versão não tinha:
+
+   1. O par é dentro da mesma VISITA (local + Id Inventário). Agrupar só por local
+      fazia o mesmo item parear consigo mesmo, quando o local foi inventariado duas
+      vezes — sobrando num inventário e faltando no outro.
+   2. Semelhança de DESCRIÇÃO é obrigatória. Código vizinho virou só um selo: dois
+      códigos seguidos podem ser produtos sem nenhuma relação.
+
+   Este painel ignora o filtro de período do topo — ele tem o próprio de/até,
+   porque a pergunta aqui é "o que trocaram ontem", não "o que pesa no ciclo". */
 function irDivParesSimilares(){
-  const e = IR.divEscopo;
-  let divs = irSoLocaisConcluidos(IR.divEscopoDados || IR.divergencias || []).filter(d=>d.diferenca!==0);
-  if(e.tipo==='mes') divs = divs.filter(d=>irDivDiaDa(d).slice(0,7)===e.mes);
-  if(e.tipo==='dia') divs = e.dia ? divs.filter(d=>irDivDiaDa(d)===e.dia) : [];
-  const porLocal = new Map();
+  const f = IR.divSimFiltro || {de:'', ate:''};
+  let divs = irSoLocaisConcluidos((IR.divAnoCache||{}).divs || IR.divergencias || [])
+    .filter(d=>d.diferenca!==0);
+  if(f.de)  divs = divs.filter(d=>irDivDiaDa(d) >= f.de);
+  if(f.ate) divs = divs.filter(d=>irDivDiaDa(d) <= f.ate);
+  const porVisita = new Map();
   for(const d of divs){
-    if(!porLocal.has(d.local)) porLocal.set(d.local, []);
-    porLocal.get(d.local).push(d);
+    const chave = d.local+'|'+irDivInventario(d);
+    if(!porVisita.has(chave)) porVisita.set(chave, []);
+    porVisita.get(chave).push(d);
   }
   const pares = [];
-  for(const [local, lista] of porLocal){
+  for(const [chave, lista] of porVisita){
     if(lista.length<2) continue;
     const sobra = lista.filter(d=>d.diferenca>0);
     const falta = lista.filter(d=>d.diferenca<0);
@@ -3800,28 +3839,30 @@ function irDivParesSimilares(){
     for(const a of sobra){
       for(const b of falta){
         if(usados.has(b.id)) continue;
+        if(a.item === b.item) continue;              // mesmo código não é troca
         if(a.diferenca !== -b.diferenca) continue;   // troca é 1 pra 1
         const sem = irDivSemelhanca(a.itemNome, b.itemNome);
-        const viz = irDivCodigosVizinhos(a.item, b.item);
-        if(sem < IR_DIV_SEMELHANCA_MIN && !viz) continue;
+        const pref = irDivPrefixoComum(a.itemNome, b.itemNome);
+        // Basta um dos dois: mesma família no início da descrição, ou muitas
+        // palavras em comum. Código vizinho sozinho não entra — dois códigos
+        // seguidos podem ser martelo e luva.
+        if(pref < IR_DIV_PREFIXO_MIN && sem < IR_DIV_SEMELHANCA_MIN) continue;
         usados.add(b.id);
         pares.push({
           idSobra:a.id, idFalta:b.id,
-          local, dia: irDivDiaDa(a),
+          local: a.local, inventario: irDivInventario(a), dia: irDivDiaDa(a),
           itemSobra:a.item, nomeSobra:a.itemNome, itemFalta:b.item, nomeFalta:b.itemNome,
           qtd: a.diferenca,
-          // O risco é o dinheiro em jogo: se os dois itens têm preços diferentes,
-          // a troca não se anula — sobra diferença de valor.
           valorSobra: a.vlDivergencia, valorFalta: b.vlDivergencia,
           desequilibrio: a.vlDivergencia + b.vlDivergencia,
           risco: Math.max(Math.abs(a.vlDivergencia), Math.abs(b.vlDivergencia)),
-          semelhanca: sem, vizinhos: viz
+          semelhanca: sem, prefixo: pref, vizinhos: irDivCodigosVizinhos(a.item, b.item)
         });
         break;
       }
     }
   }
-  return pares.sort((x,y)=>y.risco-x.risco);
+  return pares.sort((x,y)=>String(y.dia).localeCompare(String(x.dia)) || y.risco-x.risco);
 }
 
 /* ---------- CENÁRIO DE PERDAS E GANHOS ----------
@@ -4158,51 +4199,59 @@ function irRenderDivAuditoria(){
 /* Painel de troca entre similares. Fica abaixo da tabela de ofensores: é outro
    tipo de erro — não é perda, é contagem trocada — e pede outra ação. */
 function irRenderDivSimilares(){
+  const f = IR.divSimFiltro || {de:'', ate:''};
   const pares = irDivParesSimilares();
-  if(!pares.length) return `<div class="panel">
-    <h3>Itens similares trocados</h3>
-    <p class="field-hint">Nenhum par com assinatura de troca neste período.</p>
-  </div>`;
   const risco = pares.reduce((s,p)=>s+p.risco,0);
   const desiq = pares.reduce((s,p)=>s+Math.abs(p.desequilibrio),0);
+  const ontem = new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const filtros = `<div class="sim-filtros">
+    <div class="ofe-filtro"><label>De</label><input type="date" value="${irEsc(f.de)}" onchange="irDivSimSetFiltro('de', this.value)"></div>
+    <div class="ofe-filtro"><label>Até</label><input type="date" value="${irEsc(f.ate)}" onchange="irDivSimSetFiltro('ate', this.value)"></div>
+    <button class="btn btn-secondary" onclick="irDivSimSetFiltro('de','${ontem}');irDivSimSetFiltro('ate','${ontem}')">Ontem</button>
+    ${(f.de||f.ate)?`<button class="btn-link" onclick="irDivSimLimpar()">Limpar</button>`:''}
+  </div>`;
   return `<div class="panel">
     <div class="ofe-head">
-      <h3>Itens similares trocados — ${irEsc(irDivEscopoLabel())}</h3>
+      <h3>Itens similares trocados</h3>
       <div class="ofe-acoes">
         <span class="field-hint">${irFmtInt(pares.length)} ${pares.length===1?'par':'pares'} · ${irFmtMoney(risco)} em jogo · ${irFmtMoney(desiq)} de desequilíbrio</span>
         <button class="btn btn-secondary" onclick="irDivExportarSimilares()">Excel</button>
       </div>
     </div>
-    <p class="panel-sub">No mesmo local, um item sobra exatamente o que o outro falta, e os dois se parecem — assinatura de contagem trocada. Chega aqui no dia da contagem, antes do apontamento do estoque.</p>
-    <div class="table-wrap"><div class="table-scroll" style="max-height:460px;">
+    <p class="panel-sub">Na mesma visita (local + inventário), um item sobra exatamente o que o outro falta e as descrições batem. Filtro próprio de data — não segue o período do topo.</p>
+    ${filtros}
+    ${pares.length ? `<div class="table-wrap"><div class="table-scroll" style="max-height:460px;">
       <table class="sim-table">
         <thead><tr>
-          <th>Local</th><th>Dia</th><th>Qtde</th>
+          <th>Dia</th><th>Local</th><th>Inventário</th><th>Qtde</th>
           <th>Sobrou</th><th>Faltou</th>
           <th>Semelhança</th><th>Desequilíbrio R$</th>
         </tr></thead>
         <tbody>${pares.map(p=>`<tr>
-          <td class="mono">${irEsc(p.local)}</td>
           <td class="mono">${irFmtDate(p.dia)}</td>
+          <td class="mono">${irEsc(p.local)}</td>
+          <td class="mono">${irEsc(p.inventario||'—')}</td>
           <td class="mono">${irFmtInt(p.qtd)}</td>
           <td><span class="mono">${irEsc(p.itemSobra)}</span><span class="sim-desc" title="${irEsc(p.nomeSobra||'')}">${irEsc(irResumirDescricao(p.nomeSobra))}</span></td>
           <td><span class="mono">${irEsc(p.itemFalta)}</span><span class="sim-desc" title="${irEsc(p.nomeFalta||'')}">${irEsc(irResumirDescricao(p.nomeFalta))}</span></td>
-          <td class="mono">${irFmtPct(p.semelhanca)}${p.vizinhos?' <span class="ofe-tag comp">código vizinho</span>':''}</td>
+          <td class="mono">${irFmtPct(p.semelhanca)}<span class="sim-desc">${irFmtInt(p.prefixo)} palavras iguais no início${p.vizinhos?' · código vizinho':''}</span></td>
           <td class="mono ${Math.abs(p.desequilibrio)<0.01?'':(p.desequilibrio<0?'neg':'pos')}">${Math.abs(p.desequilibrio)<0.01?'—':(p.desequilibrio>0?'+':'')+irFmtMoney(p.desequilibrio)}</td>
         </tr>`).join('')}</tbody>
       </table>
-    </div></div>
+    </div></div>` : `<p class="field-hint">Nenhum par com assinatura de troca${(f.de||f.ate)?' no período filtrado':''}.</p>`}
   </div>`;
 }
 function irDivExportarSimilares(){
   const pares = irDivParesSimilares();
   if(!pares.length){ irShowToast('Nada para exportar.', true); return; }
-  const cab = ['Local','Dia','Qtde Trocada','Item que Sobrou','Descrição (sobrou)',
-    'Item que Faltou','Descrição (faltou)','Valor Sobra','Valor Falta','Desequilíbrio','Semelhança','Código Vizinho'];
-  const linhas = pares.map(p=>[p.local, p.dia, p.qtd, p.itemSobra, p.nomeSobra||'',
+  const cab = ['Dia','Local','Inventário','Qtde Trocada','Item que Sobrou','Descrição (sobrou)',
+    'Item que Faltou','Descrição (faltou)','Valor Sobra','Valor Falta','Desequilíbrio','Semelhança','Palavras Iguais no Início','Código Vizinho'];
+  const linhas = pares.map(p=>[p.dia, p.local, p.inventario, p.qtd, p.itemSobra, p.nomeSobra||'',
     p.itemFalta, p.nomeFalta||'', p.valorSobra, p.valorFalta, p.desequilibrio,
-    Math.round(p.semelhanca*100)/100, p.vizinhos?'SIM':'']);
-  irDivBaixarPlanilha(cab, linhas, 'similares_trocados_'+String(irDivEscopoLabel()).replace(/\W+/g,'_'));
+    Math.round(p.semelhanca*100)/100, p.prefixo, p.vizinhos?'SIM':'']);
+  const f = IR.divSimFiltro || {};
+  const sufixo = (f.de||f.ate) ? (f.de||'inicio')+'_a_'+(f.ate||'hoje') : 'todos';
+  irDivBaixarPlanilha(cab, linhas, 'similares_trocados_'+sufixo);
 }
 /* Ponte do NET: começa no bruto e vai tirando o que não é perda nem ganho de
    verdade, até sobrar o número que deveria virar prejuízo. */

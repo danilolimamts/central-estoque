@@ -528,7 +528,10 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       const componenteSemValor = (valoracaoPorComponente.get(item)||{}).inInterface==='N';
       divergencias.push({
         id: cicloId+'|'+chave+'|'+item,
-        cicloId, local, item, itemNome,
+        // O Id Inventário fica em campo próprio: dois inventários do MESMO local são
+        // eventos diferentes, e sem isso o mesmo item aparece sobrando num e faltando
+        // no outro, virando um "par trocado" que não existe.
+        cicloId, local, inventario: String(chave).split('|')[1] || '', item, itemNome,
         qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
         precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
         statusLocal: st.status, rodadasLocal: st.rodadas, diaFechamento,
