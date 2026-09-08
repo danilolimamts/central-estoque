@@ -354,7 +354,7 @@ if (imagemColada < 1) {
 /* Controles de quadro: girar, mudar a cor, esticar pelo canto e mudar o
    estilo da seta. */
 await pagina.locator('[data-quadro="fluxo"] >> text=Digita o código').first().click();
-await pagina.waitForTimeout(300);
+await pagina.waitForTimeout(400);
 const barra = (await pagina.textContent('body')) ?? '';
 for (const controle of ['Seta para outro bloco', 'Excluir bloco']) {
   if (!barra.includes(controle)) {
@@ -373,6 +373,19 @@ if (!(await pagina.getByTitle('Arraste para mudar o tamanho').count())) {
   console.error('FALHOU: o bloco selecionado deveria ter alça de tamanho.');
   process.exitCode = 1;
 }
+/* Tamanho da tela do quadro: afastar tem de encolher o desenho de
+   verdade, nao so trocar o rotulo do botao. */
+const larguraAntes = (await pagina.locator('[data-quadro="fluxo"]').first().boundingBox())?.width ?? 0;
+await pagina.locator('[title="Tamanho da tela do quadro"] button', { hasText: '−' }).first().click();
+await pagina.waitForTimeout(300);
+const larguraDepois = (await pagina.locator('[data-quadro="fluxo"]').first().boundingBox())?.width ?? 0;
+if (!(larguraDepois < larguraAntes)) {
+  console.error(`FALHOU: o botão de afastar não mudou o tamanho do quadro (${larguraAntes} → ${larguraDepois}).`);
+  process.exitCode = 1;
+}
+await pagina.getByTitle('Voltar a 100%').click();
+await pagina.waitForTimeout(300);
+
 if (!(await pagina.getByTitle('Ponta dos dois lados').count())) {
   console.error('FALHOU: a seta deveria oferecer ponta dos dois lados.');
   process.exitCode = 1;
@@ -567,13 +580,25 @@ await pagina.waitForTimeout(300);
 await pagina.getByRole('button', { name: 'Quadro', exact: true }).first().click();
 await pagina.waitForTimeout(400);
 const tituloDaColuna = async (i) =>
-  (await pagina.locator('.overflow-x-auto .w-64 .uppercase').nth(i).innerText()).trim();
+  (await pagina.locator('[data-quadro="colunas"] .w-64 .uppercase').nth(i).innerText()).trim();
 const primeira = await tituloDaColuna(0);
 const segunda = await tituloDaColuna(1);
 await pagina.getByTitle(`Mover ${segunda} para a esquerda`).click();
 await pagina.waitForTimeout(700);
 if (await tituloDaColuna(0) !== segunda || await tituloDaColuna(1) !== primeira) {
   console.error(`FALHOU: a coluna não trocou de lugar — ficou "${await tituloDaColuna(0)}, ${await tituloDaColuna(1)}".`);
+  process.exitCode = 1;
+}
+/* A barra de rolagem lateral do quadro nao pode viver no fim da pagina:
+   a caixa das colunas tem altura propria e rola por dentro. */
+const caixaDasColunas = pagina.locator('[data-quadro="colunas"]').first();
+const rolagem = await caixaDasColunas.evaluate((el) => ({
+  altura: el.clientHeight,
+  conteudo: el.scrollHeight,
+  limite: getComputedStyle(el).maxHeight,
+}));
+if (!rolagem.limite.endsWith('px')) {
+  console.error(`FALHOU: o quadro deveria ter altura limitada — max-height "${rolagem.limite}".`);
   process.exitCode = 1;
 }
 await pagina.screenshot({ path: 'verificacao-quadro.png', fullPage: true });

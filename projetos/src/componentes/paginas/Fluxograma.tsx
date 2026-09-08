@@ -26,12 +26,38 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   const [fluxo, setFluxo] = useState<Fluxo>(() => lerFluxo(conteudo) ?? fluxoVazio());
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [ligandoDe, setLigandoDe] = useState<string | null>(null);
-  const arrastando = useRef<{ id: string; dx: number; dy: number } | null>(null);
+  /* O arrasto so comeca depois de alguns pixels de movimento. Sem essa
+     folga, um clique simples ja empurrava o bloco para o encaixe de 10
+     em 10 px: o ponteiro terminava fora dele, o navegador mandava o
+     clique para o fundo do quadro e a selecao se perdia no ato. */
+  const FOLGA = 4;
+  const arrastando = useRef<{ id: string; dx: number; dy: number; x: number; y: number; moveu: boolean } | null>(null);
   /* Puxar o canto muda o tamanho; e o gesto que se espera de um quadro
      assim, e evita ficar clicando em + e − para chegar ao tamanho certo. */
   const esticando = useRef<{ id: string; x: number; y: number; largura: number; altura: number } | null>(null);
+  /* Um clique que comeca no bloco e termina um pixel fora dele chega ao
+     fundo do quadro como clique do fundo. Sem saber onde o gesto
+     comecou, isso limpava a selecao que o proprio clique acabara de
+     fazer. */
+  const comecouNoFundo = useRef(false);
   const tela = useRef<HTMLDivElement>(null);
   const [avisoDaImagem, setAvisoDaImagem] = useState<string | null>(null);
+  /* Aproximacao do quadro. O desenho cresce para os lados conforme se
+     adicionam blocos, e a altura do bloco na pagina e fixa: sem afastar,
+     um fluxo grande so se ve pela barra de rolagem. Fica no navegador
+     porque e preferencia de quem olha, nao parte do desenho. */
+  const [zoom, setZoom] = useState(() => {
+    const guardado = Number(localStorage.getItem('projetos.zoom-fluxo'));
+    return guardado >= 0.4 && guardado <= 2 ? guardado : 1;
+  });
+
+  function aproximar(passo: number) {
+    setZoom((atual) => {
+      const novo = Math.min(2, Math.max(0.4, Math.round((atual + passo) * 10) / 10));
+      try { localStorage.setItem('projetos.zoom-fluxo', String(novo)); } catch { /* sem espaço: só não lembra */ }
+      return novo;
+    });
+  }
 
   const legado = lerFluxo(conteudo) === null && conteudo.trim() !== '';
 
@@ -122,8 +148,11 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
     if (!area) return;
     arrastando.current = {
       id: no.id,
-      dx: e.clientX - area.left - no.x,
-      dy: e.clientY - area.top - no.y,
+      dx: (e.clientX - area.left) / zoom - no.x,
+      dy: (e.clientY - area.top) / zoom - no.y,
+      x: e.clientX,
+      y: e.clientY,
+      moveu: false,
     };
     setSelecionado(no.id);
   }
@@ -131,8 +160,8 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   function moverArrasto(e: React.MouseEvent) {
     const puxando = esticando.current;
     if (puxando) {
-      const largura = Math.round(Math.min(900, Math.max(60, puxando.largura + (e.clientX - puxando.x))));
-      const altura = Math.round(Math.min(700, Math.max(30, puxando.altura + (e.clientY - puxando.y))));
+      const largura = Math.round(Math.min(900, Math.max(60, puxando.largura + (e.clientX - puxando.x) / zoom)));
+      const altura = Math.round(Math.min(700, Math.max(30, puxando.altura + (e.clientY - puxando.y) / zoom)));
       setFluxo((f) => ({
         ...f,
         nos: f.nos.map((n) => (n.id === puxando.id ? { ...n, largura, altura } : n)),
@@ -143,8 +172,12 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
     const atual = arrastando.current;
     const area = tela.current?.getBoundingClientRect();
     if (!atual || !area) return;
-    const x = Math.max(0, e.clientX - area.left - atual.dx);
-    const y = Math.max(0, e.clientY - area.top - atual.dy);
+    if (!atual.moveu) {
+      if (Math.abs(e.clientX - atual.x) < FOLGA && Math.abs(e.clientY - atual.y) < FOLGA) return;
+      atual.moveu = true;
+    }
+    const x = Math.max(0, (e.clientX - area.left) / zoom - atual.dx);
+    const y = Math.max(0, (e.clientY - area.top) / zoom - atual.dy);
     /* Encaixe de 10 em 10 px: alinha os blocos sem precisar de mira. */
     setFluxo((f) => ({
       ...f,
@@ -155,10 +188,12 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
   }
 
   function terminarArrasto() {
-    if (!arrastando.current && !esticando.current) return;
+    const mexeu = arrastando.current?.moveu || !!esticando.current;
     arrastando.current = null;
     esticando.current = null;
-    aoMudar(escreverFluxo(fluxo));
+    /* Clique sem arrasto nao mudou desenho nenhum: gravar aqui marcaria
+       a pagina como alterada so por alguem ter selecionado um bloco. */
+    if (mexeu) aoMudar(escreverFluxo(fluxo));
   }
 
   const { largura, altura } = limitesDoFluxo(fluxo);
@@ -192,6 +227,25 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
               onClick={() => adicionar(forma)}
             >+ {rotuloDaForma[forma]}</button>
           ))}
+
+          <span className="mx-1 h-4 w-px bg-linha" />
+
+          {/* Tamanho da tela do quadro: afastar cabe mais desenho na
+              mesma altura de bloco; aproximar volta ao detalhe. */}
+          <span className="flex items-center gap-1" title="Tamanho da tela do quadro">
+            <button
+              className="rounded-lg border border-linha px-2 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
+              onClick={() => aproximar(-0.1)} disabled={zoom <= 0.4}
+            >−</button>
+            <button
+              className="rounded-lg px-1 text-[11px] font-bold text-tinta-suave hover:text-roxo-escuro"
+              onClick={() => aproximar(1 - zoom)} title="Voltar a 100%"
+            >{Math.round(zoom * 100)}%</button>
+            <button
+              className="rounded-lg border border-linha px-2 py-1 text-[11px] font-bold text-tinta-suave hover:border-roxo hover:text-roxo-escuro"
+              onClick={() => aproximar(0.1)} disabled={zoom >= 2}
+            >+</button>
+          </span>
 
           <span className="mx-1 h-4 w-px bg-linha" />
 
@@ -291,6 +345,10 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
       )}
 
       <div className="overflow-auto p-2">
+        {/* A caixa de fora fica do tamanho ja aproximado, para a barra de
+            rolagem acompanhar o desenho; a de dentro guarda as
+            coordenadas de verdade do fluxo. */}
+        <div style={{ width: largura * zoom, height: altura * zoom }}>
         <div
           ref={tela}
           data-quadro="fluxo"
@@ -299,11 +357,19 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
           onMouseMove={moverArrasto}
           onMouseUp={terminarArrasto}
           onMouseLeave={terminarArrasto}
-          onClick={(e) => { if (e.target === e.currentTarget) { setSelecionado(null); setLigandoDe(null); } }}
+          onMouseDown={(e) => { comecouNoFundo.current = e.target === e.currentTarget; }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && comecouNoFundo.current) {
+              setSelecionado(null);
+              setLigandoDe(null);
+            }
+          }}
           className="relative rounded-lg outline-none"
           style={{
             width: largura,
             height: altura,
+            transform: zoom === 1 ? undefined : `scale(${zoom})`,
+            transformOrigin: 'top left',
             backgroundImage: 'radial-gradient(#E7E8F5 1px, transparent 1px)',
             backgroundSize: '20px 20px',
           }}
@@ -468,6 +534,7 @@ export default function Fluxograma({ conteudo, editando, aoMudar }: Props) {
                 : 'Fluxo ainda vazio.'}
             </p>
           )}
+        </div>
         </div>
       </div>
     </div>

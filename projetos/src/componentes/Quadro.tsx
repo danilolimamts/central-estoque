@@ -38,7 +38,12 @@ export default function Quadro<T extends CartaoDoQuadro>({
   const [alvo, setAlvo] = useState<string | null>(null);
 
   return (
-    <div className="overflow-x-auto">
+    /* A altura da caixa e limitada de proposito: com o quadro inteiro
+       rolando na pagina, a barra de rolagem lateral ficava la embaixo, e
+       ver a coluna da direita exigia descer, rolar e subir de novo.
+       Presa a 70% da altura da tela, a barra fica sempre a vista e as
+       colunas rolam por dentro. */
+    <div data-quadro="colunas" className="max-h-[70vh] overflow-auto">
       <div className="flex min-w-max gap-3 p-3">
         {colunas.map((coluna, indice) => {
           const daColuna = itens.filter((i) => i.coluna === coluna.id);
@@ -58,7 +63,10 @@ export default function Quadro<T extends CartaoDoQuadro>({
                 alvo === coluna.id ? 'border-roxo bg-roxo-suave' : 'border-linha bg-papel'
               }`}
             >
-              <div className="mb-2 flex items-center gap-2 px-1">
+              {/* O titulo da coluna acompanha a rolagem de cima para
+                  baixo: com muitos cartoes, saber em que coluna se esta
+                  e metade da leitura do quadro. */}
+              <div className="sticky top-0 z-10 mb-2 flex items-center gap-2 rounded-lg bg-papel/95 px-1 py-1 backdrop-blur">
                 <span className="h-2 w-2 rounded-full" style={{ backgroundColor: coluna.cor }} />
                 <span className="text-[11px] font-extrabold uppercase tracking-wider text-tinta-suave">
                   {coluna.rotulo}
