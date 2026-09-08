@@ -53,7 +53,15 @@ export const situacoes = (): Situacao[] => registro;
    a própria chave e conta como trabalho aberto. */
 export function situacaoDe(chave: string): Situacao {
   return registro.find((s) => s.chave === chave)
-    ?? { chave, rotulo: chave, cor: '#6A6F94', usar: false, significado: 'aberta', avanco: null };
+    ?? { chave, rotulo: rotuloAvulso(chave), cor: '#6A6F94', usar: false, significado: 'aberta', avanco: null };
+}
+
+/* Situação que só existe nos dados aparece pela chave. Trocar o
+   sublinhado por espaço e subir a primeira letra deixa "Documentação
+   criada" no lugar de "documentacao_criada" sem inventar nome nenhum. */
+function rotuloAvulso(chave: string): string {
+  const limpo = chave.replace(/_/g, ' ').trim();
+  return limpo ? limpo[0].toUpperCase() + limpo.slice(1) : chave;
 }
 
 export const rotuloDaSituacao = (chave: string) => situacaoDe(chave).rotulo;
@@ -133,10 +141,14 @@ export function moverSituacao(lista: Situacao[], chave: string, direcao: -1 | 1)
    tem atividade numa situação desligada precisa continuar vendo o
    cartão. */
 export function situacoesVisiveis(usadas: string[] = []): Situacao[] {
-  const extras = usadas
+  /* A lista que chega e a situacao de cada atividade, uma por atividade:
+     sem tirar as repetidas, oito atividades numa situacao fora da
+     configuracao viravam oito colunas iguais no quadro. */
+  const distintas = [...new Set(usadas)];
+  const extras = distintas
     .filter((c) => !registro.some((s) => s.chave === c))
     .map(situacaoDe);
-  return [...registro.filter((s) => s.usar || usadas.includes(s.chave)), ...extras];
+  return [...registro.filter((s) => s.usar || distintas.includes(s.chave)), ...extras];
 }
 
 /* Chave a partir do nome digitado: sem acento, sem espaço e única.
