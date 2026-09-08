@@ -287,6 +287,16 @@ O salvamento acontece **antes** da geração: se a geração falhar (imagem que 
 baixa, versão nova do app numa aba antiga), o que foi preenchido não se perde
 junto.
 
+**Rascunho no navegador.** O formulário é longo e só vira registro quando
+alguém salva ou gera. Até lá, fechar a aba, cair a internet ou dar erro na
+geração levava embora tudo o que foi digitado — foi o que aconteceu na primeira
+proposta escrita de verdade. Agora cada tecla é guardada no `localStorage`, e ao
+reabrir o formulário a tela **oferece** o que ficou pela metade, com data e
+autor: *Recuperar* ou *Descartar*. Nunca aplica sozinho — sobrescrever o que
+está na tela sem perguntar seria pior do que a perda que isso evita. Salvou no
+banco, o rascunho local é apagado. Fica no navegador de quem escreveu, não no
+banco: é trabalho ainda não entregue.
+
 O índice geral (documento `00`) ainda não é gerado.
 
 ### Acesso

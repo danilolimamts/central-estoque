@@ -141,6 +141,13 @@ export default function Documentos({
 
 /* ---------------- Formulário (o questionário) ---------------- */
 
+/* O que fica guardado no navegador entre uma sessão e outra. */
+interface RascunhoLocal {
+  quando: string;
+  autor: string;
+  dados: DadosDoDocumento;
+}
+
 interface PropsDoFormulario extends Props {
   paginas: ReturnType<typeof usePaginas>['paginas'];
   documento: Documento | null;
@@ -160,6 +167,25 @@ function Formulario({
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [colando, setColando] = useState(false);
   const [textoColado, setTextoColado] = useState('');
+
+  /* Rascunho no proprio navegador.
+
+     O formulario e longo e so vira registro no banco quando alguem
+     clica em salvar ou gerar. Ate ali, fechar a aba, cair a internet ou
+     dar erro na geracao levava embora tudo o que foi digitado — foi o
+     que aconteceu na primeira proposta escrita de verdade.
+
+     Guardar a cada tecla no localStorage e barato e resolve: ao voltar,
+     a tela oferece o que ficou pela metade em vez de abrir em branco.
+     Fica no navegador de quem escreveu, nao no banco: e trabalho ainda
+     nao entregue, e nao deveria aparecer para a equipe. */
+  const chaveDoRascunho = useMemo(
+    () => `projetos.rascunho-documento.${projeto.id}.${documento?.id ?? 'novo'}`,
+    [projeto.id, documento?.id],
+  );
+  const guardadoAoAbrir = useRef<RascunhoLocal | null>(null);
+  const [rascunhoLido, setRascunhoLido] = useState(false);
+  const [oferta, setOferta] = useState<RascunhoLocal | null>(null);
 
   const imagensDisponiveis = useMemo(
     () => anexos.filter((a) => a.tipo_mime?.startsWith('image/')),
@@ -197,6 +223,41 @@ function Formulario({
     })();
     return () => { vivo = false; };
   }, [documento, projeto, marcos]);
+
+  useEffect(() => {
+    try {
+      const cru = localStorage.getItem(chaveDoRascunho);
+      guardadoAoAbrir.current = cru ? (JSON.parse(cru) as RascunhoLocal) : null;
+    } catch {
+      guardadoAoAbrir.current = null;
+    }
+    setRascunhoLido(true);
+  }, [chaveDoRascunho]);
+
+  /* A oferta so aparece se o guardado for diferente do que esta na tela:
+     rascunho igual ao salvo nao e novidade nenhuma. */
+  useEffect(() => {
+    if (!rascunhoLido || !dados) return;
+    const guardado = guardadoAoAbrir.current;
+    guardadoAoAbrir.current = null;
+    if (guardado && JSON.stringify(guardado.dados) !== JSON.stringify(dados)) setOferta(guardado);
+  }, [rascunhoLido, dados]);
+
+  useEffect(() => {
+    if (!rascunhoLido || !dados) return;
+    try {
+      localStorage.setItem(chaveDoRascunho, JSON.stringify({
+        quando: new Date().toISOString(), autor, dados,
+      } satisfies RascunhoLocal));
+    } catch {
+      /* Sem espaco ou modo anonimo: o formulario continua funcionando,
+         so nao ha rede de seguranca. */
+    }
+  }, [dados, autor, chaveDoRascunho, rascunhoLido]);
+
+  function esquecerRascunho() {
+    try { localStorage.removeItem(chaveDoRascunho); } catch { /* nada a fazer */ }
+  }
 
   if (!dados) return <div className="cartao"><Carregando /></div>;
 
@@ -251,6 +312,8 @@ function Formulario({
       const salvo = await salvarDocumento(projeto.id, dados!, autor || null, id);
       setId(salvo);
       await aoSalvar();
+      /* Guardado no banco, o rascunho local perdeu a serventia. */
+      esquecerRascunho();
       setAviso('Documento salvo.');
       return salvo;
     } catch (falha) {
@@ -342,6 +405,32 @@ function Formulario({
       </div>
 
       <div className="space-y-5 p-4">
+        {/* O que ficou pela metade na última vez: oferecido, nunca
+            aplicado sozinho — sobrescrever o que está na tela sem
+            perguntar seria pior do que a perda que isto evita. */}
+        {oferta && (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-ambar bg-ambar/10 px-3 py-2">
+            <p className="flex-1 text-sm">
+              <strong>Há um rascunho não salvo</strong> deste documento, de{' '}
+              {new Date(oferta.quando).toLocaleString('pt-BR')}
+              {oferta.autor && ` (${oferta.autor})`}. Ele ficou guardado neste navegador.
+            </p>
+            <button
+              className="botao-primario py-1 text-xs"
+              onClick={() => {
+                setDados(oferta.dados);
+                if (oferta.autor) setAutor(oferta.autor);
+                setOferta(null);
+                setAviso('Rascunho recuperado. Confira antes de salvar.');
+              }}
+            >Recuperar</button>
+            <button
+              className="text-xs font-bold text-tinta-suave hover:text-vermelho"
+              onClick={() => { esquecerRascunho(); setOferta(null); }}
+            >Descartar</button>
+          </div>
+        )}
+
         <div className="rounded-xl border border-linha bg-papel p-3">
           <p className="text-sm font-bold text-navy">Montar o documento a partir do objetivo</p>
           <p className="mt-1 text-xs text-tinta-suave">
