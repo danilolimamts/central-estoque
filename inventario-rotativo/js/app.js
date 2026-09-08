@@ -247,6 +247,12 @@ async function irFiltrarCiclo(cicloId){
 }
 function irRenderView(){
   const root = document.getElementById('viewRoot');
+  /* A aba de Divergencias usa a identidade do modulo Projetos (roxo e
+     navy). A troca e so de variaveis de cor, num galho so da arvore:
+     as outras abas continuam com o azul e o laranja da marca. Fica antes
+     de qualquer saida da funcao para valer tambem no aviso de "nenhum
+     ciclo importado". */
+  if(root) root.classList.toggle('tema-projetos', IR.currentTab==='divergencias');
   const needsCiclo = IR.currentTab!=='importacao' && IR.currentTab!=='configuracoes' && IR.currentTab!=='historico';
   if(needsCiclo && !IR.cicloAtivo){
     root.innerHTML = irEmptyState('Nenhum ciclo importado ainda', 'Importe as planilhas na aba Importação para abrir o primeiro ciclo.', "irSwitchTab('importacao')", 'Ir para Importação');
