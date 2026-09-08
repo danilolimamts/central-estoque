@@ -7,6 +7,7 @@ import {
 } from '@/estado/documentos';
 import { usePaginas } from '@/estado/paginas';
 import { montarBriefing, lerConteudoColado } from '@/dominio/briefing';
+import { lerTextoCorrido } from '@/dominio/texto';
 import { faltamCamposParaRascunho, montarRascunho } from '@/dominio/rascunho';
 import {
   dataPorExtenso, documentoVazio, ESFORCOS, nomeDoArquivo,
@@ -146,6 +147,9 @@ interface RascunhoLocal {
   quando: string;
   autor: string;
   dados: DadosDoDocumento;
+  /* O texto do pedido tambem se perde ao fechar a aba, e reescrever
+     dele e o trabalho maior. */
+  texto?: string;
 }
 
 interface PropsDoFormulario extends Props {
@@ -167,6 +171,8 @@ function Formulario({
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [colando, setColando] = useState(false);
   const [textoColado, setTextoColado] = useState('');
+  const [textoDoPedido, setTextoDoPedido] = useState('');
+  const [mapaDoTexto, setMapaDoTexto] = useState<{ titulo: string; destino: string }[]>([]);
 
   /* Rascunho no proprio navegador.
 
@@ -253,13 +259,13 @@ function Formulario({
     if (!rascunhoLido || !dados) return;
     try {
       localStorage.setItem(chaveDoRascunho, JSON.stringify({
-        quando: new Date().toISOString(), autor, dados,
+        quando: new Date().toISOString(), autor, dados, texto: textoDoPedido,
       } satisfies RascunhoLocal));
     } catch {
       /* Sem espaco ou modo anonimo: o formulario continua funcionando,
          so nao ha rede de seguranca. */
     }
-  }, [dados, autor, chaveDoRascunho, rascunhoLido]);
+  }, [dados, autor, textoDoPedido, chaveDoRascunho, rascunhoLido]);
 
   function esquecerRascunho() {
     try { localStorage.removeItem(chaveDoRascunho); } catch { /* nada a fazer */ }
@@ -299,6 +305,30 @@ function Formulario({
     setAviso('Rascunho montado. Revise as seções antes de gerar o Word.');
   }
 
+  /* Preenche o documento a partir do texto corrido e completa o resto
+     com as mesmas regras do "Gerar rascunho": o que o texto nao disser
+     fica marcado como a definir, nunca inventado. */
+  function aplicarTexto(): DadosDoDocumento | null {
+    try {
+      const { dados: lido, mapa } = lerTextoCorrido(textoDoPedido, dados!);
+      const completo = montarRascunho(lido, { projeto, marcos, tarefas });
+      setDados(completo);
+      setMapaDoTexto(mapa);
+      setErro(null);
+      setAviso('Documento preenchido a partir do texto. Confira as seções abaixo antes de gerar.');
+      return completo;
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+      setAviso(null);
+      return null;
+    }
+  }
+
+  async function aplicarTextoEGerar() {
+    const completo = aplicarTexto();
+    if (completo) await gerar(completo);
+  }
+
   function aplicarConteudo() {
     try {
       setDados(lerConteudoColado(textoColado, dados!));
@@ -311,11 +341,11 @@ function Formulario({
     }
   }
 
-  async function salvar(): Promise<string | undefined> {
+  async function salvar(base?: DadosDoDocumento): Promise<string | undefined> {
     setOcupado('salvando');
     setErro(null);
     try {
-      const salvo = await salvarDocumento(projeto.id, dados!, autor || null, id);
+      const salvo = await salvarDocumento(projeto.id, base ?? dados!, autor || null, id);
       setId(salvo);
       await aoSalvar();
       /* Guardado no banco, o rascunho local perdeu a serventia. */
@@ -330,15 +360,19 @@ function Formulario({
     }
   }
 
-  async function gerar() {
-    if (!dados!.titulo.trim()) { setErro('O documento precisa de um título.'); return; }
+  async function gerar(base?: DadosDoDocumento) {
+    /* Os dados podem chegar por parametro porque "Preencher e gerar"
+       monta o documento e gera na mesma acao: o estado do React so
+       estaria atualizado no proximo desenho da tela. */
+    const atual = base ?? dados!;
+    if (!atual.titulo.trim()) { setErro('O documento precisa de um título.'); return; }
     setOcupado('gerando');
     setErro(null);
     try {
       /* Salvar antes de gerar: se a geracao falhar (imagem que nao baixa,
          versao nova do app na aba antiga), o que foi preenchido nao se
          perde junto. */
-      const documentoId = await salvar();
+      const documentoId = await salvar(atual);
       if (!documentoId) return;
       setOcupado('gerando');
 
@@ -352,16 +386,16 @@ function Formulario({
          impede a geracao, so tira a imagem do documento. */
       recursos.logo = await baixarImagem('./brand/Logo_LDM_hor_2.png').catch(() => undefined);
 
-      for (const img of dados!.imagens) {
+      for (const img of atual.imagens) {
         const baixada = await baixarImagem(img.url).catch(() => undefined);
         if (baixada) recursos.imagens[img.url] = baixada;
       }
-      for (const fluxo of dados!.fluxogramas) {
+      for (const fluxo of atual.fluxogramas) {
         const desenho = await fluxogramaEmPng(fluxo.codigo).catch(() => undefined);
         if (desenho) recursos.imagens[`fluxo:${fluxo.titulo}`] = desenho;
       }
 
-      const { blob, nome } = await gerarDocumentoWord(dados!, recursos);
+      const { blob, nome } = await gerarDocumentoWord(atual, recursos);
       baixar(blob, nome);
 
       /* O arquivo tambem fica guardado na atividade, sempre no mesmo
@@ -425,6 +459,7 @@ function Formulario({
               className="botao-primario py-1 text-xs"
               onClick={() => {
                 setDados(oferta.dados);
+                if (oferta.texto) setTextoDoPedido(oferta.texto);
                 if (oferta.autor) setAutor(oferta.autor);
                 setOferta(null);
                 setAviso('Rascunho recuperado. Confira antes de salvar.');
@@ -436,6 +471,40 @@ function Formulario({
             >Descartar</button>
           </div>
         )}
+
+        <div className="rounded-xl border border-linha bg-papel p-3">
+          <p className="text-sm font-bold text-navy">Escrever de um texto só</p>
+          <p className="mt-1 text-xs text-tinta-suave">
+            Cole aqui o pedido do jeito que você escreveria no chamado, com os títulos de sempre
+            (<em>Objetivo, Comportamento atual, Comportamento esperado, Justificativa</em>…). Cada
+            bloco entra na seção correspondente do documento, as listas viram itens e o que sobrar
+            fica nas regras de negócio, com o título original na frente. Não precisa de JSON.
+          </p>
+          <textarea
+            rows={8} className="campo mt-2 text-sm" value={textoDoPedido}
+            onChange={(e) => setTextoDoPedido(e.target.value)}
+            placeholder={'Solicitamos a inclusão de quatro novas colunas na consulta QRY0730.\n\nObjetivo da melhoria:\n...\n\nComportamento atual:\n...\n\nComportamento esperado:\n...\n\nJustificativa:\n...'}
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button className="botao-neutro py-1 text-xs" onClick={() => aplicarTexto()} disabled={!textoDoPedido.trim() || !!ocupado}>
+              Preencher com este texto
+            </button>
+            <button className="botao-primario py-1 text-xs" onClick={() => void aplicarTextoEGerar()} disabled={!textoDoPedido.trim() || !!ocupado}>
+              {ocupado === 'gerando' ? 'Gerando…' : 'Preencher e gerar Word'}
+            </button>
+          </div>
+          {/* Onde cada trecho foi parar: sem isto, quem cola o texto so
+              descobre o destino de cada bloco abrindo o Word. */}
+          {mapaDoTexto.length > 0 && (
+            <ul className="mt-2 flex flex-wrap gap-1">
+              {mapaDoTexto.map((m, i) => (
+                <li key={`${m.titulo}-${i}`} className="rounded-full bg-white px-2 py-0.5 text-[11px] text-tinta-suave">
+                  {m.titulo || 'Abertura'} <span aria-hidden>»</span> <strong className="text-navy">{m.destino}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         <div className="rounded-xl border border-linha bg-papel p-3">
           <p className="text-sm font-bold text-navy">Montar o documento a partir do objetivo</p>

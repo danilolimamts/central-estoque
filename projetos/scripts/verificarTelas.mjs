@@ -272,6 +272,49 @@ if (recuperado !== 'Tela no bseller') {
   process.exitCode = 1;
 }
 await pagina.screenshot({ path: 'verificacao-rascunho.png', fullPage: true });
+
+/* Texto corrido: colar o pedido inteiro e clicar em preencher tem de
+   distribuir os blocos pelas secoes, sem JSON no meio do caminho. */
+const pedido = [
+  'Solicitamos a inclusão de quatro novas colunas na QRY0730.',
+  '',
+  'Novas colunas solicitadas:',
+  '',
+  'LOTE_RECEBIMENTO',
+  'MECA_USUARIO',
+  '',
+  'Objetivo da melhoria:',
+  '',
+  'Disponibilizar informações complementares dos itens recebidos.',
+  '',
+  'Comportamento atual:',
+  '',
+  'Atualmente a consulta não traz lote, validade nem usuário do recebimento.',
+  '',
+  'Comportamento esperado:',
+  '',
+  'Manter as colunas atuais e incluir as quatro informações acima.',
+].join('\n');
+await pagina.getByPlaceholder(/Solicitamos a inclusão/).fill(pedido);
+await pagina.getByRole('button', { name: 'Preencher com este texto' }).click();
+await pagina.waitForTimeout(400);
+const dorLida = await pagina.getByRole('textbox', { name: /Dor atual/i }).first().inputValue();
+if (!dorLida.startsWith('Atualmente a consulta')) {
+  console.error(`FALHOU: o texto colado não virou a dor atual — "${dorLida}".`);
+  process.exitCode = 1;
+}
+const regrasLidas = await pagina.getByRole('textbox', { name: /Regras de negócio/i }).first().inputValue();
+if (!regrasLidas.includes('Novas colunas solicitadas: LOTE_RECEBIMENTO')) {
+  console.error(`FALHOU: o bloco sem título conhecido se perdeu — "${regrasLidas}".`);
+  process.exitCode = 1;
+}
+const corpoDoTexto = (await pagina.textContent('body')) ?? '';
+if (!corpoDoTexto.includes('Dor atual (AS IS)')) {
+  console.error('FALHOU: a tela não mostrou para onde foi cada bloco do texto.');
+  process.exitCode = 1;
+}
+await pagina.screenshot({ path: 'verificacao-texto.png', fullPage: true });
+
 await pagina.getByRole('button', { name: 'Fechar', exact: true }).first().click();
 await pagina.waitForTimeout(400);
 
