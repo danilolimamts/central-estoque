@@ -225,6 +225,22 @@ await pagina.route('**/storage/v1/object/public/**', async (rota) => {
 await pagina.goto(url, { waitUntil: 'networkidle' });
 await pagina.waitForTimeout(1200);
 
+/* Primeira visita: o guia abre sozinho e tem de sair inteiro num clique
+   — ele fica na frente de tudo, entao um guia que nao fecha travaria o
+   modulo para quem chega. */
+const comGuia = (await pagina.textContent('body')) ?? '';
+if (!comGuia.includes('Bem-vindo ao módulo Projetos')) {
+  console.error('FALHOU: o guia não abriu na primeira visita.');
+  process.exitCode = 1;
+}
+await pagina.screenshot({ path: 'verificacao-guia.png', fullPage: true });
+await pagina.getByRole('button', { name: 'Pular tudo', exact: true }).click();
+await pagina.waitForTimeout(300);
+if (((await pagina.textContent('body')) ?? '').includes('Pular tudo')) {
+  console.error('FALHOU: "Pular tudo" não fechou o guia.');
+  process.exitCode = 1;
+}
+
 const telas = [
   ['painel', 'Painel'],
   ['projetos', 'Projetos'],
@@ -243,6 +259,30 @@ await pagina.getByRole('button', { name: 'Projetos', exact: true }).click();
 await pagina.getByText('Reendereçamento do mezanino').first().click();
 await pagina.waitForTimeout(700);
 await pagina.screenshot({ path: 'verificacao-detalhe.png', fullPage: true });
+
+/* Print colado no fluxograma: sem botao e sem anexo, so Ctrl+V dentro
+   do quadro. O teste cola uma imagem de verdade e confere que ela virou
+   bloco do desenho. */
+const secaoPaginas = pagina.locator('section').filter({ hasText: '+ Nova página' }).last();
+await secaoPaginas.getByRole('button', { name: 'Editar', exact: true }).click();
+await pagina.waitForTimeout(400);
+const quadroDoFluxo = pagina.locator('[data-quadro="fluxo"]').first();
+await quadroDoFluxo.evaluate((alvo, base64) => {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const arquivo = new File([bytes], 'print.png', { type: 'image/png' });
+  const dados = new DataTransfer();
+  dados.items.add(arquivo);
+  alvo.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dados, bubbles: true }));
+}, PIXEL.toString('base64'));
+await pagina.waitForTimeout(900);
+const imagemColada = await pagina.locator('img[alt="Print colado no fluxo"]').count();
+if (imagemColada < 1) {
+  console.error('FALHOU: a imagem colada não virou bloco do fluxograma.');
+  process.exitCode = 1;
+}
+await pagina.screenshot({ path: 'verificacao-fluxo-imagem.png', fullPage: true });
+await secaoPaginas.getByRole('button', { name: 'Cancelar', exact: true }).click();
+await pagina.waitForTimeout(300);
 
 /* Campo de lista do documento: o texto passa por lista e volta, e a
    volta apara espacos. Sem cuidado, o espaco some enquanto se digita —
@@ -336,11 +376,24 @@ await pagina.getByText('Melhoria Sistêmica Bseller').first().click();
 await pagina.waitForTimeout(800);
 await pagina.screenshot({ path: 'verificacao-melhorias.png', fullPage: true });
 
+/* Atualizar a pagina tem de devolver a mesma tela: o endereco guarda o
+   projeto aberto, e o F5 nao pode jogar de volta no painel. */
+if (!/#\/projeto\//.test(pagina.url())) {
+  console.error(`FALHOU: o projeto aberto não foi para o endereço — "${pagina.url()}".`);
+  process.exitCode = 1;
+}
+await pagina.reload({ waitUntil: 'networkidle' });
+await pagina.waitForTimeout(1200);
+if (!((await pagina.textContent('body')) ?? '').includes('Melhoria Sistêmica Bseller')) {
+  console.error('FALHOU: o F5 não manteve o projeto aberto.');
+  process.exitCode = 1;
+}
+
 /* A esteira em numeros substitui os selos do cabecalho: e por ela que
    se responde quantas melhorias ja foram documentadas e quantas ja
    viraram chamado. */
 const corpoDaEsteira = (await pagina.textContent('body')) ?? '';
-for (const rotulo of ['Documentadas', 'Com chamado aberto', 'Prontas para abrir chamado']) {
+for (const rotulo of ['Documentadas', 'Com chamado aberto', 'Já pedidas ao BSeller', 'Prontas para abrir chamado']) {
   if (!corpoDaEsteira.includes(rotulo)) {
     console.error(`FALHOU: a faixa da esteira não trouxe "${rotulo}".`);
     process.exitCode = 1;

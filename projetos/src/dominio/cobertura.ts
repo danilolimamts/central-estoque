@@ -1,4 +1,5 @@
 import { temDocumentacao } from './filtros';
+import { passouDoChamado } from './situacoes';
 import type { MapaDeConteudo } from '@/estado/conteudo';
 import type { Projeto } from './tipos';
 
@@ -16,8 +17,13 @@ export const temChamado = (p: Projeto): boolean =>
 export interface Cobertura {
   total: number;
   documentadas: number;
+  /* Numero do chamado (ou link) preenchido na atividade. */
   comChamado: number;
-  /* Documentada e ainda sem chamado: e a fila de trabalho, o que da
+  /* Ja saiu da nossa mao: tem chamado anotado ou esta numa situacao a
+     partir da abertura do chamado. Quem ja esta em desenvolvimento
+     conta aqui mesmo sem o numero digitado. */
+  jaPedidas: number;
+  /* Documentada e ainda nao pedida: e a fila de trabalho, o que da
      para pedir hoje. */
   aAbrir: number;
   semDocumento: number;
@@ -26,20 +32,24 @@ export interface Cobertura {
 export function cobertura(atividades: Projeto[], conteudo: MapaDeConteudo): Cobertura {
   let documentadas = 0;
   let comChamado = 0;
+  let jaPedidas = 0;
   let aAbrir = 0;
 
   for (const p of atividades) {
     const documentada = temDocumentacao(conteudo[p.id]);
     const chamado = temChamado(p);
+    const pedida = chamado || passouDoChamado(p.status);
     if (documentada) documentadas += 1;
     if (chamado) comChamado += 1;
-    if (documentada && !chamado) aAbrir += 1;
+    if (pedida) jaPedidas += 1;
+    if (documentada && !pedida) aAbrir += 1;
   }
 
   return {
     total: atividades.length,
     documentadas,
     comChamado,
+    jaPedidas,
     aAbrir,
     semDocumento: atividades.length - documentadas,
   };

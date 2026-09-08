@@ -1,20 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Acesso from '@/paginas/Acesso';
 import Painel from '@/paginas/Painel';
 import ListaProjetos from '@/paginas/ListaProjetos';
 import DetalheProjeto from '@/paginas/DetalheProjeto';
 import Cronograma from '@/paginas/Cronograma';
 import Pessoas from '@/paginas/Pessoas';
+import Guia, { guiaJaVisto } from '@/componentes/Guia';
 import { Aviso, Carregando } from '@/componentes/ui';
 import { useCarteira } from '@/estado/dados';
 import { ContextoPermissoes, permissoesDe, sair, useSessao } from '@/estado/sessao';
 import { ContextoSituacoes, useConfiguracao } from '@/estado/configuracao';
 import { rotuloPapel } from '@/dominio/tipos';
+import { escreverRota, lerRota } from '@/lib/rota';
+import type { Aba } from '@/lib/rota';
 import type { Projeto } from '@/dominio/tipos';
 
 declare const __VERSAO__: string;
-
-type Aba = 'painel' | 'projetos' | 'cronograma' | 'pessoas';
 
 const ABAS: { id: Aba; rotulo: string }[] = [
   { id: 'painel', rotulo: 'Painel' },
@@ -24,9 +25,29 @@ const ABAS: { id: Aba; rotulo: string }[] = [
 ];
 
 export default function App() {
-  const [aba, setAba] = useState<Aba>('painel');
-  const [aberto, setAberto] = useState<Projeto | null>(null);
+  /* A posicao vive no endereco: atualizar a pagina tem de trazer de
+     volta a mesma tela, e nao o painel. */
+  const [rota, setRota] = useState(() => lerRota(window.location.hash));
+  const [guiaAberto, setGuiaAberto] = useState(() => !guiaJaVisto());
   const sessao = useSessao();
+
+  /* Voltar e avancar do navegador tambem mudam a tela. */
+  useEffect(() => {
+    const ouvir = () => setRota(lerRota(window.location.hash));
+    window.addEventListener('hashchange', ouvir);
+    return () => window.removeEventListener('hashchange', ouvir);
+  }, []);
+
+  const ir = useCallback((nova: { aba: Aba; projetoId: string | null }) => {
+    setRota(nova);
+    const endereco = escreverRota(nova);
+    if (window.location.hash !== endereco) window.location.hash = endereco;
+  }, []);
+
+  const abrirProjeto = useCallback(
+    (p: Projeto) => ir({ aba: 'projetos', projetoId: p.id }),
+    [ir],
+  );
   /* Nada de dado antes de a sessao estar resolvida: consulta enviada sem
      token chega ao banco como visitante e volta recusada. */
   const pronto = !sessao.carregando && !!sessao.usuario;
@@ -35,8 +56,13 @@ export default function App() {
   const configuracao = useConfiguracao(pronto);
 
   /* O projeto aberto vem sempre da lista recarregada: guardar o objeto
-     no estado deixaria a tela com dados velhos apos uma edicao. */
-  const selecionado = aberto ? carteira.projetos.find((p) => p.id === aberto.id) ?? aberto : null;
+     no estado deixaria a tela com dados velhos apos uma edicao. Quando o
+     endereco aponta para um projeto que nao existe mais (link velho,
+     item excluido), a tela cai na lista em vez de ficar em branco. */
+  const selecionado = rota.projetoId
+    ? carteira.projetos.find((p) => p.id === rota.projetoId) ?? null
+    : null;
+  const aba = rota.aba;
 
   if (sessao.carregando) return <Carregando />;
   if (!sessao.usuario) return <Acesso />;
@@ -84,6 +110,9 @@ export default function App() {
             <p className="font-bold text-white/90">{sessao.pessoa.nome}</p>
             <p className="text-white/50">{rotuloPapel[sessao.pessoa.papel]}</p>
             <div className="mt-1 flex gap-3 font-bold text-white/70">
+              {/* O guia fica no alto, do lado direito: e onde se procura
+                  ajuda, e nao atrapalha quem ja sabe usar. */}
+              <button className="hover:text-white" onClick={() => setGuiaAberto(true)}>Guia</button>
               <a href="../" className="hover:text-white">← Central</a>
               <button className="hover:text-white" onClick={() => void sair()}>Sair</button>
             </div>
@@ -93,7 +122,7 @@ export default function App() {
           {ABAS.map((a) => (
             <button
               key={a.id}
-              onClick={() => { setAba(a.id); setAberto(null); }}
+              onClick={() => ir({ aba: a.id, projetoId: null })}
               className={`rounded-t-lg px-4 py-2 text-sm font-bold transition ${
                 aba === a.id ? 'bg-papel text-navy' : 'text-white/70 hover:bg-white/10'
               }`}
@@ -110,24 +139,26 @@ export default function App() {
             projetos={carteira.projetos}
             pessoas={carteira.pessoas}
             recarregarConfig={configuracao.recarregar}
-            aoVoltar={() => setAberto(null)}
-            aoAbrir={setAberto}
+            aoVoltar={() => ir({ aba: 'projetos', projetoId: null })}
+            aoAbrir={abrirProjeto}
             recarregar={carteira.recarregar}
           />
         ) : (
           <>
-            {aba === 'painel' && <Painel projetos={carteira.projetos} pessoas={carteira.pessoas} aoAbrir={setAberto} />}
+            {aba === 'painel' && <Painel projetos={carteira.projetos} pessoas={carteira.pessoas} aoAbrir={abrirProjeto} />}
             {aba === 'projetos' && (
               <ListaProjetos
                 projetos={carteira.projetos} pessoas={carteira.pessoas}
-                aoAbrir={setAberto} recarregar={carteira.recarregar}
+                aoAbrir={abrirProjeto} recarregar={carteira.recarregar}
               />
             )}
-            {aba === 'cronograma' && <Cronograma projetos={carteira.projetos} aoAbrir={setAberto} />}
+            {aba === 'cronograma' && <Cronograma projetos={carteira.projetos} aoAbrir={abrirProjeto} />}
             {aba === 'pessoas' && <Pessoas pessoas={carteira.pessoas} recarregar={carteira.recarregar} />}
           </>
         )}
       </main>
+
+      <Guia aberto={guiaAberto} aoFechar={() => setGuiaAberto(false)} />
 
       <footer className="pb-8 text-center text-[11px] text-tinta-suave">
         Central de Estoque · Loja do Mecânico — versão {__VERSAO__}

@@ -29,6 +29,7 @@ function normalizar(valor: unknown): Situacao[] {
           ? (item.significado as Significado)
           : 'aberta',
         avanco: avancoLido(item),
+        chamado: item.chamado === true,
       }));
     return lista.length ? lista : SITUACOES_PADRAO;
   }

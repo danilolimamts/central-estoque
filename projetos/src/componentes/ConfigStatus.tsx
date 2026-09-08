@@ -66,7 +66,7 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
     const chave = chaveNova(rotulo, rascunho.map((s) => s.chave));
     setRascunho((atual) => [...atual, {
       chave, rotulo, cor: CORES[atual.length % CORES.length], usar: true, significado: 'aberta',
-      avanco: null,
+      avanco: null, chamado: false,
     }]);
     setNovo('');
   }
@@ -102,7 +102,9 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
         para, por exemplo, deixar <em>Concluído</em> por último. No próprio quadro as setas
         ‹ › do cabeçalho fazem o mesmo. O <strong>significado</strong> é o que muda conta: só a
         situação marcada como concluída entra no avanço, e a cancelada sai da conta. Vale para
-        todo mundo que abre o módulo.
+        todo mundo que abre o módulo. Marque <strong>Chamado</strong> na situação em que o
+        chamado passa a existir: dali para a frente a atividade conta como já pedida ao BSeller
+        na faixa de números, mesmo sem o número anotado.
       </p>
 
       <div className="space-y-2">
@@ -148,6 +150,20 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
                   })}
                 />
                 %
+              </label>
+
+              {/* O ponto da esteira em que o chamado passa a existir.
+                  A partir dele, a atividade conta como pedida ao BSeller
+                  mesmo sem o numero anotado. */}
+              <label
+                className="flex shrink-0 items-center gap-1 text-[11px] text-tinta-suave"
+                title="A partir desta situação a atividade conta como já pedida ao BSeller, mesmo sem o número do chamado"
+              >
+                <input
+                  type="checkbox" checked={!!s.chamado}
+                  onChange={(e) => mudar(s.chave, { chamado: e.target.checked })}
+                />
+                Chamado
               </label>
 
               <select
