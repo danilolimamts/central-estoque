@@ -36,6 +36,9 @@ export default function FormularioProjeto({ aberto, projeto, projetos = [], pess
       await salvarProjeto({
         nome: String(f.get('nome')),
         codigo: vazio(String(f.get('codigo'))),
+        chamado: vazio(String(f.get('chamado'))),
+        chamado_url: vazio(String(f.get('chamado_url'))),
+        ticket_jira: vazio(String(f.get('ticket_jira'))),
         descricao: vazio(String(f.get('descricao'))),
         area: vazio(String(f.get('area'))),
         responsavel_id: vazio(String(f.get('responsavel_id'))),
@@ -102,6 +105,23 @@ export default function FormularioProjeto({ aberto, projeto, projetos = [], pess
                 <option key={p.id} value={p.id}>{p.nome}</option>
               ))}
             </select>
+          </Campo>
+        </div>
+
+        {/* O chamado e a ponte com o BSeller: o numero da central de
+            ajuda e, quando o time deles abre, o ticket do Jira. */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Campo rotulo="Chamado no BSeller">
+            <input name="chamado" defaultValue={projeto?.chamado ?? ''} className="campo" placeholder="145537" />
+          </Campo>
+          <Campo rotulo="Link do chamado">
+            <input
+              name="chamado_url" type="url" defaultValue={projeto?.chamado_url ?? ''}
+              className="campo" placeholder="https://…/requests/145537"
+            />
+          </Campo>
+          <Campo rotulo="Ticket do Jira">
+            <input name="ticket_jira" defaultValue={projeto?.ticket_jira ?? ''} className="campo" placeholder="BM-1438" />
           </Campo>
         </div>
 

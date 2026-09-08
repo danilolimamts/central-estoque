@@ -27,6 +27,7 @@ const projetos = [
     projeto_pai_id: null, rotulo_filhos: null, area: 'Estoque', responsavel_id: 'p1', status: 'em_andamento', prioridade: 'alta',
     inicio_previsto: iso(-40), fim_previsto: iso(20), inicio_real: iso(-38), fim_real: null,
     percentual: 45, criado_por: null, criado_em: '', atualizado_em: '',
+    chamado: '145537', chamado_url: 'https://exemplo/requests/145537', ticket_jira: 'BM-1438',
   },
   {
     id: 'j2', codigo: 'PRJ-002', nome: 'Automação da conferência cega', descricao: null,
@@ -294,7 +295,7 @@ for (const secao of ['Marcos', 'Nova tarefa', 'Nova página', 'Arraste arquivos 
   }
 }
 /* A lista abre por padrao, com as colunas de acompanhamento. */
-for (const coluna of ['Responsável', 'Prioridade', 'Início', 'Fim', 'Saúde', 'Avanço']) {
+for (const coluna of ['Responsável', 'Prioridade', 'Chamado', 'Início', 'Fim', 'Saúde', 'Avanço']) {
   if (!textoDoGrupo.includes(coluna)) {
     console.error(`FALHOU: a lista de melhorias não tem a coluna "${coluna}".`);
     process.exitCode = 1;

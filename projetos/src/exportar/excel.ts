@@ -31,12 +31,12 @@ const carimbo = () => new Date().toISOString().slice(0, 10);
 export function exportarCarteira(projetos: Projeto[], pessoas: Pessoa[]) {
   const nome = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? '';
   const linhas: (string | number)[][] = [[
-    'Código', 'Projeto', 'Área', 'Responsável', 'Situação', 'Prioridade',
+    'Código', 'Projeto', 'Chamado', 'Jira', 'Área', 'Responsável', 'Situação', 'Prioridade',
     'Início previsto', 'Fim previsto', 'Início real', 'Fim real', 'Avanço (%)', 'Saúde',
   ]];
   for (const p of projetos) {
     linhas.push([
-      p.codigo ?? '', p.nome, p.area ?? '', nome(p.responsavel_id),
+      p.codigo ?? '', p.nome, p.chamado ?? '', p.ticket_jira ?? '', p.area ?? '', nome(p.responsavel_id),
       rotuloDaSituacao(p.status), rotuloPrioridade[p.prioridade],
       formatarData(p.inicio_previsto), formatarData(p.fim_previsto),
       formatarData(p.inicio_real), formatarData(p.fim_real),
@@ -44,7 +44,7 @@ export function exportarCarteira(projetos: Projeto[], pessoas: Pessoa[]) {
     ]);
   }
   const livro = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(livro, aba(linhas, [12, 38, 18, 22, 14, 12, 14, 14, 14, 14, 11, 12]), 'Projetos');
+  XLSX.utils.book_append_sheet(livro, aba(linhas, [12, 38, 12, 12, 18, 22, 14, 12, 14, 14, 14, 14, 11, 12]), 'Projetos');
   baixar(livro, `projetos-${carimbo()}.xlsx`);
 }
 
@@ -59,6 +59,8 @@ export function exportarProjeto(
     ['Campo', 'Valor'],
     ['Projeto', projeto.nome],
     ['Código', projeto.codigo ?? ''],
+    ['Chamado no BSeller', projeto.chamado ?? ''],
+    ['Ticket do Jira', projeto.ticket_jira ?? ''],
     ['Área', projeto.area ?? ''],
     ['Responsável', nome(projeto.responsavel_id)],
     ['Situação', rotuloDaSituacao(projeto.status)],

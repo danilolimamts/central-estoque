@@ -127,6 +127,19 @@ Consequências no resto do módulo:
 - projeto antigo que tinha marcos ou tarefas próprios continua mostrando o que
   já tinha, para nada se perder.
 
+### Chamado no BSeller
+
+Cada atividade guarda o **chamado** que a originou (`chamado`, o número da
+central de ajuda), o **link** dele e o **ticket do Jira**, quando o time do
+BSeller abre um. Sem isso, a ligação entre o que está aqui e o que está lá vive
+na cabeça de quem abriu — e some quando alguém pergunta "em que pé está o
+145537?".
+
+O número é editável direto na linha da lista (grava ao sair do campo, como as
+datas), aparece no cabeçalho da atividade com link para abrir o chamado, entra
+na planilha exportada e preenche o campo *Documento relacionado* da proposta em
+Word.
+
 ### Filtros das atividades
 
 Ao lado da lista há uma barra retrátil (nasce fechada; a escolha fica no

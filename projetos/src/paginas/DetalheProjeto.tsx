@@ -158,6 +158,28 @@ export default function DetalheProjeto({
           <div><p className="rotulo">Área</p>{projeto.area ?? '—'}</div>
           <div><p className="rotulo">Previsto</p>{formatarData(projeto.inicio_previsto)} → {formatarData(projeto.fim_previsto)}</div>
           <div><p className="rotulo">Real</p>{formatarData(projeto.inicio_real)} → {formatarData(projeto.fim_real)}</div>
+          {/* O chamado so ocupa espaco quando existe: atividade interna,
+              que nunca virou pedido ao BSeller, nao precisa da linha. */}
+          {(projeto.chamado || projeto.ticket_jira) && (
+            <div>
+              <p className="rotulo">Chamado</p>
+              {projeto.chamado && (
+                projeto.chamado_url
+                  ? (
+                    <a
+                      href={projeto.chamado_url} target="_blank" rel="noreferrer"
+                      className="font-bold text-roxo-escuro hover:underline"
+                    >#{projeto.chamado.replace(/^#/, '')}</a>
+                  )
+                  : <span>#{projeto.chamado.replace(/^#/, '')}</span>
+              )}
+              {projeto.ticket_jira && (
+                <span className="text-tinta-suave">
+                  {projeto.chamado ? ' · ' : ''}Jira {projeto.ticket_jira}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mt-4">

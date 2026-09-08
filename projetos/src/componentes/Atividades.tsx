@@ -295,6 +295,7 @@ export default function Atividades({
                 <th className="px-3 py-2 font-bold">Responsável</th>
                 <th className="px-3 py-2 font-bold">Situação</th>
                 <th className="px-3 py-2 font-bold">Prioridade</th>
+                <th className="px-3 py-2 font-bold">Chamado</th>
                 <th className="px-3 py-2 font-bold">Início</th>
                 <th className="px-3 py-2 font-bold">Fim</th>
                 <th className="px-3 py-2 font-bold">Saúde</th>
@@ -349,6 +350,23 @@ export default function Atividades({
                     >
                       {PRIORIDADES.map((s) => <option key={s} value={s}>{rotuloPrioridade[s]}</option>)}
                     </select>
+                  </td>
+
+                  {/* O numero do chamado no BSeller: e por ele que se
+                      cruza o que esta aqui com o que esta la. */}
+                  <td className="px-3 py-2">
+                    <CampoTexto
+                      valor={p.chamado} desabilitado={!permissoes.podeEditar(p)}
+                      largura="w-24" espaco="145537"
+                      aoConfirmar={(v) => void alterar(p, { chamado: v })}
+                    />
+                    {p.chamado && p.chamado_url && (
+                      <a
+                        href={p.chamado_url} target="_blank" rel="noreferrer"
+                        className="ml-1 text-[11px] font-bold text-roxo-escuro hover:underline"
+                        title="Abrir o chamado"
+                      >↗</a>
+                    )}
                   </td>
 
                   {/* Inicio e a data que quem trabalha digita — quando a
@@ -477,6 +495,31 @@ function CampoData({ valor, desabilitado, aoConfirmar }: {
       value={texto} disabled={desabilitado}
       onChange={(e) => setTexto(e.target.value)}
       onBlur={() => { if ((texto || null) !== (valor ?? null)) aoConfirmar(texto || null); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+    />
+  );
+}
+
+/* Texto curto que so grava ao sair do campo — mesma disciplina do campo
+   de data: gravar a cada tecla dispararia uma escrita e uma recarga da
+   lista por letra digitada. */
+function CampoTexto({ valor, desabilitado, largura, espaco, aoConfirmar }: {
+  valor: string | null;
+  desabilitado?: boolean;
+  largura: string;
+  espaco?: string;
+  aoConfirmar: (valor: string | null) => void;
+}) {
+  const [texto, setTexto] = useState(valor ?? '');
+
+  useEffect(() => { setTexto(valor ?? ''); }, [valor]);
+
+  return (
+    <input
+      className={`campo ${largura} py-1 text-xs`}
+      value={texto} disabled={desabilitado} placeholder={espaco}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => { if ((texto.trim() || null) !== (valor ?? null)) aoConfirmar(texto.trim() || null); }}
       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
     />
   );
