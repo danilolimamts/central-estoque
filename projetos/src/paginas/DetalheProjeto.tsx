@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import FormularioProjeto from './FormularioProjeto';
 import Anexos from '@/componentes/Anexos';
 import Atividades from '@/componentes/Atividades';
@@ -161,33 +161,45 @@ export default function DetalheProjeto({
           <div><p className="rotulo">Área</p>{projeto.area ?? '—'}</div>
           <div><p className="rotulo">Previsto</p>{formatarData(projeto.inicio_previsto)} → {formatarData(projeto.fim_previsto)}</div>
           <div><p className="rotulo">Real</p>{formatarData(projeto.inicio_real)} → {formatarData(projeto.fim_real)}</div>
-          {/* O chamado so ocupa espaco quando existe: atividade interna,
-              que nunca virou pedido ao BSeller, nao precisa da linha. */}
-          {(projeto.chamado || projeto.ticket_jira) && (
-            <div>
-              <p className="rotulo">Chamado</p>
-              {projeto.chamado && (
-                projeto.chamado_url
-                  ? (
-                    <a
-                      href={projeto.chamado_url} target="_blank" rel="noreferrer"
-                      className="font-bold text-roxo-escuro hover:underline"
-                    >#{projeto.chamado.replace(/^#/, '')}</a>
-                  )
-                  : <span>#{projeto.chamado.replace(/^#/, '')}</span>
-              )}
-              {projeto.ticket_jira && (
-                <span className="text-tinta-suave">
-                  {projeto.chamado ? ' · ' : ''}Jira {projeto.ticket_jira}
-                </span>
-              )}
-            </div>
-          )}
+          {/* O numero do chamado se descobre depois de abrir a melhoria,
+              e e aqui que a pessoa esta quando ele chega: o campo fica na
+              propria tela, sem precisar voltar para a lista nem abrir o
+              formulario inteiro. */}
+          <div>
+            <p className="rotulo">Chamado</p>
+            {podeMexer ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <CampoDoCabecalho
+                  valor={projeto.chamado} espaco="Nº do chamado" largura="w-28"
+                  aoConfirmar={(v) => void comErro(async () => {
+                    await salvarProjeto({ nome: projeto.nome, chamado: v }, projeto.id);
+                  })}
+                />
+                <CampoDoCabecalho
+                  valor={projeto.ticket_jira} espaco="Jira" largura="w-24"
+                  aoConfirmar={(v) => void comErro(async () => {
+                    await salvarProjeto({ nome: projeto.nome, ticket_jira: v }, projeto.id);
+                  })}
+                />
+                {projeto.chamado_url && (
+                  <a
+                    href={projeto.chamado_url} target="_blank" rel="noreferrer"
+                    className="text-xs font-bold text-roxo-escuro hover:underline"
+                  >abrir</a>
+                )}
+              </div>
+            ) : (
+              <span>
+                {projeto.chamado ? `#${projeto.chamado.replace(/^#/, '')}` : '—'}
+                {projeto.ticket_jira && <span className="text-tinta-suave"> · Jira {projeto.ticket_jira}</span>}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="mt-4">
           <div className="mb-1 flex items-center justify-between text-xs font-bold text-tinta-suave">
-            <span>{avanco ? 'Avanço pelas atividades concluídas' : 'Avanço informado'}</span>
+            <span>{avanco ? 'Avanço pelas atividades concluídas' : 'Avanço pela situação'}</span>
             <span>
               {percentualEfetivo(projetos, projeto)}%
               {avanco && ` · ${avanco.concluidas} de ${avanco.total}`}
@@ -639,5 +651,29 @@ function FormularioAcompanhamento({ projeto, pessoas, aberto, aoFechar, recarreg
         </div>
       </form>
     </Modal>
+  );
+}
+
+/* Campo curto do cabecalho: grava quando se sai dele, como na linha da
+   lista. Gravar a cada tecla dispararia uma escrita e uma recarga da
+   tela por letra digitada. */
+function CampoDoCabecalho({ valor, espaco, largura, aoConfirmar }: {
+  valor: string | null;
+  espaco: string;
+  largura: string;
+  aoConfirmar: (valor: string | null) => void;
+}) {
+  const [texto, setTexto] = useState(valor ?? '');
+
+  useEffect(() => { setTexto(valor ?? ''); }, [valor]);
+
+  return (
+    <input
+      className={`campo ${largura} py-1 text-sm`}
+      value={texto} placeholder={espaco}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => { if ((texto.trim() || null) !== (valor ?? null)) aoConfirmar(texto.trim() || null); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+    />
   );
 }
