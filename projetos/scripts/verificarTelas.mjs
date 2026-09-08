@@ -311,6 +311,18 @@ await pagina.getByText('Reendereçamento do mezanino').first().click();
 await pagina.waitForTimeout(700);
 await pagina.screenshot({ path: 'verificacao-detalhe.png', fullPage: true });
 
+/* O numero do chamado se preenche na propria melhoria: quem esta dentro
+   dela nao devia ter de voltar para a lista para anotar. */
+const campoDoChamado = pagina.getByPlaceholder('Nº do chamado').first();
+if (!(await campoDoChamado.count())) {
+  console.error('FALHOU: a melhoria aberta não oferece o campo do chamado.');
+  process.exitCode = 1;
+} else {
+  await campoDoChamado.fill('987654');
+  await campoDoChamado.blur();
+  await pagina.waitForTimeout(600);
+}
+
 /* Exportar Excel: o arquivo tem de chegar com conteudo. Planilha vazia
    parece defeito do Excel e some com a confianca no relatorio. */
 const [baixado] = await Promise.all([
