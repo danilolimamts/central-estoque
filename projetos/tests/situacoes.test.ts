@@ -30,7 +30,9 @@ describe('situações de fábrica', () => {
 
   it('situação desconhecida vale como trabalho aberto, com o próprio nome', () => {
     const s = situacaoDe('aguardando_bseller');
-    expect(s.rotulo).toBe('aguardando_bseller');
+    /* Sem configuração para consultar, o nome sai da própria chave, só
+       trocando o sublinhado por espaço. */
+    expect(s.rotulo).toBe('Aguardando bseller');
     expect(s.significado).toBe('aberta');
     expect(encerrado(projeto('a', 'aguardando_bseller'))).toBe(false);
   });
@@ -174,5 +176,28 @@ describe('percentualDaSituacao', () => {
 
   it('situação que não está na configuração vale zero', () => {
     expect(percentualDaSituacao('inventada')).toBe(0);
+  });
+});
+
+describe('situações visíveis', () => {
+  afterEach(() => definirSituacoes(SITUACOES_PADRAO));
+
+  it('situação fora da configuração vira uma coluna só, não uma por atividade', () => {
+    const usadas = ['nao_iniciado', 'documentacao_criada', 'documentacao_criada', 'documentacao_criada'];
+    const visiveis = situacoesVisiveis(usadas);
+    expect(visiveis.filter((s) => s.chave === 'documentacao_criada')).toHaveLength(1);
+    /* As de fábrica continuam todas, e a avulsa entra no fim. */
+    expect(visiveis).toHaveLength(SITUACOES_PADRAO.length + 1);
+  });
+
+  it('a coluna avulsa aparece com nome legível, não com a chave crua', () => {
+    const avulsa = situacoesVisiveis(['documentacao_criada']).at(-1)!;
+    expect(avulsa.rotulo).toBe('Documentacao criada');
+  });
+
+  it('situação desligada volta a aparecer quando ainda tem atividade dentro', () => {
+    definirSituacoes(SITUACOES_PADRAO.map((s) => (s.chave === 'pausado' ? { ...s, usar: false } : s)));
+    expect(situacoesVisiveis([]).some((s) => s.chave === 'pausado')).toBe(false);
+    expect(situacoesVisiveis(['pausado', 'pausado']).filter((s) => s.chave === 'pausado')).toHaveLength(1);
   });
 });
