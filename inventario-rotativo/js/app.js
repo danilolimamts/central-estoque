@@ -3806,6 +3806,7 @@ function irDivParesSimilares(){
         if(sem < IR_DIV_SEMELHANCA_MIN && !viz) continue;
         usados.add(b.id);
         pares.push({
+          idSobra:a.id, idFalta:b.id,
           local, dia: irDivDiaDa(a),
           itemSobra:a.item, nomeSobra:a.itemNome, itemFalta:b.item, nomeFalta:b.itemNome,
           qtd: a.diferenca,
@@ -3821,6 +3822,64 @@ function irDivParesSimilares(){
     }
   }
   return pares.sort((x,y)=>y.risco-x.risco);
+}
+
+/* ---------- CENÁRIO DE PERDAS E GANHOS ----------
+   Separa o NET do período em o que é perda/ganho de verdade e o que é erro de
+   contagem disfarçado de perda/ganho. Três destinos por linha de divergência:
+
+     TROCA        o item entrou num par de similares trocados no mesmo local.
+                  A peça não sumiu — foi contada no código errado.
+     COMPENSADO   o item pesa no período mas o ANO fecha perto de zero. Perdeu
+                  num ciclo e achou em outro: erro de contagem, não perda.
+     LEGÍTIMO     sobrou depois de tirar os dois de cima. É o que de fato saiu
+                  ou entrou no estoque, e o único que deveria virar prejuízo.
+
+   A ordem importa: troca é mais específica que compensação, então ela ganha —
+   senão a mesma peça seria descontada duas vezes. */
+function irDivCenarioPerdasGanhos(){
+  const corte = IR.divCorte==null ? IR_DIV_CORTE_PADRAO : IR.divCorte;
+  const {itens} = irDivCalcItens();
+  const pares = irDivParesSimilares();
+  // valor de cada LINHA de divergência que já está explicada por uma troca
+  const trocadas = new Map();
+  for(const p of pares){
+    trocadas.set(p.idSobra, p.valorSobra);
+    trocadas.set(p.idFalta, p.valorFalta);
+  }
+  const b = {
+    perdaTroca:0, ganhoTroca:0, perdaComp:0, ganhoComp:0, perdaLeg:0, ganhoLeg:0,
+    nTroca:0, nComp:0, nLeg:0, itensLeg:[]
+  };
+  for(const i of itens){
+    let troca = 0;
+    for(const d of i.locais) if(trocadas.has(d.id)) troca += trocadas.get(d.id);
+    if(troca<0) b.perdaTroca += troca; else if(troca>0) b.ganhoTroca += troca;
+    const restante = i.netValor - troca;
+    if(Math.abs(troca)>0.005) b.nTroca++;
+    if(Math.abs(restante)<0.005) continue;
+    // O ano desmancha o que sobrou? Então não é perda nem ganho: é recontagem.
+    const compensado = Math.abs(i.netValorAno) < corte && Math.abs(i.netValor) >= corte;
+    if(compensado){
+      if(restante<0) b.perdaComp += restante; else b.ganhoComp += restante;
+      b.nComp++;
+    } else {
+      if(restante<0) b.perdaLeg += restante; else b.ganhoLeg += restante;
+      b.nLeg++;
+      b.itensLeg.push({item:i.item, descricao:i.descricao, valor:restante, qtd:i.netQtd, nLocais:i.nLocais});
+    }
+  }
+  b.itensLeg.sort((x,y)=>Math.abs(y.valor)-Math.abs(x.valor));
+  b.perdaBruta = b.perdaTroca + b.perdaComp + b.perdaLeg;
+  b.ganhoBruto = b.ganhoTroca + b.ganhoComp + b.ganhoLeg;
+  b.net = b.perdaBruta + b.ganhoBruto;
+  b.netLegitimo = b.perdaLeg + b.ganhoLeg;
+  // Movimento explicado por erro de contagem. Soma em MÓDULO de propósito: uma
+  // troca de −7.200 com +9.300 movimentou 16.500, não 2.100 — o pouco que sobra
+  // no líquido é justamente o que engana quem olha só o NET.
+  b.indevidoBruto = Math.abs(b.perdaTroca)+Math.abs(b.ganhoTroca)+Math.abs(b.perdaComp)+Math.abs(b.ganhoComp);
+  b.movimentoBruto = Math.abs(b.perdaBruta)+Math.abs(b.ganhoBruto);
+  return b;
 }
 
 function irDivEscopoLabel(){
@@ -4145,6 +4204,51 @@ function irDivExportarSimilares(){
     Math.round(p.semelhanca*100)/100, p.vizinhos?'SIM':'']);
   irDivBaixarPlanilha(cab, linhas, 'similares_trocados_'+String(irDivEscopoLabel()).replace(/\W+/g,'_'));
 }
+/* Ponte do NET: começa no bruto e vai tirando o que não é perda nem ganho de
+   verdade, até sobrar o número que deveria virar prejuízo. */
+function irRenderDivCenario(){
+  const b = irDivCenarioPerdasGanhos();
+  if(!b.nTroca && !b.nComp && !b.nLeg) return '';
+  const linha = (rot, sub, perda, ganho, cls) => `<tr class="${cls||''}">
+    <td><strong>${irEsc(rot)}</strong><span class="cen-sub">${irEsc(sub)}</span></td>
+    <td class="mono neg">${perda<0?irFmtMoney(perda):'—'}</td>
+    <td class="mono pos">${ganho>0?'+'+irFmtMoney(ganho):'—'}</td>
+    <td class="mono ${(perda+ganho)<0?'neg':'pos'}"><strong>${(perda+ganho)>0?'+':''}${irFmtMoney(perda+ganho)}</strong></td>
+  </tr>`;
+  const pctIndevido = b.movimentoBruto>0 ? b.indevidoBruto/b.movimentoBruto : 0;
+  return `<div class="panel">
+    <h3>Cenário de perdas e ganhos — ${irEsc(irDivEscopoLabel())}</h3>
+    <p class="panel-sub">Do NET bruto até o que é perda e ganho de verdade. Troca e compensação são erro de contagem: a peça não saiu do CD.</p>
+    <div class="table-wrap"><table class="cen-table">
+      <thead><tr><th>Origem</th><th>Perda</th><th>Ganho</th><th>NET</th></tr></thead>
+      <tbody>
+        ${linha('NET bruto do período', irFmtInt(b.nTroca+b.nComp+b.nLeg)+' itens', b.perdaBruta, b.ganhoBruto, 'cen-topo')}
+        ${linha('Troca entre similares', irFmtInt(b.nTroca)+' itens · contado no código errado', b.perdaTroca, b.ganhoTroca, 'cen-fora')}
+        ${linha('Compensado no ano', irFmtInt(b.nComp)+' itens · perdeu num ciclo, achou em outro', b.perdaComp, b.ganhoComp, 'cen-fora')}
+        ${linha('Perda e ganho reais', irFmtInt(b.nLeg)+' itens · sem contrapartida', b.perdaLeg, b.ganhoLeg, 'cen-final')}
+      </tbody>
+    </table></div>
+    <p class="field-hint" style="margin-top:10px;">
+      ${irFmtPct(pctIndevido)} do movimento bruto é erro de contagem, não perda de estoque.
+      O NET que deveria virar prejuízo é <strong>${b.netLegitimo>0?'+':''}${irFmtMoney(b.netLegitimo)}</strong>, e não ${b.net>0?'+':''}${irFmtMoney(b.net)}.
+    </p>
+    ${b.itensLeg.length ? `<details class="cen-det">
+      <summary>Ver os ${irFmtInt(b.itensLeg.length)} itens de perda e ganho reais</summary>
+      <div class="table-wrap" style="margin-top:8px;"><div class="table-scroll" style="max-height:340px;">
+        <table class="cen-table">
+          <thead><tr><th>Item</th><th>Descrição</th><th>Peças</th><th>Locais</th><th>Valor</th></tr></thead>
+          <tbody>${b.itensLeg.slice(0,200).map(i=>`<tr>
+            <td class="mono">${irEsc(i.item)}</td>
+            <td title="${irEsc(i.descricao||'')}">${irEsc(irResumirDescricao(i.descricao))}</td>
+            <td class="mono">${i.qtd>0?'+':''}${irFmtInt(i.qtd)}</td>
+            <td class="mono">${irFmtInt(i.nLocais)}</td>
+            <td class="mono ${i.valor<0?'neg':'pos'}">${i.valor>0?'+':''}${irFmtMoney(i.valor)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div></div>
+    </details>` : ''}
+  </div>`;
+}
 function irRenderDivergencias(){
   if(!IR.divergencias.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
   if(!IR.divAnoCache) irCarregarDivEscopo();
@@ -4152,6 +4256,7 @@ function irRenderDivergencias(){
   return `
     ${irRenderDivFiltros()}
     ${irRenderDivResumo(c)}
+    ${irRenderDivCenario()}
     ${irRenderDivTabela(c)}
     ${irRenderDivSimilares()}
     ${irRenderDivAuditoria()}
