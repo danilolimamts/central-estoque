@@ -3741,6 +3741,88 @@ function irDivCalcItens(){
     corte
   };
 }
+/* NET do mês corrente, sempre — independe do período escolhido no filtro. É o
+   número que o auditor precisa ver ao abrir a tela, mesmo olhando outro recorte. */
+function irDivNetMesVigente(){
+  const mes = new Date().toISOString().slice(0,7);
+  const divs = irSoLocaisConcluidos((IR.divAnoCache||{}).divs || IR.divergencias || [])
+    .filter(d=>d.diferenca!==0 && irDivDiaDa(d).slice(0,7)===mes);
+  return {
+    mes,
+    valor: divs.reduce((s,d)=>s+d.vlDivergencia,0),
+    qtd: divs.reduce((s,d)=>s+d.diferenca,0),
+    itens: new Set(divs.map(d=>d.item)).size
+  };
+}
+
+/* ---------- ITENS SIMILARES TROCADOS ----------
+   Assinatura de troca de contagem: no MESMO local, o item A sobra exatamente o
+   que o item B falta, e os dois se parecem. É o que o estoque aponta depois; aqui
+   sai no mesmo dia da contagem.
+
+   A semelhança é medida de dois jeitos, e basta um: descrições que compartilham
+   boa parte das palavras, ou códigos vizinhos (mesmo prefixo). Item trocado
+   costuma ser variante do mesmo produto — cor, voltagem, capacidade. */
+function irDivTokens(desc){
+  return String(desc||'').toUpperCase()
+    .replace(/[^A-Z0-9]+/g,' ').trim().split(' ')
+    .filter(t=>t.length>=3);
+}
+function irDivSemelhanca(a, b){
+  const A = new Set(irDivTokens(a)), B = new Set(irDivTokens(b));
+  if(!A.size || !B.size) return 0;
+  let inter = 0;
+  for(const t of A) if(B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);   // Jaccard
+}
+function irDivCodigosVizinhos(a, b){
+  const x = String(a).replace(/\D/g,''), y = String(b).replace(/\D/g,'');
+  if(x.length!==y.length || x.length<4) return false;
+  return x.slice(0,-2)===y.slice(0,-2);       // diferem só nos 2 últimos dígitos
+}
+const IR_DIV_SEMELHANCA_MIN = 0.45;
+function irDivParesSimilares(){
+  const e = IR.divEscopo;
+  let divs = irSoLocaisConcluidos(IR.divEscopoDados || IR.divergencias || []).filter(d=>d.diferenca!==0);
+  if(e.tipo==='mes') divs = divs.filter(d=>irDivDiaDa(d).slice(0,7)===e.mes);
+  if(e.tipo==='dia') divs = e.dia ? divs.filter(d=>irDivDiaDa(d)===e.dia) : [];
+  const porLocal = new Map();
+  for(const d of divs){
+    if(!porLocal.has(d.local)) porLocal.set(d.local, []);
+    porLocal.get(d.local).push(d);
+  }
+  const pares = [];
+  for(const [local, lista] of porLocal){
+    if(lista.length<2) continue;
+    const sobra = lista.filter(d=>d.diferenca>0);
+    const falta = lista.filter(d=>d.diferenca<0);
+    const usados = new Set();
+    for(const a of sobra){
+      for(const b of falta){
+        if(usados.has(b.id)) continue;
+        if(a.diferenca !== -b.diferenca) continue;   // troca é 1 pra 1
+        const sem = irDivSemelhanca(a.itemNome, b.itemNome);
+        const viz = irDivCodigosVizinhos(a.item, b.item);
+        if(sem < IR_DIV_SEMELHANCA_MIN && !viz) continue;
+        usados.add(b.id);
+        pares.push({
+          local, dia: irDivDiaDa(a),
+          itemSobra:a.item, nomeSobra:a.itemNome, itemFalta:b.item, nomeFalta:b.itemNome,
+          qtd: a.diferenca,
+          // O risco é o dinheiro em jogo: se os dois itens têm preços diferentes,
+          // a troca não se anula — sobra diferença de valor.
+          valorSobra: a.vlDivergencia, valorFalta: b.vlDivergencia,
+          desequilibrio: a.vlDivergencia + b.vlDivergencia,
+          risco: Math.max(Math.abs(a.vlDivergencia), Math.abs(b.vlDivergencia)),
+          semelhanca: sem, vizinhos: viz
+        });
+        break;
+      }
+    }
+  }
+  return pares.sort((x,y)=>y.risco-x.risco);
+}
+
 function irDivEscopoLabel(){
   const e = IR.divEscopo;
   if(e.tipo==='ano') return 'ano '+e.ano;
@@ -3893,7 +3975,9 @@ function irRenderDivResumo(c){
     <strong class="mono">${val}</strong>
     ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}
   </div>`;
+  const mv = irDivNetMesVigente();
   return `<div class="panel ofe-resumo">
+    ${cell('NET de '+irMesLabel(mv.mes), (mv.valor>0?'+':'')+irFmtMoney(mv.valor), mv.valor<0?'neg':'pos', irFmtInt(mv.qtd)+' peças · mês vigente')}
     ${cell('NET do período', (c.netValor>0?'+':'')+irFmtMoney(c.netValor), c.netValor<0?'neg':'pos', irFmtInt(c.netQtd)+' peças')}
     ${cell('Ofensores de perda', irFmtInt(c.nPerda), 'neg', irFmtMoney(c.perdaOfensores))}
     ${cell('Ofensores de ganho', irFmtInt(c.nGanho), 'pos', '+'+irFmtMoney(c.ganhoOfensores))}
@@ -4012,6 +4096,55 @@ function irRenderDivAuditoria(){
     </div></div>
   </div>`;
 }
+/* Painel de troca entre similares. Fica abaixo da tabela de ofensores: é outro
+   tipo de erro — não é perda, é contagem trocada — e pede outra ação. */
+function irRenderDivSimilares(){
+  const pares = irDivParesSimilares();
+  if(!pares.length) return `<div class="panel">
+    <h3>Itens similares trocados</h3>
+    <p class="field-hint">Nenhum par com assinatura de troca neste período.</p>
+  </div>`;
+  const risco = pares.reduce((s,p)=>s+p.risco,0);
+  const desiq = pares.reduce((s,p)=>s+Math.abs(p.desequilibrio),0);
+  return `<div class="panel">
+    <div class="ofe-head">
+      <h3>Itens similares trocados — ${irEsc(irDivEscopoLabel())}</h3>
+      <div class="ofe-acoes">
+        <span class="field-hint">${irFmtInt(pares.length)} ${pares.length===1?'par':'pares'} · ${irFmtMoney(risco)} em jogo · ${irFmtMoney(desiq)} de desequilíbrio</span>
+        <button class="btn btn-secondary" onclick="irDivExportarSimilares()">Excel</button>
+      </div>
+    </div>
+    <p class="panel-sub">No mesmo local, um item sobra exatamente o que o outro falta, e os dois se parecem — assinatura de contagem trocada. Chega aqui no dia da contagem, antes do apontamento do estoque.</p>
+    <div class="table-wrap"><div class="table-scroll" style="max-height:460px;">
+      <table class="sim-table">
+        <thead><tr>
+          <th>Local</th><th>Dia</th><th>Qtde</th>
+          <th>Sobrou</th><th>Faltou</th>
+          <th>Semelhança</th><th>Desequilíbrio R$</th>
+        </tr></thead>
+        <tbody>${pares.map(p=>`<tr>
+          <td class="mono">${irEsc(p.local)}</td>
+          <td class="mono">${irFmtDate(p.dia)}</td>
+          <td class="mono">${irFmtInt(p.qtd)}</td>
+          <td><span class="mono">${irEsc(p.itemSobra)}</span><span class="sim-desc" title="${irEsc(p.nomeSobra||'')}">${irEsc(irResumirDescricao(p.nomeSobra))}</span></td>
+          <td><span class="mono">${irEsc(p.itemFalta)}</span><span class="sim-desc" title="${irEsc(p.nomeFalta||'')}">${irEsc(irResumirDescricao(p.nomeFalta))}</span></td>
+          <td class="mono">${irFmtPct(p.semelhanca)}${p.vizinhos?' <span class="ofe-tag comp">código vizinho</span>':''}</td>
+          <td class="mono ${Math.abs(p.desequilibrio)<0.01?'':(p.desequilibrio<0?'neg':'pos')}">${Math.abs(p.desequilibrio)<0.01?'—':(p.desequilibrio>0?'+':'')+irFmtMoney(p.desequilibrio)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div></div>
+  </div>`;
+}
+function irDivExportarSimilares(){
+  const pares = irDivParesSimilares();
+  if(!pares.length){ irShowToast('Nada para exportar.', true); return; }
+  const cab = ['Local','Dia','Qtde Trocada','Item que Sobrou','Descrição (sobrou)',
+    'Item que Faltou','Descrição (faltou)','Valor Sobra','Valor Falta','Desequilíbrio','Semelhança','Código Vizinho'];
+  const linhas = pares.map(p=>[p.local, p.dia, p.qtd, p.itemSobra, p.nomeSobra||'',
+    p.itemFalta, p.nomeFalta||'', p.valorSobra, p.valorFalta, p.desequilibrio,
+    Math.round(p.semelhanca*100)/100, p.vizinhos?'SIM':'']);
+  irDivBaixarPlanilha(cab, linhas, 'similares_trocados_'+String(irDivEscopoLabel()).replace(/\W+/g,'_'));
+}
 function irRenderDivergencias(){
   if(!IR.divergencias.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
   if(!IR.divAnoCache) irCarregarDivEscopo();
@@ -4020,6 +4153,7 @@ function irRenderDivergencias(){
     ${irRenderDivFiltros()}
     ${irRenderDivResumo(c)}
     ${irRenderDivTabela(c)}
+    ${irRenderDivSimilares()}
     ${irRenderDivAuditoria()}
   `;
 }

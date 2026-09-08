@@ -639,6 +639,19 @@ table.ofe-sub td{ padding:5px 8px; border-top:1px solid var(--line); }
 table.ofe-sub td.mono{ text-align:right; }
 table.ofe-sub td:nth-child(2){ text-align:left; }
 
+table.sim-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+table.sim-table th{
+  position:sticky; top:0; z-index:1; background:var(--surface2); color:var(--ink-soft);
+  font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+  padding:9px 10px; text-align:left; white-space:nowrap; border-bottom:1px solid var(--line);
+}
+table.sim-table td{ padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+table.sim-table td.mono{ text-align:right; white-space:nowrap; }
+table.sim-table td:first-child{ text-align:left; }
+.sim-desc{ display:block; font-size:10.5px; color:var(--ink-soft); margin-top:1px; }
+table.sim-table .neg{ color:var(--danger); font-weight:700; }
+table.sim-table .pos{ color:var(--success); font-weight:700; }
+
 .aud-cab{ display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; margin-bottom:12px; }
 table.aud-table{ width:100%; border-collapse:collapse; font-size:12px; }
 table.aud-table th{ background:var(--surface2); color:var(--ink-soft); font-size:9.5px; font-weight:800;
