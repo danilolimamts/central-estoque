@@ -682,7 +682,6 @@ table.aud-table td:nth-child(2), table.aud-table td:nth-child(4){ text-align:lef
 /* Descrição do item vai completa na auditoria — o auditor precisa reconhecer a
    peça na prateleira, e o resumo "primeira … última palavra" não serve pra isso. */
 .aud-desc{ min-width:220px; }
-.aud-onde{ font-size:10.5px; color:var(--ink-soft); min-width:160px; }
 
 /* Impressão: sai só a auditoria, em preto no branco, sem menu nem botões.
    Paisagem porque são oito colunas, e o cabeçalho vira table-header-group pra se
@@ -699,9 +698,9 @@ table.aud-table td:nth-child(2), table.aud-table td:nth-child(4){ text-align:lef
   table.aud-table tfoot{ display:table-footer-group; }
   table.aud-table tr{ break-inside:avoid; page-break-inside:avoid; }
   table.aud-table th{ background:#EEE !important; color:#000 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  table.aud-table td, table.aud-table th{ border-bottom:1px solid #999 !important; padding:4px 6px; }
+  table.aud-table td, table.aud-table th{ border-bottom:1px solid #999 !important; padding:4px 6px; white-space:nowrap; }
+  table.aud-table td.aud-desc{ white-space:normal; }
   .aud-desc{ min-width:0; }
-  .aud-onde{ font-size:8.5px; min-width:0; }
   .aud-vazio{ border-bottom:1px solid #000 !important; min-width:70px; }
 }
 .tag-good{ color:var(--success); background:var(--success-light); }
