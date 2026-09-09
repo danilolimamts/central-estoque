@@ -21,8 +21,8 @@ const IR = {
   divCorte:null, divCorteQtd:null, divBusca:'', divExpandido:null,
   // Base do corte (o que define ofensor) e sentidos ligados na tabela — multi-seleção.
   divBase:'valor', divSentidos:['perda','ganho'],
-  // Fonte do preço unitário: '410' (congelado no lançamento) ou '278' (custo médio).
-  divPreco:'410', div410Cache:null,
+  // Cache da QRY410 do(s) ano(s) do escopo — é dela que sai o preço congelado.
+  div410Cache:null,
   divSimExigeDesc:true,
   divOrdem:{col:'netValor', dir:'desc'}, divAuditoria:null,
   divSimFiltro:{de:'', ate:''},
@@ -3732,7 +3732,8 @@ async function irCarregarDivEscopo(){
     IR.divAnoCache = {ano: chave, divs: listas.flat()};
   }
   // A 410 do(s) mesmo(s) ano(s) — é dela que sai o preço congelado.
-  const falta410 = anos.filter(a=>!(IR.div410Cache||{})[a]);
+  const anos410 = Array.from(new Set(anos.concat([String(new Date().getFullYear())])));
+  const falta410 = anos410.filter(a=>!(IR.div410Cache||{})[a]);
   if(falta410.length) irDivCarregar410(falta410);
   if(e.tipo==='ciclo' && (!e.cicloId || e.cicloId===(IR.cicloAtivo||{}).id)) IR.divEscopoDados = IR.divergencias;
   else if(e.tipo==='ciclo') IR.divEscopoDados = await irGetByCiclo(IR_STORES.divergencias, e.cicloId);
@@ -3824,7 +3825,6 @@ function irDivPrecos410(){
 }
 // Preço a usar numa linha de divergência, com a origem junto.
 function irDivPrecoDa(d){
-  if(IR.divPreco !== '410') return {preco: d.precoUnitario||0, origem:'278'};
   const g = irDivPrecos410().get(irDivNormItem(d.item));
   if(g){
     const mes = irDivDiaDa(d).slice(0,7);
@@ -3840,10 +3840,8 @@ function irDivValorDa(d){
   const {preco, origem} = irDivPrecoDa(d);
   return {valor: d.diferenca * preco, preco, origem};
 }
-function irDivSetPreco(v){ IR.divPreco = v; irRenderView(); }
 // Diz qual preço está valendo e, quando é a 410, quantos itens ela cobriu.
 function irDivPrecoLabel(){
-  if(IR.divPreco !== '410') return 'preço da 278 (custo médio de hoje)';
   const mapa = irDivPrecos410();
   if(!mapa.size) return 'preço congelado da 410 — QRY410 não processada, caindo na 278';
   return 'preço congelado da 410 ('+irFmtInt(mapa.size)+' itens com preço lançado)';
@@ -3940,10 +3938,23 @@ function irDivCalcItens(){
    número que o auditor precisa ver ao abrir a tela, mesmo olhando outro recorte. */
 function irDivNetMesVigente(){
   const mes = new Date().toISOString().slice(0,7);
+  // O NET do mês é o do livro fiscal — mesmo número do gráfico NET Mensal. Sai da
+  // QRY410 direto, não da contagem: são bases diferentes e não fecham entre si.
+  const dados = (IR.div410Cache||{})[mes.slice(0,4)];
+  const linha = ((dados||{}).porMes || []).find(m=>m.mes===mes);
+  if(linha){
+    const itens = (linha.topItensPositivos||[]).concat(linha.topItensNegativos||[]);
+    return {
+      mes, fonte:'410',
+      valor: linha.net,
+      qtd: itens.reduce((s,i)=>s+(i.saldoQtd||0), 0),
+      itens: itens.length
+    };
+  }
   const divs = irSoLocaisConcluidos((IR.divAnoCache||{}).divs || IR.divergencias || [])
     .filter(d=>d.diferenca!==0 && irDivDiaDa(d).slice(0,7)===mes);
   return {
-    mes,
+    mes, fonte:'contagem',
     valor: divs.reduce((s,d)=>s+irDivValorDa(d).valor,0),
     qtd: divs.reduce((s,d)=>s+d.diferenca,0),
     itens: new Set(divs.map(d=>d.item)).size
@@ -4259,13 +4270,7 @@ function irRenderDivFiltros(){
         <button class="conc-chip ${IR.divBase==='qtd'?'on':''}" onclick="irDivSetBase('qtd')">Quantidade</button>
       </div>
     </div>
-    <div class="ofe-filtro">
-      <label>Preço</label>
-      <div class="conc-chips" style="margin:0;">
-        <button class="conc-chip ${IR.divPreco==='410'?'on':''}" onclick="irDivSetPreco('410')" title="Preço congelado no lançamento fiscal">410 congelado</button>
-        <button class="conc-chip ${IR.divPreco!=='410'?'on':''}" onclick="irDivSetPreco('278')" title="Custo médio de hoje — some quando o item zera no CD">278 custo médio</button>
-      </div>
-    </div>
+
     <div class="ofe-filtro">
       <label>Corte (${b.lbl})</label>
       <input type="number" min="0" step="${b.passo}" value="${b.corte}" onchange="irDivSetCorte(this.value)">
@@ -4285,7 +4290,7 @@ function irRenderDivResumo(c){
   const mv = irDivNetMesVigente();
   const b = c.base;
   return `<div class="panel ofe-resumo">
-    ${cell('NET de '+irMesLabel(mv.mes), (mv.valor>0?'+':'')+irFmtMoney(mv.valor), mv.valor<0?'neg':'pos', irFmtInt(mv.qtd)+' peças · mês vigente')}
+    ${cell('NET de '+irMesLabel(mv.mes), (mv.valor>0?'+':'')+irFmtMoney(mv.valor), mv.valor<0?'neg':'pos', irFmtInt(mv.qtd)+' peças · '+(mv.fonte==='410'?'QRY410':'contagem'))}
     ${cell('NET do período', (c.netValor>0?'+':'')+irFmtMoney(c.netValor), c.netValor<0?'neg':'pos', irFmtInt(c.netQtd)+' peças')}
     ${cell('Perda dos ofensores', irFmtMoney(c.perdaOfensores), 'neg', irFmtInt(c.perdaQtd)+' peças · '+irFmtInt(c.nPerda)+(c.nPerda===1?' item':' itens'))}
     ${cell('Ganho dos ofensores', '+'+irFmtMoney(c.ganhoOfensores), 'pos', '+'+irFmtInt(c.ganhoQtd)+' peças · '+irFmtInt(c.nGanho)+(c.nGanho===1?' item':' itens'))}
@@ -4319,7 +4324,12 @@ function irRenderDivTabela(c){
   const descLocal = new Map((IR.locais||[]).map(l=>[l.idLocal, l]));
   const linha = i=>{
     const aberto = IR.divExpandido===i.item;
-    const tag = i.compensado
+    // Item sem preço nem na 410 nem na 278: componente de kit que não valora.
+    // Ele diverge em peça, mas não em dinheiro — e o selo diz isso.
+    const semPreco = i.origens && i.origens.size===1 && i.origens.has('zero');
+    const tag = semPreco
+      ? '<span class="ofe-tag comp">não valora</span>'
+      : i.compensado
       ? '<span class="ofe-tag comp">compensado</span>'
       : `<span class="ofe-tag ${i.netValor<0?'perda':'ganho'}">${i.netValor<0?'perda':'ganho'}</span>`;
     let html = `<tr class="${sel.has(i.item)?'sel':''} ${i.compensado?'comp':''}">
