@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 10;
+const IR_INDICADORES_VERSION = 11;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -346,12 +346,14 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   // específico dela — a coluna "Inventário?" é usada pelo usuário para outra finalidade.
 
   post('progress', {stage:'Processando contagens (QRY0843)...', pct:35});
+  // Legenda de motivos — a mesma da QRY410, editável em Configurações.
+  const legendaMotivos = await irSeedNet410LegendaIfEmpty();
   const contagens = [];
   let idx843 = 0, linhasSemDataDescartadas = 0;
   // Diagnostico da ingestao da 843 — sem isso o usuario nao tem como saber POR QUE uma
   // linha nao entrou (janela do ciclo? nao-AIR? nao liquidada?), e o numero "congela"
   // sem explicacao quando a janela do ciclo ja passou.
-  let linhasForaDaJanela = 0, linhasNaoAir = 0, linhasNaoLiquidadas = 0;
+  let linhasForaDaJanela = 0, linhasForaDoNet = 0, linhasNaoLiquidadas = 0;
   let dataMaisRecenteAceita = '', dataMaisRecenteForaDaJanela = '';
   for(const row of rows843){
     idx843++;
@@ -364,9 +366,12 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     // "Id Item" vem vazio quando o local foi contado e confirmado SEM nenhum item (local
     // vazio) — isso ainda é um local válido e contado, só não gera uma linha de item.
     if(!local) continue;
-    // Só eventos de Ajuste Inventário Rotativo (Obs começando em "AIR") entram no ciclo —
-    // outras tratativas na mesma planilha (ex.: "ADE - Ajuste Auditoria de Estoque") não são deste módulo.
-    if(!/^AIR/i.test(obsInventario)){ linhasNaoAir++; continue; }
+    // Todo motivo de ajuste entra, menos os que a legenda marca como fora do NET
+    // (baixa de insumo, quebra, EPI, nota fiscal, pallets...). É a MESMA legenda
+    // editável em Configurações que classifica a QRY410, então os dois lados do
+    // app passam a concordar sobre o que é ajuste de estoque. Antes só "AIR"
+    // entrava, e divergência real lançada com outro motivo sumia da aba.
+    if(!irClassificarMotivo410(obsInventario, legendaMotivos).considerarNet){ linhasForaDoNet++; continue; }
     // "Contado" de verdade só quando o local E o inventário foram liquidados — sessões
     // Canceladas (ex.: reabertas depois) não contam como contagem válida.
     if(situacaoLocal!=='Liquidado' || situacaoInventario!=='Liquidado'){ linhasNaoLiquidadas++; continue; }
@@ -401,6 +406,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       descricaoLocal: String(getVal(row, r843.descricaoLocal) ?? '').trim(),
       dataSituacao, dataInicioContagem, dataFimContagem,
       obsInventario, situacaoInventario, situacaoLocal,
+      motivo: irClassificarMotivo410(obsInventario, legendaMotivos).id,
       usuario: String(getVal(row, r843.usuario) ?? '').trim(),
       idConferencia, item, itemNome: String(getVal(row, r843.itemNome) ?? '').trim(),
       qtFis: parseNumber(getVal(row, r843.qtFis))
@@ -421,7 +427,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     const local = irNormItemKey(getVal(row, r843.local));
     if(!local) continue;
     const obsInventario = String(getVal(row, r843.obsInventario) ?? '').trim();
-    if(!/^AIR/i.test(obsInventario)) continue;
+    if(!irClassificarMotivo410(obsInventario, legendaMotivos).considerarNet) continue;
     const situacaoInventario = String(getVal(row, r843.situacaoInventario) ?? '').trim();
     const situacaoLocal = String(getVal(row, r843.situacaoLocal) ?? '').trim();
     if(situacaoLocal!=='Cancelado' && situacaoInventario!=='Cancelado') continue;
@@ -679,7 +685,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     totalContagens: contagens.length,
     totalDivergencias: divergencias.filter(d=>d.diferenca!==0).length,
     linhasSemDataDescartadas, visitasSemContagemFisica,
-    totalLinhas843: rows843.length, linhasForaDaJanela, linhasNaoAir, linhasNaoLiquidadas,
+    totalLinhas843: rows843.length, linhasForaDaJanela, linhasForaDoNet, linhasNaoLiquidadas,
     dataMaisRecenteAceita, dataMaisRecenteForaDaJanela,
     janelaAbertura: dataAbertura || '', janelaTermino: dataPrevistaTermino || '',
     itensComEstoque390: estoqueRows.length, temQry390: !!r390,

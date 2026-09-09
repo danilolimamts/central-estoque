@@ -679,15 +679,30 @@ table.aud-table td.mono{ text-align:right; }
 table.aud-table td:nth-child(2), table.aud-table td:nth-child(4){ text-align:left; }
 .aud-vazio{ min-width:130px; border-bottom:1px solid var(--line); }
 
-/* Impressão: sai só a auditoria, em preto no branco, sem menu nem botões. */
+/* Descrição do item vai completa na auditoria — o auditor precisa reconhecer a
+   peça na prateleira, e o resumo "primeira … última palavra" não serve pra isso. */
+.aud-desc{ min-width:220px; }
+.aud-onde{ font-size:10.5px; color:var(--ink-soft); min-width:160px; }
+
+/* Impressão: sai só a auditoria, em preto no branco, sem menu nem botões.
+   Paisagem porque são oito colunas, e o cabeçalho vira table-header-group pra se
+   repetir no topo de cada página — sem isso, da segunda folha em diante o auditor
+   fica com uma tabela de números sem saber qual coluna é qual. */
+@page{ size: landscape; margin: 10mm; }
 @media print{
   .sidebar, .topbar, .ofe-filtros, .ofe-resumo, .ofe-acoes, .zoom-ctrl, .toast{ display:none !important; }
   .panel:not(.aud-panel){ display:none !important; }
   .aud-panel{ box-shadow:none; border:none; padding:0; }
-  .aud-panel .table-scroll{ max-height:none !important; overflow:visible !important; }
-  table.aud-table th{ background:#EEE !important; color:#000 !important; -webkit-print-color-adjust:exact; }
-  table.aud-table td, table.aud-table th{ border-bottom:1px solid #999 !important; }
-  .aud-vazio{ border-bottom:1px solid #000 !important; }
+  .aud-panel .table-wrap, .aud-panel .table-scroll{ max-height:none !important; overflow:visible !important; }
+  table.aud-table{ width:100%; font-size:9.5px; }
+  table.aud-table thead{ display:table-header-group; }
+  table.aud-table tfoot{ display:table-footer-group; }
+  table.aud-table tr{ break-inside:avoid; page-break-inside:avoid; }
+  table.aud-table th{ background:#EEE !important; color:#000 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  table.aud-table td, table.aud-table th{ border-bottom:1px solid #999 !important; padding:4px 6px; }
+  .aud-desc{ min-width:0; }
+  .aud-onde{ font-size:8.5px; min-width:0; }
+  .aud-vazio{ border-bottom:1px solid #000 !important; min-width:70px; }
 }
 .tag-good{ color:var(--success); background:var(--success-light); }
 .tag-bad{ color:var(--danger); background:var(--danger-light); }

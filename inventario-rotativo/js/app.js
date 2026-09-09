@@ -481,7 +481,7 @@ function irRenderDiagnosticoIngestao(m){
         ${linha('Linhas lidas na planilha', irFmtInt(m.totalLinhas843))}
         ${linha('Contagens aceitas', irFmtInt(m.totalContagens))}
         ${linha('Descartadas — fora da janela do ciclo', irFmtInt(m.linhasForaDaJanela||0), perdendoContagem)}
-        ${linha('Descartadas — não são AIR', irFmtInt(m.linhasNaoAir||0))}
+        ${linha('Descartadas — motivo fora do NET', irFmtInt(m.linhasForaDoNet||0))}
         ${linha('Descartadas — não liquidadas', irFmtInt(m.linhasNaoLiquidadas||0))}
         ${linha('Descartadas — sem data utilizável', irFmtInt(m.linhasSemDataDescartadas||0))}
         ${linha('Locais só com Rodada 1 (sem contagem física)', irFmtInt(m.visitasSemContagemFisica||0))}
@@ -692,13 +692,13 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 10; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 11; // mantido em sincronia com worker.js
 /* Versão do app, em sincronia com o CACHE_VERSION do sw.js. Ela vai na URL do
    Worker porque o navegador guarda js/worker.js no cache HTTP por conta própria:
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v91';
+const IR_APP_VERSION = 'v92';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
@@ -4259,18 +4259,25 @@ async function irDivGerarAuditoria(){
     for(const item of sel){
       const g = porItem.get(item);
       if(!g) continue;
+      // Onde o item divergiu no período — é o endereço que o auditor confere
+      // primeiro, e ele não é necessariamente um dos que têm saldo hoje.
+      const divergiuEm = g.locais.filter(d=>d.diferenca!==0)
+        .map(d=>d.local + (irDescLocal(d.local) ? ' ('+irDescLocal(d.local)+')' : ''))
+        .join(' · ');
       let est = null;
       try{ est = cicloId ? await irGetEstoqueItem(cicloId, item) : null; }catch(err){ est = null; }
       if(!est || !est.locais || !est.locais.length){
         semEstoque++;
-        linhas.push({item, descricao:g.descricao, local:null, descricaoLocal:'', saldo:null, diferenca:g.netQtd});
+        linhas.push({item, descricao:g.descricao, local:null, descricaoLocal:'', saldo:null,
+          diferenca:g.netQtd, locaisDivergentes: divergiuEm});
         continue;
       }
       for(const s of est.locais){
         const desc = irDescLocal(s.local);
         if(!desc) semDescricao++;
         linhas.push({item, descricao:g.descricao, local:s.local,
-          descricaoLocal: desc || 'fora da base congelada', saldo:s.qtd, diferenca:g.netQtd});
+          descricaoLocal: desc || 'fora da base congelada', saldo:s.qtd, diferenca:g.netQtd,
+          locaisDivergentes: divergiuEm});
       }
     }
     IR.divAuditoria = {
@@ -4292,7 +4299,8 @@ function irDivExportarAuditoria(){
   const data = (document.getElementById('ir-aud-data')||{}).value || '';
   const auditor = (document.getElementById('ir-aud-auditor')||{}).value || '';
   const cols = [['item','Item'],['descricao','Descrição'],['local','Local'],
-    ['descricaoLocal','Descrição do Local'],['saldo','Saldo no Sistema'],['diferenca','Diferença do Item']];
+    ['descricaoLocal','Descrição do Local'],['saldo','Quantidade'],['diferenca','Qtde Divergente'],
+    ['locaisDivergentes','Onde Divergiu']];
   const cab = cols.map(c=>c[1]).concat(['Contagem do Auditor','Data','Auditor']);
   const linhas = g.linhas.map(l=>cols.map(([k])=>l[k]==null?'':l[k]).concat(['', data, auditor]));
   irDivBaixarPlanilha(cab, linhas, 'auditoria_'+String(g.escopo).replace(/\W+/g,'_'));
@@ -4509,14 +4517,15 @@ function irRenderDivAuditoria(){
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
       <table class="aud-table">
         <thead><tr><th>Item</th><th>Descrição</th><th>Local</th><th>Descrição do Local</th>
-          <th>Saldo no Sistema</th><th>Diferença do Item</th><th>Contagem do Auditor</th></tr></thead>
+          <th>Quantidade</th><th>Qtde Divergente</th><th>Onde Divergiu</th><th>Contagem do Auditor</th></tr></thead>
         <tbody>${g.linhas.map(l=>`<tr>
           <td class="mono">${irEsc(l.item)}</td>
-          <td title="${irEsc(l.descricao||'')}">${irEsc(irResumirDescricao(l.descricao))}</td>
+          <td class="aud-desc">${irEsc(l.descricao||'')}</td>
           <td class="mono">${l.local?irEsc(l.local):'<span class="field-hint">sem saldo</span>'}</td>
           <td>${irEsc(l.descricaoLocal||'—')}</td>
           <td class="mono">${l.saldo!=null?irFmtInt(l.saldo):'—'}</td>
           <td class="mono ${l.diferenca<0?'neg':'pos'}">${l.diferenca>0?'+':''}${irFmtInt(l.diferenca)}</td>
+          <td class="aud-onde">${irEsc(l.locaisDivergentes||'—')}</td>
           <td class="aud-vazio"></td>
         </tr>`).join('')}</tbody>
       </table>
