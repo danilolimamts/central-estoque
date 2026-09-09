@@ -34,6 +34,8 @@ const IR = {
   dashFilters:{applyProdDate:true},
   compararA:null, compararB:null,
   novoCiclo:false,
+  // Ciclo lido da própria QRY0843 anexada (número + janela de datas).
+  cicloDetectado:null, detectandoCiclo:false,
   _porDiaRua:{},
   // Escopo dos painéis "Itens mais Divergentes" — por padrão soma só o ciclo ativo
   // (igual antes), mas dá pra expandir pra um ano inteiro (todos os ciclos abertos
@@ -374,18 +376,22 @@ function irRenderImportacao(){
         <button class="btn btn-secondary" onclick="document.getElementById('ir-file-all').click()">📂 Selecionar todos de uma vez</button>
       </div>
       <div class="dz-grid">${IR_FILE_TYPES.map(dz).join('')}</div>
-      <p class="field-hint" style="margin-top:16px;"><strong>Ciclo e ano deste processamento</strong> — pra importar outro ciclo/ano (ex: 2027), volte aqui depois e processe de novo com os campos abaixo trocados; cada combinação número + data de abertura vira um ciclo separado no Histórico.</p>
+      ${irRenderCicloDetectado()}
       <div class="two-col" style="margin-top:4px;">
         <div><label>Número do ciclo</label><input type="number" id="ir-inp-ciclo" min="1" value="${(()=>{
+          const det = IR.cicloDetectado;
+          if(det && det.numero) return det.numero;
           if(IR.cicloAtivo) return IR.cicloAtivo.numero;
           const anoAtual = new Date().getFullYear();
           const doAno = IR.ciclos.filter(c=>irCicloAno(c)===anoAtual);
           return doAno.length ? Math.max(...doAno.map(c=>c.numero))+1 : 1;
         })()}"></div>
-        <div><label>Data de abertura</label><input type="date" id="ir-inp-abertura" value="${IR.cicloAtivo ? IR.cicloAtivo.dataAbertura : new Date().toISOString().slice(0,10)}"></div>
+        <div><label>Data de abertura</label><input type="date" id="ir-inp-abertura" value="${
+          (IR.cicloDetectado && IR.cicloDetectado.dataAbertura) || (IR.cicloAtivo ? IR.cicloAtivo.dataAbertura : new Date().toISOString().slice(0,10))}"></div>
       </div>
       <div class="two-col">
-        <div><label>Data prevista de término</label><input type="date" id="ir-inp-termino" value="${IR.cicloAtivo ? (IR.cicloAtivo.dataPrevistaTermino||'') : ''}"></div>
+        <div><label>Data prevista de término</label><input type="date" id="ir-inp-termino" value="${
+          (IR.cicloDetectado && IR.cicloDetectado.dataPrevistaTermino) || (IR.cicloAtivo ? (IR.cicloAtivo.dataPrevistaTermino||'') : '')}"></div>
         <div></div>
       </div>
       ${IR.processing ? `
@@ -449,6 +455,25 @@ function irRenderDiagnosticoIngestao(m){
       </tbody>
     </table></div>`;
 }
+/* Aviso do ciclo lido da 843. Diz de onde veio a leitura e se ela vai criar um
+   ciclo novo ou regravar um que já existe — regravar por engano era o risco de
+   deixar o número no chute do usuário. */
+function irRenderCicloDetectado(){
+  const cabecalho = '<p class="field-hint" style="margin-top:16px;"><strong>Ciclo deste processamento</strong> — lido da QRY0843 anexada. Confira e corrija se precisar; cada combinação número + ano vira um ciclo separado no Histórico.</p>';
+  if(IR.detectandoCiclo) return cabecalho+'<p class="field-hint">Lendo a QRY0843 pra identificar o ciclo...</p>';
+  const d = IR.cicloDetectado;
+  if(!d) return cabecalho;
+  if(d.erro) return cabecalho+`<p class="field-hint neg">Não deu pra identificar o ciclo: ${irEsc(d.erro)} — preencha à mão.</p>`;
+  const existente = IR.ciclos.find(c=>c.numero===d.numero && irCicloAno(c)===d.ano);
+  const fonte = d.origem==='obs'
+    ? `Obs Inventário (${irFmtInt((d.votos[0]||{}).linhas||0)} de ${irFmtInt(d.linhas)} linhas)`
+    : `trimestre das contagens (Q${d.trimestre})`;
+  return cabecalho+`<div class="det-ciclo ${existente?'regrava':''}">
+    <strong>Ciclo ${d.numero}/${d.ano}</strong>
+    <span>${irFmtDate(d.dataAbertura)} a ${irFmtDate(d.dataPrevistaTermino)} · identificado pela ${irEsc(fonte)}</span>
+    <span>${existente ? 'Já existe — processar vai <strong>regravar</strong> esse ciclo.' : 'Ciclo novo — será criado no Histórico.'}</span>
+  </div>`;
+}
 function irClassifyFile(file){
   const t = IR_FILE_TYPES.find(t=>t.pattern.test(file.name));
   return t ? t.key : null;
@@ -462,11 +487,32 @@ function irSetSlotFile(key, index, file){
   if(!IR.files[key]) IR.files[key] = [];
   IR.files[key][index] = file;
   irRenderView();
+  if(key==='f843') irDetectarCiclo843();
+}
+/* Lê a 843 anexada num worker e pré-preenche o ciclo. O usuário continua podendo
+   trocar na mão — a detecção é sugestão, não trava. */
+function irDetectarCiclo843(){
+  const bufsPromise = IR.files.f843.filter(Boolean).map(f=>f.arrayBuffer());
+  if(!bufsPromise.length){ IR.cicloDetectado = null; irRenderView(); return; }
+  IR.detectandoCiclo = true; IR.cicloDetectado = null; irRenderView();
+  Promise.all(bufsPromise).then(bufs=>{
+    const worker = new Worker('js/worker.js');
+    worker.onmessage = ev=>{
+      if(ev.data.type!=='done843detect') return;
+      worker.terminate();
+      IR.detectandoCiclo = false;
+      IR.cicloDetectado = ev.data.erro ? {erro:ev.data.erro} : ev.data;
+      irRenderView();
+    };
+    worker.onerror = ()=>{ worker.terminate(); IR.detectandoCiclo=false; irRenderView(); };
+    worker.postMessage({type:'detect843', bufs843:bufs}, bufs);
+  }).catch(()=>{ IR.detectandoCiclo=false; irRenderView(); });
 }
 function irRemoveSlot(key, index){
   IR.files[key].splice(index, 1);
   if(!IR.files[key].length) IR.files[key].push(null);
   irRenderView();
+  if(key==='f843') irDetectarCiclo843();
 }
 function irAddSlot(key){
   IR.files[key].push(null);
@@ -955,7 +1001,7 @@ function irRenderLogTablePanel(ind){
   const meta = ind.meta;
   return `<div class="panel">
     <h3>Acurácia por Log</h3>
-    <p class="panel-sub">Locais orçados x contados (Grupo Classe da base congelada), peças e acurácias por log — só locais CONCLUÍDOS (mesma regra do KPI "Acurácia Peças/Valor" do topo). Só LOG 1, 2, 3 e 6 — os demais ainda têm base congelada pra corrigir.</p>
+    <p class="panel-sub">Locais orçados x contados (Grupo Classe da base congelada), peças e acurácias por log — só locais CONCLUÍDOS (mesma regra do KPI "Acurácia Peças/Valor" do topo).</p>
     <div class="table-wrap"><table>
       <thead><tr>
         <th>Log</th><th>Locais Orçados</th><th>Locais Contados</th><th>Locais Pendentes</th><th>Locais Divergentes</th>
@@ -1070,7 +1116,6 @@ function irRenderPorLogPanel(ind){
   IR._porLogMap = new Map(rowsComTotal.map(r=>[r.chave, r]));
   return `<div class="panel">
     <h3>Acurácias por Log</h3>
-    <p class="panel-sub">Só LOG 1, 2, 3 e 6 — os demais logs ainda têm base congelada pra corrigir.</p>
     <div class="bi-vbars bi-vbars-grouped">
       ${rowsComTotal.map(r=>`<div class="bi-vbar-col${r.isTotal?' bi-vbar-col-total':''}" onmouseenter="irShowLogTooltip(event,'${irEsc(r.chave)}')" onmousemove="irMoveDiaTooltip(event)" onmouseleave="irHideDiaTooltip()">
         <div class="bi-cluster" style="height:100px;">

@@ -135,8 +135,72 @@ self.onmessage = async (e)=>{
   } else if(msg.type === 'process410'){
     try{ await runPipeline410(msg); }
     catch(err){ self.postMessage({type:'error410', message: err.message||String(err)}); }
+  } else if(msg.type === 'detect843'){
+    try{ self.postMessage({type:'done843detect', ...detectarCiclo843(msg.bufs843)}); }
+    catch(err){ self.postMessage({type:'done843detect', erro: err.message||String(err)}); }
   }
 };
+
+/* Lê a QRY0843 anexada e diz de qual ciclo ela é, pra não depender do usuário
+   lembrar de trocar o número na mão (e gravar por cima do ciclo errado).
+
+   Duas fontes, nessa ordem:
+     1. A Obs Inventário, que costuma trazer o ciclo por extenso ("AIR 3 CICLO
+        2026", "AIR CICLO 2/2026"). É a fonte forte: é o que o WMS gravou.
+     2. O trimestre da mediana das datas de contagem. Os ciclos são trimestrais,
+        então Q1 = ciclo 1 e assim por diante. Vale quando a Obs não diz nada.
+
+   As datas de abertura e término vêm sempre da menor e da maior data de
+   contagem do arquivo — é o que o ciclo de fato ocupou. */
+function detectarCiclo843(bufs){
+  let rows = [];
+  for(const buf of (bufs||[])){
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    rows = rows.concat(sheetToRows(wb));
+  }
+  if(!rows.length) return {erro:'QRY0843: planilha vazia.'};
+  const r = buildAliasResolver(Object.keys(rows[0]), ALIAS_843);
+  const datas = [];
+  const votos = new Map();      // número do ciclo -> quantas linhas o apontam
+  const anos = new Map();
+  let amostraObs = '';
+  for(const row of rows){
+    const d = parseDateVal(getVal(row, r.dataSituacao)) || parseDateVal(getVal(row, r.dataFimContagem))
+           || parseDateVal(getVal(row, r.dataInicioContagem));
+    if(d && !isNaN(d.getTime())) datas.push(d);
+    const obs = String(getVal(row, r.obsInventario) ?? '').trim();
+    if(!obs) continue;
+    if(!amostraObs) amostraObs = obs;
+    // "3 CICLO", "3º CICLO", "CICLO 3", "CICLO 3/2026" — um dígito colado ao rótulo.
+    const m = obs.toUpperCase().match(/(\d)\s*[ºO°]?\s*CICLO|CICLO\s*[:\/-]?\s*(\d)/);
+    if(m){
+      const n = parseInt(m[1] || m[2], 10);
+      if(n>=1 && n<=4) votos.set(n, (votos.get(n)||0)+1);
+    }
+    const ma = obs.match(/(20\d{2})/);
+    if(ma) anos.set(ma[1], (anos.get(ma[1])||0)+1);
+  }
+  if(!datas.length) return {erro:'QRY0843: nenhuma data de contagem utilizável.'};
+  datas.sort((a,b)=>a-b);
+  const iso = d => d.toISOString().slice(0,10);
+  const dataAbertura = iso(datas[0]);
+  const dataPrevistaTermino = iso(datas[datas.length-1]);
+  const mediana = datas[Math.floor(datas.length/2)];
+  const trimestre = Math.floor(mediana.getUTCMonth()/3) + 1;
+
+  let numero = trimestre, origem = 'trimestre';
+  if(votos.size){
+    // Empate é decidido pelo trimestre — arquivo com linhas de dois ciclos existe.
+    const [top] = Array.from(votos.entries()).sort((a,b)=>b[1]-a[1] || (a[0]===trimestre?-1:1));
+    numero = top[0]; origem = 'obs';
+  }
+  return {
+    numero, dataAbertura, dataPrevistaTermino, origem,
+    linhas: rows.length, amostraObs,
+    votos: Array.from(votos.entries()).map(([n,q])=>({numero:n, linhas:q})).sort((a,b)=>b.linhas-a.linhas),
+    trimestre, ano: mediana.getUTCFullYear()
+  };
+}
 function post(type, data){ self.postMessage({type, ...data}); }
 
 // Lê e concatena vários arquivos da mesma planilha, deduplicando linhas por uma chave
