@@ -693,13 +693,13 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 13; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 14; // mantido em sincronia com worker.js
 /* Versão do app, em sincronia com o CACHE_VERSION do sw.js. Ela vai na URL do
    Worker porque o navegador guarda js/worker.js no cache HTTP por conta própria:
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v96';
+const IR_APP_VERSION = 'v97';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -3942,8 +3942,8 @@ function irDivValorDa(d){
    do período filtrado. É o que responde "cadê a contrapartida" sem trocar o filtro. */
 function irDivLinhasDoAno(item){
   const noPeriodo = new Set(irDivDivsDoEscopo().map(d=>d.id));
-  return irSoLocaisConcluidos((IR.divAnoCache||{}).divs || IR.divergencias || [])
-    .filter(d=>d.item===item && d.diferenca!==0)
+  return irDivLinhasValidas((IR.divAnoCache||{}).divs || IR.divergencias)
+    .filter(d=>d.item===item)
     .map(d=>{
       const v = irDivValorDa(d);
       return Object.assign({}, d, {vlDivergencia:v.valor, precoUsado:v.preco, precoOrigem:v.origem,
@@ -3968,11 +3968,24 @@ function irDivAgruparPorItem(divs){
   return map;
 }
 /* Núcleo: NET do escopo + NET do ano, e a classificação em ofensor/compensado. */
+/* Motivo que não conta pro NET (ANF de nota fiscal, BAI de insumo, QBR de quebra,
+   EPI, INP de pallets) não é divergência de estoque e não pode aparecer na aba. O
+   worker já barra na importação, mas a checagem também roda aqui: ciclo processado
+   antes dessa regra continua no banco com essas linhas, e reprocessar é decisão do
+   usuário. A legenda é a mesma editável em Configurações. */
+function irDivMotivoConta(d){
+  if(!d.motivo) return true; // divergência antiga, gravada antes do motivo existir
+  const m = (IR.net410Legenda||[]).find(x=>x.id===d.motivo);
+  return !m || m.considerarNet !== false;
+}
+function irDivLinhasValidas(lista){
+  return irSoLocaisConcluidos(lista || []).filter(d=>d.diferenca!==0 && irDivMotivoConta(d));
+}
 // Divergências do período escolhido no filtro do topo. Isolado porque a
 // conciliação com a QRY410 precisa exatamente do mesmo recorte.
 function irDivDivsDoEscopo(){
   const e = IR.divEscopo;
-  let divs = irSoLocaisConcluidos(IR.divEscopoDados || IR.divergencias || []).filter(d=>d.diferenca!==0);
+  let divs = irDivLinhasValidas(IR.divEscopoDados || IR.divergencias);
   if(e.tipo==='mes') divs = divs.filter(d=>irDivDiaDa(d).slice(0,7)===e.mes);
   if(e.tipo==='periodo'){
     if(e.de)  divs = divs.filter(d=>irDivDiaDa(d) >= e.de);
@@ -3987,7 +4000,7 @@ function irDivCalcItens(){
   const corte = base.corte;
   const divs = irDivDivsDoEscopo();
   const noEscopo = irDivAgruparPorItem(divs);
-  const noAno = irDivAgruparPorItem(irSoLocaisConcluidos((IR.divAnoCache||{}).divs || []).filter(d=>d.diferenca!==0));
+  const noAno = irDivAgruparPorItem(irDivLinhasValidas((IR.divAnoCache||{}).divs));
   const busca = (IR.divBusca||'').toLowerCase();
   const itens = Array.from(noEscopo.values()).map(g=>{
     const a = noAno.get(g.item) || {netQtd:g.netQtd, netValor:g.netValor};
@@ -4062,8 +4075,8 @@ function irDivNetMesVigente(){
       itens: itens.length
     };
   }
-  const divs = irSoLocaisConcluidos((IR.divAnoCache||{}).divs || IR.divergencias || [])
-    .filter(d=>d.diferenca!==0 && irDivDiaDa(d).slice(0,7)===mes);
+  const divs = irDivLinhasValidas((IR.divAnoCache||{}).divs || IR.divergencias)
+    .filter(d=>irDivDiaDa(d).slice(0,7)===mes);
   return {
     mes, fonte:'contagem',
     valor: divs.reduce((s,d)=>s+irDivValorDa(d).valor,0),
@@ -4169,8 +4182,7 @@ function irDivSimOrdenarPares(pares){
    porque a pergunta aqui é "o que trocaram ontem", não "o que pesa no ciclo". */
 function irDivParesSimilares(){
   const f = IR.divSimFiltro || {de:'', ate:''};
-  let divs = irSoLocaisConcluidos((IR.divAnoCache||{}).divs || IR.divergencias || [])
-    .filter(d=>d.diferenca!==0);
+  let divs = irDivLinhasValidas((IR.divAnoCache||{}).divs || IR.divergencias);
   if(f.de)  divs = divs.filter(d=>irDivDiaDa(d) >= f.de);
   if(f.ate) divs = divs.filter(d=>irDivDiaDa(d) <= f.ate);
   const porVisita = new Map();
@@ -4339,12 +4351,12 @@ function irDivExportarItem(item){
   const {itens} = irDivCalcItens();
   const g = itens.find(i=>i.item===item);
   if(!g){ irShowToast('Item fora do recorte atual.', true); return; }
-  const cab = ['Item','Descrição','Local','Descrição do Local','Rua','Log','Dia do Fechamento',
+  const cab = ['Item','Descrição','Local','Descrição do Local','Rua','Log','Dia do Fechamento','Motivo',
     'Qtde Sistema','Qtde Física','Diferença','Valor Divergente'];
   const linhas = g.locais.slice().sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia)).map(d=>{
     const l = {descricao: irDescLocal(d.local)};
     return [g.item, g.descricao||'', d.local, l.descricao||'', l.x1||'', l.grupoClasse||'',
-      irDivDiaDa(d), d.qtdeSistema, d.qtdeFisica, d.diferenca, d.vlDivergencia];
+      irDivDiaDa(d), d.motivo||'', d.qtdeSistema, d.qtdeFisica, d.diferenca, d.vlDivergencia];
   });
   irDivBaixarPlanilha(cab, linhas, 'item_'+String(item).replace(/\W+/g,'_'));
 }
@@ -4472,13 +4484,14 @@ function irRenderDivTabela(c){
       const locais = irDivLinhasDoAno(i.item);
       html += `<tr class="ofe-detalhe"><td></td><td colspan="9">
         <table class="ofe-sub"><thead><tr>
-          <th>Local</th><th>Descrição do Local</th><th>Dia</th><th>Sistema</th><th>Físico</th><th>Diferença</th><th>Valor</th><th>Preço unit.</th>
+          <th>Local</th><th>Descrição do Local</th><th>Dia</th><th>Motivo</th><th>Sistema</th><th>Físico</th><th>Diferença</th><th>Valor</th><th>Preço unit.</th>
         </tr></thead><tbody>${locais.map(d=>{
           const l = {descricao: irDescLocal(d.local)};
           return `<tr class="${d.foraDoPeriodo?'ofe-fora':''}">
             <td class="mono">${irEsc(d.local)}</td>
             <td>${irEsc(l.descricao||'—')}</td>
             <td class="mono">${irFmtDate(irDivDiaDa(d))}</td>
+            <td class="mono">${irEsc(d.motivo||'')}</td>
             <td class="mono">${irFmtInt(d.qtdeSistema)}</td>
             <td class="mono">${irFmtInt(d.qtdeFisica)}</td>
             <td class="mono ${d.diferenca<0?'neg':'pos'}">${d.diferenca>0?'+':''}${irFmtInt(d.diferenca)}</td>
