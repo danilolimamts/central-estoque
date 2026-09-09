@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 12;
+const IR_INDICADORES_VERSION = 13;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -89,7 +89,9 @@ function validateColumns(resolved, required, label){
 
 const ALIAS_390 = {
   item: ['Item'], descricao: ['Descrição','Descricao'], codTerceiro: ['Cod Terceiro'],
-  local: ['Local'], situacao: ['Situação','Situacao'], quantidade: ['Quantidade'], classeSku: ['Classe Sku']
+  local: ['Local'], situacao: ['Situação','Situacao'], quantidade: ['Quantidade'], classeSku: ['Classe Sku'],
+  // O EAN vem daqui: a SIGEQ278 não tem código de barras, a QRY0390 tem.
+  ean: ['Ean','EAN','Código de Barras','Codigo de Barras','Cod Barras','Cód.Barras','Cod.Barras']
 };
 const ALIAS_843 = {
   inventario: ['Inventario','Inventário'], local: ['Local'], descricaoLocal: ['Descrição Local'],
@@ -101,9 +103,6 @@ const ALIAS_843 = {
 };
 const ALIAS_278 = {
   item: ['Item'], nomeItem: ['Nome item','Nome Item'],
-  // EAN só existe na SIGEQ278 (a QRY0843 não traz). Se a extração vier sem a
-  // coluna, o campo fica vazio e a auditoria imprime sem código de barras.
-  ean: ['Ean','EAN','Código de Barras','Codigo de Barras','Cod Barras','Cód.Barras'],
   precoCusto: ['Preço de custo','Preco de custo'], precoCompra: ['Preço de compra','Preco de compra']
 };
 const ALIAS_051 = {
@@ -277,12 +276,15 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   // contados no ciclo — sem isso só dá pra apontar onde já se sabe que divergiu.
   post('progress', {stage:'Indexando estoque atual (QRY0390)...', pct:10});
   const estoquePorItemLocal = new Map(); // item -> Map(local -> qtd)
+  const eanPorItem = new Map();          // item -> EAN (vem da QRY0390)
   if(r390){
     for(const row of rows390){
       const item = irNormItemKey(getVal(row, r390.item));
       const local = irNormItemKey(getVal(row, r390.local));
       if(!item || !local) continue;
       const qtd = parseNumber(getVal(row, r390.quantidade));
+      const ean = String(getVal(row, r390.ean) ?? '').trim();
+      if(ean && !eanPorItem.has(item)) eanPorItem.set(item, ean);
       if(!estoquePorItemLocal.has(item)) estoquePorItemLocal.set(item, new Map());
       const porLocal = estoquePorItemLocal.get(item);
       porLocal.set(local, (porLocal.get(local)||0) + qtd);
@@ -297,15 +299,12 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   post('progress', {stage:'Indexando preços (SIGEQ278)...', pct:14});
   const precoPorItem = new Map(); // item -> preço de custo
   const nomePorItem278 = new Map(); // item -> nome (fallback quando a QRY0843 vem sem "Item Nome")
-  const eanPorItem = new Map();     // item -> EAN (só a 278 tem)
   for(const row of rows278){
     const item = irNormItemKey(getVal(row, r278.item));
     if(!item) continue;
     precoPorItem.set(item, parseNumber(getVal(row, r278.precoCusto)));
     const nome = String(getVal(row, r278.nomeItem) ?? '').trim();
     if(nome) nomePorItem278.set(item, nome);
-    const ean = String(getVal(row, r278.ean) ?? '').trim();
-    if(ean) eanPorItem.set(item, ean);
   }
   const valoracaoPorComponente = new Map(); // item_componente -> {itemPai, inInterface}
   for(const row of rows051){

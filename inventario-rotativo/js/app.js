@@ -693,13 +693,13 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 12; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 13; // mantido em sincronia com worker.js
 /* Versão do app, em sincronia com o CACHE_VERSION do sw.js. Ela vai na URL do
    Worker porque o navegador guarda js/worker.js no cache HTTP por conta própria:
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v95';
+const IR_APP_VERSION = 'v96';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -4282,9 +4282,6 @@ async function irDivGerarAuditoria(){
       // Onde o item divergiu no período — é o endereço que o auditor confere
       // primeiro, e ele não é necessariamente um dos que têm saldo hoje.
       const ondeDivergiu = g.locais.filter(d=>d.diferenca!==0);
-      const divergiuEm = ondeDivergiu
-        .map(d=>d.local + (irDescLocal(d.local) ? ' ('+irDescLocal(d.local)+')' : ''))
-        .join(' · ');
       let est = null;
       try{ est = cicloId ? await irGetEstoqueItem(cicloId, item) : null; }catch(err){ est = null; }
       // Sem saldo na QRY0390 o item zerou no CD — não há endereço de estoque pra
@@ -4295,11 +4292,11 @@ async function irDivGerarAuditoria(){
         semEstoque++;
         for(const d of ondeDivergiu){
           linhas.push({item, ean:g.ean||'', descricao:g.descricao, local:d.local, descricaoLocal:irDescLocal(d.local),
-            saldo:null, diferenca:g.netQtd, origem:'local do ajuste', locaisDivergentes: divergiuEm});
+            saldo:null, diferenca:g.netQtd, valor:g.netValor});
         }
         if(!ondeDivergiu.length){
           linhas.push({item, ean:g.ean||'', descricao:g.descricao, local:'', descricaoLocal:'',
-            saldo:null, diferenca:g.netQtd, origem:'sem endereço', locaisDivergentes: divergiuEm});
+            saldo:null, diferenca:g.netQtd, valor:g.netValor});
         }
         continue;
       }
@@ -4310,8 +4307,7 @@ async function irDivGerarAuditoria(){
         // código do local já basta pro auditor achar, e um rótulo no lugar da
         // descrição só polui a folha impressa.
         linhas.push({item, ean:g.ean||'', descricao:g.descricao, local:s.local,
-          descricaoLocal: desc, saldo:s.qtd, diferenca:g.netQtd,
-          origem:'saldo', locaisDivergentes: divergiuEm});
+          descricaoLocal: desc, saldo:s.qtd, diferenca:g.netQtd, valor:g.netValor});
       }
     }
     IR.divAuditoria = {
@@ -4333,9 +4329,8 @@ function irDivExportarAuditoria(){
   const data = (document.getElementById('ir-aud-data')||{}).value || '';
   const auditor = (document.getElementById('ir-aud-auditor')||{}).value || '';
   const cols = [['item','Item'],['ean','EAN'],['descricao','Descrição'],['local','Local'],
-    ['descricaoLocal','Descrição do Local'],['saldo','Quantidade'],['diferenca','Qtde Divergente'],
-    ['origem','Origem do Endereço'],['locaisDivergentes','Onde Divergiu']];
-  const cab = cols.map(c=>c[1]).concat(['Contagem do Auditor','Data','Auditor']);
+    ['descricaoLocal','Desc. Local'],['saldo','Qtde'],['diferenca','Qtde Div.'],['valor','Valor Div.']];
+  const cab = cols.map(c=>c[1]).concat(['Contagem','Data','Auditor']);
   const linhas = g.linhas.map(l=>cols.map(([k])=>l[k]==null?'':l[k]).concat(['', data, auditor]));
   irDivBaixarPlanilha(cab, linhas, 'auditoria_'+String(g.escopo).replace(/\W+/g,'_'));
 }
@@ -4422,14 +4417,8 @@ function irRenderDivResumo(c){
     ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}
   </div>`;
   const mv = irDivNetMesVigente();
-  const b = c.base;
   return `<div class="panel ofe-resumo">
     ${cell('NET de '+irMesLabel(mv.mes), (mv.valor>0?'+':'')+irFmtMoney(mv.valor), mv.valor<0?'neg':'pos', irFmtInt(mv.qtd)+' peças · '+(mv.fonte==='410'?'QRY410':'contagem'))}
-    ${cell('NET do período', (c.netValor>0?'+':'')+irFmtMoney(c.netValor), c.netValor<0?'neg':'pos', irFmtInt(c.netQtd)+' peças')}
-    ${cell('Perda dos ofensores', irFmtMoney(c.perdaOfensores), 'neg', irFmtInt(c.perdaQtd)+' peças · '+irFmtInt(c.nPerda)+(c.nPerda===1?' item':' itens'))}
-    ${cell('Ganho dos ofensores', '+'+irFmtMoney(c.ganhoOfensores), 'pos', '+'+irFmtInt(c.ganhoQtd)+' peças · '+irFmtInt(c.nGanho)+(c.nGanho===1?' item':' itens'))}
-    ${cell('Compensados no ano', irFmtInt(c.compensados.length), '', 'saem da lista')}
-    ${cell('Itens com divergência', irFmtInt(c.totalItens), '', 'corte de '+b.fmt(c.corte)+' em '+b.lbl)}
   </div>`;
 }
 const IR_OFE_COLS = [
@@ -4548,8 +4537,8 @@ function irRenderDivAuditoria(){
     </div>
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
       <table class="aud-table">
-        <thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local</th><th>Descrição do Local</th>
-          <th>Quantidade</th><th>Qtde Divergente</th><th>Origem do Endereço</th><th>Onde Divergiu</th><th>Contagem do Auditor</th></tr></thead>
+        <thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local</th><th>Desc. Local</th>
+          <th>Qtde</th><th>Qtde Div.</th><th>Valor Div.</th><th>Contagem</th></tr></thead>
         <tbody>${g.linhas.map(l=>`<tr>
           <td class="mono">${irEsc(l.item)}</td>
           <td class="mono">${irEsc(l.ean||'')}</td>
@@ -4558,8 +4547,7 @@ function irRenderDivAuditoria(){
           <td>${irEsc(l.descricaoLocal||'')}</td>
           <td class="mono">${l.saldo!=null?irFmtInt(l.saldo):''}</td>
           <td class="mono ${l.diferenca<0?'neg':'pos'}">${l.diferenca>0?'+':''}${irFmtInt(l.diferenca)}</td>
-          <td class="aud-onde">${irEsc(l.origem||'')}</td>
-          <td class="aud-onde">${irEsc(l.locaisDivergentes||'')}</td>
+          <td class="mono ${l.valor<0?'neg':'pos'}">${l.valor>0?'+':''}${irFmtMoney(l.valor)}</td>
           <td class="aud-vazio"></td>
         </tr>`).join('')}</tbody>
       </table>
