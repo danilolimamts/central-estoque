@@ -693,13 +693,13 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 14; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 15; // mantido em sincronia com worker.js
 /* Versão do app, em sincronia com o CACHE_VERSION do sw.js. Ela vai na URL do
    Worker porque o navegador guarda js/worker.js no cache HTTP por conta própria:
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v100';
+const IR_APP_VERSION = 'v101';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -4351,7 +4351,10 @@ async function irDivGerarAuditoria(){
         continue;
       }
       for(const s of est.locais){
-        const desc = irDescLocal(s.local);
+        // A QRY0390 nova traz a descrição do endereço junto com o saldo — é a
+        // fonte mais confiável, porque cobre todo o CD e não só o que foi
+        // congelado em algum ciclo.
+        const desc = s.desc || irDescLocal(s.local);
         if(!desc) semDescricao++;
         // Endereço sem descrição em nenhuma base fica em branco de propósito: o
         // código do local já basta pro auditor achar, e um rótulo no lugar da
