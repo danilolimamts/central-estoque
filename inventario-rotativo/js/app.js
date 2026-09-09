@@ -705,7 +705,7 @@ const IR_INDICADORES_VERSION = 15; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v103';
+const IR_APP_VERSION = 'v104';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -4995,6 +4995,28 @@ function irTransCalc(){
   const lista = Array.from(grupos.values()).sort((a,b)=> ordem(a)-ordem(b) || b.valor-a.valor);
   return {lista, valorTotal, pecasTotal, nLocais};
 }
+/* Nome do transitório. O prefixo sozinho não diz nada pra quem lê o relatório —
+   "CAN" é "pedidos cancelados". A lista nasce com os nomes que o próprio usuário
+   já usa no relatório de pendência e cai no prefixo quando não conhece. */
+const IR_TRANS_NOMES = {
+  CAN:'PEDIDOS CANCELADOS', MOV:'MOVIMENTAÇÃO DE STK', REV:'MOV. REVERSA P/ ESTOQUE',
+  AEE:'GANHOS P/ SEREM MOV.', TR:'TRANSITORIO', TRA:'TRANSITORIO', TRI:'TRANSITORIO',
+  ANE:'ANE', ARI:'AJUSTE RECEBIMENTO', AVA:'AVARIA', DEV:'DEVOLUÇÃO', DS:'DESCARTE',
+  QBR:'QUEBRA', BLO:'BLOQUEADO', LIT:'LITÍGIO', INV:'INVENTÁRIO', PAL:'PALLETS',
+  EPI:'EPI', PIC:'PICKING REVERSA', BMS:'BMS REVERSA', RML:'REMANEJO', FAT:'FATURAMENTO',
+  OUT:'EXPEDIÇÃO', GAI:'EXPEDIÇÃO', REC:'RECEBIMENTO', BUF:'BUFFER', ATI:'ATIVO',
+  ROT:'ROTATIVO', INA:'INATIVO', MEZ:'MEZANINO', RES:'RESERVA', CAR:'CARGA'
+};
+function irTransNome(p){ return IR_TRANS_NOMES[p] || p; }
+// Ordem fixa dos LOGs, pra tabela não trocar de coluna a cada importação.
+const IR_TRANS_LOGS = ['LOG 1','LOG 2','LOG 3','LOG 4','LOG 5','LOG 6','EMBALAGEM','S/CAD'];
+function irTransLogsPresentes(){
+  const vistos = new Set();
+  for(const l of (IR.est390Locais||[])) for(const k in (l.porLog||{})) if(l.porLog[k]) vistos.add(k);
+  const conhecidos = IR_TRANS_LOGS.filter(x=>vistos.has(x));
+  const outros = Array.from(vistos).filter(x=>!IR_TRANS_LOGS.includes(x)).sort();
+  return conhecidos.concat(outros);
+}
 function irRenderTransitorios(){
   if(!IR.est390Locais){ irCarregarEstoque390(); return irDivCarregando(); }
   if(!IR.est390Locais.length){
@@ -5003,35 +5025,70 @@ function irRenderTransitorios(){
   }
   const c = irTransCalc();
   const m = IR.est390Meta || {};
-  const cell = (rot, val, cls, sub) => `<div class="ofe-num ${cls||''}">
-    <span class="ofe-num-lbl">${irEsc(rot)}</span><strong class="mono">${val}</strong>
-    ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}</div>`;
+  const logs = irTransLogsPresentes();
   const naoClass = c.lista.find(g=>!g.setor);
   return `
-    <div class="panel ofe-resumo">
-      ${cell('Estoque em transitório', irFmtMoney(c.valorTotal), '', irFmtInt(c.pecasTotal)+' peças · '+irFmtInt(c.nLocais)+' endereços')}
-      ${c.lista.filter(g=>g.setor && g.setor!=='IGN').slice(0,4).map(g=>cell(IR_TRANS_SETOR_NOME[g.setor]||g.setor, irFmtMoney(g.valor), '', irFmtInt(g.qtd)+' peças · '+irFmtInt(g.locais.length)+' endereços')).join('')}
-    </div>
+    ${c.lista.filter(g=>g.setor).map(g=>irTransPainelSetor(g, logs)).join('')}
     ${naoClass ? `<div class="panel"><div class="ofe-head">
       <h3>Não classificado</h3>
-      <span class="field-hint">${irFmtMoney(naoClass.valor)} em ${irFmtInt(naoClass.locais.length)} endereços · ${irFmtInt(naoClass.prefixos.size)} prefixos sem setor</span>
+      <span class="field-hint">${irFmtMoney(naoClass.valor)} · ${irFmtInt(naoClass.locais.length)} endereços · ${irFmtInt(naoClass.prefixos.size)} prefixos sem setor</span>
     </div>${irTransTabelaPrefixos(naoClass)}</div>` : ''}
-    ${c.lista.filter(g=>g.setor).map(g=>irTransPainelSetor(g)).join('')}
-    <p class="field-hint">Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · ${irFmtInt(m.locais||0)} endereços no CD · ${irFmtMoney(m.valorTotal||0)} no total</p>
+    <p class="field-hint">Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · ${irFmtInt(m.locais||0)} endereços no CD · ${irFmtMoney(m.valorTotal||0)} no total.
+    A idade do saldo (D0, D+1, D+4) precisa de uma data de entrada por endereço, que a QRY0390 não traz — só o horário da extração.</p>
   `;
 }
-function irTransPainelSetor(g){
+/* Uma tabela por setor, no formato do relatório de pendência: uma linha por
+   transitório, peças abertas por LOG e o valor parado no endereço. */
+function irTransPainelSetor(g, logs){
+  const porPrefixo = new Map();
+  for(const l of g.locais){
+    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, itens:0, porLog:{}});
+    const p = porPrefixo.get(l.x1);
+    p.valor += l.valor; p.qtd += l.qtd; p.n++; p.itens += l.itens||0;
+    for(const k in (l.porLog||{})) p.porLog[k] = (p.porLog[k]||0) + l.porLog[k];
+  }
+  const linhas = Array.from(porPrefixo.values()).sort((a,b)=>b.valor-a.valor);
+  const totLog = {};
+  for(const p of linhas) for(const k in p.porLog) totLog[k] = (totLog[k]||0) + p.porLog[k];
+  const itens = linhas.reduce((s,p)=>s+p.itens,0);
+  const cell = (rot, val, sub) => `<div class="ofe-num">
+    <span class="ofe-num-lbl">${irEsc(rot)}</span><strong class="mono">${val}</strong>
+    ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}</div>`;
   const aberto = IR.transExpandido===g.setor;
   return `<div class="panel">
     <div class="ofe-head">
       <h3>${irEsc(IR_TRANS_SETOR_NOME[g.setor]||g.setor)}</h3>
       <div class="ofe-acoes">
-        <span class="field-hint">${irFmtMoney(g.valor)} · ${irFmtInt(g.qtd)} peças · ${irFmtInt(g.locais.length)} endereços</span>
         <button class="btn btn-secondary" onclick="irTransExportar('${irEsc(g.setor)}')">Excel</button>
-        <button class="btn-link" onclick="irTransToggle('${irEsc(g.setor)}')">${aberto?'Fechar':'Ver endereços'}</button>
+        <button class="btn-link" onclick="irTransToggle('${irEsc(g.setor)}')">${aberto?'Fechar endereços':'Ver endereços'}</button>
       </div>
     </div>
-    ${aberto ? `<div class="table-wrap"><div class="table-scroll" style="max-height:460px;">
+    <div class="ofe-resumo trans-kpis">
+      ${cell('Parado', irFmtMoney(g.valor), irFmtInt(g.qtd)+' peças')}
+      ${cell('Endereços', irFmtInt(g.locais.length), irFmtInt(linhas.length)+(linhas.length===1?' transitório':' transitórios'))}
+      ${cell('Itens', irFmtInt(itens), 'distintos por endereço')}
+      ${cell('Maior transitório', irEsc(linhas[0]?irTransNome(linhas[0].x1):'—'), linhas[0]?irFmtMoney(linhas[0].valor):'')}
+    </div>
+    <div class="table-wrap"><table class="trans-table">
+      <thead>
+        <tr><th rowspan="2">Local transitório</th><th rowspan="2">Descrição</th>
+            <th colspan="${logs.length}">Peças por LOG</th>
+            <th rowspan="2" class="num">Valor por endereço</th></tr>
+        <tr>${logs.map(l=>`<th class="num">${irEsc(l.replace('LOG ','L'))}</th>`).join('')}</tr>
+      </thead>
+      <tbody>${linhas.map(p=>`<tr>
+        <td class="mono">${irEsc(p.x1||'(vazio)')}</td>
+        <td>${irEsc(irTransNome(p.x1))}</td>
+        ${logs.map(l=>`<td class="mono">${p.porLog[l]?irFmtInt(p.porLog[l]):'0'}</td>`).join('')}
+        <td class="mono">${irFmtMoney(p.valor)}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr>
+        <td colspan="2"><strong>Total</strong></td>
+        ${logs.map(l=>`<td class="mono"><strong>${totLog[l]?irFmtInt(totLog[l]):'0'}</strong></td>`).join('')}
+        <td class="mono"><strong>${irFmtMoney(g.valor)}</strong></td>
+      </tr></tfoot>
+    </table></div>
+    ${aberto ? `<div class="table-wrap" style="margin-top:10px;"><div class="table-scroll" style="max-height:420px;">
       <table class="conc-table">
         <thead><tr><th>Local</th><th>Descrição</th><th class="num">Peças</th><th class="num">Itens</th><th class="num">Valor</th></tr></thead>
         <tbody>${g.locais.slice(0,400).map(l=>`<tr>

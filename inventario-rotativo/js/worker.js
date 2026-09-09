@@ -262,11 +262,15 @@ async function runPipeline390({buf390}){
         clal: String(getVal(row, r.classeLocal) ?? '').trim(),
         predio: String(getVal(row, r.predio) ?? '').trim(),
         log: String(getVal(row, r.log) ?? '').trim(),
-        qtd:0, valor:0, itens:0, _itens:new Set()};
+        // Peças por LOG dentro do mesmo endereço: um transitório recebe carga de
+        // mais de um LOG, e o relatório de pendência abre justamente por LOG.
+        qtd:0, valor:0, itens:0, porLog:{}, _itens:new Set()};
       porLocal.set(local, g);
     }
     g.qtd += qtd;
     g.valor += valor;
+    const lg = String(getVal(row, r.log) ?? '').trim() || 'S/CAD';
+    g.porLog[lg] = (g.porLog[lg] || 0) + qtd;
     if(item) g._itens.add(item);
     valorTotal += valor; pecasTotal += qtd;
     if(!atualizadoEm){
