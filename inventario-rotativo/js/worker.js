@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 13;
+const IR_INDICADORES_VERSION = 14;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -592,6 +592,10 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     for(const c of lista){
       if(c.idConferencia>=rodadaTopo && c.dataSituacao){ rodadaTopo = c.idConferencia; diaFechamento = c.dataSituacao.slice(0,10); }
     }
+    // Motivo do ajuste (AIR, ADE, AIN...), gravado na divergência pra que a tela
+    // possa filtrar por ele sem reler a planilha. Uma visita tem um motivo só —
+    // é o mesmo inventário — então basta o da primeira linha que o trouxer.
+    const motivoVisita = (lista.find(c=>c.motivo)||{}).motivo || '';
     for(const [item, g] of porItem){
       totalFisico += g.final;
       // REGRA: Rodada 1 é sempre a quantidade sistêmica, a última rodada é a física,
@@ -614,7 +618,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
         // eventos diferentes, e sem isso o mesmo item aparece sobrando num e faltando
         // no outro, virando um "par trocado" que não existe.
         cicloId, local, inventario: String(chave).split('|')[1] || '', item, itemNome,
-        ean: eanPorItem.get(item) || '',
+        ean: eanPorItem.get(item) || '', motivo: motivoVisita,
         qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
         precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
         statusLocal: st.status, rodadasLocal: st.rodadas, diaFechamento,
