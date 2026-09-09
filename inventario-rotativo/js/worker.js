@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 9;
+const IR_INDICADORES_VERSION = 10;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -556,13 +556,20 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   const divergencias = [];
   for(const [chave, lista] of porVisitaBruto){
     const local = localDaVisita.get(chave);
-    const porItem = new Map(); // item -> {sistema, final, rodadaFinal, itemNome}
+    // A rodada final é a da VISITA, não a última em que cada item apareceu. Sem isso,
+    // um item lançado por engano numa rodada intermediária ficava valendo mesmo depois
+    // de a recontagem provar que ele não está ali: o contador copiava o conteúdo do
+    // endereço vizinho, a rodada seguinte corrigia, e o dash continuava contando a
+    // sobra fantasma. Item que não aparece na rodada final tem físico 0.
+    let rodadaFinalVisita = -1;
+    for(const c of lista) if(c.idConferencia > rodadaFinalVisita) rodadaFinalVisita = c.idConferencia;
+    const porItem = new Map(); // item -> {sistema, final, itemNome}
     for(const c of lista){
       if(!c.item) continue; // local vazio, sem item nesta linha
       let g = porItem.get(c.item);
-      if(!g){ g = {sistema:null, final:0, rodadaFinal:-1, itemNome:c.itemNome}; porItem.set(c.item, g); }
+      if(!g){ g = {sistema:null, final:0, itemNome:c.itemNome}; porItem.set(c.item, g); }
       if(c.idConferencia===1) g.sistema = c.qtFis;
-      if(c.idConferencia>=g.rodadaFinal){ g.final = c.qtFis; g.rodadaFinal = c.idConferencia; }
+      if(c.idConferencia===rodadaFinalVisita) g.final = c.qtFis;
       if(c.itemNome) g.itemNome = c.itemNome;
     }
     let totalFisico = 0;

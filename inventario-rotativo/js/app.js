@@ -666,7 +666,7 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 9; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 10; // mantido em sincronia com worker.js
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
 function irRenderDashDateFilterBar(){
