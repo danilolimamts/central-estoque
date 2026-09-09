@@ -33,7 +33,7 @@ const IR = {
   prodMeta:null,
   dashFilters:{applyProdDate:true},
   compararA:null, compararB:null,
-  novoCiclo:false,
+  novoCiclo:false, cicloParaExcluir:null,
   // Ciclo lido da própria QRY0843 anexada (número + janela de datas).
   cicloDetectado:null, detectandoCiclo:false,
   _porDiaRua:{},
@@ -4794,15 +4794,25 @@ function irRenderCiclosConfig(){
         <td class="mono">${irFmtDate(c.dataAbertura)}</td>
         <td class="mono">${irFmtDate(c.dataPrevistaTermino)}</td>
         <td>${irEsc(c.status||'—')}</td>
-        <td><button class="btn-link" style="color:var(--danger);" onclick="irExcluirCicloUI('${irEsc(c.id)}')">Excluir</button></td>
+        <td>${IR.cicloParaExcluir===c.id
+          ? `<button class="btn-link" style="color:var(--danger);font-weight:800;" onclick="irExcluirCicloUI('${irEsc(c.id)}')">Confirmar exclusão</button>
+             <button class="btn-link" onclick="irConfirmarExcluirCiclo('${irEsc(c.id)}')">Cancelar</button>`
+          : `<button class="btn-link" style="color:var(--danger);" onclick="irConfirmarExcluirCiclo('${irEsc(c.id)}')">Excluir</button>`}</td>
       </tr>`).join('')}</tbody>
     </table></div>
   </div>`;
 }
+/* Confirmação na própria linha, não no confirm() do navegador: o Chrome oferece
+   "não permitir que esta página crie mais diálogos" e, depois disso, todo
+   confirm() volta falso — o botão parava de funcionar sem dizer nada. */
+function irConfirmarExcluirCiclo(cicloId){
+  IR.cicloParaExcluir = IR.cicloParaExcluir===cicloId ? null : cicloId;
+  irRenderView();
+}
 async function irExcluirCicloUI(cicloId){
   const c = (IR.ciclos||[]).find(x=>x.id===cicloId);
   if(!c) return;
-  if(!confirm('Excluir '+irCicloLabel(c)+' e todos os dados dele (contagens, divergências, indicadores)?\n\nEssa ação não pode ser desfeita.')) return;
+  IR.cicloParaExcluir = null;
   try{
     await irDeleteCiclo(cicloId);
     IR.ciclos = await irGetAllCiclos();
