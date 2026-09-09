@@ -1005,3 +1005,9 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .tema-projetos input, .tema-projetos select{ border-radius:10px; }
 .tema-projetos .tag{ border-radius:999px; font-weight:700; }
 .tema-projetos .div-acum-fill{ background:var(--blue); }
+
+/* Funil de diagnóstico dos similares — aparece só quando a tabela sai vazia. */
+.sim-funil{ margin:6px 0 0; padding-left:18px; font-size:12px; color:var(--ink-soft); line-height:1.7; }
+.sim-funil b{ color:var(--ink); font-variant-numeric:tabular-nums; }
+.conc-chip.perda.on{ background:var(--danger); border-color:var(--danger); }
+.conc-chip.ganho.on{ background:var(--success); border-color:var(--success); }
