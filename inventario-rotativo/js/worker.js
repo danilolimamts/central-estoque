@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 14;
+const IR_INDICADORES_VERSION = 15;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -87,11 +87,28 @@ function validateColumns(resolved, required, label){
   if(missing.length) throw new Error(`${label}: colunas obrigatórias não encontradas: ${missing.join(', ')}`);
 }
 
+/* QRY0390 — estoque atual. A extração virou automática (Snowflake) e trocou de
+   layout: nomes em maiúsculo com underscore, item separado em pai e filho, e
+   colunas que antes não existiam (descrição do endereço, EAN, valor unitário,
+   LOG, curva, prédio). Os nomes antigos continuam na lista pra que uma extração
+   velha ainda seja lida sem erro. */
 const ALIAS_390 = {
-  item: ['Item'], descricao: ['Descrição','Descricao'], codTerceiro: ['Cod Terceiro'],
-  local: ['Local'], situacao: ['Situação','Situacao'], quantidade: ['Quantidade'], classeSku: ['Classe Sku'],
-  // O EAN vem daqui: a SIGEQ278 não tem código de barras, a QRY0390 tem.
-  ean: ['Ean','EAN','Código de Barras','Codigo de Barras','Cod Barras','Cód.Barras','Cod.Barras']
+  item: ['ID_ITEM_FILHO','Item'], itemPai: ['ITEM_PAI'],
+  descricao: ['NOME_ITEM_FILHO','NOME_ITEM_PAI','Descrição','Descricao'],
+  codTerceiro: ['Cod Terceiro'],
+  local: ['ID_LOCAL','Local'],
+  // Descrição do endereço: fecha a lacuna que fazia a auditoria imprimir o código
+  // do local sem dizer onde ele fica.
+  descLocal: ['DESC_LOCAL'],
+  situacao: ['Situação','Situacao'],
+  quantidade: ['QTDE','Quantidade'],
+  qtdeDisp: ['QTDE_DISP'], qtdeRom: ['QTDE_ROM'],
+  classeSku: ['CURVA_ABC','Classe Sku'],
+  ean: ['EAN','Ean','Código de Barras','Codigo de Barras','Cod Barras','Cód.Barras','Cod.Barras'],
+  valoriza: ['VALORIZA'], valorUnitario: ['VALOR_UNITARIO'],
+  log: ['LOG_ITEM'], x1: ['X1'], x2: ['X2'], predio: ['PREDIO'], classeLocal: ['CLAL'],
+  setor: ['NM_SETOR'], familia: ['NM_FAMILIA'], marca: ['NM_MARCA'],
+  atualizadoEm: ['ULTIMA_ATUALIZACAO']
 };
 const ALIAS_843 = {
   inventario: ['Inventario','Inventário'], local: ['Local'], descricaoLocal: ['Descrição Local'],
@@ -277,6 +294,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   post('progress', {stage:'Indexando estoque atual (QRY0390)...', pct:10});
   const estoquePorItemLocal = new Map(); // item -> Map(local -> qtd)
   const eanPorItem = new Map();          // item -> EAN (vem da QRY0390)
+  const descLocal390 = new Map();        // local -> descrição (vem da QRY0390)
   if(r390){
     for(const row of rows390){
       const item = irNormItemKey(getVal(row, r390.item));
@@ -285,6 +303,8 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       const qtd = parseNumber(getVal(row, r390.quantidade));
       const ean = String(getVal(row, r390.ean) ?? '').trim();
       if(ean && !eanPorItem.has(item)) eanPorItem.set(item, ean);
+      const dl = String(getVal(row, r390.descLocal) ?? '').trim();
+      if(dl && !descLocal390.has(local)) descLocal390.set(local, dl);
       if(!estoquePorItemLocal.has(item)) estoquePorItemLocal.set(item, new Map());
       const porLocal = estoquePorItemLocal.get(item);
       porLocal.set(local, (porLocal.get(local)||0) + qtd);
@@ -674,7 +694,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
       id: cicloId+'|'+item, cicloId, item,
       locais: Array.from(porLocal.entries())
         .filter(([,q])=>q!==0)
-        .map(([local, qtd])=>({local, qtd}))
+        .map(([local, qtd])=>({local, qtd, desc: descLocal390.get(local) || ''}))
         .sort((a,b)=>b.qtd-a.qtd)
     });
   }
