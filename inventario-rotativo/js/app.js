@@ -21,6 +21,9 @@ const IR = {
   divCorte:null, divBusca:'', divVerCompensados:false, divExpandido:null,
   divOrdem:{col:'netValor', dir:'desc'}, divAuditoria:null,
   divSimFiltro:{de:'', ate:''},
+  divSimOrdem:{col:'dia', dir:'desc'},
+  // Conciliação QRY0843 x QRY410 — cache do ano da 410 já carregado do IndexedDB.
+  divConc410:null, divConcOrdem:{col:'valor843', dir:'desc'}, divConcFiltro:'todos',
   auditFilters:{minPrioridade:0},
   prodFilters:{de:'', ate:'', usuario:'', setor:''},
   prodSort:{col:'locaisHora', dir:'desc'},
@@ -3692,12 +3695,18 @@ function irDivAgruparPorItem(divs){
   return map;
 }
 /* Núcleo: NET do escopo + NET do ano, e a classificação em ofensor/compensado. */
-function irDivCalcItens(){
+// Divergências do período escolhido no filtro do topo. Isolado porque a
+// conciliação com a QRY410 precisa exatamente do mesmo recorte.
+function irDivDivsDoEscopo(){
   const e = IR.divEscopo;
-  const corte = IR.divCorte==null ? IR_DIV_CORTE_PADRAO : IR.divCorte;
   let divs = irSoLocaisConcluidos(IR.divEscopoDados || IR.divergencias || []).filter(d=>d.diferenca!==0);
   if(e.tipo==='mes') divs = divs.filter(d=>irDivDiaDa(d).slice(0,7)===e.mes);
   if(e.tipo==='dia') divs = e.dia ? divs.filter(d=>irDivDiaDa(d)===e.dia) : [];
+  return divs;
+}
+function irDivCalcItens(){
+  const corte = IR.divCorte==null ? IR_DIV_CORTE_PADRAO : IR.divCorte;
+  const divs = irDivDivsDoEscopo();
   const noEscopo = irDivAgruparPorItem(divs);
   const noAno = irDivAgruparPorItem(irSoLocaisConcluidos((IR.divAnoCache||{}).divs || []).filter(d=>d.diferenca!==0));
   const busca = (IR.divBusca||'').toLowerCase();
@@ -3808,6 +3817,38 @@ function irDivSimSetFiltro(k, v){
   irRenderView();
 }
 function irDivSimLimpar(){ IR.divSimFiltro = {de:'', ate:''}; irRenderView(); }
+/* Cabeçalho clicável da tabela de similares. Mesma convenção da tabela de
+   ofensores: 1º clique ordena decrescente, 2º inverte. */
+function irDivSimOrdenar(col){
+  const o = IR.divSimOrdem || {col:'dia', dir:'desc'};
+  IR.divSimOrdem = (o.col===col) ? {col, dir: o.dir==='desc'?'asc':'desc'} : {col, dir:'desc'};
+  irRenderView();
+}
+// Colunas da tabela de similares. num = ordena por número (e por MÓDULO quando o
+// sinal não é o que interessa, como no desequilíbrio: o maior impacto no topo).
+const IR_SIM_COLS = [
+  {key:'dia',           lbl:'Dia'},
+  {key:'local',         lbl:'Local'},
+  {key:'inventario',    lbl:'Inventário'},
+  {key:'qtd',           lbl:'Qtde',            num:true},
+  {key:'itemSobra',     lbl:'Sobrou'},
+  {key:'itemFalta',     lbl:'Faltou'},
+  {key:'semelhanca',    lbl:'Semelhança',      num:true},
+  {key:'desequilibrio', lbl:'Desequilíbrio R$', num:true, abs:true}
+];
+function irDivSimOrdenarPares(pares){
+  const o = IR.divSimOrdem || {col:'dia', dir:'desc'};
+  const col = IR_SIM_COLS.find(c=>c.key===o.col) || IR_SIM_COLS[0];
+  const dir = o.dir==='desc' ? -1 : 1;
+  return pares.slice().sort((x,y)=>{
+    const a = x[col.key], b = y[col.key];
+    const cmp = col.num
+      ? (col.abs ? Math.abs(a||0)-Math.abs(b||0) : (a||0)-(b||0))
+      : String(a||'').localeCompare(String(b||''));
+    // Desempate estável pelo risco: dentro do mesmo dia, o par mais caro primeiro.
+    return dir*cmp || y.risco-x.risco;
+  });
+}
 /* Pares de troca. Dois cuidados que a primeira versão não tinha:
 
    1. O par é dentro da mesma VISITA (local + Id Inventário). Agrupar só por local
@@ -3865,63 +3906,149 @@ function irDivParesSimilares(){
   return pares.sort((x,y)=>String(y.dia).localeCompare(String(x.dia)) || y.risco-x.risco);
 }
 
-/* ---------- CENÁRIO DE PERDAS E GANHOS ----------
-   Separa o NET do período em o que é perda/ganho de verdade e o que é erro de
-   contagem disfarçado de perda/ganho. Três destinos por linha de divergência:
+/* ---------- CONCILIAÇÃO QRY0843 × QRY410 ----------
+   Duas bases medem o mesmo ajuste por caminhos diferentes:
 
-     TROCA        o item entrou num par de similares trocados no mesmo local.
-                  A peça não sumiu — foi contada no código errado.
-     COMPENSADO   o item pesa no período mas o ANO fecha perto de zero. Perdeu
-                  num ciclo e achou em outro: erro de contagem, não perda.
-     LEGÍTIMO     sobrou depois de tirar os dois de cima. É o que de fato saiu
-                  ou entrou no estoque, e o único que deveria virar prejuízo.
+     QRY0843  o que a contagem achou. Quantidade é o dado forte; o valor é
+              calculado aqui, com o preço da SIGEQ278 de HOJE.
+     QRY410   o livro fiscal. O valor é o que foi lançado, com o preço
+              CONGELADO no momento do lançamento — mas só aparece o item que
+              valora: componente de kit com in_interface = N não entra.
 
-   A ordem importa: troca é mais específica que compensação, então ela ganha —
-   senão a mesma peça seria descontada duas vezes. */
-function irDivCenarioPerdasGanhos(){
-  const corte = IR.divCorte==null ? IR_DIV_CORTE_PADRAO : IR.divCorte;
-  const {itens} = irDivCalcItens();
-  const pares = irDivParesSimilares();
-  // valor de cada LINHA de divergência que já está explicada por uma troca
-  const trocadas = new Map();
-  for(const p of pares){
-    trocadas.set(p.idSobra, p.valorSobra);
-    trocadas.set(p.idFalta, p.valorFalta);
+   A conciliação cruza item a item, no mesmo período, e classifica em quatro
+   destinos. Ela responde duas perguntas de uma vez: quanto do valor divergente
+   a 410 cobre (se dá pra trocar a fonte de preço da 278 pra 410) e quais
+   ajustes de contagem não viraram lançamento fiscal.
+
+   Aviso honesto: o dia do lançamento na 410 não é o dia da contagem — o ajuste
+   costuma ser postado depois. Por isso a conciliação roda por MÊS quando o
+   escopo é ciclo, mês ou ano, e só desce pra dia quando o filtro é de dia. */
+function irDivNormItem(v){
+  const s = String(v ?? '').trim();
+  if(s==='') return '';
+  const n = Number(s);
+  return (Number.isFinite(n) && Number.isInteger(n)) ? String(n) : s;
+}
+// Períodos da 410 que cobrem o escopo atual: os meses em que os locais fecharam
+// (ou o dia exato, quando o filtro é de dia).
+function irDivConcPeriodos(divs){
+  if(IR.divEscopo.tipo==='dia'){
+    return IR.divEscopo.dia ? {campo:'porDia', chave:'dia', lista:[IR.divEscopo.dia]} : {campo:'porDia', chave:'dia', lista:[]};
   }
-  const b = {
-    perdaTroca:0, ganhoTroca:0, perdaComp:0, ganhoComp:0, perdaLeg:0, ganhoLeg:0,
-    nTroca:0, nComp:0, nLeg:0, itensLeg:[]
-  };
-  for(const i of itens){
-    let troca = 0;
-    for(const d of i.locais) if(trocadas.has(d.id)) troca += trocadas.get(d.id);
-    if(troca<0) b.perdaTroca += troca; else if(troca>0) b.ganhoTroca += troca;
-    const restante = i.netValor - troca;
-    if(Math.abs(troca)>0.005) b.nTroca++;
-    if(Math.abs(restante)<0.005) continue;
-    // O ano desmancha o que sobrou? Então não é perda nem ganho: é recontagem.
-    const compensado = Math.abs(i.netValorAno) < corte && Math.abs(i.netValor) >= corte;
-    if(compensado){
-      if(restante<0) b.perdaComp += restante; else b.ganhoComp += restante;
-      b.nComp++;
-    } else {
-      if(restante<0) b.perdaLeg += restante; else b.ganhoLeg += restante;
-      b.nLeg++;
-      b.itensLeg.push({item:i.item, descricao:i.descricao, valor:restante, qtd:i.netQtd, nLocais:i.nLocais});
+  const meses = Array.from(new Set(divs.map(d=>irDivDiaDa(d).slice(0,7)).filter(Boolean))).sort();
+  return {campo:'porMes', chave:'mes', lista:meses};
+}
+async function irDivCarregarConc(anos){
+  if(IR._divConcLoading) return;
+  IR._divConcLoading = true;
+  try{
+    const cache = Object.assign({}, IR.divConc410||{});
+    // A chave do store é o ano NUMÉRICO (vem do getUTCFullYear no worker); aqui ele
+    // chega como string, recortado da data do fechamento.
+    for(const ano of anos) cache[ano] = (await irGetNet410(Number(ano))) || {vazio:true};
+    IR.divConc410 = cache;
+  }catch(err){
+    IR.divConc410 = Object.assign({}, IR.divConc410||{}, {erro: err.message||String(err)});
+  }finally{
+    IR._divConcLoading = false;
+    irRenderView();
+  }
+}
+function irDivConciliacao(){
+  const divs = irDivDivsDoEscopo();
+  const per = irDivConcPeriodos(divs);
+  const anos = Array.from(new Set(per.lista.map(p=>String(p).slice(0,4))));
+  const cache = IR.divConc410 || {};
+  const faltando = anos.filter(a=>!cache[a]);
+  if(faltando.length){ irDivCarregarConc(faltando); return {carregando:true, periodos:per}; }
+
+  // Lado 410: soma por item nos períodos do escopo. topItensPositivos/Negativos
+  // trazem TODOS os itens do período (a UI é quem corta), então a soma é completa.
+  const m410 = new Map();
+  let temDados410 = false;
+  for(const chave of per.lista){
+    const dados = cache[String(chave).slice(0,4)];
+    const linhas = (dados && dados[per.campo]) || [];
+    const linha = linhas.find(l=>l[per.chave]===chave);
+    if(!linha) continue;
+    temDados410 = true;
+    for(const i of (linha.topItensPositivos||[]).concat(linha.topItensNegativos||[])){
+      const k = irDivNormItem(i.item);
+      if(!k) continue;
+      if(!m410.has(k)) m410.set(k, {item:k, nome:i.nome||'', qtd:0, valor:0});
+      const g = m410.get(k);
+      g.qtd += i.saldoQtd||0;
+      g.valor += i.saldoValor||0;
     }
   }
-  b.itensLeg.sort((x,y)=>Math.abs(y.valor)-Math.abs(x.valor));
-  b.perdaBruta = b.perdaTroca + b.perdaComp + b.perdaLeg;
-  b.ganhoBruto = b.ganhoTroca + b.ganhoComp + b.ganhoLeg;
-  b.net = b.perdaBruta + b.ganhoBruto;
-  b.netLegitimo = b.perdaLeg + b.ganhoLeg;
-  // Movimento explicado por erro de contagem. Soma em MÓDULO de propósito: uma
-  // troca de −7.200 com +9.300 movimentou 16.500, não 2.100 — o pouco que sobra
-  // no líquido é justamente o que engana quem olha só o NET.
-  b.indevidoBruto = Math.abs(b.perdaTroca)+Math.abs(b.ganhoTroca)+Math.abs(b.perdaComp)+Math.abs(b.ganhoComp);
-  b.movimentoBruto = Math.abs(b.perdaBruta)+Math.abs(b.ganhoBruto);
-  return b;
+  if(!temDados410) return {semDados:true, periodos:per};
+
+  const m843 = irDivAgruparPorItem(divs);
+  const chaves = new Set();
+  for(const k of m843.keys()) chaves.add(irDivNormItem(k));
+  for(const k of m410.keys()) chaves.add(k);
+
+  // Reindexa o lado 843 pela chave normalizada (a 843 já vem normalizada do
+  // worker, mas a 410 não passa pelo mesmo tratamento — sem isso "02831399" e
+  // "2831399" ficariam em linhas separadas).
+  const por843 = new Map();
+  for(const [k, g] of m843){
+    const n = irDivNormItem(k);
+    if(!por843.has(n)) por843.set(n, {...g, item:n, locais:g.locais.slice()});
+    else { const a = por843.get(n); a.netQtd+=g.netQtd; a.netValor+=g.netValor; a.locais.push(...g.locais); }
+  }
+
+  const linhas = [];
+  for(const k of chaves){
+    const a = por843.get(k), b = m410.get(k);
+    const qtd843 = a ? a.netQtd : 0, valor843 = a ? a.netValor : 0;
+    const qtd410 = b ? b.qtd : 0,    valor410 = b ? b.valor : 0;
+    let situacao;
+    if(a && b) situacao = Math.abs(qtd843-qtd410) < 0.005 ? 'casado' : 'qtd';
+    else if(a) situacao = 'so843';
+    else situacao = 'so410';
+    linhas.push({
+      item:k, descricao:(a && a.descricao) || (b && b.nome) || '',
+      qtd843, qtd410, dQtd: qtd410-qtd843,
+      valor843, valor410, dValor: valor410-valor843,
+      nLocais: a ? a.locais.length : 0,
+      // Sem valor na 278 e ausente da 410 é o comportamento ESPERADO do
+      // componente que não valora — não é ajuste faltando.
+      naoValora: !!a && !b && Math.abs(valor843) < 0.005,
+      situacao
+    });
+  }
+
+  const soma = (f, filtro) => linhas.filter(filtro||(()=>true)).reduce((s,l)=>s+f(l), 0);
+  const casados = linhas.filter(l=>l.situacao==='casado');
+  const comQtd  = linhas.filter(l=>l.situacao==='qtd');
+  const so843   = linhas.filter(l=>l.situacao==='so843');
+  const so410   = linhas.filter(l=>l.situacao==='so410');
+  const absTotal843 = soma(l=>Math.abs(l.valor843));
+  const absCoberto  = soma(l=>Math.abs(l.valor843), l=>l.situacao==='casado'||l.situacao==='qtd');
+  const qtdTotal843 = soma(l=>Math.abs(l.qtd843));
+  const qtdCoberta  = soma(l=>Math.abs(l.qtd843), l=>l.situacao==='casado'||l.situacao==='qtd');
+  return {
+    periodos:per, linhas,
+    casados, comQtd, so843, so410,
+    semAjuste: so843.filter(l=>!l.naoValora),
+    naoValoram: so843.filter(l=>l.naoValora),
+    net843: soma(l=>l.valor843), net410: soma(l=>l.valor410),
+    netQtd843: soma(l=>l.qtd843), netQtd410: soma(l=>l.qtd410),
+    coberturaValor: absTotal843>0 ? absCoberto/absTotal843 : 0,
+    coberturaQtd: qtdTotal843>0 ? qtdCoberta/qtdTotal843 : 0,
+    // Só no conjunto que casa em quantidade a diferença de valor é, de fato,
+    // diferença de PREÇO — nos outros ela mistura preço com quantidade.
+    precoDelta: casados.reduce((s,l)=>s+l.dValor, 0),
+    precoBase: casados.reduce((s,l)=>s+Math.abs(l.valor843), 0)
+  };
 }
+function irDivConcOrdenar(col){
+  const o = IR.divConcOrdem || {col:'valor843', dir:'desc'};
+  IR.divConcOrdem = (o.col===col) ? {col, dir: o.dir==='desc'?'asc':'desc'} : {col, dir:'desc'};
+  irRenderView();
+}
+function irDivConcSetFiltro(v){ IR.divConcFiltro = v; irRenderView(); }
 
 function irDivEscopoLabel(){
   const e = IR.divEscopo;
@@ -4204,6 +4331,8 @@ function irRenderDivSimilares(){
   const risco = pares.reduce((s,p)=>s+p.risco,0);
   const desiq = pares.reduce((s,p)=>s+Math.abs(p.desequilibrio),0);
   const ontem = new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const oSim = IR.divSimOrdem || {col:'dia', dir:'desc'};
+  const setaSim = k => oSim.col===k ? (oSim.dir==='desc'?' ▾':' ▴') : '';
   const filtros = `<div class="sim-filtros">
     <div class="ofe-filtro"><label>De</label><input type="date" value="${irEsc(f.de)}" onchange="irDivSimSetFiltro('de', this.value)"></div>
     <div class="ofe-filtro"><label>Até</label><input type="date" value="${irEsc(f.ate)}" onchange="irDivSimSetFiltro('ate', this.value)"></div>
@@ -4223,11 +4352,9 @@ function irRenderDivSimilares(){
     ${pares.length ? `<div class="table-wrap"><div class="table-scroll" style="max-height:460px;">
       <table class="sim-table">
         <thead><tr>
-          <th>Dia</th><th>Local</th><th>Inventário</th><th>Qtde</th>
-          <th>Sobrou</th><th>Faltou</th>
-          <th>Semelhança</th><th>Desequilíbrio R$</th>
+          ${IR_SIM_COLS.map(col=>`<th class="${col.num?'num':''}" onclick="irDivSimOrdenar('${col.key}')">${irEsc(col.lbl)}${setaSim(col.key)}</th>`).join('')}
         </tr></thead>
-        <tbody>${pares.map(p=>`<tr>
+        <tbody>${irDivSimOrdenarPares(pares).map(p=>`<tr>
           <td class="mono">${irFmtDate(p.dia)}</td>
           <td class="mono">${irEsc(p.local)}</td>
           <td class="mono">${irEsc(p.inventario||'—')}</td>
@@ -4253,50 +4380,121 @@ function irDivExportarSimilares(){
   const sufixo = (f.de||f.ate) ? (f.de||'inicio')+'_a_'+(f.ate||'hoje') : 'todos';
   irDivBaixarPlanilha(cab, linhas, 'similares_trocados_'+sufixo);
 }
-/* Ponte do NET: começa no bruto e vai tirando o que não é perda nem ganho de
-   verdade, até sobrar o número que deveria virar prejuízo. */
-function irRenderDivCenario(){
-  const b = irDivCenarioPerdasGanhos();
-  if(!b.nTroca && !b.nComp && !b.nLeg) return '';
-  const linha = (rot, sub, perda, ganho, cls) => `<tr class="${cls||''}">
-    <td><strong>${irEsc(rot)}</strong><span class="cen-sub">${irEsc(sub)}</span></td>
-    <td class="mono neg">${perda<0?irFmtMoney(perda):'—'}</td>
-    <td class="mono pos">${ganho>0?'+'+irFmtMoney(ganho):'—'}</td>
-    <td class="mono ${(perda+ganho)<0?'neg':'pos'}"><strong>${(perda+ganho)>0?'+':''}${irFmtMoney(perda+ganho)}</strong></td>
-  </tr>`;
-  const pctIndevido = b.movimentoBruto>0 ? b.indevidoBruto/b.movimentoBruto : 0;
+const IR_CONC_COLS = [
+  {key:'item',      lbl:'Item'},
+  {key:'descricao', lbl:'Descrição'},
+  {key:'qtd843',    lbl:'Qtde contada',  num:true, abs:true},
+  {key:'qtd410',    lbl:'Qtde lançada',  num:true, abs:true},
+  {key:'dQtd',      lbl:'Δ Qtde',        num:true, abs:true},
+  {key:'valor843',  lbl:'Valor 278',     num:true, abs:true},
+  {key:'valor410',  lbl:'Valor 410',     num:true, abs:true},
+  {key:'dValor',    lbl:'Δ Valor',       num:true, abs:true},
+  {key:'situacao',  lbl:'Situação'}
+];
+const IR_CONC_TAGS = {
+  casado:{lbl:'casado',            cls:'ok'},
+  qtd:   {lbl:'qtde diferente',    cls:'alerta'},
+  so843: {lbl:'só na contagem',    cls:'perda'},
+  so410: {lbl:'só na 410',         cls:'info'}
+};
+function irRenderDivConciliacao(){
+  const c = irDivConciliacao();
+  const cabec = (corpo, sub) => `<div class="panel">
+    <div class="ofe-head"><h3>Conciliação QRY0843 × QRY410 — ${irEsc(irDivEscopoLabel())}</h3></div>
+    <p class="panel-sub">${sub}</p>
+    ${corpo}
+  </div>`;
+  const nota = 'Quantidade vem da contagem; valor lançado vem do livro fiscal, com o preço congelado no lançamento. A 410 só traz o item que valora.';
+  if(c.carregando) return cabec('<p class="field-hint">Carregando a QRY410...</p>', nota);
+  if(c.semDados) return cabec(
+    `<p class="field-hint">Sem QRY410 processada para ${irEsc(c.periodos.lista.join(', ')||'o período')}.
+     <button class="btn-link" onclick="irSwitchTab('importacao')">Importar a QRY410</button></p>`, nota);
+
+  const filtro = IR.divConcFiltro || 'todos';
+  const grupos = {
+    todos: c.linhas,
+    casado: c.casados, qtd: c.comQtd, so843: c.so843, so410: c.so410,
+    semajuste: c.semAjuste
+  };
+  const lista = grupos[filtro] || c.linhas;
+  const o = IR.divConcOrdem || {col:'valor843', dir:'desc'};
+  const seta = k => o.col===k ? (o.dir==='desc'?' ▾':' ▴') : '';
+  const col = IR_CONC_COLS.find(x=>x.key===o.col) || IR_CONC_COLS[5];
+  const dir = o.dir==='desc' ? -1 : 1;
+  const ordenada = lista.slice().sort((x,y)=>{
+    const a = x[col.key], b = y[col.key];
+    return dir*(col.num ? (col.abs?Math.abs(a||0)-Math.abs(b||0):(a||0)-(b||0)) : String(a||'').localeCompare(String(b||'')));
+  });
+  const chip = (k, lbl, n) => `<button class="conc-chip ${filtro===k?'on':''}" onclick="irDivConcSetFiltro('${k}')">${irEsc(lbl)} <b>${irFmtInt(n)}</b></button>`;
+  const cel = (v, fmt) => `<td class="mono ${v<0?'neg':(v>0?'pos':'')}">${v>0?'+':''}${fmt(v)}</td>`;
+
   return `<div class="panel">
-    <h3>Cenário de perdas e ganhos — ${irEsc(irDivEscopoLabel())}</h3>
-    <p class="panel-sub">Do NET bruto até o que é perda e ganho de verdade. Troca e compensação são erro de contagem: a peça não saiu do CD.</p>
-    <div class="table-wrap"><table class="cen-table">
-      <thead><tr><th>Origem</th><th>Perda</th><th>Ganho</th><th>NET</th></tr></thead>
+    <div class="ofe-head">
+      <h3>Conciliação QRY0843 × QRY410 — ${irEsc(irDivEscopoLabel())}</h3>
+      <div class="ofe-acoes">
+        <span class="field-hint">${irEsc(c.periodos.lista.join(' · ')||'—')}</span>
+        <button class="btn btn-secondary" onclick="irDivExportarConciliacao()">Excel</button>
+      </div>
+    </div>
+    <p class="panel-sub">${nota}</p>
+    <div class="conc-kpis">
+      <div class="conc-kpi"><span class="conc-num">${irFmtPct(c.coberturaValor)}</span><span class="conc-lbl">do valor divergente tem lançamento na 410</span></div>
+      <div class="conc-kpi"><span class="conc-num">${irFmtPct(c.coberturaQtd)}</span><span class="conc-lbl">das peças divergentes têm lançamento</span></div>
+      <div class="conc-kpi"><span class="conc-num ${c.precoDelta<0?'neg':'pos'}">${c.precoDelta>0?'+':''}${irFmtMoney(c.precoDelta)}</span><span class="conc-lbl">preço congelado − preço 278, nos ${irFmtInt(c.casados.length)} itens que casam em quantidade</span></div>
+      <div class="conc-kpi"><span class="conc-num">${irFmtInt(c.semAjuste.length)}</span><span class="conc-lbl">itens que valoram e não têm lançamento na 410</span></div>
+    </div>
+    <div class="table-wrap"><table class="conc-ponte">
+      <thead><tr><th>Base</th><th>Peças</th><th>Valor</th></tr></thead>
       <tbody>
-        ${linha('NET bruto do período', irFmtInt(b.nTroca+b.nComp+b.nLeg)+' itens', b.perdaBruta, b.ganhoBruto, 'cen-topo')}
-        ${linha('Troca entre similares', irFmtInt(b.nTroca)+' itens · contado no código errado', b.perdaTroca, b.ganhoTroca, 'cen-fora')}
-        ${linha('Compensado no ano', irFmtInt(b.nComp)+' itens · perdeu num ciclo, achou em outro', b.perdaComp, b.ganhoComp, 'cen-fora')}
-        ${linha('Perda e ganho reais', irFmtInt(b.nLeg)+' itens · sem contrapartida', b.perdaLeg, b.ganhoLeg, 'cen-final')}
+        <tr><td><strong>Contagem (QRY0843, preço 278)</strong></td>
+          <td class="mono ${c.netQtd843<0?'neg':'pos'}">${c.netQtd843>0?'+':''}${irFmtInt(c.netQtd843)}</td>
+          <td class="mono ${c.net843<0?'neg':'pos'}">${c.net843>0?'+':''}${irFmtMoney(c.net843)}</td></tr>
+        <tr><td><strong>Livro fiscal (QRY410, preço congelado)</strong></td>
+          <td class="mono ${c.netQtd410<0?'neg':'pos'}">${c.netQtd410>0?'+':''}${irFmtInt(c.netQtd410)}</td>
+          <td class="mono ${c.net410<0?'neg':'pos'}">${c.net410>0?'+':''}${irFmtMoney(c.net410)}</td></tr>
+        <tr class="conc-delta"><td><strong>Diferença</strong></td>
+          <td class="mono ${(c.netQtd410-c.netQtd843)<0?'neg':'pos'}">${(c.netQtd410-c.netQtd843)>0?'+':''}${irFmtInt(c.netQtd410-c.netQtd843)}</td>
+          <td class="mono ${(c.net410-c.net843)<0?'neg':'pos'}">${(c.net410-c.net843)>0?'+':''}${irFmtMoney(c.net410-c.net843)}</td></tr>
       </tbody>
     </table></div>
-    <p class="field-hint" style="margin-top:10px;">
-      ${irFmtPct(pctIndevido)} do movimento bruto é erro de contagem, não perda de estoque.
-      O NET que deveria virar prejuízo é <strong>${b.netLegitimo>0?'+':''}${irFmtMoney(b.netLegitimo)}</strong>, e não ${b.net>0?'+':''}${irFmtMoney(b.net)}.
-    </p>
-    ${b.itensLeg.length ? `<details class="cen-det">
-      <summary>Ver os ${irFmtInt(b.itensLeg.length)} itens de perda e ganho reais</summary>
-      <div class="table-wrap" style="margin-top:8px;"><div class="table-scroll" style="max-height:340px;">
-        <table class="cen-table">
-          <thead><tr><th>Item</th><th>Descrição</th><th>Peças</th><th>Locais</th><th>Valor</th></tr></thead>
-          <tbody>${b.itensLeg.slice(0,200).map(i=>`<tr>
-            <td class="mono">${irEsc(i.item)}</td>
-            <td title="${irEsc(i.descricao||'')}">${irEsc(irResumirDescricao(i.descricao))}</td>
-            <td class="mono">${i.qtd>0?'+':''}${irFmtInt(i.qtd)}</td>
-            <td class="mono">${irFmtInt(i.nLocais)}</td>
-            <td class="mono ${i.valor<0?'neg':'pos'}">${i.valor>0?'+':''}${irFmtMoney(i.valor)}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div></div>
-    </details>` : ''}
+    <div class="conc-chips">
+      ${chip('todos','Todos', c.linhas.length)}
+      ${chip('casado','Casados', c.casados.length)}
+      ${chip('qtd','Qtde diferente', c.comQtd.length)}
+      ${chip('semajuste','Sem lançamento', c.semAjuste.length)}
+      ${chip('so843','Só na contagem', c.so843.length)}
+      ${chip('so410','Só na 410', c.so410.length)}
+      ${c.naoValoram.length?`<span class="field-hint">${irFmtInt(c.naoValoram.length)} sem valor na 278 e sem linha na 410 — é o componente que não valora, comportamento esperado.</span>`:''}
+    </div>
+    ${ordenada.length ? `<div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
+      <table class="conc-table">
+        <thead><tr>${IR_CONC_COLS.map(x=>`<th class="${x.num?'num':''}" onclick="irDivConcOrdenar('${x.key}')">${irEsc(x.lbl)}${seta(x.key)}</th>`).join('')}</tr></thead>
+        <tbody>${ordenada.slice(0,400).map(l=>{
+          // Componente que não valora sem linha na 410 é o esperado, não uma
+          // pendência — sai apagado pra não competir com o que precisa de ação.
+          const t = l.naoValora ? {lbl:'não valora', cls:'comp'} : IR_CONC_TAGS[l.situacao];
+          return `<tr>
+            <td class="mono">${irEsc(l.item)}</td>
+            <td title="${irEsc(l.descricao||'')}">${irEsc(irResumirDescricao(l.descricao))}</td>
+            ${cel(l.qtd843, irFmtInt)}${cel(l.qtd410, irFmtInt)}${cel(l.dQtd, irFmtInt)}
+            ${cel(l.valor843, irFmtMoney)}${cel(l.valor410, irFmtMoney)}${cel(l.dValor, irFmtMoney)}
+            <td><span class="ofe-tag ${t.cls}">${irEsc(t.lbl)}</span></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div></div>
+    ${ordenada.length>400?`<p class="field-hint">Mostrando os 400 primeiros de ${irFmtInt(ordenada.length)}. O Excel traz todos.</p>`:''}`
+    : '<p class="field-hint">Nenhum item nesse recorte.</p>'}
   </div>`;
+}
+function irDivExportarConciliacao(){
+  const c = irDivConciliacao();
+  if(!c.linhas || !c.linhas.length){ irShowToast('Nada para exportar.', true); return; }
+  const cab = ['Item','Descrição','Qtde Contada (843)','Qtde Lançada (410)','Δ Qtde',
+    'Valor Contagem (278)','Valor Lançado (410)','Δ Valor','Locais Divergentes','Situação','Não Valora'];
+  const linhas = c.linhas.map(l=>[l.item, l.descricao, l.qtd843, l.qtd410, l.dQtd,
+    l.valor843, l.valor410, l.dValor, l.nLocais, IR_CONC_TAGS[l.situacao].lbl, l.naoValora?'SIM':'']);
+  irDivBaixarPlanilha(cab, linhas, 'conciliacao_843_410_'+(c.periodos.lista[0]||'periodo'));
 }
 function irRenderDivergencias(){
   if(!IR.divergencias.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
@@ -4305,9 +4503,9 @@ function irRenderDivergencias(){
   return `
     ${irRenderDivFiltros()}
     ${irRenderDivResumo(c)}
-    ${irRenderDivCenario()}
     ${irRenderDivTabela(c)}
     ${irRenderDivSimilares()}
+    ${irRenderDivConciliacao()}
     ${irRenderDivAuditoria()}
   `;
 }
