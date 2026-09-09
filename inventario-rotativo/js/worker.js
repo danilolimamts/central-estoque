@@ -154,6 +154,9 @@ self.onmessage = async (e)=>{
   } else if(msg.type === 'process410'){
     try{ await runPipeline410(msg); }
     catch(err){ self.postMessage({type:'error410', message: err.message||String(err)}); }
+  } else if(msg.type === 'process390'){
+    try{ await runPipeline390(msg); }
+    catch(err){ self.postMessage({type:'error390', message: err.message||String(err)}); }
   } else if(msg.type === 'detect843'){
     try{ self.postMessage({type:'done843detect', ...detectarCiclo843(msg.bufs843)}); }
     catch(err){ self.postMessage({type:'done843detect', erro: err.message||String(err)}); }
@@ -221,6 +224,70 @@ function detectarCiclo843(bufs){
   };
 }
 function post(type, data){ self.postMessage({type, ...data}); }
+
+/* ---------- QRY0390 — ESTOQUE ATUAL POR ENDEREÇO ----------
+   A extração virou automática (Snowflake) e não depende mais de ciclo: é a foto
+   do CD agora. Aqui ela é agregada por ENDEREÇO — 98 mil linhas de item x local
+   viram 45 mil endereços — porque as duas perguntas que ela responde (o que está
+   parado em transitório e quanto vale o estoque) são por endereço, não por linha.
+   O detalhe item a item continua saindo do processamento do ciclo. */
+async function runPipeline390({buf390}){
+  post('progress', {stage:'Lendo QRY0390...', pct:5});
+  const wb = XLSX.read(buf390, {type:'array', cellDates:true});
+  const rows = sheetToRows(wb);
+  if(!rows.length) throw new Error('QRY0390: planilha vazia.');
+  const r = buildAliasResolver(Object.keys(rows[0]), ALIAS_390);
+  validateColumns(r, ['item','local','quantidade'], 'QRY0390');
+
+  post('progress', {stage:'Agregando '+rows.length+' linha(s) por endereço...', pct:20});
+  const porLocal = new Map();
+  let valorTotal = 0, pecasTotal = 0, atualizadoEm = '';
+  let n = 0;
+  for(const row of rows){
+    if(++n % 20000 === 0) post('progress', {stage:'Linha '+n+' de '+rows.length+'...', pct:20+Math.round(n/rows.length*60)});
+    const local = irNormItemKey(getVal(row, r.local));
+    if(!local) continue;
+    const item = irNormItemKey(getVal(row, r.item));
+    const qtd = parseNumber(getVal(row, r.quantidade));
+    // VALOR_ITEM_LOCAL não está no alias porque só existe no layout novo; quando
+    // falta, o valor sai de quantidade x valor unitário.
+    const vUnit = parseNumber(getVal(row, r.valorUnitario));
+    const valor = parseNumber(getVal(row, 'VALOR_ITEM_LOCAL')) || (qtd * vUnit);
+    let g = porLocal.get(local);
+    if(!g){
+      g = {local,
+        desc: String(getVal(row, r.descLocal) ?? '').trim(),
+        x1: String(getVal(row, r.x1) ?? '').trim(),
+        x2: String(getVal(row, r.x2) ?? '').trim(),
+        clal: String(getVal(row, r.classeLocal) ?? '').trim(),
+        predio: String(getVal(row, r.predio) ?? '').trim(),
+        log: String(getVal(row, r.log) ?? '').trim(),
+        qtd:0, valor:0, itens:0, _itens:new Set()};
+      porLocal.set(local, g);
+    }
+    g.qtd += qtd;
+    g.valor += valor;
+    if(item) g._itens.add(item);
+    valorTotal += valor; pecasTotal += qtd;
+    if(!atualizadoEm){
+      const d = parseDateVal(getVal(row, r.atualizadoEm));
+      if(d && !isNaN(d.getTime())) atualizadoEm = isoDateTime(d);
+    }
+  }
+  const linhas = Array.from(porLocal.values()).map(g=>{
+    g.itens = g._itens.size; delete g._itens; return g;
+  });
+
+  post('progress', {stage:'Gravando estoque no IndexedDB...', pct:88});
+  await irSalvarEstoqueLocais(linhas, {
+    atualizadoEm, importadoEm: new Date().toISOString(),
+    linhas: rows.length, locais: linhas.length,
+    itens: new Set(rows.map(x=>irNormItemKey(getVal(x, r.item))).filter(Boolean)).size,
+    valorTotal, pecasTotal
+  });
+  post('progress', {stage:'Concluído.', pct:100});
+  self.postMessage({type:'done390', locais: linhas.length, valorTotal, pecasTotal});
+}
 
 // Lê e concatena vários arquivos da mesma planilha, deduplicando linhas por uma chave
 // composta (keyFields, nomes canônicos já resolvidos pelo alias). Usado nos slots que

@@ -41,6 +41,9 @@ const IR = {
   // naquele ano) ou todos os ciclos já processados. itemDivSaldo é o resultado já
   // calculado pro escopo atual (populado por irAtualizarItemDivSaldo).
   itemDivFiltro:{tipo:'ciclo'}, itemDivSaldo:null,
+  // Estoque atual (QRY0390) — independente do ciclo, é a foto do CD agora.
+  est390File:null, est390Processing:false, est390Progress:{stage:'', pct:0},
+  est390Meta:null, est390Locais:null, transSetores:null, transExpandido:null,
   // Perdas e Ganhos (QRY410) — independente do ciclo, por ano.
   net410Anos:[], net410AnoSel:null, net410MesSel:null, net410Data:null, net410File:null,
   net410Processing:false, net410Progress:{stage:'', pct:0},
@@ -116,6 +119,8 @@ async function irInit(){
       IR.cicloAtivo = IR.ciclos.find(c=>c.status==='aberto') || IR.ciclos[0];
       await irLoadCicloData(IR.cicloAtivo.id);
     }
+    IR.est390Meta = await irGetEstoqueMeta();
+    IR.transSetores = await irSeedTransSetoresIfEmpty();
     IR.net410Anos = await irGetAllNet410Anos();
     if(IR.net410Anos.length){
       IR.net410AnoSel = IR.net410Anos[0];
@@ -439,6 +444,7 @@ function irRenderImportacao(){
       }
     </div>
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
+    ${irRenderEst390ImportPanel()}
     ${irRenderNet410ImportPanel()}
   `;
 }
@@ -699,7 +705,7 @@ const IR_INDICADORES_VERSION = 15; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v101';
+const IR_APP_VERSION = 'v102';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -1999,7 +2005,9 @@ function irProcessar410(){
       } else if(msg.type==='done410'){
         IR.net410Processing = false; worker.terminate();
         for(const ano of msg.anos) await irSaveNet410(ano, msg.resumos[ano]);
-        IR.net410Anos = await irGetAllNet410Anos();
+        IR.est390Meta = await irGetEstoqueMeta();
+    IR.transSetores = await irSeedTransSetoresIfEmpty();
+    IR.net410Anos = await irGetAllNet410Anos();
         IR.net410File = null;
         IR.net410AnoSel = msg.anos[0];
         IR.net410Data = await irGetNet410(IR.net410AnoSel);
@@ -2017,6 +2025,61 @@ function irProcessar410(){
 /* Painel de importação da QRY410 — fica na aba Importação (não na NET) pra não mexer
    no layout do Dashboard/NET com mais um dropzone. Processamento independente do
    'PROCESSAR CICLO' (ver irProcessar410). */
+/* ---------- IMPORTAÇÃO DA QRY0390 (ESTOQUE ATUAL) ---------- */
+function irOnFile390Est(f){ if(!f) return; IR.est390File = f; irRenderView(); }
+function irOnDropFile390Est(e){ e.preventDefault(); const f = e.dataTransfer.files[0]; if(f) irOnFile390Est(f); }
+function irRemoveFile390Est(){ IR.est390File = null; irRenderView(); }
+function irProcessarEst390(){
+  if(IR.est390Processing || !IR.est390File) return;
+  IR.est390Processing = true; IR.est390Progress = {stage:'Lendo arquivo...', pct:0};
+  irRenderView();
+  IR.est390File.arrayBuffer().then(buf=>{
+    const worker = irNovoWorker();
+    worker.onmessage = async ev=>{
+      const msg = ev.data;
+      if(msg.type==='progress'){ IR.est390Progress = {stage:msg.stage, pct:msg.pct}; irUpdateProgressUI390(); }
+      else if(msg.type==='error390'){
+        IR.est390Processing = false; worker.terminate();
+        irShowToast('Erro na QRY0390: '+msg.message, true); irRenderView();
+      } else if(msg.type==='done390'){
+        IR.est390Processing = false; worker.terminate();
+        IR.est390Meta = await irGetEstoqueMeta();
+        IR.est390Locais = null; IR.est390File = null;
+        irShowToast(irFmtInt(msg.locais)+' endereços atualizados.');
+        irRenderView();
+      }
+    };
+    worker.onerror = ()=>{ worker.terminate(); IR.est390Processing=false; irShowToast('Falha no processamento da QRY0390.', true); irRenderView(); };
+    worker.postMessage({type:'process390', buf390:buf}, [buf]);
+  });
+}
+function irUpdateProgressUI390(){
+  const st = document.getElementById('ir-390-stage'), fi = document.getElementById('ir-390-fill');
+  if(st && fi){ st.textContent = IR.est390Progress.stage; fi.style.width = IR.est390Progress.pct+'%'; }
+}
+function irRenderEst390ImportPanel(){
+  const m = IR.est390Meta;
+  return `<div class="panel">
+    <h3>Estoque atual (QRY0390)</h3>
+    <div class="dz-grid" style="grid-template-columns:1fr;max-width:340px;">
+      <div class="dropzone ${IR.est390File?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropFile390Est(event)">
+        <input type="file" id="ir-file-390-est" accept=".xlsx,.xls" style="display:none" onchange="irOnFile390Est(this.files[0])">
+        <div class="dz-icon">📦</div>
+        <div class="dz-title">QRY0390</div>
+        <div class="dz-desc">Estoque por endereço</div>
+        ${IR.est390File
+          ? `<div class="dz-file mono">${irEsc(IR.est390File.name)}</div><button class="btn-link" onclick="irRemoveFile390Est()">Remover</button>`
+          : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-390-est').click()">Selecionar</button>`}
+      </div>
+    </div>
+    ${IR.est390Processing ? `
+      <div class="progress-wrap">
+        <div class="progress-stage" id="ir-390-stage">${irEsc(IR.est390Progress.stage)}</div>
+        <div class="progress-track"><div class="progress-fill orange" id="ir-390-fill" style="width:${IR.est390Progress.pct}%"></div></div>
+      </div>` : IR.est390File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessarEst390()">PROCESSAR ESTOQUE</button></div>` : ''}
+    ${m ? `<p class="field-hint" style="margin-top:12px;">${irFmtInt(m.locais)} endereços · ${irFmtInt(m.itens)} itens · ${irFmtInt(m.pecasTotal)} peças · ${irFmtMoney(m.valorTotal)} — importado em ${irEsc(new Date(m.importadoEm).toLocaleString('pt-BR'))}</p>` : ''}
+  </div>`;
+}
 function irRenderNet410ImportPanel(){
   const dz = `<div class="dropzone ${IR.net410File?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropFile410(event)">
     <input type="file" id="ir-file-410" accept=".xlsx,.xls" style="display:none" onchange="irOnFile410(this.files[0])">
@@ -4846,14 +4909,154 @@ function irExportarLocaisPendentesCsv(rua){
 
 /* ============================================================
    TRANSITÓRIOS
-   Aba reservada pro controle de transitórios. A fila de Auditoria Inteligente
-   que morava aqui foi removida a pedido do usuário — o trabalho de auditoria
-   passou a sair da aba Divergências, com corte, contrapartida e a auditoria
-   impressa por item.
+   Estoque parado fora do endereço de picking, separado por SETOR responsável.
+   A base é a QRY0390 agregada por endereço — importada na aba Importação,
+   independente de ciclo.
+
+   O prefixo do endereço (X1) é o que diz de quem é o saldo, e esse mapa é
+   editável: só quem opera sabe que GAI é carga e DEV é devolução. O que não
+   estiver mapeado aparece em "Não classificado", justamente pra ser resolvido em
+   vez de sumir numa conta agregada.
    ============================================================ */
+const IR_TRANS_SETORES = ['C.E','INB','OUT','TRP','REV'];
+const IR_TRANS_SETOR_NOME = {
+  'C.E':'Controle de Estoque', INB:'Inbound', OUT:'Outbound',
+  TRP:'Transporte', REV:'Reversa', TSF:'Transferência'
+};
+// Palpite inicial, a partir do que o próprio endereço diz. Serve pra tela nascer
+// útil; o usuário corrige o que estiver errado e a correção fica salva.
+const IR_TRANS_SEED = {
+  REV:'REV', PIC:'REV', BMS:'REV', RML:'REV', FAT:'REV', QBR:'REV', TRI:'REV',
+  ANE:'INB', AVA:'INB', REC:'INB', BUF:'INB',
+  OUT:'OUT', EXP:'OUT', CAR:'OUT',
+  GAI:'TRP', DOC:'TRP',
+  DEV:'C.E', DS:'C.E', PAL:'C.E', BLO:'C.E', LIT:'C.E', INV:'C.E',
+  ATI:'C.E', ROT:'C.E', CAN:'C.E', INA:'C.E', MEZ:'C.E', RES:'C.E', EPI:'C.E'
+};
+async function irSeedTransSetoresIfEmpty(){
+  const salvo = await irGetConfig('transitorio-setores');
+  if(salvo) return salvo;
+  await irSetConfig('transitorio-setores', IR_TRANS_SEED);
+  return Object.assign({}, IR_TRANS_SEED);
+}
+async function irTransSetPrefixo(prefixo, setor){
+  const mapa = Object.assign({}, IR.transSetores || {});
+  if(setor) mapa[prefixo] = setor; else delete mapa[prefixo];
+  IR.transSetores = mapa;
+  await irSetConfig('transitorio-setores', mapa);
+  irRenderView();
+}
+function irTransToggle(chave){ IR.transExpandido = IR.transExpandido===chave ? null : chave; irRenderView(); }
+async function irCarregarEstoque390(){
+  if(IR._est390Loading) return;
+  IR._est390Loading = true;
+  try{ IR.est390Locais = await irGetEstoqueLocais(); }
+  catch(err){ IR.est390Locais = []; }
+  finally{ IR._est390Loading = false; irRenderView(); }
+}
+/* Agrupa os endereços por setor. Só entra endereço com saldo — endereço vazio não
+   é transitório, é endereço livre. */
+function irTransCalc(){
+  const mapa = IR.transSetores || {};
+  const grupos = new Map();
+  let valorTotal = 0, pecasTotal = 0, nLocais = 0;
+  for(const l of (IR.est390Locais||[])){
+    if(!l.qtd && !l.valor) continue;
+    const setor = mapa[l.x1] || '';
+    if(!grupos.has(setor)) grupos.set(setor, {setor, valor:0, qtd:0, locais:[], prefixos:new Set()});
+    const g = grupos.get(setor);
+    g.valor += l.valor; g.qtd += l.qtd; g.locais.push(l); g.prefixos.add(l.x1);
+    valorTotal += l.valor; pecasTotal += l.qtd; nLocais++;
+  }
+  for(const g of grupos.values()) g.locais.sort((a,b)=>b.valor-a.valor);
+  const lista = Array.from(grupos.values()).sort((a,b)=>{
+    if(!a.setor) return 1; if(!b.setor) return -1;
+    return b.valor-a.valor;
+  });
+  return {lista, valorTotal, pecasTotal, nLocais};
+}
 function irRenderTransitorios(){
-  return irEmptyState('Controle de transitórios',
-    'Espaço reservado. Diga o que essa aba precisa mostrar e eu construo aqui.');
+  if(!IR.est390Locais){ irCarregarEstoque390(); return irDivCarregando(); }
+  if(!IR.est390Locais.length){
+    return irEmptyState('Sem estoque importado', 'Importe a QRY0390 na aba Importação para montar o controle de transitórios.',
+      "irSwitchTab('importacao')", 'Ir para Importação');
+  }
+  const c = irTransCalc();
+  const m = IR.est390Meta || {};
+  const cell = (rot, val, cls, sub) => `<div class="ofe-num ${cls||''}">
+    <span class="ofe-num-lbl">${irEsc(rot)}</span><strong class="mono">${val}</strong>
+    ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}</div>`;
+  const naoClass = c.lista.find(g=>!g.setor);
+  return `
+    <div class="panel ofe-resumo">
+      ${cell('Estoque em transitório', irFmtMoney(c.valorTotal), '', irFmtInt(c.pecasTotal)+' peças · '+irFmtInt(c.nLocais)+' endereços')}
+      ${c.lista.filter(g=>g.setor).slice(0,4).map(g=>cell(IR_TRANS_SETOR_NOME[g.setor]||g.setor, irFmtMoney(g.valor), '', irFmtInt(g.qtd)+' peças · '+irFmtInt(g.locais.length)+' endereços')).join('')}
+    </div>
+    ${naoClass ? `<div class="panel"><div class="ofe-head">
+      <h3>Não classificado</h3>
+      <span class="field-hint">${irFmtMoney(naoClass.valor)} em ${irFmtInt(naoClass.locais.length)} endereços · ${irFmtInt(naoClass.prefixos.size)} prefixos sem setor</span>
+    </div>${irTransTabelaPrefixos(naoClass)}</div>` : ''}
+    ${c.lista.filter(g=>g.setor).map(g=>irTransPainelSetor(g)).join('')}
+    <p class="field-hint">Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · ${irFmtInt(m.locais||0)} endereços no CD · ${irFmtMoney(m.valorTotal||0)} no total</p>
+  `;
+}
+function irTransPainelSetor(g){
+  const aberto = IR.transExpandido===g.setor;
+  return `<div class="panel">
+    <div class="ofe-head">
+      <h3>${irEsc(IR_TRANS_SETOR_NOME[g.setor]||g.setor)}</h3>
+      <div class="ofe-acoes">
+        <span class="field-hint">${irFmtMoney(g.valor)} · ${irFmtInt(g.qtd)} peças · ${irFmtInt(g.locais.length)} endereços</span>
+        <button class="btn btn-secondary" onclick="irTransExportar('${irEsc(g.setor)}')">Excel</button>
+        <button class="btn-link" onclick="irTransToggle('${irEsc(g.setor)}')">${aberto?'Fechar':'Ver endereços'}</button>
+      </div>
+    </div>
+    ${aberto ? `<div class="table-wrap"><div class="table-scroll" style="max-height:460px;">
+      <table class="conc-table">
+        <thead><tr><th>Local</th><th>Descrição</th><th class="num">Peças</th><th class="num">Itens</th><th class="num">Valor</th></tr></thead>
+        <tbody>${g.locais.slice(0,400).map(l=>`<tr>
+          <td class="mono">${irEsc(l.local)}</td>
+          <td>${irEsc(l.desc||'')}</td>
+          <td class="mono">${irFmtInt(l.qtd)}</td>
+          <td class="mono">${irFmtInt(l.itens)}</td>
+          <td class="mono">${irFmtMoney(l.valor)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div></div>` : ''}
+  </div>`;
+}
+/* Os prefixos sem setor, com o botão de classificar em cada linha. É por aqui que
+   o mapa vai sendo corrigido, sem menu de configuração separado. */
+function irTransTabelaPrefixos(g){
+  const porPrefixo = new Map();
+  for(const l of g.locais){
+    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, ex:l.desc});
+    const p = porPrefixo.get(l.x1); p.valor += l.valor; p.qtd += l.qtd; p.n++;
+  }
+  const lista = Array.from(porPrefixo.values()).sort((a,b)=>b.valor-a.valor);
+  return `<div class="table-wrap"><div class="table-scroll" style="max-height:420px;">
+    <table class="conc-table">
+      <thead><tr><th>Prefixo</th><th>Exemplo</th><th class="num">Endereços</th><th class="num">Peças</th><th class="num">Valor</th><th>Setor</th></tr></thead>
+      <tbody>${lista.map(p=>`<tr>
+        <td class="mono">${irEsc(p.x1||'(vazio)')}</td>
+        <td>${irEsc(p.ex||'')}</td>
+        <td class="mono">${irFmtInt(p.n)}</td>
+        <td class="mono">${irFmtInt(p.qtd)}</td>
+        <td class="mono">${irFmtMoney(p.valor)}</td>
+        <td><select onchange="irTransSetPrefixo('${irEsc(p.x1)}', this.value)">
+          <option value="">—</option>
+          ${IR_TRANS_SETORES.map(x=>`<option value="${x}">${irEsc(IR_TRANS_SETOR_NOME[x]||x)}</option>`).join('')}
+        </select></td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div></div>`;
+}
+function irTransExportar(setor){
+  const g = irTransCalc().lista.find(x=>x.setor===setor);
+  if(!g) return;
+  irDivBaixarPlanilha(['Local','Descrição','Prefixo','Classe','Prédio','Peças','Itens','Valor'],
+    g.locais.map(l=>[l.local, l.desc, l.x1, l.clal, l.predio, l.qtd, l.itens, l.valor]),
+    'transitorios_'+setor.replace(/\W+/g,'_'));
 }
 
 /* ============================================================

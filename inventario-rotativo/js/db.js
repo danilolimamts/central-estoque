@@ -3,7 +3,7 @@
    100% client-side. Nenhum servidor, nenhuma API.
    ============================================================ */
 const IR_DB_NAME = 'inventario_rotativo_v1';
-const IR_DB_VERSION = 6;
+const IR_DB_VERSION = 7;
 
 const IR_STORES = {
   ciclos: 'ciclos',
@@ -20,7 +20,11 @@ const IR_STORES = {
   // divergiram no ciclo — é o que a auditoria de validação precisa pra mandar o
   // auditor conferir também os locais onde o item tem saldo e não foi contado.
   estoqueItem: 'estoque_item',
-  net410PadroesIgnorados: 'net410_padroes_ignorados' // trecho da Observação WMS (ex.: "SALDO") que oculta qualquer item que o carregue, sem precisar ignorar item por item
+  net410PadroesIgnorados: 'net410_padroes_ignorados', // trecho da Observação WMS (ex.: "SALDO") que oculta qualquer item que o carregue, sem precisar ignorar item por item
+  // Estoque atual agregado por ENDEREÇO (QRY0390). Independente de ciclo: a
+  // extração virou automática e é atualizada sozinha, então ela é a base do
+  // controle de transitórios e da foto de estoque pra diretoria.
+  estoqueLocal: 'estoque_local'
 };
 
 function irOpenDB(){
@@ -72,6 +76,10 @@ function irOpenDB(){
       }
       if(!db.objectStoreNames.contains(IR_STORES.net410PadroesIgnorados)){
         db.createObjectStore(IR_STORES.net410PadroesIgnorados, {keyPath:'id'});
+      }
+      if(!db.objectStoreNames.contains(IR_STORES.estoqueLocal)){
+        const s = db.createObjectStore(IR_STORES.estoqueLocal, {keyPath:'local'});
+        s.createIndex('x1', 'x1', {unique:false});
       }
     };
     req.onsuccess = ()=>resolve(req.result);
@@ -412,4 +420,27 @@ async function irSeedNet410PadroesIgnoradosIfEmpty(){
   if(existing.length) return existing;
   await irSaveNet410PadraoIgnorado('SALDO');
   return irGetNet410PadroesIgnoradosAll();
+}
+
+/* ---------- ESTOQUE ATUAL POR ENDEREÇO (QRY0390) ---------- */
+async function irSalvarEstoqueLocais(linhas, meta){
+  const store = await irTx(IR_STORES.estoqueLocal, 'readwrite');
+  await new Promise((res, rej)=>{ const r = store.clear(); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); });
+  const CHUNK = 1500;
+  for(let i=0;i<linhas.length;i+=CHUNK) await irBulkPut(IR_STORES.estoqueLocal, linhas.slice(i,i+CHUNK));
+  await irSetConfig('estoque390-meta', meta);
+}
+async function irGetEstoqueLocais(){
+  const store = await irTx(IR_STORES.estoqueLocal, 'readonly');
+  return new Promise((res, rej)=>{ const r = store.getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); });
+}
+async function irGetEstoqueMeta(){ return irGetConfig('estoque390-meta'); }
+/* Config genérica (usa o store de prioridade, que já é chave/valor). */
+async function irSetConfig(key, valor){
+  const store = await irTx(IR_STORES.prioridadeConfig, 'readwrite');
+  return new Promise((res, rej)=>{ const r = store.put({key, valor}); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); });
+}
+async function irGetConfig(key){
+  const store = await irTx(IR_STORES.prioridadeConfig, 'readonly');
+  return new Promise((res, rej)=>{ const r = store.get(key); r.onsuccess=()=>res(r.result ? r.result.valor : null); r.onerror=()=>rej(r.error); });
 }
