@@ -3890,7 +3890,12 @@ function irDivCalcItens(){
     const relevante = Math.abs(noPeriodo) >= corte;
     // Compensado = pesou no escopo, mas o ano desmancha. Erro de contagem houve;
     // perda não. Não é ofensor.
-    const compensado = relevante && Math.abs(noAnoBase) < corte;
+    //
+    // O piso existe porque com corte 0 o teste "|ano| < corte" nunca era
+    // verdadeiro: item que ganhou 15 mil num ciclo e perdeu 15 mil em outro
+    // fechava o ano em zero e mesmo assim aparecia como ofensor.
+    const zero = base.campo==='netQtd' ? 0.5 : 0.005;
+    const compensado = relevante && Math.abs(noAnoBase) < Math.max(corte, zero);
     return {...g,
       nLocais: g.locais.length,
       netQtdAno: a.netQtd, netValorAno: a.netValor,
