@@ -699,7 +699,7 @@ const IR_INDICADORES_VERSION = 14; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v97';
+const IR_APP_VERSION = 'v98';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -4340,11 +4340,15 @@ function irDivExportarAuditoria(){
   if(!g || !g.linhas.length){ irShowToast('Nada para exportar.', true); return; }
   const data = (document.getElementById('ir-aud-data')||{}).value || '';
   const auditor = (document.getElementById('ir-aud-auditor')||{}).value || '';
-  const cols = [['item','Item'],['ean','EAN'],['descricao','Descrição'],['local','Local'],
-    ['descricaoLocal','Desc. Local'],['saldo','Qtde'],['diferenca','Qtde Div.'],['valor','Valor Div.']];
+  const cols = g.tipo==='similares'
+    ? [['dia','Dia'],['local','Local'],['descricaoLocal','Desc. Local'],['inventario','Inv.'],
+       ['itemSobra','Sobrou'],['nomeSobra','Descrição (sobrou)'],['itemFalta','Faltou'],
+       ['nomeFalta','Descrição (faltou)'],['qtd','Qtde'],['desequilibrio','Desequil.']]
+    : [['item','Item'],['ean','EAN'],['descricao','Descrição'],['local','Local'],
+       ['descricaoLocal','Desc. Local'],['saldo','Qtde'],['diferenca','Qtde Div.'],['valor','Valor Div.']];
   const cab = cols.map(c=>c[1]).concat(['Contagem','Data','Auditor']);
   const linhas = g.linhas.map(l=>cols.map(([k])=>l[k]==null?'':l[k]).concat(['', data, auditor]));
-  irDivBaixarPlanilha(cab, linhas, 'auditoria_'+String(g.escopo).replace(/\W+/g,'_'));
+  irDivBaixarPlanilha(cab, linhas, (g.tipo==='similares'?'auditoria_similares_':'auditoria_')+String(g.escopo).replace(/\W+/g,'_'));
 }
 /* Excel de um item: onde ele divergiu, com a descrição do local. */
 function irDivExportarItem(item){
@@ -4429,14 +4433,43 @@ function irRenderDivResumo(c){
     ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}
   </div>`;
   const mv = irDivNetMesVigente();
+  const ind = irDivIndevido(c);
   return `<div class="panel ofe-resumo">
     ${cell('NET de '+irMesLabel(mv.mes), (mv.valor>0?'+':'')+irFmtMoney(mv.valor), mv.valor<0?'neg':'pos', irFmtInt(mv.qtd)+' peças · '+(mv.fonte==='410'?'QRY410':'contagem'))}
+    ${cell('Ganho indevido', '+'+irFmtMoney(ind.ganho), 'pos', irFmtInt(ind.nGanho)+(ind.nGanho===1?' item':' itens')+' · +'+irFmtInt(ind.ganhoQtd)+' peças')}
+    ${cell('Perda indevida', irFmtMoney(ind.perda), 'neg', irFmtInt(ind.nPerda)+(ind.nPerda===1?' item':' itens')+' · '+irFmtInt(ind.perdaQtd)+' peças')}
+    ${cell('Divergências similares', irFmtInt(ind.nPares), '', irFmtMoney(ind.valorPares)+' em jogo')}
   </div>`;
+}
+/* Indevido = o que sobrou depois de tirar tudo que se equaliza. Duas equalizações:
+   a contrapartida no ano (o item perdeu num ciclo e achou em outro, e o corte já
+   tira esses da lista) e a troca entre similares (a peça não sumiu, foi contada no
+   código errado). O que resta é ganho ou perda que ninguém explica — é o número
+   que vira prejuízo. */
+function irDivIndevido(c){
+  const pares = irDivParesSimilares().pares;
+  const explicado = new Map();
+  for(const p of pares){
+    explicado.set(p.idSobra, (explicado.get(p.idSobra)||0) + p.valorSobra);
+    explicado.set(p.idFalta, (explicado.get(p.idFalta)||0) + p.valorFalta);
+  }
+  const r = {ganho:0, perda:0, ganhoQtd:0, perdaQtd:0, nGanho:0, nPerda:0,
+             nPares:pares.length, valorPares:pares.reduce((s,p)=>s+p.risco,0)};
+  for(const i of c.ofensores){
+    let troca = 0, trocaQtd = 0;
+    for(const d of i.locais) if(explicado.has(d.id)){ troca += explicado.get(d.id); trocaQtd += d.diferenca; }
+    const valor = i.netValor - troca;
+    const qtd = i.netQtd - trocaQtd;
+    if(Math.abs(valor) < 0.005) continue;
+    if(valor > 0){ r.ganho += valor; r.ganhoQtd += qtd; r.nGanho++; }
+    else { r.perda += valor; r.perdaQtd += qtd; r.nPerda++; }
+  }
+  return r;
 }
 const IR_OFE_COLS = [
   {key:'item',        lbl:'Item'},
   {key:'descricao',   lbl:'Descrição'},
-  {key:'netValor',    lbl:'NET R$ (período)', num:true},
+  {key:'netValor',    lbl:'Divergência',      num:true},
   {key:'netQtd',      lbl:'NET peças',        num:true},
   {key:'netValorAno', lbl:'NET R$ (ano)',     num:true, ano:true},
   {key:'netQtdAno',   lbl:'NET peças (ano)',  num:true, ano:true},
@@ -4513,7 +4546,6 @@ function irRenderDivTabela(c){
         <button class="btn btn-primary" onclick="irDivGerarAuditoria()">Gerar auditoria (${sel.size})</button>
       </div>
     </div>
-    <p class="panel-sub">${irEsc(irDivPeriodoLabel())} · corte de ${c.base.fmt(c.corte)} em ${irEsc(c.base.lbl)}</p>
     <div class="conc-chips">
       ${chip('perda','Perdas', c.perdas.length, 'perda')}
       ${chip('ganho','Ganhos', c.ganhos.length, 'ganho')}
@@ -4535,9 +4567,10 @@ function irRenderDivTabela(c){
 function irRenderDivAuditoria(){
   const g = IR.divAuditoria;
   if(!g) return '';
+  const sim = g.tipo==='similares';
   return `<div class="panel aud-panel">
     <div class="ofe-head">
-      <h3>Auditoria de validação</h3>
+      <h3>${sim?'Auditoria de troca entre similares':'Auditoria de validação'}</h3>
       <div class="ofe-acoes">
         <button class="btn btn-secondary" onclick="irDivExportarAuditoria()">Excel</button>
         <button class="btn btn-primary" onclick="irDivImprimirAuditoria()">Imprimir</button>
@@ -4546,11 +4579,28 @@ function irRenderDivAuditoria(){
     <div class="aud-cab">
       <div class="ofe-filtro"><label>Data</label><input type="date" id="ir-aud-data" value="${new Date().toISOString().slice(0,10)}"></div>
       <div class="ofe-filtro"><label>Auditor</label><input type="text" id="ir-aud-auditor" placeholder="nome de quem vai conferir"></div>
-      <span class="field-hint">${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}</span>
+      <span class="field-hint">${sim
+        ? `${irFmtInt(g.itens)} ${g.itens===1?'par':'pares'} · ${irEsc(g.escopo)}`
+        : `${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}`}</span>
     </div>
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
       <table class="aud-table">
-        <thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local</th><th>Desc. Local</th>
+        ${sim ? `<thead><tr><th>Dia</th><th>Local</th><th>Desc. Local</th><th>Inv.</th>
+          <th>Sobrou</th><th>Descrição</th><th>Faltou</th><th>Descrição</th>
+          <th>Qtde</th><th>Desequil.</th><th>Confere</th></tr></thead>
+        <tbody>${g.linhas.map(l=>`<tr>
+          <td class="mono">${irFmtDate(l.dia)}</td>
+          <td class="mono">${irEsc(l.local)}</td>
+          <td>${irEsc(l.descricaoLocal||'')}</td>
+          <td class="mono">${irEsc(l.inventario||'')}</td>
+          <td class="mono">${irEsc(l.itemSobra)}</td>
+          <td class="aud-desc">${irEsc(l.nomeSobra)}</td>
+          <td class="mono">${irEsc(l.itemFalta)}</td>
+          <td class="aud-desc">${irEsc(l.nomeFalta)}</td>
+          <td class="mono">${irFmtInt(l.qtd)}</td>
+          <td class="mono ${l.desequilibrio<0?'neg':'pos'}">${Math.abs(l.desequilibrio)<0.005?'':(l.desequilibrio>0?'+':'')+irFmtMoney(l.desequilibrio)}</td>
+          <td class="aud-vazio"></td>
+        </tr>`).join('')}</tbody>` : `<thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local</th><th>Desc. Local</th>
           <th>Qtde</th><th>Qtde Div.</th><th>Valor Div.</th><th>Contagem</th></tr></thead>
         <tbody>${g.linhas.map(l=>`<tr>
           <td class="mono">${irEsc(l.item)}</td>
@@ -4562,7 +4612,7 @@ function irRenderDivAuditoria(){
           <td class="mono ${l.diferenca<0?'neg':'pos'}">${l.diferenca>0?'+':''}${irFmtInt(l.diferenca)}</td>
           <td class="mono ${l.valor<0?'neg':'pos'}">${l.valor>0?'+':''}${irFmtMoney(l.valor)}</td>
           <td class="aud-vazio"></td>
-        </tr>`).join('')}</tbody>
+        </tr>`).join('')}</tbody>`}
       </table>
     </div></div>
   </div>`;
@@ -4591,6 +4641,7 @@ function irRenderDivSimilares(){
       <div class="ofe-acoes">
         <span class="field-hint">${irFmtInt(pares.length)} ${pares.length===1?'par':'pares'} · ${irFmtMoney(risco)} em jogo · ${irFmtMoney(desiq)} de desequilíbrio</span>
         <button class="btn btn-secondary" onclick="irDivExportarSimilares()">Excel</button>
+        <button class="btn btn-primary" onclick="irDivGerarAuditoriaSimilares()">Gerar auditoria</button>
       </div>
     </div>
     ${filtros}
@@ -4621,6 +4672,39 @@ function irRenderDivSimilares(){
       </ul>
     </div>`}
   </div>`;
+}
+/* Auditoria da troca: o auditor vai ao endereço e confere os DOIS códigos de uma
+   vez. Não usa a QRY0390 — o par já diz onde olhar, e o que interessa é confirmar
+   qual etiqueta está em qual peça. */
+async function irDivGerarAuditoriaSimilares(){
+  const {pares} = irDivParesSimilares();
+  if(!pares.length){ irShowToast('Nenhum par de similares no filtro.', true); return; }
+  try{
+    await irCarregarDescLocaisTodosCiclos();
+    IR.divAuditoria = {
+      tipo:'similares',
+      geradoEm: new Date().toLocaleString('pt-BR'),
+      escopo: irDivSimEscopoLabel(),
+      itens: pares.length,
+      linhas: irDivSimOrdenarPares(pares).map(p=>({
+        dia:p.dia, local:p.local, descricaoLocal:irDescLocal(p.local), inventario:p.inventario,
+        itemSobra:p.itemSobra, nomeSobra:p.nomeSobra||'', itemFalta:p.itemFalta, nomeFalta:p.nomeFalta||'',
+        qtd:p.qtd, desequilibrio:p.desequilibrio
+      }))
+    };
+    irRenderView();
+    const el = document.querySelector('.aud-panel');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+  }catch(err){
+    irShowToast('Falha ao gerar auditoria: '+(err && err.message || err), true);
+  }
+}
+function irDivSimEscopoLabel(){
+  const f = IR.divSimFiltro || {};
+  if(f.de && f.ate) return irFmtDate(f.de)+' a '+irFmtDate(f.ate);
+  if(f.de) return 'de '+irFmtDate(f.de);
+  if(f.ate) return 'até '+irFmtDate(f.ate);
+  return 'todo o período carregado';
 }
 function irDivExportarSimilares(){
   const {pares} = irDivParesSimilares();
