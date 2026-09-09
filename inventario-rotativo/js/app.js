@@ -699,7 +699,7 @@ const IR_INDICADORES_VERSION = 14; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v99';
+const IR_APP_VERSION = 'v100';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -4081,6 +4081,10 @@ function irDivCalcItens(){
     netValor: Array.from(noEscopo.values()).reduce((s,i)=>s+i.netValor,0),
     netQtd: Array.from(noEscopo.values()).reduce((s,i)=>s+i.netQtd,0),
     totalItens: noEscopo.size,
+    // Cada LINHA divergente é um par item x local: o mesmo item divergindo em três
+    // endereços são três divergências pro auditor, não uma.
+    totalLinhas: divs.length,
+    totalLocais: new Set(divs.map(d=>d.local)).size,
     perdaOfensores: ofensores.filter(i=>i.netValor<0).reduce((s,i)=>s+i.netValor,0),
     ganhoOfensores: ofensores.filter(i=>i.netValor>0).reduce((s,i)=>s+i.netValor,0),
     nPerda: ofensores.filter(i=>i.netValor<0).length,
@@ -4481,6 +4485,7 @@ function irRenderDivResumo(c){
     ${cell('NET de '+irMesLabel(mv.mes), (mv.valor>0?'+':'')+irFmtMoney(mv.valor), mv.valor<0?'neg':'pos', irFmtInt(mv.qtd)+' peças · '+(mv.fonte==='410'?'QRY410':'contagem'))}
     ${cell('Ganho indevido', '+'+irFmtMoney(ind.ganho), 'pos', irFmtInt(ind.nGanho)+(ind.nGanho===1?' item':' itens')+' · +'+irFmtInt(ind.ganhoQtd)+' peças')}
     ${cell('Perda indevida', irFmtMoney(ind.perda), 'neg', irFmtInt(ind.nPerda)+(ind.nPerda===1?' item':' itens')+' · '+irFmtInt(ind.perdaQtd)+' peças')}
+    ${cell('Divergências no período', irFmtInt(c.totalLinhas), '', irFmtInt(c.totalItens)+' itens · '+irFmtInt(c.totalLocais)+' locais')}
     ${cell('Divergências similares', irFmtInt(ind.nPares), '', irFmtMoney(ind.valorPares)+' em jogo')}
   </div>`;
 }
