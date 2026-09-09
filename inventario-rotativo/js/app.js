@@ -27,7 +27,6 @@ const IR = {
   divOrdem:{col:'netValor', dir:'desc'}, divAuditoria:null,
   divSimFiltro:{de:'', ate:''},
   divSimOrdem:{col:'dia', dir:'desc'},
-  auditFilters:{minPrioridade:0},
   prodFilters:{de:'', ate:'', usuario:'', setor:''},
   prodSort:{col:'locaisHora', dir:'desc'},
   prodMeta:null,
@@ -202,7 +201,7 @@ const IR_TAB_LABELS = {
   produtividade:['Produtividade','Ritmo, meta, qualidade e capacidade da equipe.'],
   setores:['Setores','Resumo por setor (rua) e ruas mais divergentes.'],
   divergencias:['Divergências','Itens com saldo final diferente do sistêmico.'],
-  auditoria:['Auditoria Inteligente','Fila priorizada automaticamente para conferência.'],
+  transitorios:['Transitórios','Controle de transitórios.'],
   historico:['Histórico','Linha do tempo de todos os ciclos.'],
   comparativo:['Comparativo entre Ciclos','Compare acurácia, produtividade e tendências.'],
   indicadores:['Indicadores','Todos os KPIs, com a fórmula de cada um.'],
@@ -272,7 +271,10 @@ function irRenderView(){
      de qualquer saida da funcao para valer tambem no aviso de "nenhum
      ciclo importado". */
   if(root) root.classList.toggle('tema-projetos', IR.currentTab==='divergencias');
-  const needsCiclo = IR.currentTab!=='importacao' && IR.currentTab!=='configuracoes' && IR.currentTab!=='historico';
+  // Transitórios não depende de ciclo importado: é um controle próprio, não uma
+  // leitura da contagem.
+  const SEM_CICLO = new Set(['importacao','configuracoes','historico','transitorios']);
+  const needsCiclo = !SEM_CICLO.has(IR.currentTab);
   if(needsCiclo && !IR.cicloAtivo){
     root.innerHTML = irEmptyState('Nenhum ciclo importado ainda', 'Importe as planilhas na aba Importação para abrir o primeiro ciclo.', "irSwitchTab('importacao')", 'Ir para Importação');
     return;
@@ -280,12 +282,11 @@ function irRenderView(){
   const renderers = {
     dashboard: irRenderDashboard, ciclo: irRenderGestaoCiclo, produtividade: irRenderProdutividade,
     setores: irRenderSetores,
-    divergencias: irRenderDivergencias, auditoria: irRenderAuditoria, historico: irRenderHistorico,
+    divergencias: irRenderDivergencias, transitorios: irRenderTransitorios, historico: irRenderHistorico,
     comparativo: irRenderComparativo, indicadores: irRenderIndicadores,
     importacao: irRenderImportacao, configuracoes: irRenderConfiguracoes
   };
   root.innerHTML = (renderers[IR.currentTab] || (()=>''))();
-  if(IR.currentTab==='auditoria') irMountAuditoriaScroll();
   if(IR.currentTab==='dashboard') irScrollVBarsToEnd();
   irFitKpiNumbers();
 }
@@ -697,7 +698,7 @@ const IR_INDICADORES_VERSION = 10; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v88';
+const IR_APP_VERSION = 'v89';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
@@ -4629,65 +4630,15 @@ function irExportarLocaisPendentesCsv(rua){
 }
 
 /* ============================================================
-   AUDITORIA INTELIGENTE
+   TRANSITÓRIOS
+   Aba reservada pro controle de transitórios. A fila de Auditoria Inteligente
+   que morava aqui foi removida a pedido do usuário — o trabalho de auditoria
+   passou a sair da aba Divergências, com corte, contrapartida e a auditoria
+   impressa por item.
    ============================================================ */
-const IR_AUD_ROW_H = 32;
-function irAuditoriaFiltered(){
-  return IR.divergencias.filter(d=>d.diferenca!==0 && d.prioridade>=IR.auditFilters.minPrioridade)
-    .sort((a,b)=>b.prioridade-a.prioridade);
-}
-function irRenderAuditoria(){
-  if(!IR.divergencias.length) return irEmptyState('Sem itens para auditar', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  return `
-    <div class="filter-bar">
-      <label style="margin:0;">Prioridade mínima:</label>
-      <input type="range" min="0" max="100" value="${IR.auditFilters.minPrioridade}" style="width:180px;" oninput="irAuditSetMinPrioridade(this.value)">
-      <span class="mono" id="ir-aud-min-label">${IR.auditFilters.minPrioridade}</span>
-      <button class="btn btn-secondary" onclick="irSwitchTab('configuracoes')">Ajustar pesos</button>
-    </div>
-    <p class="field-hint" id="ir-aud-count" style="margin-bottom:8px;">${irFmtInt(irAuditoriaFiltered().length)} itens na fila</p>
-    <div class="table-wrap">
-      <div class="table-scroll" id="ir-aud-scroll" style="height:calc(100vh - 300px);">
-        <table><thead><tr><th>Prioridade</th><th>Item</th><th>Descrição</th><th>Local</th><th>Diferença</th><th>Valor</th><th>Rodadas</th></tr></thead>
-        <tbody id="ir-aud-window"></tbody></table>
-      </div>
-    </div>
-  `;
-}
-function irAuditSetMinPrioridade(v){
-  IR.auditFilters.minPrioridade = parseInt(v,10);
-  document.getElementById('ir-aud-min-label').textContent = v;
-  irMountAuditoriaScroll(true);
-  const el = document.getElementById('ir-aud-count'); if(el) el.textContent = irFmtInt(irAuditoriaFiltered().length)+' itens na fila';
-}
-function irMountAuditoriaScroll(keepScroll){
-  const el = document.getElementById('ir-aud-scroll');
-  if(!el) return;
-  if(IR.__audScrollHandler) el.removeEventListener('scroll', IR.__audScrollHandler);
-  let ticking=false;
-  IR.__audScrollHandler = ()=>{ if(ticking) return; ticking=true; requestAnimationFrame(()=>{ irRenderAudWindow(); ticking=false; }); };
-  el.addEventListener('scroll', IR.__audScrollHandler);
-  if(!keepScroll) el.scrollTop = 0;
-  irRenderAudWindow();
-}
-function irRenderAudWindow(){
-  const el = document.getElementById('ir-aud-scroll'); const winEl = document.getElementById('ir-aud-window');
-  if(!el || !winEl) return;
-  const rows = irAuditoriaFiltered();
-  if(!rows.length){ winEl.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:20px;">Nenhum item nessa faixa de prioridade.</td></tr>`; return; }
-  const viewH = el.clientHeight||400, scrollTop = el.scrollTop, buffer=8;
-  const start = Math.max(0, Math.floor(scrollTop/IR_AUD_ROW_H)-buffer);
-  const end = Math.min(rows.length, start+Math.ceil(viewH/IR_AUD_ROW_H)+buffer*2);
-  const top=start*IR_AUD_ROW_H, bottom=(rows.length-end)*IR_AUD_ROW_H;
-  winEl.innerHTML = `<tr style="height:${top}px;"><td colspan="7" style="padding:0;border:none;"></td></tr>`
-    + rows.slice(start,end).map(d=>`<tr style="height:${IR_AUD_ROW_H}px;">
-        <td><span class="priority-badge" style="background:${irPrioridadeCor(d.prioridade)};">${d.prioridade}</span></td>
-        <td class="mono">${irEsc(d.item)}</td><td>${irEsc(d.itemNome)}</td><td>${irEsc(d.local)}</td>
-        <td class="mono ${d.diferenca>=0?'pos':'neg'}">${d.diferenca>0?'+':''}${irFmtInt(d.diferenca)}</td>
-        <td class="mono ${d.vlDivergencia>=0?'pos':'neg'}">${irFmtMoney(d.vlDivergencia)}</td>
-        <td class="mono">${d.rodadasLocal}</td>
-      </tr>`).join('')
-    + `<tr style="height:${bottom}px;"><td colspan="7" style="padding:0;border:none;"></td></tr>`;
+function irRenderTransitorios(){
+  return irEmptyState('Controle de transitórios',
+    'Espaço reservado. Diga o que essa aba precisa mostrar e eu construo aqui.');
 }
 
 /* ============================================================
