@@ -3679,15 +3679,19 @@ function irDivSetEscopo(value){
   IR.divEscopo = value.startsWith('ano:') ? {tipo:'ano', ano:value.slice(4)}
               : value.startsWith('mes:') ? {tipo:'mes', mes:value.slice(4)}
               : value.startsWith('ciclo:') ? {tipo:'ciclo', cicloId:value.slice(6)}
-              : value==='dia' ? {tipo:'dia', dia:IR.divEscopo.dia || ''}
+              : value==='periodo' ? {tipo:'periodo', de:IR.divEscopo.de || '', ate:IR.divEscopo.ate || ''}
               : {tipo:'ciclo'};
   IR.divEscopoDados = null; IR.divSelecionados = new Set(); IR.divAuditoria = null;
   irRenderView();
   irCarregarDivEscopo();
 }
-function irDivSetDia(dia){
-  IR.divEscopo = {tipo:'dia', dia};
+// Intervalo livre de datas. Vazio de um lado é aberto daquele lado: só "até"
+// pega tudo desde o começo, só "de" pega dali em diante.
+function irDivSetPeriodo(campo, valor){
+  const e = IR.divEscopo;
+  IR.divEscopo = {tipo:'periodo', de: e.de||'', ate: e.ate||'', [campo]: valor};
   IR.divSelecionados = new Set(); IR.divAuditoria = null;
+  IR.divEscopoDados = null;
   irCarregarDivEscopo();
 }
 function irDivSetCorte(v){
@@ -3707,7 +3711,7 @@ function irDivAnoDoEscopo(){
   const e = IR.divEscopo;
   if(e.tipo==='ano') return String(e.ano);
   if(e.tipo==='mes') return String(e.mes).slice(0,4);
-  if(e.tipo==='dia' && e.dia) return String(e.dia).slice(0,4);
+  if(e.tipo==='periodo' && (e.de || e.ate)) return String(e.de || e.ate).slice(0,4);
   const c = e.cicloId ? IR.ciclos.find(x=>x.id===e.cicloId) : IR.cicloAtivo;
   return String((c||{}).dataAbertura||'').slice(0,4);
 }
@@ -3716,10 +3720,16 @@ function irDivCiclosDoAno(ano){
 }
 async function irCarregarDivEscopo(){
   const e = IR.divEscopo;
-  const ano = irDivAnoDoEscopo();
-  if(ano && (!IR.divAnoCache || IR.divAnoCache.ano!==ano)){
-    const listas = await Promise.all(irDivCiclosDoAno(ano).map(c=>irGetByCiclo(IR_STORES.divergencias, c.id)));
-    IR.divAnoCache = {ano, divs: listas.flat()};
+  // Um intervalo de datas pode atravessar o ano; o cache carrega todos os anos
+  // que ele toca, senão a metade de fora do ano some sem aviso.
+  const anos = (e.tipo==='periodo' && (e.de || e.ate))
+    ? Array.from(new Set([e.de, e.ate].filter(Boolean).map(d=>String(d).slice(0,4))))
+    : [irDivAnoDoEscopo()].filter(Boolean);
+  const chave = anos.join(',');
+  if(chave && (!IR.divAnoCache || IR.divAnoCache.ano!==chave)){
+    const ciclos = anos.flatMap(a=>irDivCiclosDoAno(a));
+    const listas = await Promise.all(ciclos.map(c=>irGetByCiclo(IR_STORES.divergencias, c.id)));
+    IR.divAnoCache = {ano: chave, divs: listas.flat()};
   }
   if(e.tipo==='ciclo' && (!e.cicloId || e.cicloId===(IR.cicloAtivo||{}).id)) IR.divEscopoDados = IR.divergencias;
   else if(e.tipo==='ciclo') IR.divEscopoDados = await irGetByCiclo(IR_STORES.divergencias, e.cicloId);
@@ -3772,7 +3782,10 @@ function irDivDivsDoEscopo(){
   const e = IR.divEscopo;
   let divs = irSoLocaisConcluidos(IR.divEscopoDados || IR.divergencias || []).filter(d=>d.diferenca!==0);
   if(e.tipo==='mes') divs = divs.filter(d=>irDivDiaDa(d).slice(0,7)===e.mes);
-  if(e.tipo==='dia') divs = e.dia ? divs.filter(d=>irDivDiaDa(d)===e.dia) : [];
+  if(e.tipo==='periodo'){
+    if(e.de)  divs = divs.filter(d=>irDivDiaDa(d) >= e.de);
+    if(e.ate) divs = divs.filter(d=>irDivDiaDa(d) <= e.ate);
+  }
   return divs;
 }
 function irDivCalcItens(){
@@ -4024,12 +4037,10 @@ function irDivNormItem(v){
   const n = Number(s);
   return (Number.isFinite(n) && Number.isInteger(n)) ? String(n) : s;
 }
-// Períodos da 410 que cobrem o escopo atual: os meses em que os locais fecharam
-// (ou o dia exato, quando o filtro é de dia).
+// Períodos da 410 que cobrem o escopo atual: os meses em que os locais fecharam.
+// Sempre por mês, inclusive num intervalo de dias — o lançamento na 410 é postado
+// depois da contagem, então casar por dia daria falso negativo.
 function irDivConcPeriodos(divs){
-  if(IR.divEscopo.tipo==='dia'){
-    return IR.divEscopo.dia ? {campo:'porDia', chave:'dia', lista:[IR.divEscopo.dia]} : {campo:'porDia', chave:'dia', lista:[]};
-  }
   const meses = Array.from(new Set(divs.map(d=>irDivDiaDa(d).slice(0,7)).filter(Boolean))).sort();
   return {campo:'porMes', chave:'mes', lista:meses};
 }
@@ -4160,7 +4171,12 @@ function irDivEscopoLabel(){
   const e = IR.divEscopo;
   if(e.tipo==='ano') return 'ano '+e.ano;
   if(e.tipo==='mes') return irMesLabel(e.mes);
-  if(e.tipo==='dia') return e.dia ? irFmtDate(e.dia) : 'selecione um dia';
+  if(e.tipo==='periodo'){
+    if(e.de && e.ate) return irFmtDate(e.de)+' a '+irFmtDate(e.ate);
+    if(e.de)  return 'de '+irFmtDate(e.de);
+    if(e.ate) return 'até '+irFmtDate(e.ate);
+    return 'todo o histórico';
+  }
   const c = e.cicloId ? IR.ciclos.find(x=>x.id===e.cicloId) : IR.cicloAtivo;
   return c ? irCicloLabel(c) : 'ciclo atual';
 }
@@ -4271,7 +4287,7 @@ function irRenderDivFiltros(){
   const dias = irDivDiasDisponiveis();
   const anos = Array.from(new Set(IR.ciclos.map(c=>String(c.dataAbertura||'').slice(0,4)).filter(Boolean))).sort((a,b)=>b.localeCompare(a));
   const val = e.tipo==='ano' ? 'ano:'+e.ano : e.tipo==='mes' ? 'mes:'+e.mes
-            : e.tipo==='dia' ? 'dia' : 'ciclo:'+(e.cicloId || (IR.cicloAtivo||{}).id || '');
+            : e.tipo==='periodo' ? 'periodo' : 'ciclo:'+(e.cicloId || (IR.cicloAtivo||{}).id || '');
   return `<div class="panel ofe-filtros">
     <div class="ofe-filtro">
       <label>Período</label>
@@ -4279,16 +4295,16 @@ function irRenderDivFiltros(){
         <optgroup label="Ciclo">${IR.ciclos.map(c=>`<option value="ciclo:${irEsc(c.id)}" ${val==='ciclo:'+c.id?'selected':''}>${irEsc(irCicloLabel(c))}</option>`).join('')}</optgroup>
         <optgroup label="Mês">${meses.map(m=>`<option value="mes:${m}" ${val==='mes:'+m?'selected':''}>${irEsc(irMesLabel(m))}</option>`).join('')}</optgroup>
         <optgroup label="Ano">${anos.map(a=>`<option value="ano:${a}" ${val==='ano:'+a?'selected':''}>${a}</option>`).join('')}</optgroup>
-        <optgroup label="Dia"><option value="dia" ${val==='dia'?'selected':''}>Escolher um dia</option></optgroup>
+        <optgroup label="Datas"><option value="periodo" ${val==='periodo'?'selected':''}>Escolher de/até</option></optgroup>
       </select>
     </div>
-    ${e.tipo==='dia' ? `<div class="ofe-filtro">
-      <label>Dia</label>
-      <select onchange="irDivSetDia(this.value)">
-        <option value="">Selecione</option>
-        ${dias.map(d=>`<option value="${d}" ${e.dia===d?'selected':''}>${irFmtDate(d)}</option>`).join('')}
-      </select>
-    </div>` : ''}
+    ${e.tipo==='periodo' ? `
+      <div class="ofe-filtro"><label>De</label>
+        <input type="date" min="${dias[0]||''}" max="${dias[dias.length-1]||''}" value="${irEsc(e.de||'')}" onchange="irDivSetPeriodo('de', this.value)"></div>
+      <div class="ofe-filtro"><label>Até</label>
+        <input type="date" min="${dias[0]||''}" max="${dias[dias.length-1]||''}" value="${irEsc(e.ate||'')}" onchange="irDivSetPeriodo('ate', this.value)"></div>
+      ${(e.de||e.ate)?`<button class="btn-link" onclick="irDivSetEscopo('periodo');irDivSetPeriodo('de','');irDivSetPeriodo('ate','')">Limpar datas</button>`:''}
+    ` : ''}
     <div class="ofe-filtro">
       <label>Analisar por</label>
       <div class="conc-chips" style="margin:0;">
@@ -4412,8 +4428,7 @@ function irRenderDivTabela(c){
         <tbody>${lista.map(linha).join('')}</tbody>
       </table>
     </div></div>` : `<p class="field-hint">${
-      IR.divEscopo.tipo==='dia' && !IR.divEscopo.dia ? 'Selecione um dia.'
-      : 'Nenhum item acima de '+irFmtMoney(c.corte)+' neste período.'}</p>`}
+      'Nenhum item acima de '+c.base.fmt(c.corte)+' em '+c.base.lbl+' neste período.'}</p>`}
   </div>`;
 }
 function irRenderDivAuditoria(){
