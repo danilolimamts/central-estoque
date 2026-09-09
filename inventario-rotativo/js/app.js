@@ -698,7 +698,7 @@ const IR_INDICADORES_VERSION = 11; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v93';
+const IR_APP_VERSION = 'v94';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
@@ -4279,26 +4279,37 @@ async function irDivGerarAuditoria(){
       if(!g) continue;
       // Onde o item divergiu no período — é o endereço que o auditor confere
       // primeiro, e ele não é necessariamente um dos que têm saldo hoje.
-      const divergiuEm = g.locais.filter(d=>d.diferenca!==0)
+      const ondeDivergiu = g.locais.filter(d=>d.diferenca!==0);
+      const divergiuEm = ondeDivergiu
         .map(d=>d.local + (irDescLocal(d.local) ? ' ('+irDescLocal(d.local)+')' : ''))
         .join(' · ');
       let est = null;
       try{ est = cicloId ? await irGetEstoqueItem(cicloId, item) : null; }catch(err){ est = null; }
+      // Sem saldo na QRY0390 o item zerou no CD — não há endereço de estoque pra
+      // conferir. Em vez de uma linha vazia, a auditoria manda o auditor pro LOCAL
+      // DO AJUSTE: é lá que a peça estava, e é o lugar mais provável de ela ainda
+      // estar (caiu atrás, foi pro endereço vizinho, ficou no chão do corredor).
       if(!est || !est.locais || !est.locais.length){
         semEstoque++;
-        // Item sem nenhuma linha na QRY0390: ou ele zerou no CD, ou a 390 não foi
-        // importada. A linha fica, porque o auditor ainda precisa procurar a peça —
-        // mas dizendo por que não há endereço, em vez de sair em branco na planilha.
-        linhas.push({item, descricao:g.descricao, local:'', descricaoLocal:'sem saldo na QRY0390',
-          saldo:null, diferenca:g.netQtd, locaisDivergentes: divergiuEm});
+        for(const d of ondeDivergiu){
+          linhas.push({item, descricao:g.descricao, local:d.local, descricaoLocal:irDescLocal(d.local),
+            saldo:null, diferenca:g.netQtd, origem:'local do ajuste', locaisDivergentes: divergiuEm});
+        }
+        if(!ondeDivergiu.length){
+          linhas.push({item, descricao:g.descricao, local:'', descricaoLocal:'',
+            saldo:null, diferenca:g.netQtd, origem:'sem endereço', locaisDivergentes: divergiuEm});
+        }
         continue;
       }
       for(const s of est.locais){
         const desc = irDescLocal(s.local);
         if(!desc) semDescricao++;
+        // Endereço sem descrição em nenhuma base fica em branco de propósito: o
+        // código do local já basta pro auditor achar, e um rótulo no lugar da
+        // descrição só polui a folha impressa.
         linhas.push({item, descricao:g.descricao, local:s.local,
-          descricaoLocal: desc || 'endereço não inventariado', saldo:s.qtd, diferenca:g.netQtd,
-          locaisDivergentes: divergiuEm});
+          descricaoLocal: desc, saldo:s.qtd, diferenca:g.netQtd,
+          origem:'saldo', locaisDivergentes: divergiuEm});
       }
     }
     IR.divAuditoria = {
@@ -4321,7 +4332,7 @@ function irDivExportarAuditoria(){
   const auditor = (document.getElementById('ir-aud-auditor')||{}).value || '';
   const cols = [['item','Item'],['descricao','Descrição'],['local','Local'],
     ['descricaoLocal','Descrição do Local'],['saldo','Quantidade'],['diferenca','Qtde Divergente'],
-    ['locaisDivergentes','Onde Divergiu']];
+    ['origem','Origem do Endereço'],['locaisDivergentes','Onde Divergiu']];
   const cab = cols.map(c=>c[1]).concat(['Contagem do Auditor','Data','Auditor']);
   const linhas = g.linhas.map(l=>cols.map(([k])=>l[k]==null?'':l[k]).concat(['', data, auditor]));
   irDivBaixarPlanilha(cab, linhas, 'auditoria_'+String(g.escopo).replace(/\W+/g,'_'));
@@ -4533,20 +4544,21 @@ function irRenderDivAuditoria(){
     <div class="aud-cab">
       <div class="ofe-filtro"><label>Data</label><input type="date" id="ir-aud-data" value="${new Date().toISOString().slice(0,10)}"></div>
       <div class="ofe-filtro"><label>Auditor</label><input type="text" id="ir-aud-auditor" placeholder="nome de quem vai conferir"></div>
-      <span class="field-hint">${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo na QRY0390`:''}${g.semDescricao?` · ${irFmtInt(g.semDescricao)} sem descrição em nenhuma base`:''}</span>
+      <span class="field-hint">${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}</span>
     </div>
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
       <table class="aud-table">
         <thead><tr><th>Item</th><th>Descrição</th><th>Local</th><th>Descrição do Local</th>
-          <th>Quantidade</th><th>Qtde Divergente</th><th>Onde Divergiu</th><th>Contagem do Auditor</th></tr></thead>
+          <th>Quantidade</th><th>Qtde Divergente</th><th>Origem do Endereço</th><th>Onde Divergiu</th><th>Contagem do Auditor</th></tr></thead>
         <tbody>${g.linhas.map(l=>`<tr>
           <td class="mono">${irEsc(l.item)}</td>
           <td class="aud-desc">${irEsc(l.descricao||'')}</td>
-          <td class="mono">${l.local?irEsc(l.local):'—'}</td>
-          <td>${irEsc(l.descricaoLocal||'—')}</td>
-          <td class="mono">${l.saldo!=null?irFmtInt(l.saldo):'—'}</td>
+          <td class="mono">${irEsc(l.local||'')}</td>
+          <td>${irEsc(l.descricaoLocal||'')}</td>
+          <td class="mono">${l.saldo!=null?irFmtInt(l.saldo):''}</td>
           <td class="mono ${l.diferenca<0?'neg':'pos'}">${l.diferenca>0?'+':''}${irFmtInt(l.diferenca)}</td>
-          <td class="aud-onde">${irEsc(l.locaisDivergentes||'—')}</td>
+          <td class="aud-onde">${irEsc(l.origem||'')}</td>
+          <td class="aud-onde">${irEsc(l.locaisDivergentes||'')}</td>
           <td class="aud-vazio"></td>
         </tr>`).join('')}</tbody>
       </table>
