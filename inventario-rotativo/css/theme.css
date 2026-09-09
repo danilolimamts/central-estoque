@@ -1095,3 +1095,17 @@ table.ofe-sub tr.ofe-fora{ opacity:.55; }
   color:var(--sidebar-ink-soft, rgba(255,255,255,.45)); font-variant-numeric:tabular-nums;
 }
 .sidebar.collapsed .sidebar-versao{ display:none; }
+
+/* ---------- TRANSITÓRIOS ---------- */
+.trans-kpis{ margin-bottom:12px; }
+table.trans-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+table.trans-table th{
+  background:var(--surface2); color:var(--ink-soft); font-size:9.5px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.05em; padding:7px 9px; text-align:left;
+  border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:middle;
+}
+table.trans-table th.num{ text-align:right; }
+table.trans-table td{ padding:6px 9px; border-bottom:1px solid var(--line); }
+table.trans-table td.mono{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+table.trans-table td:nth-child(2){ text-align:left; }
+table.trans-table tfoot td{ background:var(--surface2); border-top:2px solid var(--line); border-bottom:none; }
