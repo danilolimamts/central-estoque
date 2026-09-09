@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 11;
+const IR_INDICADORES_VERSION = 12;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -101,6 +101,9 @@ const ALIAS_843 = {
 };
 const ALIAS_278 = {
   item: ['Item'], nomeItem: ['Nome item','Nome Item'],
+  // EAN só existe na SIGEQ278 (a QRY0843 não traz). Se a extração vier sem a
+  // coluna, o campo fica vazio e a auditoria imprime sem código de barras.
+  ean: ['Ean','EAN','Código de Barras','Codigo de Barras','Cod Barras','Cód.Barras'],
   precoCusto: ['Preço de custo','Preco de custo'], precoCompra: ['Preço de compra','Preco de compra']
 };
 const ALIAS_051 = {
@@ -294,12 +297,15 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
   post('progress', {stage:'Indexando preços (SIGEQ278)...', pct:14});
   const precoPorItem = new Map(); // item -> preço de custo
   const nomePorItem278 = new Map(); // item -> nome (fallback quando a QRY0843 vem sem "Item Nome")
+  const eanPorItem = new Map();     // item -> EAN (só a 278 tem)
   for(const row of rows278){
     const item = irNormItemKey(getVal(row, r278.item));
     if(!item) continue;
     precoPorItem.set(item, parseNumber(getVal(row, r278.precoCusto)));
     const nome = String(getVal(row, r278.nomeItem) ?? '').trim();
     if(nome) nomePorItem278.set(item, nome);
+    const ean = String(getVal(row, r278.ean) ?? '').trim();
+    if(ean) eanPorItem.set(item, ean);
   }
   const valoracaoPorComponente = new Map(); // item_componente -> {itemPai, inInterface}
   for(const row of rows051){
@@ -609,6 +615,7 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
         // eventos diferentes, e sem isso o mesmo item aparece sobrando num e faltando
         // no outro, virando um "par trocado" que não existe.
         cicloId, local, inventario: String(chave).split('|')[1] || '', item, itemNome,
+        ean: eanPorItem.get(item) || '',
         qtdeSistema: sistema, qtdeFisica: g.final, diferenca,
         precoUnitario, vlFisico: g.final*precoUnitario, vlDivergencia: diferenca*precoUnitario,
         statusLocal: st.status, rodadasLocal: st.rodadas, diaFechamento,
