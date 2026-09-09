@@ -1027,3 +1027,13 @@ table.ofe-sub tr.ofe-fora{ opacity:.55; }
   .imp-desc{ display:none; }
   .imp-arquivo{ grid-column:2; }
 }
+
+/* Estado de carga da aba Divergências. */
+.div-carregando{ display:flex; align-items:center; gap:10px; color:var(--ink-soft); font-size:13px; }
+.div-spinner{
+  width:16px; height:16px; border-radius:50%; flex:none;
+  border:2px solid var(--line); border-top-color:var(--orange);
+  animation:div-gira .7s linear infinite;
+}
+@keyframes div-gira{ to{ transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce){ .div-spinner{ animation-duration:2.4s; } }

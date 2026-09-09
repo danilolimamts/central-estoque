@@ -698,7 +698,7 @@ const IR_INDICADORES_VERSION = 10; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v89';
+const IR_APP_VERSION = 'v90';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
@@ -3725,8 +3725,7 @@ function irDivSetEscopo(value){
               : value==='periodo' ? {tipo:'periodo', de:IR.divEscopo.de || '', ate:IR.divEscopo.ate || ''}
               : {tipo:'ciclo'};
   IR.divEscopoDados = null; IR.divSelecionados = new Set(); IR.divAuditoria = null;
-  irRenderView();
-  irCarregarDivEscopo();
+  irRenderView(); // o render dispara a carga do novo escopo e desenha quando estiver pronto
 }
 // Intervalo livre de datas. Vazio de um lado é aberto daquele lado: só "até"
 // pega tudo desde o começo, só "de" pega dali em diante.
@@ -3735,7 +3734,7 @@ function irDivSetPeriodo(campo, valor){
   IR.divEscopo = {tipo:'periodo', de: e.de||'', ate: e.ate||'', [campo]: valor};
   IR.divSelecionados = new Set(); IR.divAuditoria = null;
   IR.divEscopoDados = null;
-  irCarregarDivEscopo();
+  irRenderView();
 }
 function irDivSetCorte(v){
   const n = parseFloat(String(v).replace(/\./g,'').replace(',','.'));
@@ -3774,14 +3773,32 @@ async function irCarregarDivEscopo(){
     const listas = await Promise.all(ciclos.map(c=>irGetByCiclo(IR_STORES.divergencias, c.id)));
     IR.divAnoCache = {ano: chave, divs: listas.flat()};
   }
-  // A 410 do(s) mesmo(s) ano(s) — é dela que sai o preço congelado.
-  const anos410 = Array.from(new Set(anos.concat([String(new Date().getFullYear())])));
-  const falta410 = anos410.filter(a=>!(IR.div410Cache||{})[a]);
-  if(falta410.length) irDivCarregar410(falta410);
   if(e.tipo==='ciclo' && (!e.cicloId || e.cicloId===(IR.cicloAtivo||{}).id)) IR.divEscopoDados = IR.divergencias;
   else if(e.tipo==='ciclo') IR.divEscopoDados = await irGetByCiclo(IR_STORES.divergencias, e.cicloId);
   else IR.divEscopoDados = (IR.divAnoCache||{}).divs || [];
-  irRenderView();
+  // A 410 do(s) mesmo(s) ano(s) — é dela que sai o preço congelado. Esperada aqui
+  // dentro, e não em paralelo: quem carregava depois fazia a tela desenhar com o
+  // preço da 278, e dois segundos mais tarde trocar tudo com o preço da 410.
+  const anos410 = Array.from(new Set(anos.concat([String(new Date().getFullYear())])));
+  const falta410 = anos410.filter(a=>!(IR.div410Cache||{})[a]);
+  if(falta410.length) await irDivCarregar410(falta410);
+}
+/* A aba só desenha quando os dois caches estão prontos: as divergências do escopo
+   e a QRY410 dos anos que ele toca. Antes ela desenhava na hora com o que tinha em
+   memória (só o ciclo ativo, valorado pela 278) e se redesenhava sozinha quando o
+   resto chegava — o número piscava e trocava na frente do usuário. */
+function irDivEscopoPronto(){
+  if(!IR.divAnoCache || IR.divEscopoDados===null) return false;
+  const e = IR.divEscopo;
+  const anos = (e.tipo==='periodo' && (e.de || e.ate))
+    ? Array.from(new Set([e.de, e.ate].filter(Boolean).map(d=>String(d).slice(0,4))))
+    : [irDivAnoDoEscopo()].filter(Boolean);
+  if(IR.divAnoCache.ano !== anos.join(',')) return false;
+  const anos410 = Array.from(new Set(anos.concat([String(new Date().getFullYear())])));
+  return anos410.every(a=>!!(IR.div410Cache||{})[a]);
+}
+function irDivCarregando(){
+  return `<div class="panel div-carregando"><span class="div-spinner"></span>Carregando divergências e preços do período...</div>`;
 }
 /* Dia do fechamento da visita. Ciclos processados antes do campo existir caem no
    fallback pelas contagens do ciclo carregado. */
@@ -3839,7 +3856,6 @@ async function irDivCarregar410(anos){
     IR.div410Cache = Object.assign({}, IR.div410Cache||{}, {erro:String(err)});
   }finally{
     IR._div410Loading = false;
-    irRenderView();
   }
 }
 // item -> {porMes: Map(mes -> preço), meses: [mes ordenado]}
@@ -4564,7 +4580,15 @@ function irDivExportarSimilares(){
 }
 function irRenderDivergencias(){
   if(!IR.divergencias.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  if(!IR.divAnoCache) irCarregarDivEscopo();
+  if(!irDivEscopoPronto()){
+    // Uma carga por vez: o placeholder rerenderiza, e sem a trava ele dispararia
+    // uma nova leitura a cada passada.
+    if(!IR._divCarregando){
+      IR._divCarregando = true;
+      irCarregarDivEscopo().finally(()=>{ IR._divCarregando = false; irRenderView(); });
+    }
+    return irRenderDivFiltros() + irDivCarregando();
+  }
   const c = irDivCalcItens();
   return `
     ${irRenderDivFiltros()}
