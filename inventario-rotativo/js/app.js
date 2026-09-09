@@ -705,7 +705,7 @@ const IR_INDICADORES_VERSION = 15; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v102';
+const IR_APP_VERSION = 'v103';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -4918,10 +4918,13 @@ function irExportarLocaisPendentesCsv(rua){
    estiver mapeado aparece em "Não classificado", justamente pra ser resolvido em
    vez de sumir numa conta agregada.
    ============================================================ */
-const IR_TRANS_SETORES = ['C.E','INB','OUT','TRP','REV'];
+// IGN não é setor: é o endereço que não conta como transitório (expedição em uso,
+// picking, área operacional normal). Fica visível num painel próprio pra ninguém
+// achar que o número sumiu, mas fora do total.
+const IR_TRANS_SETORES = ['C.E','INB','OUT','TRP','REV','IGN'];
 const IR_TRANS_SETOR_NOME = {
   'C.E':'Controle de Estoque', INB:'Inbound', OUT:'Outbound',
-  TRP:'Transporte', REV:'Reversa', TSF:'Transferência'
+  TRP:'Transporte', REV:'Reversa', TSF:'Transferência', IGN:'Desconsiderado'
 };
 // Palpite inicial, a partir do que o próprio endereço diz. Serve pra tela nascer
 // útil; o usuário corrige o que estiver errado e a correção fica salva.
@@ -4929,20 +4932,38 @@ const IR_TRANS_SEED = {
   REV:'REV', PIC:'REV', BMS:'REV', RML:'REV', FAT:'REV', QBR:'REV', TRI:'REV',
   ANE:'INB', AVA:'INB', REC:'INB', BUF:'INB',
   OUT:'OUT', EXP:'OUT', CAR:'OUT',
-  GAI:'TRP', DOC:'TRP',
+  GAI:'IGN', DOC:'TRP',   // GAI é expedição em uso — não é saldo parado
   DEV:'C.E', DS:'C.E', PAL:'C.E', BLO:'C.E', LIT:'C.E', INV:'C.E',
   ATI:'C.E', ROT:'C.E', CAN:'C.E', INA:'C.E', MEZ:'C.E', RES:'C.E', EPI:'C.E'
 };
+/* O palpite inicial evolui — GAI virou expedição depois que o usuário explicou o
+   que ele é. Quando isso acontece, o mapa salvo precisa receber a correção sem
+   atropelar o que o usuário classificou à mão: por isso as escolhas dele ficam
+   numa lista separada, e o seed só sobrescreve prefixo que ele nunca tocou. */
+const IR_TRANS_SEED_V = 2;
 async function irSeedTransSetoresIfEmpty(){
   const salvo = await irGetConfig('transitorio-setores');
-  if(salvo) return salvo;
-  await irSetConfig('transitorio-setores', IR_TRANS_SEED);
-  return Object.assign({}, IR_TRANS_SEED);
+  if(!salvo){
+    await irSetConfig('transitorio-setores', IR_TRANS_SEED);
+    await irSetConfig('transitorio-setores-v', IR_TRANS_SEED_V);
+    return Object.assign({}, IR_TRANS_SEED);
+  }
+  const versao = await irGetConfig('transitorio-setores-v');
+  if(versao === IR_TRANS_SEED_V) return salvo;
+  const doUsuario = new Set(await irGetConfig('transitorio-setores-user') || []);
+  const mapa = Object.assign({}, salvo);
+  for(const pref in IR_TRANS_SEED) if(!doUsuario.has(pref)) mapa[pref] = IR_TRANS_SEED[pref];
+  await irSetConfig('transitorio-setores', mapa);
+  await irSetConfig('transitorio-setores-v', IR_TRANS_SEED_V);
+  return mapa;
 }
 async function irTransSetPrefixo(prefixo, setor){
   const mapa = Object.assign({}, IR.transSetores || {});
   if(setor) mapa[prefixo] = setor; else delete mapa[prefixo];
   IR.transSetores = mapa;
+  const doUsuario = new Set(await irGetConfig('transitorio-setores-user') || []);
+  doUsuario.add(prefixo);
+  await irSetConfig('transitorio-setores-user', Array.from(doUsuario));
   await irSetConfig('transitorio-setores', mapa);
   irRenderView();
 }
@@ -4966,13 +4987,12 @@ function irTransCalc(){
     if(!grupos.has(setor)) grupos.set(setor, {setor, valor:0, qtd:0, locais:[], prefixos:new Set()});
     const g = grupos.get(setor);
     g.valor += l.valor; g.qtd += l.qtd; g.locais.push(l); g.prefixos.add(l.x1);
+    if(setor==='IGN') continue; // desconsiderado não entra no total de transitório
     valorTotal += l.valor; pecasTotal += l.qtd; nLocais++;
   }
   for(const g of grupos.values()) g.locais.sort((a,b)=>b.valor-a.valor);
-  const lista = Array.from(grupos.values()).sort((a,b)=>{
-    if(!a.setor) return 1; if(!b.setor) return -1;
-    return b.valor-a.valor;
-  });
+  const ordem = g => g.setor==='IGN' ? 2 : (g.setor ? 0 : 1);
+  const lista = Array.from(grupos.values()).sort((a,b)=> ordem(a)-ordem(b) || b.valor-a.valor);
   return {lista, valorTotal, pecasTotal, nLocais};
 }
 function irRenderTransitorios(){
@@ -4990,7 +5010,7 @@ function irRenderTransitorios(){
   return `
     <div class="panel ofe-resumo">
       ${cell('Estoque em transitório', irFmtMoney(c.valorTotal), '', irFmtInt(c.pecasTotal)+' peças · '+irFmtInt(c.nLocais)+' endereços')}
-      ${c.lista.filter(g=>g.setor).slice(0,4).map(g=>cell(IR_TRANS_SETOR_NOME[g.setor]||g.setor, irFmtMoney(g.valor), '', irFmtInt(g.qtd)+' peças · '+irFmtInt(g.locais.length)+' endereços')).join('')}
+      ${c.lista.filter(g=>g.setor && g.setor!=='IGN').slice(0,4).map(g=>cell(IR_TRANS_SETOR_NOME[g.setor]||g.setor, irFmtMoney(g.valor), '', irFmtInt(g.qtd)+' peças · '+irFmtInt(g.locais.length)+' endereços')).join('')}
     </div>
     ${naoClass ? `<div class="panel"><div class="ofe-head">
       <h3>Não classificado</h3>
