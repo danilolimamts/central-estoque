@@ -683,25 +683,61 @@ table.aud-table td:nth-child(2), table.aud-table td:nth-child(4){ text-align:lef
    peça na prateleira, e o resumo "primeira … última palavra" não serve pra isso. */
 .aud-desc{ min-width:220px; }
 
-/* Impressão: sai só a auditoria, em preto no branco, sem menu nem botões.
-   Paisagem porque são oito colunas, e o cabeçalho vira table-header-group pra se
-   repetir no topo de cada página — sem isso, da segunda folha em diante o auditor
-   fica com uma tabela de números sem saber qual coluna é qual. */
-@page{ size: landscape; margin: 10mm; }
+/* Impressão da auditoria: uma folha de largura, sempre.
+
+   A tabela vai com table-layout fixed e larguras em porcentagem porque o auditor
+   imprime numa folha só — antes as colunas tinham largura mínima e nowrap, a
+   tabela ficava mais larga que o papel e o Chrome cortava a metade da direita. Com
+   as colunas fixas, o que não cabe QUEBRA A LINHA em vez de vazar, e o transbordo
+   acontece só pra baixo, em páginas novas.
+
+   Paisagem por causa das nove a onze colunas, e o cabeçalho vira table-header-group
+   pra se repetir no topo de cada página — sem isso, da segunda folha em diante o
+   auditor fica com uma tabela de números sem saber qual coluna é qual. */
+@page{ size: A4 landscape; margin: 8mm; }
 @media print{
+  html, body{ width:auto !important; margin:0 !important; padding:0 !important; background:#FFF !important; }
   .sidebar, .topbar, .ofe-filtros, .ofe-resumo, .ofe-acoes, .zoom-ctrl, .toast{ display:none !important; }
   .panel:not(.aud-panel){ display:none !important; }
-  .aud-panel{ box-shadow:none; border:none; padding:0; }
+  .content, .aud-panel{ margin:0 !important; padding:0 !important; }
+  .aud-panel{ box-shadow:none; border:none; width:100%; }
   .aud-panel .table-wrap, .aud-panel .table-scroll{ max-height:none !important; overflow:visible !important; }
-  table.aud-table{ width:100%; font-size:9.5px; }
+
+  table.aud-table{ width:100%; table-layout:fixed; font-size:8.5px; border-collapse:collapse; }
   table.aud-table thead{ display:table-header-group; }
-  table.aud-table tfoot{ display:table-footer-group; }
   table.aud-table tr{ break-inside:avoid; page-break-inside:avoid; }
-  table.aud-table th{ background:#EEE !important; color:#000 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  table.aud-table td, table.aud-table th{ border-bottom:1px solid #999 !important; padding:4px 6px; white-space:nowrap; }
-  table.aud-table td.aud-desc{ white-space:normal; }
+  table.aud-table th, table.aud-table td{
+    border-bottom:1px solid #999 !important; padding:3px 4px;
+    white-space:normal; overflow-wrap:anywhere; word-break:break-word; vertical-align:top;
+  }
+  table.aud-table th{ background:#EEE !important; color:#000 !important; font-size:7.5px;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .aud-desc{ min-width:0; }
-  .aud-vazio{ border-bottom:1px solid #000 !important; min-width:70px; }
+  .aud-vazio{ border-bottom:1px solid #000 !important; min-width:0; }
+
+  /* Item · EAN · Descrição · Local · Desc. Local · Qtde · Qtde Div. · Valor Div. · Contagem */
+  table.aud-t-item th:nth-child(1), table.aud-t-item td:nth-child(1){ width:7%; }
+  table.aud-t-item th:nth-child(2), table.aud-t-item td:nth-child(2){ width:10%; }
+  table.aud-t-item th:nth-child(3), table.aud-t-item td:nth-child(3){ width:26%; }
+  table.aud-t-item th:nth-child(4), table.aud-t-item td:nth-child(4){ width:7%; }
+  table.aud-t-item th:nth-child(5), table.aud-t-item td:nth-child(5){ width:14%; }
+  table.aud-t-item th:nth-child(6), table.aud-t-item td:nth-child(6){ width:6%; }
+  table.aud-t-item th:nth-child(7), table.aud-t-item td:nth-child(7){ width:7%; }
+  table.aud-t-item th:nth-child(8), table.aud-t-item td:nth-child(8){ width:10%; }
+  table.aud-t-item th:nth-child(9), table.aud-t-item td:nth-child(9){ width:13%; }
+
+  /* Dia · Local · Desc. Local · Inv. · Sobrou · Descrição · Faltou · Descrição · Qtde · Desequil. · Confere */
+  table.aud-t-sim th:nth-child(1),  table.aud-t-sim td:nth-child(1){ width:7%; }
+  table.aud-t-sim th:nth-child(2),  table.aud-t-sim td:nth-child(2){ width:6%; }
+  table.aud-t-sim th:nth-child(3),  table.aud-t-sim td:nth-child(3){ width:11%; }
+  table.aud-t-sim th:nth-child(4),  table.aud-t-sim td:nth-child(4){ width:6%; }
+  table.aud-t-sim th:nth-child(5),  table.aud-t-sim td:nth-child(5){ width:7%; }
+  table.aud-t-sim th:nth-child(6),  table.aud-t-sim td:nth-child(6){ width:17%; }
+  table.aud-t-sim th:nth-child(7),  table.aud-t-sim td:nth-child(7){ width:7%; }
+  table.aud-t-sim th:nth-child(8),  table.aud-t-sim td:nth-child(8){ width:17%; }
+  table.aud-t-sim th:nth-child(9),  table.aud-t-sim td:nth-child(9){ width:5%; }
+  table.aud-t-sim th:nth-child(10), table.aud-t-sim td:nth-child(10){ width:8%; }
+  table.aud-t-sim th:nth-child(11), table.aud-t-sim td:nth-child(11){ width:9%; }
 }
 .tag-good{ color:var(--success); background:var(--success-light); }
 .tag-bad{ color:var(--danger); background:var(--danger-light); }

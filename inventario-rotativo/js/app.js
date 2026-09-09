@@ -699,7 +699,7 @@ const IR_INDICADORES_VERSION = 14; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v98';
+const IR_APP_VERSION = 'v99';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -3729,6 +3729,9 @@ function irDivSetEscopo(value){
   IR.divEscopo = value.startsWith('ano:') ? {tipo:'ano', ano:value.slice(4)}
               : value.startsWith('mes:') ? {tipo:'mes', mes:value.slice(4)}
               : value.startsWith('ciclo:') ? {tipo:'ciclo', cicloId:value.slice(6)}
+              : value==='ciclos' ? {tipo:'ciclos', cicloIds:(IR.divEscopo.cicloIds && IR.divEscopo.cicloIds.length)
+                    ? IR.divEscopo.cicloIds
+                    : [IR.divEscopo.cicloId || (IR.cicloAtivo||{}).id].filter(Boolean)}
               : value==='periodo' ? {tipo:'periodo', de:IR.divEscopo.de || '', ate:IR.divEscopo.ate || ''}
               : {tipo:'ciclo'};
   IR.divEscopoDados = null; IR.divSelecionados = new Set(); IR.divAuditoria = null;
@@ -3736,6 +3739,16 @@ function irDivSetEscopo(value){
 }
 // Intervalo livre de datas. Vazio de um lado é aberto daquele lado: só "até"
 // pega tudo desde o começo, só "de" pega dali em diante.
+/* Liga e desliga um ciclo na seleção múltipla. Nunca deixa vazio: desmarcar o
+   último volta a marcar o ciclo ativo, senão a tela some sem explicação. */
+function irDivToggleCiclo(id){
+  const atual = new Set(IR.divEscopo.cicloIds || []);
+  if(atual.has(id)) atual.delete(id); else atual.add(id);
+  const ids = atual.size ? Array.from(atual) : [(IR.cicloAtivo||{}).id].filter(Boolean);
+  IR.divEscopo = {tipo:'ciclos', cicloIds: ids};
+  IR.divEscopoDados = null; IR.divSelecionados = new Set(); IR.divAuditoria = null;
+  irRenderView();
+}
 function irDivSetPeriodo(campo, valor){
   const e = IR.divEscopo;
   IR.divEscopo = {tipo:'periodo', de: e.de||'', ate: e.ate||'', [campo]: valor};
@@ -3761,26 +3774,46 @@ function irDivAnoDoEscopo(){
   if(e.tipo==='ano') return String(e.ano);
   if(e.tipo==='mes') return String(e.mes).slice(0,4);
   if(e.tipo==='periodo' && (e.de || e.ate)) return String(e.de || e.ate).slice(0,4);
+  if(e.tipo==='ciclos'){
+    const cs = irDivCiclosSelecionados();
+    if(cs.length) return String(irCicloAno(cs[0])||'');
+  }
   const c = e.cicloId ? IR.ciclos.find(x=>x.id===e.cicloId) : IR.cicloAtivo;
   return String((c||{}).dataAbertura||'').slice(0,4);
 }
 function irDivCiclosDoAno(ano){
   return IR.ciclos.filter(c=>String(c.dataAbertura||'').slice(0,4)===String(ano));
 }
+/* Anos que o escopo toca. Um intervalo de datas pode atravessar o ano e uma
+   seleção de ciclos também — o cache precisa carregar todos, senão a metade de
+   fora some sem aviso. */
+function irDivAnosDoEscopo(){
+  const e = IR.divEscopo;
+  if(e.tipo==='periodo' && (e.de || e.ate))
+    return Array.from(new Set([e.de, e.ate].filter(Boolean).map(d=>String(d).slice(0,4)))).sort();
+  if(e.tipo==='ciclos')
+    return Array.from(new Set(irDivCiclosSelecionados().map(c=>String(irCicloAno(c)||'')).filter(Boolean))).sort();
+  const a = irDivAnoDoEscopo();
+  return a ? [a] : [];
+}
+function irDivCiclosSelecionados(){
+  const ids = new Set(IR.divEscopo.cicloIds || []);
+  return (IR.ciclos||[]).filter(c=>ids.has(c.id));
+}
 async function irCarregarDivEscopo(){
   const e = IR.divEscopo;
-  // Um intervalo de datas pode atravessar o ano; o cache carrega todos os anos
-  // que ele toca, senão a metade de fora do ano some sem aviso.
-  const anos = (e.tipo==='periodo' && (e.de || e.ate))
-    ? Array.from(new Set([e.de, e.ate].filter(Boolean).map(d=>String(d).slice(0,4))))
-    : [irDivAnoDoEscopo()].filter(Boolean);
+  const anos = irDivAnosDoEscopo();
   const chave = anos.join(',');
   if(chave && (!IR.divAnoCache || IR.divAnoCache.ano!==chave)){
     const ciclos = anos.flatMap(a=>irDivCiclosDoAno(a));
     const listas = await Promise.all(ciclos.map(c=>irGetByCiclo(IR_STORES.divergencias, c.id)));
     IR.divAnoCache = {ano: chave, divs: listas.flat()};
   }
-  if(e.tipo==='ciclo' && (!e.cicloId || e.cicloId===(IR.cicloAtivo||{}).id)) IR.divEscopoDados = IR.divergencias;
+  if(e.tipo==='ciclos'){
+    const ids = new Set(e.cicloIds || []);
+    IR.divEscopoDados = ((IR.divAnoCache||{}).divs || []).filter(d=>ids.has(d.cicloId));
+  }
+  else if(e.tipo==='ciclo' && (!e.cicloId || e.cicloId===(IR.cicloAtivo||{}).id)) IR.divEscopoDados = IR.divergencias;
   else if(e.tipo==='ciclo') IR.divEscopoDados = await irGetByCiclo(IR_STORES.divergencias, e.cicloId);
   else IR.divEscopoDados = (IR.divAnoCache||{}).divs || [];
   // A 410 do(s) mesmo(s) ano(s) — é dela que sai o preço congelado. Esperada aqui
@@ -3796,10 +3829,7 @@ async function irCarregarDivEscopo(){
    resto chegava — o número piscava e trocava na frente do usuário. */
 function irDivEscopoPronto(){
   if(!IR.divAnoCache || IR.divEscopoDados===null) return false;
-  const e = IR.divEscopo;
-  const anos = (e.tipo==='periodo' && (e.de || e.ate))
-    ? Array.from(new Set([e.de, e.ate].filter(Boolean).map(d=>String(d).slice(0,4))))
-    : [irDivAnoDoEscopo()].filter(Boolean);
+  const anos = irDivAnosDoEscopo();
   if(IR.divAnoCache.ano !== anos.join(',')) return false;
   const anos410 = Array.from(new Set(anos.concat([String(new Date().getFullYear())])));
   return anos410.every(a=>!!(IR.div410Cache||{})[a]);
@@ -4252,6 +4282,10 @@ function irDivEscopoLabel(){
   const e = IR.divEscopo;
   if(e.tipo==='ano') return 'ano '+e.ano;
   if(e.tipo==='mes') return irMesLabel(e.mes);
+  if(e.tipo==='ciclos'){
+    const cs = irDivCiclosSelecionados();
+    return cs.length ? cs.map(c=>irCicloLabel(c)).join(' + ') : 'selecione os ciclos';
+  }
   if(e.tipo==='periodo'){
     if(e.de && e.ate) return irFmtDate(e.de)+' a '+irFmtDate(e.ate);
     if(e.de)  return 'de '+irFmtDate(e.de);
@@ -4390,6 +4424,7 @@ function irRenderDivFiltros(){
   const dias = irDivDiasDisponiveis();
   const anos = Array.from(new Set(IR.ciclos.map(c=>String(c.dataAbertura||'').slice(0,4)).filter(Boolean))).sort((a,b)=>b.localeCompare(a));
   const val = e.tipo==='ano' ? 'ano:'+e.ano : e.tipo==='mes' ? 'mes:'+e.mes
+            : e.tipo==='ciclos' ? 'ciclos'
             : e.tipo==='periodo' ? 'periodo' : 'ciclo:'+(e.cicloId || (IR.cicloAtivo||{}).id || '');
   return `<div class="panel ofe-filtros">
     <div class="ofe-filtro">
@@ -4398,9 +4433,17 @@ function irRenderDivFiltros(){
         <optgroup label="Ciclo">${IR.ciclos.map(c=>`<option value="ciclo:${irEsc(c.id)}" ${val==='ciclo:'+c.id?'selected':''}>${irEsc(irCicloLabel(c))}</option>`).join('')}</optgroup>
         <optgroup label="Mês">${meses.map(m=>`<option value="mes:${m}" ${val==='mes:'+m?'selected':''}>${irEsc(irMesLabel(m))}</option>`).join('')}</optgroup>
         <optgroup label="Ano">${anos.map(a=>`<option value="ano:${a}" ${val==='ano:'+a?'selected':''}>${a}</option>`).join('')}</optgroup>
+        <optgroup label="Vários"><option value="ciclos" ${val==='ciclos'?'selected':''}>Somar ciclos</option></optgroup>
         <optgroup label="Datas"><option value="periodo" ${val==='periodo'?'selected':''}>Escolher de/até</option></optgroup>
       </select>
     </div>
+    ${e.tipo==='ciclos' ? `
+      <div class="ofe-filtro"><label>Ciclos</label>
+        <div class="conc-chips" style="margin:0;">
+          ${IR.ciclos.map(c=>`<button class="conc-chip ${(e.cicloIds||[]).includes(c.id)?'on':''}" onclick="irDivToggleCiclo('${irEsc(c.id)}')">${irEsc(irCicloLabel(c))}</button>`).join('')}
+        </div>
+      </div>
+    ` : ''}
     ${e.tipo==='periodo' ? `
       <div class="ofe-filtro"><label>De</label>
         <input type="date" min="${dias[0]||''}" max="${dias[dias.length-1]||''}" value="${irEsc(e.de||'')}" onchange="irDivSetPeriodo('de', this.value)"></div>
@@ -4584,7 +4627,7 @@ function irRenderDivAuditoria(){
         : `${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}`}</span>
     </div>
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
-      <table class="aud-table">
+      <table class="aud-table ${sim?'aud-t-sim':'aud-t-item'}">
         ${sim ? `<thead><tr><th>Dia</th><th>Local</th><th>Desc. Local</th><th>Inv.</th>
           <th>Sobrou</th><th>Descrição</th><th>Faltou</th><th>Descrição</th>
           <th>Qtde</th><th>Desequil.</th><th>Confere</th></tr></thead>
