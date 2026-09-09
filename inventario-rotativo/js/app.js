@@ -18,7 +18,10 @@ const IR = {
   processing:false, progress:{stage:'', pct:0},
   divergencias:[], locais:[], contagens:[],
   divEscopo:{tipo:'ciclo'}, divEscopoDados:null, divAnoCache:null, divSelecionados:null,
-  divCorte:null, divBusca:'', divVerCompensados:false, divExpandido:null,
+  divCorte:null, divCorteQtd:null, divBusca:'', divExpandido:null,
+  // Base do corte (o que define ofensor) e sentidos ligados na tabela — multi-seleção.
+  divBase:'valor', divSentidos:['perda','ganho'],
+  divSimExigeDesc:true,
   divOrdem:{col:'netValor', dir:'desc'}, divAuditoria:null,
   divSimFiltro:{de:'', ate:''},
   divSimOrdem:{col:'dia', dir:'desc'},
@@ -3603,6 +3606,29 @@ function irRenderNetDistorcaoPanel(){
    SALDO hoje (QRY0390) — é onde ele vai conferir.
    ============================================================ */
 const IR_DIV_CORTE_PADRAO = 1000;   // |NET R$| mínimo para o item ser ofensor
+const IR_DIV_CORTE_QTD_PADRAO = 10; // |NET peças| mínimo quando o corte é por quantidade
+// Corte vigente e o campo do item ao qual ele se aplica. Trocar a base troca as
+// duas coisas de uma vez: o que é ofensor e o que a tabela ordena por padrão.
+function irDivBase(){
+  return (IR.divBase==='qtd')
+    ? {campo:'netQtd', campoAno:'netQtdAno', corte: IR.divCorteQtd==null?IR_DIV_CORTE_QTD_PADRAO:IR.divCorteQtd,
+       lbl:'peças', fmt:irFmtInt, passo:1}
+    : {campo:'netValor', campoAno:'netValorAno', corte: IR.divCorte==null?IR_DIV_CORTE_PADRAO:IR.divCorte,
+       lbl:'R$', fmt:irFmtMoney, passo:100};
+}
+function irDivSetBase(base){
+  IR.divBase = base;
+  IR.divOrdem = {col: base==='qtd'?'netQtd':'netValor', dir:'desc'};
+  irRenderView();
+}
+// Chips de sentido: clicar liga/desliga. Nunca deixa a tabela sem nenhum ligado —
+// desligar o último volta a ligar todos, senão a tela some sem explicação.
+function irDivToggleSentido(s){
+  const atual = new Set(IR.divSentidos || ['perda','ganho']);
+  if(atual.has(s)) atual.delete(s); else atual.add(s);
+  IR.divSentidos = atual.size ? Array.from(atual) : ['perda','ganho','compensado'];
+  irRenderView();
+}
 
 function irDivSetEscopo(value){
   IR.divEscopo = value.startsWith('ano:') ? {tipo:'ano', ano:value.slice(4)}
@@ -3621,11 +3647,11 @@ function irDivSetDia(dia){
 }
 function irDivSetCorte(v){
   const n = parseFloat(String(v).replace(/\./g,'').replace(',','.'));
-  IR.divCorte = isNaN(n) ? 0 : Math.max(0, n);
+  const val = isNaN(n) ? 0 : Math.max(0, n);
+  if(IR.divBase==='qtd') IR.divCorteQtd = val; else IR.divCorte = val;
   irRenderView();
 }
 function irDivSetBusca(v){ IR.divBusca = String(v||'').trim(); irRenderView(); }
-function irDivToggleCompensados(){ IR.divVerCompensados = !IR.divVerCompensados; irRenderView(); }
 /* Cabeçalho clicável: 1º clique ordena decrescente, 2º inverte. */
 function irDivOrdenar(col){
   const o = IR.divOrdem || {col:'netValor', dir:'desc'};
@@ -3705,23 +3731,28 @@ function irDivDivsDoEscopo(){
   return divs;
 }
 function irDivCalcItens(){
-  const corte = IR.divCorte==null ? IR_DIV_CORTE_PADRAO : IR.divCorte;
+  // O corte pode ser em R$ ou em peças — é a base escolhida nos chips que decide
+  // qual dos dois define quem é ofensor.
+  const base = irDivBase();
+  const corte = base.corte;
   const divs = irDivDivsDoEscopo();
   const noEscopo = irDivAgruparPorItem(divs);
   const noAno = irDivAgruparPorItem(irSoLocaisConcluidos((IR.divAnoCache||{}).divs || []).filter(d=>d.diferenca!==0));
   const busca = (IR.divBusca||'').toLowerCase();
   const itens = Array.from(noEscopo.values()).map(g=>{
     const a = noAno.get(g.item) || {netQtd:g.netQtd, netValor:g.netValor};
-    const relevante = Math.abs(g.netValor) >= corte;
+    const noPeriodo = base.campo==='netQtd' ? g.netQtd : g.netValor;
+    const noAnoBase = base.campo==='netQtd' ? a.netQtd : a.netValor;
+    const relevante = Math.abs(noPeriodo) >= corte;
     // Compensado = pesou no escopo, mas o ano desmancha. Erro de contagem houve;
     // perda não. Não é ofensor.
-    const compensado = relevante && Math.abs(a.netValor) < corte;
+    const compensado = relevante && Math.abs(noAnoBase) < corte;
     return {...g,
       nLocais: g.locais.length,
       netQtdAno: a.netQtd, netValorAno: a.netValor,
       relevante, compensado,
       ofensor: relevante && !compensado,
-      sentido: g.netValor<0 ? 'perda' : 'ganho'
+      sentido: noPeriodo<0 ? 'perda' : 'ganho'
     };
   }).filter(i=>{
     if(!busca) return true;
@@ -3738,8 +3769,15 @@ function irDivCalcItens(){
     return dir*(Math.abs(x[o.col]||0) - Math.abs(y[o.col]||0));
   });
   const ofensores = itens.filter(i=>i.ofensor);
+  const somaBase = arr => arr.reduce((s,i)=>s+(base.campo==='netQtd'?i.netQtd:i.netValor), 0);
   return {
-    itens, ofensores,
+    itens, ofensores, base,
+    perdas: ofensores.filter(i=>i.sentido==='perda'),
+    ganhos: ofensores.filter(i=>i.sentido==='ganho'),
+    perdaBase: somaBase(ofensores.filter(i=>i.sentido==='perda')),
+    ganhoBase: somaBase(ofensores.filter(i=>i.sentido==='ganho')),
+    perdaQtd: ofensores.filter(i=>i.sentido==='perda').reduce((s,i)=>s+i.netQtd,0),
+    ganhoQtd: ofensores.filter(i=>i.sentido==='ganho').reduce((s,i)=>s+i.netQtd,0),
     compensados: itens.filter(i=>i.compensado),
     netValor: Array.from(noEscopo.values()).reduce((s,i)=>s+i.netValor,0),
     netQtd: Array.from(noEscopo.values()).reduce((s,i)=>s+i.netQtd,0),
@@ -3816,6 +3854,7 @@ function irDivSimSetFiltro(k, v){
   IR.divSimFiltro[k] = v;
   irRenderView();
 }
+function irDivSimToggleDesc(){ IR.divSimExigeDesc = IR.divSimExigeDesc===false; irRenderView(); }
 function irDivSimLimpar(){ IR.divSimFiltro = {de:'', ate:''}; irRenderView(); }
 /* Cabeçalho clicável da tabela de similares. Mesma convenção da tabela de
    ofensores: 1º clique ordena decrescente, 2º inverte. */
@@ -3872,22 +3911,31 @@ function irDivParesSimilares(){
     porVisita.get(chave).push(d);
   }
   const pares = [];
+  // Diagnóstico do funil. Sem ele, uma tabela vazia não diz se o problema é o
+  // filtro de data, a quantidade que não espelha ou a descrição que não bate.
+  const diag = {divs:divs.length, visitas:porVisita.size, visitasComOsDois:0,
+                qtdEspelhada:0, reprovadosPelaDescricao:0, mesmoCodigo:0, semDia:0};
+  for(const d of divs) if(!irDivDiaDa(d)) diag.semDia++;
+  const exigeDesc = IR.divSimExigeDesc !== false;
   for(const [chave, lista] of porVisita){
     if(lista.length<2) continue;
     const sobra = lista.filter(d=>d.diferenca>0);
     const falta = lista.filter(d=>d.diferenca<0);
+    if(sobra.length && falta.length) diag.visitasComOsDois++;
     const usados = new Set();
     for(const a of sobra){
       for(const b of falta){
         if(usados.has(b.id)) continue;
-        if(a.item === b.item) continue;              // mesmo código não é troca
-        if(a.diferenca !== -b.diferenca) continue;   // troca é 1 pra 1
+        if(a.item === b.item){ diag.mesmoCodigo++; continue; }   // mesmo código não é troca
+        if(a.diferenca !== -b.diferenca) continue;               // troca é 1 pra 1
+        diag.qtdEspelhada++;
         const sem = irDivSemelhanca(a.itemNome, b.itemNome);
         const pref = irDivPrefixoComum(a.itemNome, b.itemNome);
         // Basta um dos dois: mesma família no início da descrição, ou muitas
         // palavras em comum. Código vizinho sozinho não entra — dois códigos
         // seguidos podem ser martelo e luva.
-        if(pref < IR_DIV_PREFIXO_MIN && sem < IR_DIV_SEMELHANCA_MIN) continue;
+        const pareceu = pref >= IR_DIV_PREFIXO_MIN || sem >= IR_DIV_SEMELHANCA_MIN;
+        if(!pareceu){ diag.reprovadosPelaDescricao++; if(exigeDesc) continue; }
         usados.add(b.id);
         pares.push({
           idSobra:a.id, idFalta:b.id,
@@ -3903,7 +3951,8 @@ function irDivParesSimilares(){
       }
     }
   }
-  return pares.sort((x,y)=>String(y.dia).localeCompare(String(x.dia)) || y.risco-x.risco);
+  pares.sort((x,y)=>String(y.dia).localeCompare(String(x.dia)) || y.risco-x.risco);
+  return {pares, diag};
 }
 
 /* ---------- CONCILIAÇÃO QRY0843 × QRY410 ----------
@@ -4050,6 +4099,17 @@ function irDivConcOrdenar(col){
 }
 function irDivConcSetFiltro(v){ IR.divConcFiltro = v; irRenderView(); }
 
+/* Rótulo do período + os ciclos que ele realmente cobre. Filtrar "janeiro" com o
+   seletor de ciclo em 3/2026 não olha o ciclo 3: olha o que fechou em janeiro,
+   que é outro ciclo. O título tem que dizer isso, senão engana. */
+function irDivPeriodoLabel(){
+  const base = irDivEscopoLabel();
+  if(IR.divEscopo.tipo==='ciclo') return base;
+  const ids = new Set(irDivDivsDoEscopo().map(d=>d.cicloId).filter(Boolean));
+  if(!ids.size) return base;
+  const nomes = IR.ciclos.filter(c=>ids.has(c.id)).map(c=>irCicloLabel(c));
+  return nomes.length ? base+' · '+nomes.join(' + ') : base;
+}
 function irDivEscopoLabel(){
   const e = IR.divEscopo;
   if(e.tipo==='ano') return 'ano '+e.ano;
@@ -4160,6 +4220,7 @@ function irDivBaixarPlanilha(cabecalho, linhas, nomeBase){
 /* ---------- RENDER ---------- */
 function irRenderDivFiltros(){
   const e = IR.divEscopo;
+  const b = irDivBase();
   const meses = irDivMesesDisponiveis();
   const dias = irDivDiasDisponiveis();
   const anos = Array.from(new Set(IR.ciclos.map(c=>String(c.dataAbertura||'').slice(0,4)).filter(Boolean))).sort((a,b)=>b.localeCompare(a));
@@ -4183,17 +4244,20 @@ function irRenderDivFiltros(){
       </select>
     </div>` : ''}
     <div class="ofe-filtro">
-      <label>Corte (R$)</label>
-      <input type="number" min="0" step="100" value="${IR.divCorte==null?IR_DIV_CORTE_PADRAO:IR.divCorte}" onchange="irDivSetCorte(this.value)">
+      <label>Analisar por</label>
+      <div class="conc-chips" style="margin:0;">
+        <button class="conc-chip ${IR.divBase!=='qtd'?'on':''}" onclick="irDivSetBase('valor')">Valor R$</button>
+        <button class="conc-chip ${IR.divBase==='qtd'?'on':''}" onclick="irDivSetBase('qtd')">Quantidade</button>
+      </div>
+    </div>
+    <div class="ofe-filtro">
+      <label>Corte (${b.lbl})</label>
+      <input type="number" min="0" step="${b.passo}" value="${b.corte}" onchange="irDivSetCorte(this.value)">
     </div>
     <div class="ofe-filtro ofe-filtro-busca">
       <label>Item</label>
       <input type="text" placeholder="código ou descrição" value="${irEsc(IR.divBusca||'')}" oninput="irDivSetBusca(this.value)">
     </div>
-    <label class="ofe-check">
-      <input type="checkbox" ${IR.divVerCompensados?'checked':''} onchange="irDivToggleCompensados()">
-      Ver compensados no ano
-    </label>
   </div>`;
 }
 function irRenderDivResumo(c){
@@ -4203,13 +4267,14 @@ function irRenderDivResumo(c){
     ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}
   </div>`;
   const mv = irDivNetMesVigente();
+  const b = c.base;
   return `<div class="panel ofe-resumo">
     ${cell('NET de '+irMesLabel(mv.mes), (mv.valor>0?'+':'')+irFmtMoney(mv.valor), mv.valor<0?'neg':'pos', irFmtInt(mv.qtd)+' peças · mês vigente')}
     ${cell('NET do período', (c.netValor>0?'+':'')+irFmtMoney(c.netValor), c.netValor<0?'neg':'pos', irFmtInt(c.netQtd)+' peças')}
-    ${cell('Ofensores de perda', irFmtInt(c.nPerda), 'neg', irFmtMoney(c.perdaOfensores))}
-    ${cell('Ofensores de ganho', irFmtInt(c.nGanho), 'pos', '+'+irFmtMoney(c.ganhoOfensores))}
+    ${cell('Perda dos ofensores', irFmtMoney(c.perdaOfensores), 'neg', irFmtInt(c.perdaQtd)+' peças · '+irFmtInt(c.nPerda)+(c.nPerda===1?' item':' itens'))}
+    ${cell('Ganho dos ofensores', '+'+irFmtMoney(c.ganhoOfensores), 'pos', '+'+irFmtInt(c.ganhoQtd)+' peças · '+irFmtInt(c.nGanho)+(c.nGanho===1?' item':' itens'))}
     ${cell('Compensados no ano', irFmtInt(c.compensados.length), '', 'saem da lista')}
-    ${cell('Itens com divergência', irFmtInt(c.totalItens), '', 'corte de '+irFmtMoney(c.corte))}
+    ${cell('Itens com divergência', irFmtInt(c.totalItens), '', 'corte de '+b.fmt(c.corte)+' em '+b.lbl)}
   </div>`;
 }
 const IR_OFE_COLS = [
@@ -4224,7 +4289,14 @@ const IR_OFE_COLS = [
 ];
 function irRenderDivTabela(c){
   const sel = IR.divSelecionados || new Set();
-  const lista = IR.divVerCompensados ? c.itens.filter(i=>i.relevante) : c.ofensores;
+  // Chips de sentido, multi-seleção: perda, ganho e compensado entram e saem da
+  // lista sem mexer no cálculo — o corte e a base continuam os mesmos.
+  const on = new Set(IR.divSentidos || ['perda','ganho']);
+  const lista = c.itens.filter(i=>{
+    if(!i.relevante) return false;
+    if(i.compensado) return on.has('compensado');
+    return on.has(i.sentido);
+  });
   const o = IR.divOrdem || {col:'netValor', dir:'desc'};
   const seta = k => o.col===k ? (o.dir==='desc'?' ▾':' ▴') : '';
   const num = (v, fmt) => `<td class="mono ${v<0?'neg':(v>0?'pos':'')}">${v>0?'+':''}${fmt(v)}</td>`;
@@ -4267,14 +4339,22 @@ function irRenderDivTabela(c){
     }
     return html;
   };
+  const chip = (k, lbl, n, cls) => `<button class="conc-chip ${cls||''} ${on.has(k)?'on':''}" onclick="irDivToggleSentido('${k}')">${irEsc(lbl)} <b>${irFmtInt(n)}</b></button>`;
   return `<div class="panel">
     <div class="ofe-head">
-      <h3>Ofensores do NET — ${irEsc(irDivEscopoLabel())}</h3>
+      <h3>Itens que puxam o NET</h3>
       <div class="ofe-acoes">
         ${sel.size?`<button class="btn-link" onclick="irDivLimparSelecao()">Limpar (${sel.size})</button>`:''}
         <button class="btn btn-secondary" onclick="irDivMarcarTodos()">Marcar todos</button>
         <button class="btn btn-primary" onclick="irDivGerarAuditoria()">Gerar auditoria (${sel.size})</button>
       </div>
+    </div>
+    <p class="panel-sub">${irEsc(irDivPeriodoLabel())} · corte de ${c.base.fmt(c.corte)} em ${irEsc(c.base.lbl)}</p>
+    <div class="conc-chips">
+      ${chip('perda','Perdas', c.perdas.length, 'perda')}
+      ${chip('ganho','Ganhos', c.ganhos.length, 'ganho')}
+      ${chip('compensado','Compensados', c.compensados.length)}
+      <span class="field-hint">Clique pra ligar e desligar — dá pra ver mais de um ao mesmo tempo.</span>
     </div>
     ${lista.length ? `<div class="table-wrap"><div class="table-scroll" style="max-height:620px;">
       <table class="ofe-table">
@@ -4327,16 +4407,18 @@ function irRenderDivAuditoria(){
    tipo de erro — não é perda, é contagem trocada — e pede outra ação. */
 function irRenderDivSimilares(){
   const f = IR.divSimFiltro || {de:'', ate:''};
-  const pares = irDivParesSimilares();
+  const {pares, diag} = irDivParesSimilares();
   const risco = pares.reduce((s,p)=>s+p.risco,0);
   const desiq = pares.reduce((s,p)=>s+Math.abs(p.desequilibrio),0);
   const ontem = new Date(Date.now()-86400000).toISOString().slice(0,10);
   const oSim = IR.divSimOrdem || {col:'dia', dir:'desc'};
+  const pl = (n, um, muitos) => n===1 ? um : muitos;
   const setaSim = k => oSim.col===k ? (oSim.dir==='desc'?' ▾':' ▴') : '';
   const filtros = `<div class="sim-filtros">
     <div class="ofe-filtro"><label>De</label><input type="date" value="${irEsc(f.de)}" onchange="irDivSimSetFiltro('de', this.value)"></div>
     <div class="ofe-filtro"><label>Até</label><input type="date" value="${irEsc(f.ate)}" onchange="irDivSimSetFiltro('ate', this.value)"></div>
     <button class="btn btn-secondary" onclick="irDivSimSetFiltro('de','${ontem}');irDivSimSetFiltro('ate','${ontem}')">Ontem</button>
+    <label class="ofe-check"><input type="checkbox" ${IR.divSimExigeDesc!==false?'checked':''} onchange="irDivSimToggleDesc()"> Exigir descrição parecida</label>
     ${(f.de||f.ate)?`<button class="btn-link" onclick="irDivSimLimpar()">Limpar</button>`:''}
   </div>`;
   return `<div class="panel">
@@ -4365,11 +4447,20 @@ function irRenderDivSimilares(){
           <td class="mono ${Math.abs(p.desequilibrio)<0.01?'':(p.desequilibrio<0?'neg':'pos')}">${Math.abs(p.desequilibrio)<0.01?'—':(p.desequilibrio>0?'+':'')+irFmtMoney(p.desequilibrio)}</td>
         </tr>`).join('')}</tbody>
       </table>
-    </div></div>` : `<p class="field-hint">Nenhum par com assinatura de troca${(f.de||f.ate)?' no período filtrado':''}.</p>`}
+    </div></div>` : `<div class="sim-diag">
+      <p class="field-hint">Nenhum par com assinatura de troca${(f.de||f.ate)?' no período filtrado':''}. Onde a busca parou:</p>
+      <ul class="sim-funil">
+        <li><b>${irFmtInt(diag.divs)}</b> ${pl(diag.divs,'divergência','divergências')} no filtro${diag.semDia?` <span class="field-hint">(${irFmtInt(diag.semDia)} sem dia de fechamento — reprocesse o ciclo)</span>`:''}</li>
+        <li><b>${irFmtInt(diag.visitas)}</b> ${pl(diag.visitas,'visita','visitas')} (local + inventário)</li>
+        <li><b>${irFmtInt(diag.visitasComOsDois)}</b> com sobra <i>e</i> falta na mesma visita</li>
+        <li><b>${irFmtInt(diag.qtdEspelhada)}</b> ${pl(diag.qtdEspelhada,'par','pares')} em que um sobra exatamente o que o outro falta</li>
+        <li><b>${irFmtInt(diag.reprovadosPelaDescricao)}</b> ${diag.reprovadosPelaDescricao===1?'reprovado':'reprovados'} por descrição diferente</li>
+      </ul>
+    </div>`}
   </div>`;
 }
 function irDivExportarSimilares(){
-  const pares = irDivParesSimilares();
+  const {pares} = irDivParesSimilares();
   if(!pares.length){ irShowToast('Nada para exportar.', true); return; }
   const cab = ['Dia','Local','Inventário','Qtde Trocada','Item que Sobrou','Descrição (sobrou)',
     'Item que Faltou','Descrição (faltou)','Valor Sobra','Valor Falta','Desequilíbrio','Semelhança','Palavras Iguais no Início','Código Vizinho'];
@@ -4400,7 +4491,7 @@ const IR_CONC_TAGS = {
 function irRenderDivConciliacao(){
   const c = irDivConciliacao();
   const cabec = (corpo, sub) => `<div class="panel">
-    <div class="ofe-head"><h3>Conciliação QRY0843 × QRY410 — ${irEsc(irDivEscopoLabel())}</h3></div>
+    <div class="ofe-head"><h3>Conciliação QRY0843 × QRY410</h3></div>
     <p class="panel-sub">${sub}</p>
     ${corpo}
   </div>`;
@@ -4430,13 +4521,13 @@ function irRenderDivConciliacao(){
 
   return `<div class="panel">
     <div class="ofe-head">
-      <h3>Conciliação QRY0843 × QRY410 — ${irEsc(irDivEscopoLabel())}</h3>
+      <h3>Conciliação QRY0843 × QRY410</h3>
       <div class="ofe-acoes">
         <span class="field-hint">${irEsc(c.periodos.lista.join(' · ')||'—')}</span>
         <button class="btn btn-secondary" onclick="irDivExportarConciliacao()">Excel</button>
       </div>
     </div>
-    <p class="panel-sub">${nota}</p>
+    <p class="panel-sub">${irEsc(irDivPeriodoLabel())} — ${nota}</p>
     <div class="conc-kpis">
       <div class="conc-kpi"><span class="conc-num">${irFmtPct(c.coberturaValor)}</span><span class="conc-lbl">do valor divergente tem lançamento na 410</span></div>
       <div class="conc-kpi"><span class="conc-num">${irFmtPct(c.coberturaQtd)}</span><span class="conc-lbl">das peças divergentes têm lançamento</span></div>
