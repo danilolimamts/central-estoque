@@ -33,7 +33,7 @@ const IR = {
   prodMeta:null,
   dashFilters:{applyProdDate:true},
   compararA:null, compararB:null,
-  novoCiclo:false, cicloParaExcluir:null,
+  novoCiclo:false, cicloParaExcluir:null, importExpandido:null,
   // Ciclo lido da própria QRY0843 anexada (número + janela de datas).
   cicloDetectado:null, detectandoCiclo:false,
   _porDiaRua:{},
@@ -345,47 +345,70 @@ function irRenderImportacao(){
   const f = IR.files;
   const filled = (k)=> IR_MULTI_KEYS.has(k) ? (f[k]||[]).some(Boolean) : !!f[k];
   const allSelected = IR_FILE_TYPES.every(t=>t.optional || filled(t.key));
-  const dz = (t)=>{
-    if(IR_MULTI_KEYS.has(t.key)){
-      const slots = f[t.key]||[];
-      return `<div class="dropzone dz-multi ${slots.some(Boolean)?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropMultiKey(event,'${t.key}')">
-        <div class="dz-icon">📄</div>
-        <div class="dz-title">${t.label}</div>
-        <div class="dz-desc">${t.desc}</div>
-        <p class="field-hint" style="margin:2px 0 8px;">Se a extração não sai tudo de uma vez, divida em partes aqui — todas pertencem a este mesmo ciclo. Se um relatório mudar, reimporte na mesma parte pra substituir.</p>
-        <div class="dz-period-list">
-          ${slots.map((file,i)=>`<div class="dz-period-row ${file?'has-file':''}">
-            <span class="dz-period-label">Parte ${i+1}</span>
-            <input type="file" id="ir-file-${t.key}-${i}" accept=".xlsx,.xls" style="display:none" onchange="irSetSlotFile('${t.key}', ${i}, this.files[0])">
-            ${file
-              ? `<span class="dz-file mono">${irEsc(file.name)}</span>
-                 <button class="btn-link" onclick="document.getElementById('ir-file-${t.key}-${i}').click()">Trocar</button>
-                 <button class="btn-link" onclick="irRemoveSlot('${t.key}', ${i})">Remover</button>`
-              : `<button class="btn-link" onclick="document.getElementById('ir-file-${t.key}-${i}').click()">Selecionar</button>`}
-          </div>`).join('')}
-        </div>
+  const faltando = IR_FILE_TYPES.filter(t=>!t.optional && !filled(t.key));
+  /* Uma LINHA por planilha, não um card. Com cinco cards abertos e quatro partes
+     cada, a tela de importação passava de oitocentos pixels pra mostrar quatro
+     nomes de arquivo. As partes ficam escondidas até serem necessárias — quem
+     divide extração em pedaços é a exceção, não a regra. */
+  const linha = (t)=>{
+    const multi = IR_MULTI_KEYS.has(t.key);
+    const slots = multi ? (f[t.key]||[]) : [];
+    const arquivos = multi ? slots.filter(Boolean) : (f[t.key] ? [f[t.key]] : []);
+    const ok = arquivos.length>0;
+    const aberto = IR.importExpandido === t.key;
+    // Um único filho na coluna do arquivo: nome e contagem de partes juntos, senão
+    // o grid ganha uma célula extra e as ações caem pra linha de baixo.
+    const resumo = !ok
+      ? `<span class="imp-arquivo"><span class="imp-vazio">${t.optional?'opcional':'faltando'}</span></span>`
+      : `<span class="imp-arquivo">
+           <span class="imp-nome mono" title="${irEsc(arquivos.map(a=>a.name).join(' · '))}">${irEsc(arquivos[0].name)}</span>
+           ${arquivos.length>1 ? `<span class="imp-partes">+${arquivos.length-1} parte${arquivos.length>2?'s':''}</span>` : ''}
+         </span>`;
+    const acoes = multi
+      ? `<button class="btn-link" onclick="irImportToggle('${t.key}')">${aberto?'Fechar':'Partes'} ${aberto?'▾':'▸'}</button>`
+      : (ok ? `<button class="btn-link" onclick="document.getElementById('ir-file-${t.key}').click()">Trocar</button>
+              <button class="btn-link" onclick="irRemoveFile('${t.key}')">Remover</button>`
+            : `<button class="btn-link" onclick="document.getElementById('ir-file-${t.key}').click()">Selecionar</button>`);
+    let html = `<div class="imp-linha ${ok?'ok':(t.optional?'opt':'falta')}"
+        ondragover="event.preventDefault()" ondrop="${multi?`irOnDropMultiKey(event,'${t.key}')`:`irOnDropSingle(event,'${t.key}')`}">
+      <span class="imp-status">${ok?'✓':(t.optional?'·':'!')}</span>
+      <span class="imp-label">${irEsc(t.label)}</span>
+      <span class="imp-desc">${irEsc(t.desc)}</span>
+      ${resumo}
+      <span class="imp-acoes">${acoes}</span>
+    </div>`;
+    if(!multi) html = `<input type="file" id="ir-file-${t.key}" accept=".xlsx,.xls" style="display:none" onchange="irOnFile('${t.key}', this.files[0])">` + html;
+    if(multi && aberto){
+      html += `<div class="imp-partes-lista">
+        <p class="field-hint">Extração que não sai de uma vez pode ser dividida aqui — todas as partes são do mesmo ciclo. Reimportar na mesma parte substitui o arquivo.</p>
+        ${slots.map((file,i)=>`<div class="dz-period-row ${file?'has-file':''}">
+          <span class="dz-period-label">Parte ${i+1}</span>
+          <input type="file" id="ir-file-${t.key}-${i}" accept=".xlsx,.xls" style="display:none" onchange="irSetSlotFile('${t.key}', ${i}, this.files[0])">
+          ${file
+            ? `<span class="dz-file mono">${irEsc(file.name)}</span>
+               <button class="btn-link" onclick="document.getElementById('ir-file-${t.key}-${i}').click()">Trocar</button>
+               <button class="btn-link" onclick="irRemoveSlot('${t.key}', ${i})">Remover</button>`
+            : `<button class="btn-link" onclick="document.getElementById('ir-file-${t.key}-${i}').click()">Selecionar</button>`}
+        </div>`).join('')}
         <button class="btn-link" onclick="irAddSlot('${t.key}')">+ Adicionar parte</button>
       </div>`;
     }
-    const file = f[t.key];
-    return `<div class="dropzone ${file?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropSingle(event,'${t.key}')">
-      <input type="file" id="ir-file-${t.key}" accept=".xlsx,.xls" style="display:none" onchange="irOnFile('${t.key}', this.files[0])">
-      <div class="dz-icon">📄</div>
-      <div class="dz-title">${t.label}</div>
-      <div class="dz-desc">${t.desc}</div>
-      ${file ? `<div class="dz-file mono">${irEsc(file.name)}</div><button class="btn-link" onclick="irRemoveFile('${t.key}')">Remover</button>`
-             : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-${t.key}').click()">Selecionar</button>`}
-    </div>`;
+    return html;
   };
   return `
     <div class="panel" ondragover="event.preventDefault()" ondrop="irOnDropMulti(event)">
       <h3>Importar planilhas</h3>
-      <p class="field-hint" style="margin-bottom:10px;">Arraste as planilhas de uma vez aqui em cima (o sistema identifica cada uma pelo nome do arquivo), ou selecione individualmente abaixo. QRY0843, Base Congelada, SIGEQ278 e ZBIQ0051 aceitam várias partes (para quando os dados de um mesmo ciclo vêm em pedaços).</p>
       <input type="file" id="ir-file-all" accept=".xlsx,.xls" multiple style="display:none" onchange="irOnPickMultiAll(this.files)">
-      <div class="form-actions" style="margin:0 0 14px;">
-        <button class="btn btn-secondary" onclick="document.getElementById('ir-file-all').click()">📂 Selecionar todos de uma vez</button>
+      <div class="imp-drop" ondragover="event.preventDefault()" ondrop="irOnDropMulti(event)"
+           onclick="document.getElementById('ir-file-all').click()">
+        <span class="imp-drop-icone">📂</span>
+        <strong>Arraste todas as planilhas de uma vez</strong>
+        <span>Cada arquivo é reconhecido pelo nome e vai pro lugar certo, inclusive quando vem em partes. Ou clique pra escolher.</span>
       </div>
-      <div class="dz-grid">${IR_FILE_TYPES.map(dz).join('')}</div>
+      ${faltando.length
+        ? `<p class="field-hint imp-faltando">Faltam: ${faltando.map(t=>irEsc(t.label)).join(', ')}.</p>`
+        : `<p class="field-hint imp-pronto">Todas as planilhas obrigatórias estão aqui.</p>`}
+      <div class="imp-lista">${IR_FILE_TYPES.map(linha).join('')}</div>
       ${irRenderCicloDetectado()}
       <div class="two-col" style="margin-top:4px;">
         <div><label>Número do ciclo</label><input type="number" id="ir-inp-ciclo" min="1" value="${(()=>{
@@ -410,7 +433,7 @@ function irRenderImportacao(){
           <div class="progress-track"><div class="progress-fill orange" style="width:${IR.progress.pct}%"></div></div>
         </div>` : allSelected
           ? `<div class="form-actions"><button class="btn btn-primary" style="font-size:14px;padding:11px 28px;" onclick="irProcessar()">PROCESSAR CICLO</button></div>`
-          : `<p class="field-hint" style="margin-top:14px;">Selecione as planilhas obrigatórias (QRY0843, Base Congelada, SIGEQ278, ZBIQ0051) para habilitar o processamento — a QRY0390 é opcional.</p>`
+          : `<p class="field-hint" style="margin-top:14px;">Faltam ${faltando.map(t=>irEsc(t.label)).join(', ')} pra liberar o processamento.</p>`
       }
     </div>
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
@@ -484,6 +507,7 @@ function irRenderCicloDetectado(){
     <span>${existente ? 'Já existe — processar vai <strong>regravar</strong> esse ciclo.' : 'Ciclo novo — será criado no Histórico.'}</span>
   </div>`;
 }
+function irImportToggle(key){ IR.importExpandido = IR.importExpandido===key ? null : key; irRenderView(); }
 function irClassifyFile(file){
   const t = IR_FILE_TYPES.find(t=>t.pattern.test(file.name));
   return t ? t.key : null;
