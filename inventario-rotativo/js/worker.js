@@ -241,6 +241,10 @@ async function runPipeline390({buf390}){
 
   post('progress', {stage:'Agregando '+rows.length+' linha(s) por endereço...', pct:20});
   const porLocal = new Map();
+  // Ficha do item: EAN e descrição. Gravada aqui porque a QRY0390 é a única base
+  // com código de barras, e ela é atualizada sozinha — assim a auditoria tem EAN
+  // sem depender de reprocessar ciclo nenhum.
+  const porItem = new Map();
   let valorTotal = 0, pecasTotal = 0, atualizadoEm = '';
   let n = 0;
   for(const row of rows){
@@ -248,6 +252,11 @@ async function runPipeline390({buf390}){
     const local = irNormItemKey(getVal(row, r.local));
     if(!local) continue;
     const item = irNormItemKey(getVal(row, r.item));
+    if(item && !porItem.has(item)){
+      porItem.set(item, {item,
+        ean: String(getVal(row, r.ean) ?? '').trim(),
+        descricao: String(getVal(row, r.descricao) ?? '').trim()});
+    }
     const qtd = parseNumber(getVal(row, r.quantidade));
     // VALOR_ITEM_LOCAL não está no alias porque só existe no layout novo; quando
     // falta, o valor sai de quantidade x valor unitário.
@@ -283,10 +292,11 @@ async function runPipeline390({buf390}){
   });
 
   post('progress', {stage:'Gravando estoque no IndexedDB...', pct:88});
+  await irSalvarItemInfo(Array.from(porItem.values()));
   await irSalvarEstoqueLocais(linhas, {
     atualizadoEm, importadoEm: new Date().toISOString(),
     linhas: rows.length, locais: linhas.length,
-    itens: new Set(rows.map(x=>irNormItemKey(getVal(x, r.item))).filter(Boolean)).size,
+    itens: porItem.size,
     valorTotal, pecasTotal
   });
   post('progress', {stage:'Concluído.', pct:100});

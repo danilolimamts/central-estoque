@@ -705,7 +705,7 @@ const IR_INDICADORES_VERSION = 15; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v104';
+const IR_APP_VERSION = 'v105';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -3970,6 +3970,19 @@ async function irCarregarDescLocaisTodosCiclos(){
   finally{ IR._descLocalCarregando = false; }
 }
 function irDescLocal(local){ return irDescLocalMapa().get(local) || ''; }
+/* EAN e descrição do item, vindos da QRY0390 importada à parte. É a única base com
+   código de barras, e como ela não depende de ciclo, a auditoria passa a ter EAN
+   mesmo em ciclo processado antes disso existir. */
+async function irCarregarItemInfo(){
+  if(IR._itemInfo || IR._itemInfoLoading) return;
+  IR._itemInfoLoading = true;
+  try{
+    const linhas = await irGetItemInfoTodos();
+    IR._itemInfo = new Map(linhas.map(l=>[l.item, l]));
+  }catch(err){ IR._itemInfo = new Map(); }
+  finally{ IR._itemInfoLoading = false; }
+}
+function irItemInfo(item){ return (IR._itemInfo && IR._itemInfo.get(irDivNormItem(item))) || null; }
 function irDivNormItem(v){
   const s = String(v ?? '').trim();
   if(s==='') return '';
@@ -4384,6 +4397,7 @@ async function irDivGerarAuditoria(){
   if(!sel.length){ irShowToast('Marque ao menos um item.', true); return; }
   try{
     await irCarregarDescLocaisTodosCiclos();
+    await irCarregarItemInfo();
     const {itens} = irDivCalcItens();
     const porItem = new Map(itens.map(i=>[i.item, i]));
     const cicloId = (IR.cicloAtivo||{}).id;
@@ -4392,6 +4406,9 @@ async function irDivGerarAuditoria(){
     for(const item of sel){
       const g = porItem.get(item);
       if(!g) continue;
+      const info = irItemInfo(item) || {};
+      const ean = g.ean || info.ean || '';
+      const descricaoItem = g.descricao || info.descricao || '';
       // Onde o item divergiu no período — é o endereço que o auditor confere
       // primeiro, e ele não é necessariamente um dos que têm saldo hoje.
       const ondeDivergiu = g.locais.filter(d=>d.diferenca!==0);
@@ -4404,11 +4421,11 @@ async function irDivGerarAuditoria(){
       if(!est || !est.locais || !est.locais.length){
         semEstoque++;
         for(const d of ondeDivergiu){
-          linhas.push({item, ean:g.ean||'', descricao:g.descricao, local:d.local, descricaoLocal:irDescLocal(d.local),
+          linhas.push({item, ean, descricao:descricaoItem, local:d.local, descricaoLocal:irDescLocal(d.local),
             saldo:null, diferenca:g.netQtd, valor:g.netValor});
         }
         if(!ondeDivergiu.length){
-          linhas.push({item, ean:g.ean||'', descricao:g.descricao, local:'', descricaoLocal:'',
+          linhas.push({item, ean, descricao:descricaoItem, local:'', descricaoLocal:'',
             saldo:null, diferenca:g.netQtd, valor:g.netValor});
         }
         continue;
@@ -4422,7 +4439,7 @@ async function irDivGerarAuditoria(){
         // Endereço sem descrição em nenhuma base fica em branco de propósito: o
         // código do local já basta pro auditor achar, e um rótulo no lugar da
         // descrição só polui a folha impressa.
-        linhas.push({item, ean:g.ean||'', descricao:g.descricao, local:s.local,
+        linhas.push({item, ean, descricao:descricaoItem, local:s.local,
           descricaoLocal: desc, saldo:s.qtd, diferenca:g.netQtd, valor:g.netValor});
       }
     }

@@ -3,7 +3,7 @@
    100% client-side. Nenhum servidor, nenhuma API.
    ============================================================ */
 const IR_DB_NAME = 'inventario_rotativo_v1';
-const IR_DB_VERSION = 7;
+const IR_DB_VERSION = 8;
 
 const IR_STORES = {
   ciclos: 'ciclos',
@@ -24,7 +24,11 @@ const IR_STORES = {
   // Estoque atual agregado por ENDEREÇO (QRY0390). Independente de ciclo: a
   // extração virou automática e é atualizada sozinha, então ela é a base do
   // controle de transitórios e da foto de estoque pra diretoria.
-  estoqueLocal: 'estoque_local'
+  estoqueLocal: 'estoque_local',
+  // Ficha do item vinda da QRY0390 (EAN e descrição), por ITEM. Fica separada do
+  // ciclo de propósito: o EAN não muda de ciclo pra ciclo, e assim a auditoria
+  // tem código de barras sem exigir reprocessamento.
+  itemInfo: 'item_info'
 };
 
 function irOpenDB(){
@@ -80,6 +84,9 @@ function irOpenDB(){
       if(!db.objectStoreNames.contains(IR_STORES.estoqueLocal)){
         const s = db.createObjectStore(IR_STORES.estoqueLocal, {keyPath:'local'});
         s.createIndex('x1', 'x1', {unique:false});
+      }
+      if(!db.objectStoreNames.contains(IR_STORES.itemInfo)){
+        db.createObjectStore(IR_STORES.itemInfo, {keyPath:'item'});
       }
     };
     req.onsuccess = ()=>resolve(req.result);
@@ -435,6 +442,16 @@ async function irGetEstoqueLocais(){
   return new Promise((res, rej)=>{ const r = store.getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); });
 }
 async function irGetEstoqueMeta(){ return irGetConfig('estoque390-meta'); }
+async function irSalvarItemInfo(linhas){
+  const store = await irTx(IR_STORES.itemInfo, 'readwrite');
+  await new Promise((res, rej)=>{ const r = store.clear(); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); });
+  const CHUNK = 1500;
+  for(let i=0;i<linhas.length;i+=CHUNK) await irBulkPut(IR_STORES.itemInfo, linhas.slice(i,i+CHUNK));
+}
+async function irGetItemInfoTodos(){
+  const store = await irTx(IR_STORES.itemInfo, 'readonly');
+  return new Promise((res, rej)=>{ const r = store.getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); });
+}
 /* Config genérica (usa o store de prioridade, que já é chave/valor). */
 async function irSetConfig(key, valor){
   const store = await irTx(IR_STORES.prioridadeConfig, 'readwrite');
