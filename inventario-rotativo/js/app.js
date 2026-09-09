@@ -3764,9 +3764,10 @@ function irDivCalcItens(){
     if(o.col==='item') return dir*String(x.item).localeCompare(String(y.item));
     if(o.col==='descricao') return dir*String(x.descricao||'').localeCompare(String(y.descricao||''));
     if(o.col==='situacao') return dir*String(x.ofensor?x.sentido:'compensado').localeCompare(String(y.ofensor?y.sentido:'compensado'));
-    // Colunas numéricas ordenam por MÓDULO: o auditor quer o maior impacto no topo,
-    // seja perda ou ganho. O sinal continua visível na própria célula.
-    return dir*(Math.abs(x[o.col]||0) - Math.abs(y[o.col]||0));
+    // Colunas numéricas ordenam pelo valor COM SINAL: 1º clique traz o maior ganho
+    // no topo e a maior perda no fim, 2º clique inverte. Ordenar por módulo
+    // embaralhava perda e ganho na mesma ponta.
+    return dir*((x[o.col]||0) - (y[o.col]||0));
   });
   const ofensores = itens.filter(i=>i.ofensor);
   const somaBase = arr => arr.reduce((s,i)=>s+(base.campo==='netQtd'?i.netQtd:i.netValor), 0);
@@ -4342,7 +4343,7 @@ function irRenderDivTabela(c){
   const chip = (k, lbl, n, cls) => `<button class="conc-chip ${cls||''} ${on.has(k)?'on':''}" onclick="irDivToggleSentido('${k}')">${irEsc(lbl)} <b>${irFmtInt(n)}</b></button>`;
   return `<div class="panel">
     <div class="ofe-head">
-      <h3>Itens que puxam o NET</h3>
+      <h3>Divergências</h3>
       <div class="ofe-acoes">
         ${sel.size?`<button class="btn-link" onclick="irDivLimparSelecao()">Limpar (${sel.size})</button>`:''}
         <button class="btn btn-secondary" onclick="irDivMarcarTodos()">Marcar todos</button>
