@@ -68,7 +68,17 @@ function irFmtMoneyCompact(n){
 // Valor cheio, sem centavos — usado no hint, onde cabe texto maior.
 function irFmtMoneyInt(n){ return (n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}); }
 function irFmtPct(n){ return ((n||0)*100).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1})+'%'; }
-function irFmtDate(s){ if(!s) return '—'; const d = new Date(s); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR'); }
+/* Data só com dia (YYYY-MM-DD) é formatada na mão de propósito: new Date('2026-09-04')
+   é interpretado como meia-noite UTC, e em fuso negativo (Brasil, UTC-3) o
+   toLocaleDateString devolvia o dia ANTERIOR — a tela inteira mostrava tudo um dia
+   atrás do que estava no filtro e no banco. Com hora junto, o Date é confiável. */
+function irFmtDate(s){
+  if(!s) return '—';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s).trim());
+  if(m) return m[3]+'/'+m[2]+'/'+m[1];
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR');
+}
 /* Ano do ciclo, derivado da data de abertura — usado pra não confundir
    "Ciclo 1" de anos diferentes (mesmo número, ciclos distintos). */
 function irCicloAno(c){ const d = new Date(c.dataAbertura); return isNaN(d.getTime()) ? null : d.getFullYear(); }
@@ -3847,6 +3857,20 @@ function irDivPrecoLabel(){
   return 'preço congelado da 410 ('+irFmtInt(mapa.size)+' itens com preço lançado)';
 }
 
+/* Todas as linhas de um item no ANO, valoradas e marcadas se estão dentro ou fora
+   do período filtrado. É o que responde "cadê a contrapartida" sem trocar o filtro. */
+function irDivLinhasDoAno(item){
+  const noPeriodo = new Set(irDivDivsDoEscopo().map(d=>d.id));
+  return irSoLocaisConcluidos((IR.divAnoCache||{}).divs || IR.divergencias || [])
+    .filter(d=>d.item===item && d.diferenca!==0)
+    .map(d=>{
+      const v = irDivValorDa(d);
+      return Object.assign({}, d, {vlDivergencia:v.valor, precoUsado:v.preco, precoOrigem:v.origem,
+        foraDoPeriodo: !noPeriodo.has(d.id)});
+    })
+    .sort((a,b)=>String(b.diaFechamento||'').localeCompare(String(a.diaFechamento||''))
+                 || Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia));
+}
 function irDivAgruparPorItem(divs){
   const map = new Map();
   for(const d of divs){
@@ -4350,13 +4374,16 @@ function irRenderDivTabela(c){
       <td><button class="btn-link" onclick="irDivExportarItem('${irEsc(i.item)}')">Excel</button></td>
     </tr>`;
     if(aberto){
-      const locais = i.locais.slice().sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia));
+      // O ANO inteiro, não só o período: a contrapartida quase sempre está num dia
+      // fora do filtro, e sem ela não dá pra dizer se a divergência é real.
+      const locais = irDivLinhasDoAno(i.item);
       html += `<tr class="ofe-detalhe"><td></td><td colspan="9">
+        <p class="field-hint" style="margin:8px 0 4px;">Todas as divergências de ${irEsc(i.item)} em ${irEsc(irDivAnoDoEscopo()||'')} — ${irFmtInt(locais.length)} ${locais.length===1?'linha':'linhas'}. As de fora do período filtrado saem apagadas.</p>
         <table class="ofe-sub"><thead><tr>
           <th>Local</th><th>Descrição do Local</th><th>Dia</th><th>Sistema</th><th>Físico</th><th>Diferença</th><th>Valor</th><th>Preço unit.</th>
         </tr></thead><tbody>${locais.map(d=>{
           const l = descLocal.get(d.local) || {};
-          return `<tr>
+          return `<tr class="${d.foraDoPeriodo?'ofe-fora':''}">
             <td class="mono">${irEsc(d.local)}</td>
             <td>${irEsc(l.descricao||'—')}</td>
             <td class="mono">${irFmtDate(irDivDiaDa(d))}</td>

@@ -987,3 +987,5 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .det-ciclo.regrava{ border-left-color:var(--orange); }
 .det-ciclo strong{ font-size:14px; }
 .det-ciclo span{ font-size:11.5px; color:var(--ink-soft); }
+/* Linhas do ano que estão fora do período filtrado — visíveis, mas em segundo plano. */
+table.ofe-sub tr.ofe-fora{ opacity:.55; }
