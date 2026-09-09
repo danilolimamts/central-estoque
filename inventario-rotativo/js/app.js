@@ -123,6 +123,7 @@ async function irInit(){
       irSetNet410MesDefault();
     }
   }catch(e){ console.error('Falha ao iniciar', e); }
+  irMostrarVersao();
   irSwitchTab('dashboard');
 }
 async function irLoadCicloData(cicloId){
@@ -692,14 +693,20 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 11; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 12; // mantido em sincronia com worker.js
 /* Versão do app, em sincronia com o CACHE_VERSION do sw.js. Ela vai na URL do
    Worker porque o navegador guarda js/worker.js no cache HTTP por conta própria:
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v94';
+const IR_APP_VERSION = 'v95';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
+// Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
+// navegador está com a build nova depois de um deploy.
+function irMostrarVersao(){
+  const el = document.getElementById('sidebarVersao');
+  if(el) el.textContent = IR_APP_VERSION + ' · motor ' + IR_INDICADORES_VERSION;
+}
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
 function irRenderDashDateFilterBar(){
@@ -3930,12 +3937,6 @@ function irDivValorDa(d){
   const {preco, origem} = irDivPrecoDa(d);
   return {valor: d.diferenca * preco, preco, origem};
 }
-// Diz qual preço está valendo e, quando é a 410, quantos itens ela cobriu.
-function irDivPrecoLabel(){
-  const mapa = irDivPrecos410();
-  if(!mapa.size) return 'preço congelado da 410 — QRY410 não processada, caindo na 278';
-  return 'preço congelado da 410 ('+irFmtInt(mapa.size)+' itens com preço lançado)';
-}
 
 /* Todas as linhas de um item no ANO, valoradas e marcadas se estão dentro ou fora
    do período filtrado. É o que responde "cadê a contrapartida" sem trocar o filtro. */
@@ -3955,13 +3956,14 @@ function irDivAgruparPorItem(divs){
   const map = new Map();
   for(const d of divs){
     let g = map.get(d.item);
-    if(!g){ g = {item:d.item, descricao:d.itemNome, netQtd:0, netValor:0, locais:[], origens:new Set()}; map.set(d.item, g); }
+    if(!g){ g = {item:d.item, descricao:d.itemNome, ean:d.ean||'', netQtd:0, netValor:0, locais:[], origens:new Set()}; map.set(d.item, g); }
     const v = irDivValorDa(d);
     g.netQtd += d.diferenca;
     g.netValor += v.valor;
     g.locais.push(Object.assign({}, d, {vlDivergencia: v.valor, precoUsado: v.preco, precoOrigem: v.origem}));
     g.origens.add(v.origem);
     if(!g.descricao && d.itemNome) g.descricao = d.itemNome;
+    if(!g.ean && d.ean) g.ean = d.ean;
   }
   return map;
 }
@@ -4292,11 +4294,11 @@ async function irDivGerarAuditoria(){
       if(!est || !est.locais || !est.locais.length){
         semEstoque++;
         for(const d of ondeDivergiu){
-          linhas.push({item, descricao:g.descricao, local:d.local, descricaoLocal:irDescLocal(d.local),
+          linhas.push({item, ean:g.ean||'', descricao:g.descricao, local:d.local, descricaoLocal:irDescLocal(d.local),
             saldo:null, diferenca:g.netQtd, origem:'local do ajuste', locaisDivergentes: divergiuEm});
         }
         if(!ondeDivergiu.length){
-          linhas.push({item, descricao:g.descricao, local:'', descricaoLocal:'',
+          linhas.push({item, ean:g.ean||'', descricao:g.descricao, local:'', descricaoLocal:'',
             saldo:null, diferenca:g.netQtd, origem:'sem endereço', locaisDivergentes: divergiuEm});
         }
         continue;
@@ -4307,7 +4309,7 @@ async function irDivGerarAuditoria(){
         // Endereço sem descrição em nenhuma base fica em branco de propósito: o
         // código do local já basta pro auditor achar, e um rótulo no lugar da
         // descrição só polui a folha impressa.
-        linhas.push({item, descricao:g.descricao, local:s.local,
+        linhas.push({item, ean:g.ean||'', descricao:g.descricao, local:s.local,
           descricaoLocal: desc, saldo:s.qtd, diferenca:g.netQtd,
           origem:'saldo', locaisDivergentes: divergiuEm});
       }
@@ -4330,7 +4332,7 @@ function irDivExportarAuditoria(){
   if(!g || !g.linhas.length){ irShowToast('Nada para exportar.', true); return; }
   const data = (document.getElementById('ir-aud-data')||{}).value || '';
   const auditor = (document.getElementById('ir-aud-auditor')||{}).value || '';
-  const cols = [['item','Item'],['descricao','Descrição'],['local','Local'],
+  const cols = [['item','Item'],['ean','EAN'],['descricao','Descrição'],['local','Local'],
     ['descricaoLocal','Descrição do Local'],['saldo','Quantidade'],['diferenca','Qtde Divergente'],
     ['origem','Origem do Endereço'],['locaisDivergentes','Onde Divergiu']];
   const cab = cols.map(c=>c[1]).concat(['Contagem do Auditor','Data','Auditor']);
@@ -4480,7 +4482,6 @@ function irRenderDivTabela(c){
       // fora do filtro, e sem ela não dá pra dizer se a divergência é real.
       const locais = irDivLinhasDoAno(i.item);
       html += `<tr class="ofe-detalhe"><td></td><td colspan="9">
-        <p class="field-hint" style="margin:8px 0 4px;">Todas as divergências de ${irEsc(i.item)} em ${irEsc(irDivAnoDoEscopo()||'')} — ${irFmtInt(locais.length)} ${locais.length===1?'linha':'linhas'}. As de fora do período filtrado saem apagadas.</p>
         <table class="ofe-sub"><thead><tr>
           <th>Local</th><th>Descrição do Local</th><th>Dia</th><th>Sistema</th><th>Físico</th><th>Diferença</th><th>Valor</th><th>Preço unit.</th>
         </tr></thead><tbody>${locais.map(d=>{
@@ -4510,12 +4511,11 @@ function irRenderDivTabela(c){
         <button class="btn btn-primary" onclick="irDivGerarAuditoria()">Gerar auditoria (${sel.size})</button>
       </div>
     </div>
-    <p class="panel-sub">${irEsc(irDivPeriodoLabel())} · corte de ${c.base.fmt(c.corte)} em ${irEsc(c.base.lbl)} · ${irEsc(irDivPrecoLabel())}</p>
+    <p class="panel-sub">${irEsc(irDivPeriodoLabel())} · corte de ${c.base.fmt(c.corte)} em ${irEsc(c.base.lbl)}</p>
     <div class="conc-chips">
       ${chip('perda','Perdas', c.perdas.length, 'perda')}
       ${chip('ganho','Ganhos', c.ganhos.length, 'ganho')}
       ${chip('compensado','Compensados', c.compensados.length)}
-      <span class="field-hint">Clique pra ligar e desligar — dá pra ver mais de um ao mesmo tempo.</span>
     </div>
     ${lista.length ? `<div class="table-wrap"><div class="table-scroll" style="max-height:620px;">
       <table class="ofe-table">
@@ -4548,10 +4548,11 @@ function irRenderDivAuditoria(){
     </div>
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
       <table class="aud-table">
-        <thead><tr><th>Item</th><th>Descrição</th><th>Local</th><th>Descrição do Local</th>
+        <thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local</th><th>Descrição do Local</th>
           <th>Quantidade</th><th>Qtde Divergente</th><th>Origem do Endereço</th><th>Onde Divergiu</th><th>Contagem do Auditor</th></tr></thead>
         <tbody>${g.linhas.map(l=>`<tr>
           <td class="mono">${irEsc(l.item)}</td>
+          <td class="mono">${irEsc(l.ean||'')}</td>
           <td class="aud-desc">${irEsc(l.descricao||'')}</td>
           <td class="mono">${irEsc(l.local||'')}</td>
           <td>${irEsc(l.descricaoLocal||'')}</td>
@@ -4591,7 +4592,6 @@ function irRenderDivSimilares(){
         <button class="btn btn-secondary" onclick="irDivExportarSimilares()">Excel</button>
       </div>
     </div>
-    <p class="panel-sub">Na mesma visita (local + inventário), um item sobra exatamente o que o outro falta e as descrições batem. Filtro próprio de data — não segue o período do topo.</p>
     ${filtros}
     ${pares.length ? `<div class="table-wrap"><div class="table-scroll" style="max-height:460px;">
       <table class="sim-table">

@@ -1052,3 +1052,11 @@ table.ofe-sub tr.ofe-fora{ opacity:.55; }
 }
 @keyframes div-gira{ to{ transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce){ .div-spinner{ animation-duration:2.4s; } }
+
+/* Versão do app no rodapé do menu — é por ela que se confere, sem abrir nada,
+   se o navegador já pegou a build nova. */
+.sidebar-versao{
+  margin-top:8px; padding:0 10px; font-size:10px; letter-spacing:.03em;
+  color:var(--sidebar-ink-soft, rgba(255,255,255,.45)); font-variant-numeric:tabular-nums;
+}
+.sidebar.collapsed .sidebar-versao{ display:none; }
