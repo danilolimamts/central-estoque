@@ -705,7 +705,7 @@ const IR_INDICADORES_VERSION = 15; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v105';
+const IR_APP_VERSION = 'v106';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -4412,8 +4412,12 @@ async function irDivGerarAuditoria(){
       // Onde o item divergiu no período — é o endereço que o auditor confere
       // primeiro, e ele não é necessariamente um dos que têm saldo hoje.
       const ondeDivergiu = g.locais.filter(d=>d.diferenca!==0);
+      // Estoque atual: primeiro a ficha da QRY0390 avulsa, que é a foto de hoje e
+      // já vem com a descrição do endereço; o do ciclo entra só como reserva, pra
+      // quem ainda não importou a 390 nova.
       let est = null;
-      try{ est = cicloId ? await irGetEstoqueItem(cicloId, item) : null; }catch(err){ est = null; }
+      if(info.locais && info.locais.length) est = {locais: info.locais};
+      else { try{ est = cicloId ? await irGetEstoqueItem(cicloId, item) : null; }catch(err){ est = null; } }
       // Sem saldo na QRY0390 o item zerou no CD — não há endereço de estoque pra
       // conferir. Em vez de uma linha vazia, a auditoria manda o auditor pro LOCAL
       // DO AJUSTE: é lá que a peça estava, e é o lugar mais provável de ela ainda
@@ -4460,16 +4464,18 @@ function irDivExportarAuditoria(){
   const g = IR.divAuditoria;
   if(!g || !g.linhas.length){ irShowToast('Nada para exportar.', true); return; }
   const data = (document.getElementById('ir-aud-data')||{}).value || '';
-  const auditor = (document.getElementById('ir-aud-auditor')||{}).value || '';
   const cols = g.tipo==='similares'
     ? [['dia','Dia'],['local','Local'],['descricaoLocal','Desc. Local'],['inventario','Inv.'],
        ['itemSobra','Sobrou'],['nomeSobra','Descrição (sobrou)'],['itemFalta','Faltou'],
        ['nomeFalta','Descrição (faltou)'],['qtd','Qtde'],['desequilibrio','Desequil.']]
     : [['item','Item'],['ean','EAN'],['descricao','Descrição'],['local','Local'],
        ['descricaoLocal','Desc. Local'],['saldo','Qtde'],['diferenca','Qtde Div.'],['valor','Valor Div.']];
-  const cab = cols.map(c=>c[1]).concat(['Contagem','Data','Auditor']);
-  const linhas = g.linhas.map(l=>cols.map(([k])=>l[k]==null?'':l[k]).concat(['', data, auditor]));
-  irDivBaixarPlanilha(cab, linhas, (g.tipo==='similares'?'auditoria_similares_':'auditoria_')+String(g.escopo).replace(/\W+/g,'_'));
+  const cab = cols.map(c=>c[1]).concat(['Contagem','Data']);
+  const linhas = g.linhas.map(l=>cols.map(([k])=>l[k]==null?'':l[k]).concat(['', data]));
+  // Colunas de dinheiro saem formatadas como moeda na planilha — número cru vira
+  // texto ambíguo na mão de quem abre o arquivo.
+  const moeda = cab.map(h=>/Valor|Desequil/.test(h));
+  irDivBaixarPlanilha(cab, linhas, (g.tipo==='similares'?'auditoria_similares_':'auditoria_')+String(g.escopo).replace(/\W+/g,'_'), moeda);
 }
 /* Excel de um item: onde ele divergiu, com a descrição do local. */
 function irDivExportarItem(item){
@@ -4486,10 +4492,19 @@ function irDivExportarItem(item){
   irDivBaixarPlanilha(cab, linhas, 'item_'+String(item).replace(/\W+/g,'_'));
 }
 /* .xlsx pelo SheetJS que o app já carrega; CSV quando ele não estiver disponível. */
-function irDivBaixarPlanilha(cabecalho, linhas, nomeBase){
+function irDivBaixarPlanilha(cabecalho, linhas, nomeBase, colsMoeda){
   if(typeof XLSX!=='undefined' && XLSX.utils){
     const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
     ws['!cols'] = cabecalho.map(h=>({wch: /Descrição/.test(h) ? 40 : Math.max(12, h.length+2)}));
+    if(colsMoeda){
+      for(let c=0;c<cabecalho.length;c++){
+        if(!colsMoeda[c]) continue;
+        for(let r=1;r<=linhas.length;r++){
+          const cel = ws[XLSX.utils.encode_cell({r, c})];
+          if(cel && typeof cel.v === 'number'){ cel.t = 'n'; cel.z = 'R$ #,##0.00;[Red]-R$ #,##0.00'; }
+        }
+      }
+    }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Dados');
     XLSX.writeFile(wb, nomeBase+'.xlsx');
@@ -4703,13 +4718,13 @@ function irRenderDivAuditoria(){
     <div class="ofe-head">
       <h3>${sim?'Auditoria de troca entre similares':'Auditoria de validação'}</h3>
       <div class="ofe-acoes">
+        <button class="btn-link" onclick="irDivFecharAuditoria()">Voltar às divergências</button>
         <button class="btn btn-secondary" onclick="irDivExportarAuditoria()">Excel</button>
         <button class="btn btn-primary" onclick="irDivImprimirAuditoria()">Imprimir</button>
       </div>
     </div>
     <div class="aud-cab">
       <div class="ofe-filtro"><label>Data</label><input type="date" id="ir-aud-data" value="${new Date().toISOString().slice(0,10)}"></div>
-      <div class="ofe-filtro"><label>Auditor</label><input type="text" id="ir-aud-auditor" placeholder="nome de quem vai conferir"></div>
       <span class="field-hint">${sim
         ? `${irFmtInt(g.itens)} ${g.itens===1?'par':'pares'} · ${irEsc(g.escopo)}`
         : `${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}`}</span>
@@ -4849,6 +4864,7 @@ function irDivExportarSimilares(){
   const sufixo = (f.de||f.ate) ? (f.de||'inicio')+'_a_'+(f.ate||'hoje') : 'todos';
   irDivBaixarPlanilha(cab, linhas, 'similares_trocados_'+sufixo);
 }
+function irDivFecharAuditoria(){ IR.divAuditoria = null; irRenderView(); }
 function irRenderDivergencias(){
   if(!IR.divergencias.length) return irEmptyState('Sem divergências carregadas', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
   if(!irDivEscopoPronto()){
@@ -4860,13 +4876,15 @@ function irRenderDivergencias(){
     }
     return irRenderDivFiltros() + irDivCarregando();
   }
+  // Gerada a auditoria, ela toma a tela: é a folha que o auditor vai imprimir, e
+  // deixar as divergências embaixo só fazia rolar página até achar.
+  if(IR.divAuditoria) return irRenderDivAuditoria();
   const c = irDivCalcItens();
   return `
     ${irRenderDivFiltros()}
     ${irRenderDivResumo(c)}
     ${irRenderDivTabela(c)}
     ${irRenderDivSimilares()}
-    ${irRenderDivAuditoria()}
   `;
 }
 // Locais pendentes de CONTAGEM no ciclo VIGENTE — cruza a Base Congelada com a

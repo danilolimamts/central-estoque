@@ -255,7 +255,11 @@ async function runPipeline390({buf390}){
     if(item && !porItem.has(item)){
       porItem.set(item, {item,
         ean: String(getVal(row, r.ean) ?? '').trim(),
-        descricao: String(getVal(row, r.descricao) ?? '').trim()});
+        descricao: String(getVal(row, r.descricao) ?? '').trim(),
+        // Endereços onde o item tem saldo HOJE. Guardado aqui, e não só no
+        // processamento do ciclo, pra auditoria enxergar o estoque atual sem
+        // depender de quando o ciclo foi processado nem de a 390 ter sido anexada.
+        locais: []});
     }
     const qtd = parseNumber(getVal(row, r.quantidade));
     // VALOR_ITEM_LOCAL não está no alias porque só existe no layout novo; quando
@@ -278,6 +282,10 @@ async function runPipeline390({buf390}){
     }
     g.qtd += qtd;
     g.valor += valor;
+    if(item && qtd){
+      const gi = porItem.get(item);
+      gi.locais.push({local, qtd, desc: String(getVal(row, r.descLocal) ?? '').trim()});
+    }
     const lg = String(getVal(row, r.log) ?? '').trim() || 'S/CAD';
     g.porLog[lg] = (g.porLog[lg] || 0) + qtd;
     if(item) g._itens.add(item);
@@ -292,7 +300,18 @@ async function runPipeline390({buf390}){
   });
 
   post('progress', {stage:'Gravando estoque no IndexedDB...', pct:88});
-  await irSalvarItemInfo(Array.from(porItem.values()));
+  // Agrega o saldo por endereço dentro do item (o mesmo item pode aparecer em
+  // várias linhas do mesmo local, por lote) e ordena do maior saldo pro menor.
+  const fichas = Array.from(porItem.values()).map(g=>{
+    const m = new Map();
+    for(const l of g.locais){
+      if(!m.has(l.local)) m.set(l.local, {local:l.local, qtd:0, desc:l.desc});
+      const x = m.get(l.local); x.qtd += l.qtd; if(!x.desc && l.desc) x.desc = l.desc;
+    }
+    g.locais = Array.from(m.values()).filter(x=>x.qtd!==0).sort((a,b)=>b.qtd-a.qtd);
+    return g;
+  });
+  await irSalvarItemInfo(fichas);
   await irSalvarEstoqueLocais(linhas, {
     atualizadoEm, importadoEm: new Date().toISOString(),
     linhas: rows.length, locais: linhas.length,
