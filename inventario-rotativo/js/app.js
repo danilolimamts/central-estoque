@@ -698,7 +698,7 @@ const IR_INDICADORES_VERSION = 11; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v92';
+const IR_APP_VERSION = 'v93';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
@@ -3846,11 +3846,28 @@ function irDivDiasDisponiveis(){
    então serve de segunda fonte; o que sobra é rotulado, não deixado em branco. */
 function irDescLocalMapa(){
   if(IR._descLocal && IR._descLocalCiclo===(IR.cicloAtivo||{}).id) return IR._descLocal;
-  const m = new Map();
+  const m = new Map(IR._descLocalTodosCiclos || []);
   for(const c of (IR.contagens||[])) if(c.local && c.descricaoLocal && !m.has(c.local)) m.set(c.local, c.descricaoLocal);
   for(const l of (IR.locais||[])) if(l.idLocal && l.descricao) m.set(l.idLocal, l.descricao);
   IR._descLocal = m; IR._descLocalCiclo = (IR.cicloAtivo||{}).id;
   return m;
+}
+/* Terceira fonte: a Base Congelada de TODOS os ciclos já importados. Um endereço
+   que não entrou no ciclo atual quase sempre entrou em algum anterior, e a
+   descrição dele serve igual. Roda uma vez, sob demanda. */
+async function irCarregarDescLocaisTodosCiclos(){
+  if(IR._descLocalTodosCiclos || IR._descLocalCarregando) return;
+  IR._descLocalCarregando = true;
+  try{
+    const m = new Map();
+    for(const c of (IR.ciclos||[])){
+      const ls = await irGetByCiclo(IR_STORES.locais, c.id);
+      for(const l of ls) if(l.idLocal && l.descricao && !m.has(l.idLocal)) m.set(l.idLocal, l.descricao);
+    }
+    IR._descLocalTodosCiclos = m;
+    IR._descLocal = null; // força remontar o mapa com a fonte nova
+  }catch(err){ IR._descLocalTodosCiclos = new Map(); }
+  finally{ IR._descLocalCarregando = false; }
 }
 function irDescLocal(local){ return irDescLocalMapa().get(local) || ''; }
 function irDivNormItem(v){
@@ -4251,6 +4268,7 @@ async function irDivGerarAuditoria(){
   const sel = Array.from(IR.divSelecionados||[]);
   if(!sel.length){ irShowToast('Marque ao menos um item.', true); return; }
   try{
+    await irCarregarDescLocaisTodosCiclos();
     const {itens} = irDivCalcItens();
     const porItem = new Map(itens.map(i=>[i.item, i]));
     const cicloId = (IR.cicloAtivo||{}).id;
@@ -4268,15 +4286,18 @@ async function irDivGerarAuditoria(){
       try{ est = cicloId ? await irGetEstoqueItem(cicloId, item) : null; }catch(err){ est = null; }
       if(!est || !est.locais || !est.locais.length){
         semEstoque++;
-        linhas.push({item, descricao:g.descricao, local:null, descricaoLocal:'', saldo:null,
-          diferenca:g.netQtd, locaisDivergentes: divergiuEm});
+        // Item sem nenhuma linha na QRY0390: ou ele zerou no CD, ou a 390 não foi
+        // importada. A linha fica, porque o auditor ainda precisa procurar a peça —
+        // mas dizendo por que não há endereço, em vez de sair em branco na planilha.
+        linhas.push({item, descricao:g.descricao, local:'', descricaoLocal:'sem saldo na QRY0390',
+          saldo:null, diferenca:g.netQtd, locaisDivergentes: divergiuEm});
         continue;
       }
       for(const s of est.locais){
         const desc = irDescLocal(s.local);
         if(!desc) semDescricao++;
         linhas.push({item, descricao:g.descricao, local:s.local,
-          descricaoLocal: desc || 'fora da base congelada', saldo:s.qtd, diferenca:g.netQtd,
+          descricaoLocal: desc || 'endereço não inventariado', saldo:s.qtd, diferenca:g.netQtd,
           locaisDivergentes: divergiuEm});
       }
     }
@@ -4512,7 +4533,7 @@ function irRenderDivAuditoria(){
     <div class="aud-cab">
       <div class="ofe-filtro"><label>Data</label><input type="date" id="ir-aud-data" value="${new Date().toISOString().slice(0,10)}"></div>
       <div class="ofe-filtro"><label>Auditor</label><input type="text" id="ir-aud-auditor" placeholder="nome de quem vai conferir"></div>
-      <span class="field-hint">${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo na QRY0390`:''}${g.semDescricao?` · ${irFmtInt(g.semDescricao)} fora da base congelada`:''}</span>
+      <span class="field-hint">${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo na QRY0390`:''}${g.semDescricao?` · ${irFmtInt(g.semDescricao)} sem descrição em nenhuma base`:''}</span>
     </div>
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
       <table class="aud-table">
@@ -4521,7 +4542,7 @@ function irRenderDivAuditoria(){
         <tbody>${g.linhas.map(l=>`<tr>
           <td class="mono">${irEsc(l.item)}</td>
           <td class="aud-desc">${irEsc(l.descricao||'')}</td>
-          <td class="mono">${l.local?irEsc(l.local):'<span class="field-hint">sem saldo</span>'}</td>
+          <td class="mono">${l.local?irEsc(l.local):'—'}</td>
           <td>${irEsc(l.descricaoLocal||'—')}</td>
           <td class="mono">${l.saldo!=null?irFmtInt(l.saldo):'—'}</td>
           <td class="mono ${l.diferenca<0?'neg':'pos'}">${l.diferenca>0?'+':''}${irFmtInt(l.diferenca)}</td>
