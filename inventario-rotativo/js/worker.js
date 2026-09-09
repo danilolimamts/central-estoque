@@ -682,7 +682,11 @@ async function runPipeline({buf390, bufs843, bufsCongelada, bufs278, bufs051, ci
     totalLinhas843: rows843.length, linhasForaDaJanela, linhasNaoAir, linhasNaoLiquidadas,
     dataMaisRecenteAceita, dataMaisRecenteForaDaJanela,
     janelaAbertura: dataAbertura || '', janelaTermino: dataPrevistaTermino || '',
-    itensComEstoque390: estoqueRows.length, temQry390: !!r390
+    itensComEstoque390: estoqueRows.length, temQry390: !!r390,
+    // Versão do motor que gerou estes números. Sem isso, um worker servido do cache
+    // do navegador reprocessava com o código antigo e o resultado não mudava, sem
+    // nenhum sinal na tela de que a correção não tinha rodado.
+    motor: IR_INDICADORES_VERSION
   });
 
   post('progress', {stage:'Concluído.', pct:100});

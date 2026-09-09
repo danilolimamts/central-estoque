@@ -476,6 +476,7 @@ function irRenderDiagnosticoIngestao(m){
       <thead><tr><th>Diagnóstico da QRY0843</th><th style="text-align:right;">Valor</th></tr></thead>
       <tbody>
         ${linha('Janela do ciclo', d(m.janelaAbertura)+' → '+d(m.janelaTermino), janelaVencida)}
+        ${linha('Motor de cálculo', 'v'+(m.motor||'antiga — reprocesse'), (m.motor||0) < IR_INDICADORES_VERSION)}
         ${linha('Linhas lidas na planilha', irFmtInt(m.totalLinhas843))}
         ${linha('Contagens aceitas', irFmtInt(m.totalContagens))}
         ${linha('Descartadas — fora da janela do ciclo', irFmtInt(m.linhasForaDaJanela||0), perdendoContagem)}
@@ -530,7 +531,7 @@ function irDetectarCiclo843(){
   if(!bufsPromise.length){ IR.cicloDetectado = null; irRenderView(); return; }
   IR.detectandoCiclo = true; IR.cicloDetectado = null; irRenderView();
   Promise.all(bufsPromise).then(bufs=>{
-    const worker = new Worker('js/worker.js');
+    const worker = irNovoWorker();
     worker.onmessage = ev=>{
       if(ev.data.type!=='done843detect') return;
       worker.terminate();
@@ -629,7 +630,7 @@ async function irProcessar(){
       Promise.all(files278.map(file=>file.arrayBuffer())),
       Promise.all(files051.map(file=>file.arrayBuffer()))
     ]);
-    const worker = new Worker('js/worker.js');
+    const worker = irNovoWorker();
     worker.onmessage = async (e)=>{
       const msg = e.data;
       if(msg.type==='progress'){ IR.progress = {stage:msg.stage, pct:msg.pct}; irUpdateProgressUI(); }
@@ -691,6 +692,13 @@ function irKpiBlock(theme, icon, title, tilesHtml){
   </div>`;
 }
 const IR_INDICADORES_VERSION = 10; // mantido em sincronia com worker.js
+/* Versão do app, em sincronia com o CACHE_VERSION do sw.js. Ela vai na URL do
+   Worker porque o navegador guarda js/worker.js no cache HTTP por conta própria:
+   depois de um deploy, a página já vinha nova e o Worker continuava sendo o
+   antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
+   Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
+const IR_APP_VERSION = 'v88';
+function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
 function irRenderDashDateFilterBar(){
@@ -1973,7 +1981,7 @@ function irProcessar410(){
   irRenderView();
   const file = IR.net410File;
   file.arrayBuffer().then(buf410=>{
-    const worker = new Worker('js/worker.js');
+    const worker = irNovoWorker();
     worker.onmessage = async (e)=>{
       const msg = e.data;
       if(msg.type==='progress'){ IR.net410Progress = {stage:msg.stage, pct:msg.pct}; irUpdateProgressUI410(); }
