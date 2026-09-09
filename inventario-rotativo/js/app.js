@@ -698,7 +698,7 @@ const IR_INDICADORES_VERSION = 10; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v90';
+const IR_APP_VERSION = 'v91';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Filtro de data — só afeta a Produtividade, por isso fica logo acima do gráfico
 // dela em vez de junto com o seletor de Ciclo (que é global pro Dashboard inteiro).
@@ -3839,6 +3839,20 @@ function irDivDiasDisponiveis(){
      3. preço da 278 que veio no processamento;
      4. zero (componente de kit que não valora).
    Cada divergência guarda de onde veio o preço, pra tabela poder mostrar. */
+/* Descrição do endereço, com duas fontes. A Base Congelada só tem os locais DESTE
+   ciclo; a auditoria, porém, lista todo endereço onde o item tem saldo hoje
+   (QRY0390), e boa parte deles não foi congelada — apareciam com um traço, como se
+   o local estivesse faltando. A QRY0843 traz a descrição de tudo que foi contado,
+   então serve de segunda fonte; o que sobra é rotulado, não deixado em branco. */
+function irDescLocalMapa(){
+  if(IR._descLocal && IR._descLocalCiclo===(IR.cicloAtivo||{}).id) return IR._descLocal;
+  const m = new Map();
+  for(const c of (IR.contagens||[])) if(c.local && c.descricaoLocal && !m.has(c.local)) m.set(c.local, c.descricaoLocal);
+  for(const l of (IR.locais||[])) if(l.idLocal && l.descricao) m.set(l.idLocal, l.descricao);
+  IR._descLocal = m; IR._descLocalCiclo = (IR.cicloAtivo||{}).id;
+  return m;
+}
+function irDescLocal(local){ return irDescLocalMapa().get(local) || ''; }
 function irDivNormItem(v){
   const s = String(v ?? '').trim();
   if(s==='') return '';
@@ -4240,9 +4254,8 @@ async function irDivGerarAuditoria(){
     const {itens} = irDivCalcItens();
     const porItem = new Map(itens.map(i=>[i.item, i]));
     const cicloId = (IR.cicloAtivo||{}).id;
-    const descLocal = new Map((IR.locais||[]).map(l=>[l.idLocal, l]));
     const linhas = [];
-    let semEstoque = 0;
+    let semEstoque = 0, semDescricao = 0;
     for(const item of sel){
       const g = porItem.get(item);
       if(!g) continue;
@@ -4254,14 +4267,16 @@ async function irDivGerarAuditoria(){
         continue;
       }
       for(const s of est.locais){
-        const l = descLocal.get(s.local) || {};
-        linhas.push({item, descricao:g.descricao, local:s.local, descricaoLocal:l.descricao||'', saldo:s.qtd, diferenca:g.netQtd});
+        const desc = irDescLocal(s.local);
+        if(!desc) semDescricao++;
+        linhas.push({item, descricao:g.descricao, local:s.local,
+          descricaoLocal: desc || 'fora da base congelada', saldo:s.qtd, diferenca:g.netQtd});
       }
     }
     IR.divAuditoria = {
       geradoEm: new Date().toLocaleString('pt-BR'),
       escopo: irDivEscopoLabel(),
-      itens: sel.length, linhas, semEstoque
+      itens: sel.length, linhas, semEstoque, semDescricao
     };
     irRenderView();
     const el = document.querySelector('.aud-panel');
@@ -4287,11 +4302,10 @@ function irDivExportarItem(item){
   const {itens} = irDivCalcItens();
   const g = itens.find(i=>i.item===item);
   if(!g){ irShowToast('Item fora do recorte atual.', true); return; }
-  const descLocal = new Map((IR.locais||[]).map(l=>[l.idLocal, l]));
   const cab = ['Item','Descrição','Local','Descrição do Local','Rua','Log','Dia do Fechamento',
     'Qtde Sistema','Qtde Física','Diferença','Valor Divergente'];
   const linhas = g.locais.slice().sort((a,b)=>Math.abs(b.vlDivergencia)-Math.abs(a.vlDivergencia)).map(d=>{
-    const l = descLocal.get(d.local) || {};
+    const l = {descricao: irDescLocal(d.local)};
     return [g.item, g.descricao||'', d.local, l.descricao||'', l.x1||'', l.grupoClasse||'',
       irDivDiaDa(d), d.qtdeSistema, d.qtdeFisica, d.diferenca, d.vlDivergencia];
   });
@@ -4399,7 +4413,6 @@ function irRenderDivTabela(c){
   const o = IR.divOrdem || {col:'netValor', dir:'desc'};
   const seta = k => o.col===k ? (o.dir==='desc'?' ▾':' ▴') : '';
   const num = (v, fmt) => `<td class="mono ${v<0?'neg':(v>0?'pos':'')}">${v>0?'+':''}${fmt(v)}</td>`;
-  const descLocal = new Map((IR.locais||[]).map(l=>[l.idLocal, l]));
   const linha = i=>{
     const aberto = IR.divExpandido===i.item;
     // Item sem preço nem na 410 nem na 278: componente de kit que não valora.
@@ -4431,7 +4444,7 @@ function irRenderDivTabela(c){
         <table class="ofe-sub"><thead><tr>
           <th>Local</th><th>Descrição do Local</th><th>Dia</th><th>Sistema</th><th>Físico</th><th>Diferença</th><th>Valor</th><th>Preço unit.</th>
         </tr></thead><tbody>${locais.map(d=>{
-          const l = descLocal.get(d.local) || {};
+          const l = {descricao: irDescLocal(d.local)};
           return `<tr class="${d.foraDoPeriodo?'ofe-fora':''}">
             <td class="mono">${irEsc(d.local)}</td>
             <td>${irEsc(l.descricao||'—')}</td>
@@ -4491,7 +4504,7 @@ function irRenderDivAuditoria(){
     <div class="aud-cab">
       <div class="ofe-filtro"><label>Data</label><input type="date" id="ir-aud-data" value="${new Date().toISOString().slice(0,10)}"></div>
       <div class="ofe-filtro"><label>Auditor</label><input type="text" id="ir-aud-auditor" placeholder="nome de quem vai conferir"></div>
-      <span class="field-hint">${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo na QRY0390`:''}</span>
+      <span class="field-hint">${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo na QRY0390`:''}${g.semDescricao?` · ${irFmtInt(g.semDescricao)} fora da base congelada`:''}</span>
     </div>
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
       <table class="aud-table">
