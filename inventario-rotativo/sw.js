@@ -4,7 +4,7 @@
    network-first para os arquivos do app (nunca esconde updates),
    cache só como fallback offline.
    ============================================================ */
-const CACHE_VERSION = 'inventario-rotativo-v87';
+const CACHE_VERSION = 'inventario-rotativo-v88';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -41,8 +41,12 @@ self.addEventListener('fetch', (event)=>{
   const isSameOrigin = url.origin === self.location.origin;
 
   if(isSameOrigin){
+    // cache:'no-cache' revalida no servidor mesmo dentro da janela de max-age. Sem
+    // isso o próprio cache HTTP do navegador devolvia o js/worker.js anterior por
+    // vários minutos depois de um deploy: a página vinha nova, o motor vinha velho,
+    // e o ciclo era reprocessado com o código antigo sem nenhum aviso.
     event.respondWith(
-      fetch(req).then(res=>{
+      fetch(new Request(req, {cache:'no-cache'})).then(res=>{
         if(res && res.ok){
           const clone = res.clone();
           caches.open(CACHE_VERSION).then(c=>c.put(req, clone));
