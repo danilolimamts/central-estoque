@@ -44,6 +44,7 @@ const IR = {
   // Estoque atual (QRY0390) — independente do ciclo, é a foto do CD agora.
   est390File:null, est390Processing:false, est390Progress:{stage:'', pct:0},
   est390Meta:null, est390Locais:null, transSetores:null, transExpandido:null,
+  est160File:null, est160Processing:false, est160Progress:{stage:'', pct:0},
   audIgnorarVirtuais:true, audPrefixos:null,
   // Perdas e Ganhos (QRY410) — independente do ciclo, por ano.
   net410Anos:[], net410AnoSel:null, net410MesSel:null, net410Data:null, net410File:null,
@@ -449,6 +450,7 @@ function irRenderImportacao(){
     </div>
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
     ${irRenderEst390ImportPanel()}
+    ${irRender160ImportPanel()}
     ${irRenderNet410ImportPanel()}
   `;
 }
@@ -709,7 +711,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v108';
+const IR_APP_VERSION = 'v109';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2085,6 +2087,63 @@ function irRenderEst390ImportPanel(){
         <div class="progress-track"><div class="progress-fill orange" id="ir-390-fill" style="width:${IR.est390Progress.pct}%"></div></div>
       </div>` : IR.est390File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessarEst390()">PROCESSAR ESTOQUE</button></div>` : ''}
     ${m ? `<p class="field-hint" style="margin-top:12px;">${irFmtInt(m.locais)} endereços · ${irFmtInt(m.itens)} itens · ${irFmtInt(m.pecasTotal)} peças · ${irFmtMoney(m.valorTotal)} — importado em ${irEsc(new Date(m.importadoEm).toLocaleString('pt-BR'))}</p>` : ''}
+  </div>`;
+}
+/* ---------- IMPORTAÇÃO DA QRY0160 (PENDÊNCIA DE MOVIMENTAÇÃO) ---------- */
+function irOnFile160(f){ if(!f) return; IR.est160File = f; irRenderView(); }
+function irOnDropFile160(e){ e.preventDefault(); const f = e.dataTransfer.files[0]; if(f) irOnFile160(f); }
+function irRemoveFile160(){ IR.est160File = null; irRenderView(); }
+function irProcessar160(){
+  if(IR.est160Processing || !IR.est160File) return;
+  IR.est160Processing = true; IR.est160Progress = {stage:'Lendo arquivo...', pct:0};
+  irRenderView();
+  IR.est160File.arrayBuffer().then(buf=>{
+    const worker = irNovoWorker();
+    worker.onmessage = async ev=>{
+      const msg = ev.data;
+      if(msg.type==='progress'){ IR.est160Progress = {stage:msg.stage, pct:msg.pct}; irUpdateProgressUI160(); }
+      else if(msg.type==='error160'){
+        IR.est160Processing = false; worker.terminate();
+        irShowToast('Erro na QRY0160: '+msg.message, true); irRenderView();
+      } else if(msg.type==='done160'){
+        IR.est160Processing = false; worker.terminate();
+        IR.est390Meta = await irGetEstoqueMeta();
+        IR.est390Locais = null; IR.est160File = null;
+        irShowToast(irFmtInt(msg.locais)+' endereços com data de movimento.');
+        irRenderView();
+      }
+    };
+    worker.onerror = ()=>{ worker.terminate(); IR.est160Processing=false; irShowToast('Falha no processamento da QRY0160.', true); irRenderView(); };
+    worker.postMessage({type:'process160', buf160:buf}, [buf]);
+  });
+}
+function irUpdateProgressUI160(){
+  const st = document.getElementById('ir-160-stage'), fi = document.getElementById('ir-160-fill');
+  if(st && fi){ st.textContent = IR.est160Progress.stage; fi.style.width = IR.est160Progress.pct+'%'; }
+}
+function irRender160ImportPanel(){
+  const m = IR.est390Meta;
+  const temFicha = !!(IR._itemInfo && IR._itemInfo.size);
+  return `<div class="panel">
+    <h3>Pendência de movimentação (QRY0160)</h3>
+    <div class="dz-grid" style="grid-template-columns:1fr;max-width:340px;">
+      <div class="dropzone ${IR.est160File?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropFile160(event)">
+        <input type="file" id="ir-file-160" accept=".xlsx,.xls" style="display:none" onchange="irOnFile160(this.files[0])">
+        <div class="dz-icon">⏱️</div>
+        <div class="dz-title">QRY0160</div>
+        <div class="dz-desc">Estoque com data de movimento</div>
+        ${IR.est160File
+          ? `<div class="dz-file mono">${irEsc(IR.est160File.name)}</div><button class="btn-link" onclick="irRemoveFile160()">Remover</button>`
+          : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-160').click()">Selecionar</button>`}
+      </div>
+    </div>
+    ${!temFicha ? `<p class="field-hint neg">Importe a QRY0390 antes: o valor e o LOG de cada item saem de lá.</p>` : ''}
+    ${IR.est160Processing ? `
+      <div class="progress-wrap">
+        <div class="progress-stage" id="ir-160-stage">${irEsc(IR.est160Progress.stage)}</div>
+        <div class="progress-track"><div class="progress-fill orange" id="ir-160-fill" style="width:${IR.est160Progress.pct}%"></div></div>
+      </div>` : IR.est160File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessar160()">PROCESSAR PENDÊNCIA</button></div>` : ''}
+    ${m && m.fonte==='160' ? `<p class="field-hint" style="margin-top:12px;">${irFmtInt(m.locais)} endereços · ${irFmtInt(m.itens)} itens · ${irFmtInt(m.pecasTotal)} peças · ${irFmtMoney(m.valorTotal)}${m.semFicha?` · ${irFmtInt(m.semFicha)} linhas sem valor (item fora da 390)`:''}</p>` : ''}
   </div>`;
 }
 function irRenderNet410ImportPanel(){
@@ -5151,6 +5210,33 @@ function irTransLogsPresentes(){
   const outros = Array.from(vistos).filter(x=>!IR_TRANS_LOGS.includes(x)).sort();
   return conhecidos.concat(outros);
 }
+/* Faixas de idade do saldo, contadas do dia do último movimento até hoje. É a
+   pendência de movimentação: D0 é o que entrou hoje e ainda pode sair sozinho;
+   D+ é o que está parado há uma semana ou mais e ninguém foi buscar. */
+const IR_TRANS_FAIXAS = ['D0','D+1','D+2','D+3','D+4','D+'];
+function irTransFaixa(dia, hoje){
+  if(!dia) return 'D+';
+  const d = Math.round((hoje - Date.parse(dia+'T00:00:00')) / 86400000);
+  if(d <= 0) return 'D0';
+  if(d >= 5) return 'D+';
+  return 'D+'+d;
+}
+// Peças por faixa de idade de um endereço (ou de um grupo de endereços).
+function irTransIdade(locais){
+  const hoje = Date.parse(new Date().toISOString().slice(0,10)+'T00:00:00');
+  const r = {}; let comData = 0;
+  for(const f of IR_TRANS_FAIXAS) r[f] = 0;
+  for(const l of locais){
+    const pd = l.porDia;
+    if(pd && Object.keys(pd).length){
+      for(const dia in pd){ r[irTransFaixa(dia, hoje)] += pd[dia]; comData += pd[dia]; }
+    }
+  }
+  return {faixas:r, comData};
+}
+function irTransTemData(){
+  return (IR.est390Meta||{}).fonte === '160';
+}
 function irRenderTransitorios(){
   if(!IR.est390Locais){ irCarregarEstoque390(); return irDivCarregando(); }
   if(!IR.est390Locais.length){
@@ -5168,7 +5254,7 @@ function irRenderTransitorios(){
       <span class="field-hint">${irFmtMoney(naoClass.valor)} · ${irFmtInt(naoClass.locais.length)} endereços · ${irFmtInt(naoClass.prefixos.size)} prefixos sem setor</span>
     </div>${irTransTabelaPrefixos(naoClass)}</div>` : ''}
     <p class="field-hint">Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · ${irFmtInt(m.locais||0)} endereços no CD · ${irFmtMoney(m.valorTotal||0)} no total.
-    A idade do saldo (D0, D+1, D+4) precisa de uma data de entrada por endereço, que a QRY0390 não traz — só o horário da extração.</p>
+    ${irTransTemData() ? 'Idade do saldo contada da Data Movimento da QRY0160 até hoje.' : 'Importe a QRY0160 na aba Importação para abrir as colunas por idade do saldo — a QRY0390 não traz data de movimento.'}</p>
   `;
 }
 /* Uma tabela por setor, no formato do relatório de pendência: uma linha por
@@ -5176,14 +5262,19 @@ function irRenderTransitorios(){
 function irTransPainelSetor(g, logs){
   const porPrefixo = new Map();
   for(const l of g.locais){
-    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, itens:0, porLog:{}});
+    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, itens:0, porLog:{}, locais:[]});
     const p = porPrefixo.get(l.x1);
-    p.valor += l.valor; p.qtd += l.qtd; p.n++; p.itens += l.itens||0;
+    p.valor += l.valor; p.qtd += l.qtd; p.n++; p.itens += l.itens||0; p.locais.push(l);
     for(const k in (l.porLog||{})) p.porLog[k] = (p.porLog[k]||0) + l.porLog[k];
   }
   const linhas = Array.from(porPrefixo.values()).sort((a,b)=>b.valor-a.valor);
-  const totLog = {};
-  for(const p of linhas) for(const k in p.porLog) totLog[k] = (totLog[k]||0) + p.porLog[k];
+  // Com a QRY0160 importada a tabela abre por IDADE do saldo, que é a pergunta do
+  // relatório de pendência; sem ela, cai pro LOG, que é o que a 390 sabe dizer.
+  const comData = irTransTemData();
+  const cols = comData ? IR_TRANS_FAIXAS : logs;
+  for(const p of linhas) p.cel = comData ? irTransIdade(p.locais).faixas : p.porLog;
+  const totCol = {};
+  for(const p of linhas) for(const k in p.cel) totCol[k] = (totCol[k]||0) + p.cel[k];
   const itens = linhas.reduce((s,p)=>s+p.itens,0);
   const cell = (rot, val, sub) => `<div class="ofe-num">
     <span class="ofe-num-lbl">${irEsc(rot)}</span><strong class="mono">${val}</strong>
@@ -5206,19 +5297,19 @@ function irTransPainelSetor(g, logs){
     <div class="table-wrap"><table class="trans-table">
       <thead>
         <tr><th rowspan="2">Local transitório</th><th rowspan="2">Descrição</th>
-            <th colspan="${logs.length}">Peças por LOG</th>
+            <th colspan="${cols.length}">${comData?'Peças paradas há':'Peças por LOG'}</th>
             <th rowspan="2" class="num">Valor por endereço</th></tr>
-        <tr>${logs.map(l=>`<th class="num">${irEsc(l.replace('LOG ','L'))}</th>`).join('')}</tr>
+        <tr>${cols.map(l=>`<th class="num">${irEsc(comData?l:l.replace('LOG ','L'))}</th>`).join('')}</tr>
       </thead>
       <tbody>${linhas.map(p=>`<tr>
         <td class="mono">${irEsc(p.x1||'(vazio)')}</td>
         <td>${irEsc(irTransNome(p.x1))}</td>
-        ${logs.map(l=>`<td class="mono">${p.porLog[l]?irFmtInt(p.porLog[l]):'0'}</td>`).join('')}
+        ${cols.map(l=>`<td class="mono ${comData&&l==='D+'&&p.cel[l]?'trans-velho':''}">${p.cel[l]?irFmtInt(p.cel[l]):'0'}</td>`).join('')}
         <td class="mono">${irFmtMoney(p.valor)}</td>
       </tr>`).join('')}</tbody>
       <tfoot><tr>
         <td colspan="2"><strong>Total</strong></td>
-        ${logs.map(l=>`<td class="mono"><strong>${totLog[l]?irFmtInt(totLog[l]):'0'}</strong></td>`).join('')}
+        ${cols.map(l=>`<td class="mono"><strong>${totCol[l]?irFmtInt(totCol[l]):'0'}</strong></td>`).join('')}
         <td class="mono"><strong>${irFmtMoney(g.valor)}</strong></td>
       </tr></tfoot>
     </table></div>
