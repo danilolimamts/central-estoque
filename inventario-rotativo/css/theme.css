@@ -1208,7 +1208,9 @@ table.trans-table td.trans-ganho .trans-pct{ color:var(--danger); opacity:.75; }
    três cards com a mesma altura. */
 .tg-wrap{ display:grid; grid-template-columns:1.15fr 1.15fr minmax(172px,.52fr); gap:10px;
   align-items:stretch; margin:2px 0 14px; }
-.tg-card{ background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:9px 11px 6px; min-width:0; }
+.tg-card{ background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:9px 11px 6px; min-width:0;
+  display:flex; flex-direction:column; }
+.tg-card .tg-svg{ margin-block:auto; }
 .tg-head{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:2px; }
 .tg-head span{ font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); }
 .tg-head strong{ font-size:13px; color:var(--blue); font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -1225,11 +1227,9 @@ table.trans-table td.trans-ganho .trans-pct{ color:var(--danger); opacity:.75; }
 .tg-card-rosca{ padding-bottom:10px; display:flex; flex-direction:column; }
 /* Anel em cima, legenda embaixo em duas colunas: lado a lado a legenda disputava
    largura com o anel e as duas coisas ficavam apertadas. */
-.tg-rosca{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; flex:1; }
-.tg-rosca svg{ width:122px; max-width:100%; height:auto; aspect-ratio:1; flex:none; }
-.tg-r-num{ font-size:22px; font-weight:800; fill:var(--ink); font-family:inherit; font-variant-numeric:tabular-nums; }
-.tg-r-cap{ font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; fill:var(--ink-soft); font-family:inherit; }
-.tg-r-fatia{ font-size:14px; font-weight:800; font-family:inherit; font-variant-numeric:tabular-nums; fill:#fff; }
+.tg-rosca{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; flex:1; }
+.tg-rosca svg{ width:150px; max-width:100%; height:auto; aspect-ratio:1; flex:none; }
+.tg-r-fatia{ font-size:15px; font-weight:800; font-family:inherit; font-variant-numeric:tabular-nums; fill:#fff; }
 .tg-leg{ list-style:none; margin:0; padding:0; display:flex; width:100%; }
 .tg-leg li{ flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:3px; }
 .tg-leg li + li{ border-left:1px solid var(--line); }
