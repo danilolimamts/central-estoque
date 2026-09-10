@@ -122,11 +122,16 @@ button{ font-family:inherit; cursor:pointer; }
   overflow:hidden;
 }
 .sidebar.collapsed{ width:56px; }
-.sidebar .brand{ display:flex; align-items:center; gap:8px; padding:14px; border-bottom:1px solid rgba(255,255,255,.12); flex-shrink:0; }
+/* Menu leva a logo VERTICAL e a barra do topo a horizontal. A mesma arte
+   repetida duas vezes na mesma tela lia como erro de montagem, e cada formato
+   cabe melhor no seu espaço: a vertical na coluna estreita, a horizontal na
+   faixa larga. */
+.sidebar .brand{ display:flex; align-items:center; gap:8px; padding:16px 14px; border-bottom:1px solid rgba(255,255,255,.12); flex-shrink:0; }
 .brand-text{ min-width:0; flex:1; }
 .sidebar.collapsed .brand-text{ display:none; }
-.brand-logo-chip{ background:#fff; border-radius:8px; padding:4px 6px; display:flex; align-items:center; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,.15); }
-.brand-logo-img{ height:24px; width:auto; display:block; }
+.brand-logo-chip{ background:#fff; border-radius:10px; padding:8px 12px; display:flex; align-items:center;
+  justify-content:center; flex:1; min-width:0; box-shadow:0 2px 6px rgba(0,0,0,.15); }
+.brand-logo-img{ height:74px; width:auto; display:block; }
 .sidebar .brand-name{ font-weight:700; font-size:12px; line-height:1.25; white-space:normal; overflow-wrap:break-word; color:rgba(255,255,255,.9); min-width:0; flex:1; }
 .sidebar .brand-sub{ font-size:10px; color:rgba(255,255,255,.6); white-space:nowrap; }
 .sidebar.collapsed .brand-logo-chip{ display:none; }
@@ -170,9 +175,9 @@ button{ font-family:inherit; cursor:pointer; }
   background:linear-gradient(100deg, var(--blue) 0%, #062A9E 55%, #0B3ACB 100%);
   flex-shrink:0; flex-wrap:wrap;
 }
-.topbar-logo-chip{ background:#fff; border-radius:8px; padding:5px 8px; display:flex;
-  align-items:center; flex-shrink:0; align-self:center; }
-.topbar-logo{ height:34px; width:auto; display:block; }
+.topbar-logo-chip{ background:#fff; border-radius:10px; padding:7px 11px; display:flex;
+  align-items:center; flex-shrink:0; align-self:center; box-shadow:0 2px 8px rgba(0,0,0,.18); }
+.topbar-logo{ height:44px; width:auto; display:block; }
 .topbar-titles{ min-width:0; }
 .topbar-eyebrow{ font-size:9.5px; font-weight:800; letter-spacing:.12em;
   text-transform:uppercase; color:#FF8A63; white-space:nowrap; }
@@ -192,6 +197,9 @@ button{ font-family:inherit; cursor:pointer; }
    rótulo em cima e o valor/seletor embaixo, agrupadas do lado direito do topbar —
    junta Ciclo (já existia como pill solto) e Mês (novo) no mesmo visual. */
 .topbar-filters{ display:flex; align-items:stretch; gap:10px; flex-shrink:0; align-self:center; }
+/* O display:flex acima ganha do [hidden] do navegador, que é regra de elemento —
+   sem isto o hidden do JS não escondia nada. */
+.topbar-filters[hidden]{ display:none; }
 /* Cartões brancos elevados sobre o degradê — cor fixa pelo mesmo motivo da
    barra: são controles em cima de uma superfície de marca, não do tema. */
 .tb-filter{
