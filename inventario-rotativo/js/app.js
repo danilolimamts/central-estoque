@@ -772,7 +772,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v140';
+const IR_APP_VERSION = 'v141';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -1964,6 +1964,48 @@ function irGerarRelatorioEmail(){
   </div>`;
   irBaixarBoletimImagem(html, `Boletim_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
 }
+/* Converte cada SVG de um bloco em <img> PNG antes da captura.
+
+   O html2canvas desenha SVG inline pela conta dele e erra a escala quando o
+   viewBox não bate com a caixa: no boletim as curvas saíam comprimidas num canto
+   e o eixo com os dias sumia — a rosca, que é quadrada e bate com o viewBox,
+   saía certa. Rasterizar aqui tira o SVG do caminho dele: o que chega é uma
+   imagem comum, que ele sabe desenhar.
+
+   Serializar exige um SVG que se baste sozinho: dentro de um data: URI não há
+   folha de estilo nem variável CSS. Por isso os gráficos são desenhados com
+   atributos literais (fill, font-size, stroke), sem class e sem var(). */
+async function irRasterizarSVGs(raiz, escala){
+  const svgs = Array.from(raiz.querySelectorAll('svg'));
+  for(const svg of svgs){
+    const vb = (svg.getAttribute('viewBox')||'').split(/\s+/).map(Number);
+    const w = Number(svg.getAttribute('width')) || vb[2] || svg.clientWidth;
+    const h = Number(svg.getAttribute('height')) || vb[3] || svg.clientHeight;
+    if(!w || !h) continue;
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', w); clone.setAttribute('height', h);
+    const texto = new XMLSerializer().serializeToString(clone);
+    const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(texto);
+    try{
+      const img = await new Promise((ok, falhou)=>{
+        const i = new Image();
+        i.onload = ()=>ok(i); i.onerror = falhou;
+        i.src = url;
+      });
+      const cv = document.createElement('canvas');
+      cv.width = w * escala; cv.height = h * escala;
+      const ctx = cv.getContext('2d');
+      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      const saida = document.createElement('img');
+      saida.src = cv.toDataURL('image/png');
+      saida.width = w; saida.height = h;
+      saida.style.cssText = svg.getAttribute('style') || '';
+      saida.style.display = 'block';
+      svg.replaceWith(saida);
+    }catch(err){ /* falhou a rasterização: deixa o SVG como está */ }
+  }
+}
 async function irBaixarBoletimImagem(html, nomeArquivo, email){
   if(typeof html2canvas==='undefined'){ irShowToast('Não consegui carregar o gerador de imagem (sem internet?).', true); return; }
   const area = document.getElementById('irPrintArea');
@@ -1986,6 +2028,7 @@ async function irBaixarBoletimImagem(html, nomeArquivo, email){
   try{
     await new Promise(r=>setTimeout(r, 60)); // deixa o layout assentar antes de capturar
     const alvo = area.querySelector('.rp-page');
+    await irRasterizarSVGs(alvo, 3);
     const canvas = await html2canvas(alvo, {
       backgroundColor:'#F6F7FA', scale:3, useCORS:true,
       width: alvo.scrollWidth, height: alvo.scrollHeight,
@@ -5764,6 +5807,27 @@ function irTransGanhoPorLocal(){
 
    E uma rosca com o valor dentro e fora do prazo de 48h, que é a leitura de
    gestão: quanto do dinheiro parado já estourou o combinado. */
+/* Cores literais pros SVGs. Dentro de um data: URI (que é como o gráfico vira
+   imagem pro boletim) não existe var() nem folha de estilo — o que não for
+   literal simplesmente não pinta. */
+function irCorTema(nome, padrao){
+  try{
+    const v = getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
+    return v || padrao;
+  }catch(err){ return padrao; }
+}
+function irPaletaSVG(){
+  return {
+    blue: irCorTema('--blue', '#001A72'),
+    orange: irCorTema('--orange', '#FA4616'),
+    success: irCorTema('--success', '#1F8A52'),
+    ink: irCorTema('--ink', '#1D1F2A'),
+    inkSoft: irCorTema('--ink-soft', '#6B7280'),
+    line: irCorTema('--line', '#D5D8E0'),
+    surface2: irCorTema('--surface2', '#EEF0F4')
+  };
+}
+const IR_SVG_FONTE = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif";
 /* Curva suave (Catmull-Rom convertido em bézier cúbica) em vez de segmentos retos.
    Os pontos de controle são grampeados na faixa do plot: sem isso um pico isolado
    como o D+7 faz a curva estourar pra fora do card. */
@@ -5785,6 +5849,8 @@ function irTransCurva(pts, yMin, yMax){
    — era isso que dava o aspecto borrado. */
 function irTransLinha(vals, titulo, total, fmt, cor, fmtCurto){
   const W = 368, H = 128, padL = 16, padR = 16, padT = 32, padB = 21;
+  const P = irPaletaSVG();
+  const tinta = cor === 'blue' ? P.blue : P.orange;
   const max = Math.max(...vals, 1);
   const passo = (W - padL - padR) / Math.max(1, vals.length - 1);
   const base = H - padB;
@@ -5797,16 +5863,16 @@ function irTransLinha(vals, titulo, total, fmt, cor, fmtCurto){
   return `<div class="tg-card">
     <div class="tg-head"><span>${irEsc(titulo)}</span><strong>${irEsc(total)}</strong></div>
     <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="tg-svg" shape-rendering="geometricPrecision"
-      role="img" aria-label="${irEsc(titulo)}: ${irEsc(total)}">
+      font-family="${IR_SVG_FONTE}" role="img" aria-label="${irEsc(titulo)}: ${irEsc(total)}">
       <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${cor}" stop-opacity=".28"/>
-        <stop offset="1" stop-color="${cor}" stop-opacity="0"/>
+        <stop offset="0" stop-color="${tinta}" stop-opacity=".28"/>
+        <stop offset="1" stop-color="${tinta}" stop-opacity="0"/>
       </linearGradient></defs>
-      <line x1="${padL-6}" y1="${base}" x2="${W-padL+6}" y2="${base}" class="tg-base"/>
+      <line x1="${padL-6}" y1="${base}" x2="${W-padL+6}" y2="${base}" stroke="${P.line}" stroke-width="1.2"/>
       <path d="${area}" fill="url(#${gid})"/>
-      <path d="${linha}" fill="none" stroke="${cor}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="${linha}" fill="none" stroke="${tinta}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
       ${pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i===iMax?4.6:3.2}"
-        fill="${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'var(--success)':'var(--orange)'}" stroke="var(--surface2)" stroke-width="1.4"><title>${irEsc(IR_TRANS_FAIXAS[i])}: ${irEsc(fmt(vals[i]))}</title></circle>`).join('')}
+        fill="${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?P.success:P.orange}" stroke="${P.surface2}" stroke-width="1.4"><title>${irEsc(IR_TRANS_FAIXAS[i])}: ${irEsc(fmt(vals[i]))}</title></circle>`).join('')}
       ${pts.map((p,i)=>{
         if(!(vals[i]>0)) return '';
         // O máximo leva o valor cheio; os demais vão compactos, senão os rótulos
@@ -5824,16 +5890,14 @@ function irTransLinha(vals, titulo, total, fmt, cor, fmtCurto){
         let x = p[0] + (sobe(i+1) ? -7 : (sobe(i-1) ? 7 : 0));
         x = Math.min(W - meia - 1, Math.max(meia + 1, x));
         const yTxt = Math.max(fs + 2, p[1] - (cheio ? 11 : 8));
-        return `<text x="${x.toFixed(1)}" y="${yTxt.toFixed(1)}"
-          class="tg-t-val ${cheio?'':'mini'}" text-anchor="middle">${irEsc(txt)}</text>`;
+        return `<text x="${x.toFixed(1)}" y="${yTxt.toFixed(1)}" font-size="${fs}" font-weight="800"
+          fill="${cheio?P.ink:P.inkSoft}" text-anchor="middle">${irEsc(txt)}</text>`;
       }).join('')}
-      ${pts.map((p,i)=>`<text x="${p[0].toFixed(1)}" y="${H-6}" class="tg-t-lbl ${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'ok':'atraso'}" text-anchor="middle">${irEsc(IR_TRANS_FAIXAS[i].replace('D+','+').replace('D0','0'))}</text>`).join('')}
+      ${pts.map((p,i)=>`<text x="${p[0].toFixed(1)}" y="${H-6}" font-size="9" font-weight="800"
+        fill="${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?P.success:P.orange}" text-anchor="middle">${irEsc(IR_TRANS_FAIXAS[i].replace('D+','+').replace('D0','0'))}</text>`).join('')}
     </svg>
   </div>`;
 }
-/* Rosca nas cores da casa: azul o que está no prazo, laranja o que estourou.
-   O percentual vai no miolo — a leitura de um anel é sempre "quanto do total",
-   e obrigar o olho a ir até o cabeçalho pra achar o número desperdiça o buraco. */
 /* Compacto sem casa decimal: no rótulo dentro do anel e na legenda o centavo não
    decide nada, e "R$20,1K" só rouba espaço de fonte. */
 function irTransNumCurto(n){
@@ -5853,26 +5917,28 @@ function irTransValorCurto(n){
 function irTransRosca(dentro, fora){
   const total = dentro + fora;
   if(total <= 0) return '';
+  const P = irPaletaSVG();
   const cx = 84, R = 60, C = 2*Math.PI*R, larg = 44, pctFora = fora/total;
   const pctTxt = p => Math.round(p*100)+'%';
   // Rótulo no meio da banda da fatia. A laranja começa às 12h e cresce no sentido
   // horário; a azul ocupa o que sobra.
-  const rot = (pct, inicio, classe) => {
+  const rot = (pct, inicio) => {
     if(pct < .08) return '';                        // fatia fina: o texto não caberia
     const ang = (inicio + pct/2) * 2*Math.PI - Math.PI/2;
     return `<text x="${(cx + R*Math.cos(ang)).toFixed(1)}" y="${(cx + R*Math.sin(ang)).toFixed(1)}"
-      class="tg-r-fatia ${classe}" text-anchor="middle" dominant-baseline="central">${pctTxt(pct)}</text>`;
+      font-size="15" font-weight="800" fill="#fff" text-anchor="middle"
+      dominant-baseline="central">${pctTxt(pct)}</text>`;
   };
   return `<div class="tg-card tg-card-rosca">
     <div class="tg-head"><span>Prazo de ${IR_TRANS_PRAZO_H}h</span><strong class="${pctFora>0?'atraso':''}">${pctTxt(pctFora)} fora</strong></div>
     <div class="tg-rosca">
       <svg viewBox="0 0 ${cx*2} ${cx*2}" width="${cx*2}" height="${cx*2}" shape-rendering="geometricPrecision"
-        role="img" aria-label="${pctTxt(pctFora)} do valor fora do prazo">
-        <circle cx="${cx}" cy="${cx}" r="${R}" fill="none" stroke="var(--blue)" stroke-width="${larg}"/>
-        <circle cx="${cx}" cy="${cx}" r="${R}" fill="none" stroke="var(--orange)" stroke-width="${larg}"
+        font-family="${IR_SVG_FONTE}" role="img" aria-label="${pctTxt(pctFora)} do valor fora do prazo">
+        <circle cx="${cx}" cy="${cx}" r="${R}" fill="none" stroke="${P.blue}" stroke-width="${larg}"/>
+        <circle cx="${cx}" cy="${cx}" r="${R}" fill="none" stroke="${P.orange}" stroke-width="${larg}"
           stroke-dasharray="${(C*pctFora).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${cx} ${cx})"/>
-        ${rot(pctFora, 0, 'sobre-laranja')}
-        ${rot(1-pctFora, pctFora, 'sobre-azul')}
+        ${rot(pctFora, 0)}
+        ${rot(1-pctFora, pctFora)}
       </svg>
       <ul class="tg-leg">
         <li><span><i class="prazo"></i>No prazo</span><b>${irEsc(irTransValorCurto(dentro))}</b></li>
@@ -5903,8 +5969,8 @@ function irTransGraficos(porFaixaQtd, porFaixaValor){
   let dentro=0, fora=0;
   IR_TRANS_FAIXAS.forEach((f,i)=>{ if(irTransDentroDoPrazo(f)) dentro += vs[i]; else fora += vs[i]; });
   return `<div class="tg-wrap">
-    ${irTransLinha(qs, 'Peças por idade', irFmtInt(totQ), irFmtInt, 'var(--blue)', irTransNumCurto)}
-    ${irTransLinha(vs, 'Valor por idade', irFmtMoney(totV), irFmtMoney, 'var(--orange)', irTransValorCurto)}
+    ${irTransLinha(qs, 'Peças por idade', irFmtInt(totQ), irFmtInt, 'blue', irTransNumCurto)}
+    ${irTransLinha(vs, 'Valor por idade', irFmtMoney(totV), irFmtMoney, 'orange', irTransValorCurto)}
     ${irTransRosca(dentro, fora)}
   </div>`;
 }

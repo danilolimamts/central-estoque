@@ -1264,18 +1264,11 @@ table.trans-table td.trans-ganho .trans-pct{ color:var(--danger); opacity:.75; }
    dentro do viewBox, e o html2canvas (que gera o boletim em imagem) recorta o
    SVG pela caixa dele — o que vazasse sairia cortado no e-mail. */
 .tg-svg{ display:block; width:100%; height:auto; overflow:hidden; }
-.tg-base{ stroke:var(--line); stroke-width:1.2; }
-.tg-t-val{ font-size:10px; font-weight:800; fill:var(--ink); font-family:inherit; font-variant-numeric:tabular-nums; }
-.tg-t-val.mini{ font-size:8px; fill:var(--ink-soft); }
-.tg-t-lbl{ font-size:9px; font-weight:800; font-family:inherit; }
-.tg-t-lbl.ok{ fill:var(--success); }
-.tg-t-lbl.atraso{ fill:var(--orange); }
 .tg-card-rosca{ padding-bottom:10px; display:flex; flex-direction:column; }
 /* Anel em cima, legenda embaixo em duas colunas: lado a lado a legenda disputava
    largura com o anel e as duas coisas ficavam apertadas. */
 .tg-rosca{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; flex:1; }
 .tg-rosca svg{ width:150px; max-width:100%; height:auto; aspect-ratio:1; flex:none; }
-.tg-r-fatia{ font-size:15px; font-weight:800; font-family:inherit; font-variant-numeric:tabular-nums; fill:#fff; }
 .tg-leg{ list-style:none; margin:0; padding:0; display:flex; width:100%; }
 .tg-leg li{ flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:3px; }
 .tg-leg li + li{ border-left:1px solid var(--line); }
