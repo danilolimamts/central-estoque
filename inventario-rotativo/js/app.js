@@ -43,6 +43,7 @@ const IR = {
   itemDivFiltro:{tipo:'ciclo'}, itemDivSaldo:null,
   // Estoque atual (QRY0390) — independente do ciclo, é a foto do CD agora.
   est390File:null, est390Processing:false, est390Progress:{stage:'', pct:0},
+  transEmail:null, transEmailAberto:false,
   pastaHandle:null, pastaArquivos:null, pastaUltimo:null, pastaPerm:null,
   pastaProcessando:false, pastaVarridoEm:null, pastaErro:null,
   est390Meta:null, est390Ficha:null, est390Locais:null, transSetores:null, transExpandido:null,
@@ -130,6 +131,7 @@ async function irInit(){
     if(ign!=null) IR.audIgnorarVirtuais = ign;
     IR.audPrefixos = await irGetConfig('auditoria-prefixos');
     IR.transNomes = await irGetConfig('transitorio-nomes') || {};
+    IR.transEmail = await irGetConfig('transitorio-email');
     IR.net410Anos = await irGetAllNet410Anos();
     if(IR.net410Anos.length){
       IR.net410AnoSel = IR.net410Anos[0];
@@ -726,7 +728,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v135';
+const IR_APP_VERSION = 'v136';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -1918,7 +1920,7 @@ function irGerarRelatorioEmail(){
   </div>`;
   irBaixarBoletimImagem(html, `Boletim_Ciclo_${c.numero}_${new Date().toISOString().slice(0,10)}.png`);
 }
-async function irBaixarBoletimImagem(html, nomeArquivo){
+async function irBaixarBoletimImagem(html, nomeArquivo, email){
   if(typeof html2canvas==='undefined'){ irShowToast('Não consegui carregar o gerador de imagem (sem internet?).', true); return; }
   const area = document.getElementById('irPrintArea');
   area.innerHTML = html;
@@ -1953,8 +1955,26 @@ async function irBaixarBoletimImagem(html, nomeArquivo){
     URL.revokeObjectURL(url);
 
     const numero = IR.cicloAtivo ? IR.cicloAtivo.numero : '';
-    const assunto = `Boletim Inventário — Ciclo ${numero}`;
+    const assunto = (email && email.assunto) || `Boletim Inventário — Ciclo ${numero}`;
     let compartilhou = false;
+    /* Com destinatários configurados o mailto ganha da folha de compartilhamento:
+       ela anexa a imagem sozinha, mas não deixa preencher quem recebe — e o
+       pedido aqui é justamente não redigitar os responsáveis todo dia. Anexar
+       fica manual; o corpo leva os números em texto pra o e-mail já valer alguma
+       coisa mesmo antes de anexar. */
+    if(email && (email.para || email.cc)){
+      // RFC 6068 separa endereços por vírgula; o usuário digita com ponto e
+      // vírgula, que é o que o Outlook mostra. Normaliza pra vírgula.
+      const lista = v => (v||'').split(/[;,]/).map(x=>x.trim()).filter(Boolean).join(',');
+      const q = [];
+      if(email.cc) q.push('cc='+encodeURIComponent(lista(email.cc)));
+      q.push('subject='+encodeURIComponent(assunto));
+      q.push('body='+encodeURIComponent((email.corpo||'')+
+        `\n\n— Anexe a imagem "${nomeArquivo}", baixada agora na sua pasta de downloads.`));
+      window.open('mailto:'+encodeURIComponent(lista(email.para))+'?'+q.join('&'), '_blank');
+      irShowToast('✓ Boletim baixado e e-mail aberto — anexe a imagem e envie.');
+      return;
+    }
     // Se o navegador suportar compartilhar arquivo (Web Share API), abre direto
     // a folha de compartilhamento nativa — o usuário escolhe o e-mail e já
     // manda com a imagem anexada, só falta escolher os destinatários.
@@ -5848,10 +5868,11 @@ function irRenderTransitorios(){
   const logs = irTransLogsPresentes();
   const naoClass = c.lista.find(g=>!g.setor);
   return `
-    <div class="ofe-head" style="margin-bottom:12px;">
+    <div class="ofe-head" style="margin-bottom:4px;">
       <h3 style="margin:0;">Transitórios</h3>
-      <button class="btn btn-primary" onclick="irBaixarBoletimTransitorios()">📥 Boletim para e-mail</button>
+      <button class="btn btn-primary" onclick="irBaixarBoletimTransitorios()">✉️ Reportar por e-mail</button>
     </div>
+    ${irRenderTransEmailForm()}
     ${c.lista.filter(g=>g.setor && g.setor!=='IGN').map(g=>irTransPainelSetor(g, logs)).join('')}
     ${naoClass ? `<div class="panel"><div class="ofe-head">
       <h3>Não classificado</h3>
@@ -5966,6 +5987,71 @@ function irTransTabelaPrefixos(g){
    ficou pra trás dos ajustes do dash — gráfico empilhado, tabela com outra grade.
    Aqui a única diferença é o nome do transitório sair como texto no lugar do
    campo editável, que numa imagem viraria uma caixa de formulário. */
+/* Destinatários do report de transitórios. Ficam salvos porque o pedido é não
+   redigitar os responsáveis todo dia — e o assunto é FIXO de propósito: o
+   Outlook agrupa conversa por assunto, então repetir o mesmo texto faz o report
+   de hoje cair na mesma thread do de ontem. Botar a data no assunto quebraria
+   isso, por isso ela vai no corpo. */
+const IR_TRANS_EMAIL_ASSUNTO = 'Transitórios — Pendência de Movimentação';
+function irTransEmailCfg(){
+  const c = IR.transEmail || {};
+  return {para: c.para||'', cc: c.cc||'', assunto: c.assunto || IR_TRANS_EMAIL_ASSUNTO};
+}
+async function irTransSetEmail(campo, valor){
+  IR.transEmail = Object.assign({}, irTransEmailCfg(), {[campo]: (valor||'').trim()});
+  await irSetConfig('transitorio-email', IR.transEmail);
+  irRenderView();
+}
+function irTransToggleDestinatarios(){
+  IR.transEmailAberto = !IR.transEmailAberto;
+  irRenderView();
+}
+/* Corpo do e-mail: os mesmos números da tela, em texto. A imagem depende de
+   anexar à mão, então o e-mail precisa se sustentar sem ela. */
+function irTransCorpoEmail(){
+  const c = irTransCalc();
+  const m = IR.est390Meta || {};
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const linhas = [`Transitórios — ${hoje}`, ''];
+  let dentro = 0, fora = 0;
+  const setores = c.lista.filter(g=>g.setor && g.setor!=='IGN');
+  for(const g of setores){
+    const id = irTransIdade(g.locais);
+    let d = 0, f = 0;
+    for(const faixa of IR_TRANS_FAIXAS){
+      if(irTransDentroDoPrazo(faixa)) d += id.valores[faixa]||0; else f += id.valores[faixa]||0;
+    }
+    dentro += d; fora += f;
+    const pct = (d+f) > 0 ? Math.round(f/(d+f)*100) : 0;
+    linhas.push(`${IR_TRANS_SETOR_NOME[g.setor]||g.setor}: ${irFmtMoney(g.valor)} · ${irFmtInt(g.qtd)} pç · ${pct}% fora do prazo`);
+  }
+  const total = dentro + fora;
+  linhas.push('');
+  linhas.push(`Total parado: ${irFmtMoney(c.valorTotal)} · ${irFmtInt(c.pecasTotal)} peças · ${irFmtInt(c.nLocais)} endereços`);
+  if(total > 0) linhas.push(`Fora do prazo de ${IR_TRANS_PRAZO_H}h: ${irFmtMoney(fora)} (${Math.round(fora/total*100)}%)`);
+  const dup = irTransGanhoPorLocal();
+  let vDup = 0; for(const [,g] of dup) vDup += g.valor;
+  if(vDup > 0) linhas.push(`Provável duplicidade: ${irFmtMoney(vDup)}`);
+  if(m.importadoEm) linhas.push(`\nEstoque de ${new Date(m.importadoEm).toLocaleString('pt-BR')}.`);
+  return linhas.join('\n');
+}
+function irRenderTransEmailForm(){
+  const c = irTransEmailCfg();
+  if(!IR.transEmailAberto){
+    const quem = c.para ? c.para.split(/[,;]/).filter(Boolean).length + ' destinatário(s)' : 'nenhum destinatário';
+    return `<p class="field-hint trans-dest"><strong>${irEsc(quem)}</strong>
+      <button class="btn-link" onclick="irTransToggleDestinatarios()">${c.para?'alterar':'definir'}</button></p>`;
+  }
+  return `<div class="trans-dest-form">
+    <div><label>Para</label><input type="text" value="${irEsc(c.para)}" placeholder="fulano@lojadomecanico.com.br; ciclano@..."
+      onchange="irTransSetEmail('para', this.value)"></div>
+    <div><label>Em cópia</label><input type="text" value="${irEsc(c.cc)}" placeholder="gestores@..."
+      onchange="irTransSetEmail('cc', this.value)"></div>
+    <div><label>Assunto (fixo — é o que junta os e-mails na mesma conversa)</label>
+      <input type="text" value="${irEsc(c.assunto)}" onchange="irTransSetEmail('assunto', this.value)"></div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="irTransToggleDestinatarios()">Fechar</button></div>
+  </div>`;
+}
 async function irBaixarBoletimTransitorios(){
   const c = irTransCalc();
   const m = IR.est390Meta || {};
@@ -5987,7 +6073,8 @@ async function irBaixarBoletimTransitorios(){
       <p class="rp-footer">Prazo do transitório: ${IR_TRANS_PRAZO_H}h — verde está no prazo, laranja passou. D+${IR_TRANS_FAIXA_MAX} é acumulativo: sete dias ou mais.<br>"Prov. duplicidade" é o saldo de itens que fecharam o ano com ganho no NET da QRY410 — movimentar resolve, procurar não.<br>Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · gerado pelo módulo Inventário.</p>
     </div>
   </div>`;
-  irBaixarBoletimImagem(html, 'Transitorios_'+new Date().toISOString().slice(0,10)+'.png');
+  irBaixarBoletimImagem(html, 'Transitorios_'+new Date().toISOString().slice(0,10)+'.png',
+    Object.assign({}, irTransEmailCfg(), {corpo: irTransCorpoEmail()}));
 }
 
 /* ============================================================
