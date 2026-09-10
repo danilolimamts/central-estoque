@@ -161,33 +161,51 @@ button{ font-family:inherit; cursor:pointer; }
 .theme-toggle{ display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.08); border:none; color:#fff; padding:7px 10px; border-radius:6px; width:100%; font-size:12px; }
 
 .content{ flex:1; display:flex; flex-direction:column; overflow:hidden; background:var(--paper); }
+/* Barra em degradê da marca. A faixa branca antes emendava mal com o menu azul
+   e deixava o topo sem hierarquia nenhuma. O degradê é fixo nos dois temas: é
+   cor de marca, não superfície — por isso tudo que fica em cima dela declara a
+   própria cor, sem depender do token de tinta do tema. */
 .topbar{
-  display:flex; align-items:center; gap:16px; padding:14px 24px; background:var(--surface);
-  border-bottom:1px solid var(--line); flex-shrink:0; flex-wrap:wrap;
+  display:flex; align-items:flex-end; gap:16px; padding:15px 24px 14px;
+  background:linear-gradient(100deg, var(--blue) 0%, #062A9E 55%, #0B3ACB 100%);
+  flex-shrink:0; flex-wrap:wrap;
 }
-.topbar-logo{ height:38px; width:auto; flex-shrink:0; }
+.topbar-logo-chip{ background:#fff; border-radius:8px; padding:5px 8px; display:flex;
+  align-items:center; flex-shrink:0; align-self:center; }
+.topbar-logo{ height:34px; width:auto; display:block; }
 .topbar-titles{ min-width:0; }
-.topbar h1{ font-size:17px; font-weight:700; color:var(--ink); }
-.topbar p{ font-size:11px; color:var(--ink-soft); margin-top:1px; }
+.topbar-eyebrow{ font-size:9.5px; font-weight:800; letter-spacing:.12em;
+  text-transform:uppercase; color:#FF8A63; white-space:nowrap; }
+.topbar-eyebrow:empty{ display:none; }
+.topbar h1{ font-size:19px; font-weight:800; color:#fff; letter-spacing:-.01em; margin-top:2px; }
+/* A frase descritiva sai da barra: o eyebrow diz onde se está e de que ciclo são
+   os números, que é o que se procura no topo. O elemento fica pra quem lê tela. */
+.topbar p{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 .global-search{
-  border:1px solid var(--line); border-radius:8px; padding:7px 12px; font-size:12.5px;
-  background:var(--paper); color:var(--ink); width:260px; flex:0 1 260px; min-width:150px; margin-left:auto;
+  border:1px solid rgba(255,255,255,.22); border-radius:8px; padding:8px 12px; font-size:12.5px;
+  background:rgba(255,255,255,.12); color:#fff; width:260px; flex:0 1 260px; min-width:150px;
+  margin-left:auto; align-self:center;
 }
+.global-search::placeholder{ color:rgba(255,255,255,.62); }
+.global-search:focus{ outline:none; border-color:var(--orange); background:rgba(255,255,255,.18); }
 /* Barra de filtros no estilo "slicer" de BI: cada filtro é uma caixinha com o
    rótulo em cima e o valor/seletor embaixo, agrupadas do lado direito do topbar —
    junta Ciclo (já existia como pill solto) e Mês (novo) no mesmo visual. */
-.topbar-filters{ display:flex; align-items:stretch; gap:10px; flex-shrink:0; }
+.topbar-filters{ display:flex; align-items:stretch; gap:10px; flex-shrink:0; align-self:center; }
+/* Cartões brancos elevados sobre o degradê — cor fixa pelo mesmo motivo da
+   barra: são controles em cima de uma superfície de marca, não do tema. */
 .tb-filter{
   display:flex; flex-direction:column; justify-content:center; gap:2px;
-  background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:6px 14px; min-width:110px;
+  background:#fff; border:none; box-shadow:0 2px 8px rgba(0,0,0,.18);
+  border-radius:10px; padding:6px 14px; min-width:110px;
 }
-.tb-filter label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); }
+.tb-filter label{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#6B7280; }
 .tb-filter #cycleBadge, .tb-filter select{
-  background:transparent; border:none; color:var(--ink); font-size:12.5px; font-weight:700; font-family:inherit;
+  background:transparent; border:none; color:#001A72; font-size:12.5px; font-weight:800; font-family:inherit;
   cursor:pointer; padding:0; margin:0;
 }
 .tb-filter select:focus, .tb-filter #cycleFilterSelect:focus{ outline:none; }
-#cycleFilterSelect{ background:transparent; border:none; color:inherit; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer; padding:0; }
+#cycleFilterSelect{ background:transparent; border:none; color:inherit; font-size:12.5px; font-weight:800; font-family:inherit; cursor:pointer; padding:0; }
 @media(max-width:900px){
   .topbar-logo{ height:30px; }
   .topbar-filters{ width:100%; margin-left:0; }
@@ -200,7 +218,7 @@ button{ font-family:inherit; cursor:pointer; }
 .zoom-ctrl-float{ position:fixed; right:16px; bottom:16px; z-index:70; box-shadow:0 6px 18px rgba(0,0,0,.18); }
 .page-scroll{ flex:1; overflow-y:auto; padding:20px 24px; }
 
-.mobile-menu-btn{ display:none; background:none; border:none; color:var(--ink); padding:6px; margin-right:2px; }
+.mobile-menu-btn{ display:none; background:none; border:none; color:#fff; padding:6px; margin-right:2px; align-self:center; }
 .sidebar-backdrop{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:39; }
 /* Breakpoint baixo de propósito (celular, não "janela de desktop estreita") — uma
    janela de desktop redimensionada continua com o menu normal (230px / 56px

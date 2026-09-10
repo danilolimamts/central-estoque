@@ -227,17 +227,36 @@ const IR_TAB_LABELS = {
   importacao:['Importação','Importe as planilhas e abra ou atualize um ciclo.'],
   configuracoes:['Configurações','Pesos do Índice de Prioridade de Auditoria.']
 };
+/* A linha fina acima do título: em que seção do menu a aba está, e de que ciclo
+   são os números da tela. Substitui a frase descritiva que ficava embaixo do
+   título — "onde estou" e "de quando é isso" valem mais na barra do que um
+   resumo do que a aba faz, que se descobre olhando pra ela. */
+const IR_TAB_SECAO = {
+  dashboard:'Visão geral', ciclo:'Visão geral',
+  produtividade:'Operação', setores:'Operação', divergencias:'Operação', transitorios:'Operação',
+  historico:'Análise', comparativo:'Análise', indicadores:'Análise',
+  importacao:'Sistema', configuracoes:'Sistema'
+};
+function irEyebrowTexto(tab){
+  const secao = IR_TAB_SECAO[tab] || '';
+  const ciclo = IR.cicloAtivo ? irCicloLabel(IR.cicloAtivo) : '';
+  return [secao, ciclo].filter(Boolean).join(' · ');
+}
 function irSwitchTab(tab){
   IR.currentTab = tab;
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
   const [title, sub] = IR_TAB_LABELS[tab] || [tab, ''];
   document.getElementById('tabTitle').textContent = title;
   document.getElementById('tabSubtitle').textContent = sub;
+  const eb = document.getElementById('tabEyebrow');
+  if(eb) eb.textContent = irEyebrowTexto(tab);
   irRenderCycleBadge();
   irRenderView();
   irCloseSidebarMobile();
 }
 function irRenderCycleBadge(){
+  const eb = document.getElementById('tabEyebrow');
+  if(eb) eb.textContent = irEyebrowTexto(IR.currentTab);
   const badge = document.getElementById('cycleBadge');
   if(!badge) return;
   if(!IR.ciclos.length){ badge.innerHTML = 'Nenhum ciclo ativo'; return; }
@@ -707,7 +726,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v133';
+const IR_APP_VERSION = 'v134';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
