@@ -711,7 +711,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v109';
+const IR_APP_VERSION = 'v110';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5114,11 +5114,23 @@ function irExportarLocaisPendentesCsv(rua){
 // IGN não é setor: é o endereço que não conta como transitório (expedição em uso,
 // picking, área operacional normal). Fica visível num painel próprio pra ninguém
 // achar que o número sumiu, mas fora do total.
-const IR_TRANS_SETORES = ['C.E','INB','OUT','TRP','REV','IGN'];
+const IR_TRANS_SETORES = ['TSF','C.E','INB','OUT','TRP','REV','IGN'];
 const IR_TRANS_SETOR_NOME = {
   'C.E':'Controle de Estoque', INB:'Inbound', OUT:'Outbound',
   TRP:'Transporte', REV:'Reversa', TSF:'Transferência', IGN:'Desconsiderado'
 };
+/* O setor dono do endereço vem da CLASSE LOCAL do WMS: TSF, C.E, INB, OUT, TRP e
+   REV são os códigos que a operação cadastra. Endereço novo com a classe certa
+   entra no dashboard sozinho, sem ninguém mexer em configuração.
+
+   O mapa por prefixo continua como rede de segurança, pro endereço antigo que
+   ainda não tem classe. Quando nem um nem outro resolvem, o endereço cai em "não
+   classificado" — que é o sinal de que falta classe no cadastro. */
+function irTransSetorDe(l){
+  const clal = String(l.clal||'').trim().toUpperCase();
+  if(IR_TRANS_SETORES.includes(clal)) return clal;
+  return (IR.transSetores||{})[l.x1] || '';
+}
 // Palpite inicial, a partir do que o próprio endereço diz. Serve pra tela nascer
 // útil; o usuário corrige o que estiver errado e a correção fica salva.
 const IR_TRANS_SEED = {
@@ -5176,7 +5188,7 @@ function irTransCalc(){
   let valorTotal = 0, pecasTotal = 0, nLocais = 0;
   for(const l of (IR.est390Locais||[])){
     if(!l.qtd && !l.valor) continue;
-    const setor = mapa[l.x1] || '';
+    const setor = irTransSetorDe(l);
     if(!grupos.has(setor)) grupos.set(setor, {setor, valor:0, qtd:0, locais:[], prefixos:new Set()});
     const g = grupos.get(setor);
     g.valor += l.valor; g.qtd += l.qtd; g.locais.push(l); g.prefixos.add(l.x1);
@@ -5213,12 +5225,13 @@ function irTransLogsPresentes(){
 /* Faixas de idade do saldo, contadas do dia do último movimento até hoje. É a
    pendência de movimentação: D0 é o que entrou hoje e ainda pode sair sozinho;
    D+ é o que está parado há uma semana ou mais e ninguém foi buscar. */
-const IR_TRANS_FAIXAS = ['D0','D+1','D+2','D+3','D+4','D+'];
+const IR_TRANS_FAIXAS = ['D0','D+1','D+2','D+3','D+4','D+5','D+6','D+7','D+'];
+const IR_TRANS_FAIXA_MAX = 7;
 function irTransFaixa(dia, hoje){
   if(!dia) return 'D+';
   const d = Math.round((hoje - Date.parse(dia+'T00:00:00')) / 86400000);
   if(d <= 0) return 'D0';
-  if(d >= 5) return 'D+';
+  if(d > IR_TRANS_FAIXA_MAX) return 'D+';
   return 'D+'+d;
 }
 // Peças por faixa de idade de um endereço (ou de um grupo de endereços).
@@ -5251,7 +5264,7 @@ function irRenderTransitorios(){
     ${c.lista.filter(g=>g.setor).map(g=>irTransPainelSetor(g, logs)).join('')}
     ${naoClass ? `<div class="panel"><div class="ofe-head">
       <h3>Não classificado</h3>
-      <span class="field-hint">${irFmtMoney(naoClass.valor)} · ${irFmtInt(naoClass.locais.length)} endereços · ${irFmtInt(naoClass.prefixos.size)} prefixos sem setor</span>
+      <span class="field-hint">${irFmtMoney(naoClass.valor)} · ${irFmtInt(naoClass.locais.length)} endereços · ${irFmtInt(naoClass.prefixos.size)} prefixos. Cadastre a classe local (TSF, C.E, INB, OUT, TRP, REV) no WMS e eles entram sozinhos; até lá, dá pra apontar o setor aqui.</span>
     </div>${irTransTabelaPrefixos(naoClass)}</div>` : ''}
     <p class="field-hint">Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · ${irFmtInt(m.locais||0)} endereços no CD · ${irFmtMoney(m.valorTotal||0)} no total.
     ${irTransTemData() ? 'Idade do saldo contada da Data Movimento da QRY0160 até hoje.' : 'Importe a QRY0160 na aba Importação para abrir as colunas por idade do saldo — a QRY0390 não traz data de movimento.'}</p>
@@ -5332,16 +5345,18 @@ function irTransPainelSetor(g, logs){
 function irTransTabelaPrefixos(g){
   const porPrefixo = new Map();
   for(const l of g.locais){
-    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, ex:l.desc});
+    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, ex:l.desc, clal:new Set()});
     const p = porPrefixo.get(l.x1); p.valor += l.valor; p.qtd += l.qtd; p.n++;
+    if(l.clal) p.clal.add(l.clal);
   }
   const lista = Array.from(porPrefixo.values()).sort((a,b)=>b.valor-a.valor);
   return `<div class="table-wrap"><div class="table-scroll" style="max-height:420px;">
     <table class="conc-table">
-      <thead><tr><th>Prefixo</th><th>Exemplo</th><th class="num">Endereços</th><th class="num">Peças</th><th class="num">Valor</th><th>Setor</th></tr></thead>
+      <thead><tr><th>Prefixo</th><th>Exemplo</th><th>Classe no WMS</th><th class="num">Endereços</th><th class="num">Peças</th><th class="num">Valor</th><th>Setor</th></tr></thead>
       <tbody>${lista.map(p=>`<tr>
         <td class="mono">${irEsc(p.x1||'(vazio)')}</td>
         <td>${irEsc(p.ex||'')}</td>
+        <td class="mono">${irEsc(Array.from(p.clal||[]).join(', ') || '—')}</td>
         <td class="mono">${irFmtInt(p.n)}</td>
         <td class="mono">${irFmtInt(p.qtd)}</td>
         <td class="mono">${irFmtMoney(p.valor)}</td>

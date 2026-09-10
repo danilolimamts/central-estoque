@@ -1115,17 +1115,31 @@ table.ofe-sub tr.ofe-fora{ opacity:.55; }
 }
 .sidebar.collapsed .sidebar-versao{ display:none; }
 
-/* ---------- TRANSITÓRIOS ---------- */
+/* ---------- TRANSITÓRIOS ----------
+   Azul e laranja da marca: o cabeçalho é o azul institucional, o total repete o
+   azul mais claro, e o laranja marca a coluna do que está parado há mais de uma
+   semana — é o único número da tabela que pede ação. */
 .trans-kpis{ margin-bottom:12px; }
+.trans-kpis .ofe-num strong{ color:var(--blue); }
 table.trans-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
-table.trans-table th{
-  background:var(--surface2); color:var(--ink-soft); font-size:9.5px; font-weight:800;
-  text-transform:uppercase; letter-spacing:.05em; padding:7px 9px; text-align:left;
-  border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:middle;
+table.trans-table thead th{
+  background:var(--blue); color:#fff; font-size:9.5px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.05em; padding:8px 9px; text-align:left;
+  border-bottom:none; white-space:nowrap; vertical-align:middle;
 }
+table.trans-table thead tr:first-child th{ border-bottom:1px solid rgba(255,255,255,.22); }
 table.trans-table th.num{ text-align:right; }
 table.trans-table td{ padding:6px 9px; border-bottom:1px solid var(--line); }
+table.trans-table tbody tr:nth-child(even){ background:var(--surface2); }
+table.trans-table tbody tr:hover{ background:var(--orange-light); }
 table.trans-table td.mono{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 table.trans-table td:nth-child(2){ text-align:left; }
-table.trans-table tfoot td{ background:var(--surface2); border-top:2px solid var(--line); border-bottom:none; }
-table.trans-table td.trans-velho{ color:var(--danger); font-weight:800; }
+table.trans-table td:last-child{ font-weight:700; color:var(--blue); }
+table.trans-table tfoot td{
+  background:var(--blue-light); color:var(--blue);
+  border-top:2px solid var(--blue); border-bottom:none; font-weight:800;
+}
+/* D+ é o saldo que ninguém foi buscar há mais de uma semana. */
+table.trans-table td.trans-velho{ color:var(--orange); font-weight:800; }
+:root[data-theme="dark"] table.trans-table thead th{ color:#fff; }
+:root[data-theme="dark"] table.trans-table tfoot td{ color:var(--ink); }

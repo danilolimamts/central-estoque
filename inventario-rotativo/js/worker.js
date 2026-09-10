@@ -248,12 +248,13 @@ async function runPipeline160({buf160}){
   const r = buildAliasResolver(Object.keys(rows[0]), ALIAS_160);
   validateColumns(r, ['item','local','qtd','dataMovimento'], 'QRY0160');
 
-  post('progress', {stage:'Lendo a ficha dos itens (QRY0390)...', pct:12});
+  post('progress', {stage:'Lendo as fichas da QRY0390...', pct:12});
   const ficha = new Map((await irGetItemInfoTodos()).map(f=>[f.item, f]));
+  const fichaLocal = new Map((await irGetLocalInfoTodos()).map(f=>[f.local, f]));
 
   post('progress', {stage:'Agregando '+rows.length+' linha(s) por endereço...', pct:20});
   const porLocal = new Map();
-  let valorTotal = 0, pecasTotal = 0, semFicha = 0, n = 0;
+  let valorTotal = 0, pecasTotal = 0, semFicha = 0, semClasse = 0, n = 0;
   const itensVistos = new Set();
   for(const row of rows){
     if(++n % 20000 === 0) post('progress', {stage:'Linha '+n+' de '+rows.length+'...', pct:20+Math.round(n/rows.length*60)});
@@ -268,11 +269,12 @@ async function runPipeline160({buf160}){
     const dia = d && !isNaN(d.getTime()) ? isoDateTime(d).slice(0,10) : '';
     let g = porLocal.get(local);
     if(!g){
+      const fl = fichaLocal.get(local) || {};
       g = {local,
-        desc: String(getVal(row, r.endereco) ?? '').trim(),
-        x1: String(getVal(row, r.x1) ?? '').trim(),
-        x2: String(getVal(row, r.x2) ?? '').trim(),
-        clal:'', predio:'', log:'',
+        desc: String(getVal(row, r.endereco) ?? '').trim() || fl.desc || '',
+        x1: String(getVal(row, r.x1) ?? '').trim() || fl.x1 || '',
+        x2: String(getVal(row, r.x2) ?? '').trim() || fl.x2 || '',
+        clal: fl.clal || '', predio: fl.predio || '', log:'',
         qtd:0, valor:0, itens:0, porLog:{}, porDia:{}, _itens:new Set()};
       porLocal.set(local, g);
     }
@@ -285,15 +287,16 @@ async function runPipeline160({buf160}){
     valorTotal += valor; pecasTotal += qtd;
   }
   const linhas = Array.from(porLocal.values()).map(g=>{ g.itens = g._itens.size; delete g._itens; return g; });
+  for(const l of linhas) if(!l.clal) semClasse++;
 
   post('progress', {stage:'Gravando estoque no IndexedDB...', pct:88});
   await irSalvarEstoqueLocais(linhas, {
-    fonte:'160', importadoEm: new Date().toISOString(),
+    fonte:'160', semClasse, importadoEm: new Date().toISOString(),
     linhas: rows.length, locais: linhas.length, itens: itensVistos.size,
     valorTotal, pecasTotal, semFicha
   });
   post('progress', {stage:'Concluído.', pct:100});
-  self.postMessage({type:'done160', locais: linhas.length, valorTotal, pecasTotal, semFicha, itens: itensVistos.size});
+  self.postMessage({type:'done160', locais: linhas.length, valorTotal, pecasTotal, semFicha, semClasse, itens: itensVistos.size});
 }
 
 /* ---------- QRY0390 — ESTOQUE ATUAL POR ENDEREÇO ----------
@@ -389,6 +392,11 @@ async function runPipeline390({buf390}){
     return g;
   });
   await irSalvarItemInfo(fichas);
+  // Ficha do endereço: é daqui que sai a CLASSE LOCAL, que define o setor dono do
+  // transitório. A QRY0160 não tem essa coluna, então ela consulta este dicionário.
+  await irSalvarLocalInfo(linhas.map(l=>({
+    local:l.local, desc:l.desc, x1:l.x1, x2:l.x2, clal:l.clal, predio:l.predio, log:l.log
+  })));
   await irSalvarEstoqueLocais(linhas, {
     fonte:'390', atualizadoEm, importadoEm: new Date().toISOString(),
     linhas: rows.length, locais: linhas.length,

@@ -3,7 +3,7 @@
    100% client-side. Nenhum servidor, nenhuma API.
    ============================================================ */
 const IR_DB_NAME = 'inventario_rotativo_v1';
-const IR_DB_VERSION = 8;
+const IR_DB_VERSION = 9;
 
 const IR_STORES = {
   ciclos: 'ciclos',
@@ -28,7 +28,11 @@ const IR_STORES = {
   // Ficha do item vinda da QRY0390 (EAN e descrição), por ITEM. Fica separada do
   // ciclo de propósito: o EAN não muda de ciclo pra ciclo, e assim a auditoria
   // tem código de barras sem exigir reprocessamento.
-  itemInfo: 'item_info'
+  itemInfo: 'item_info',
+  // Ficha do ENDEREÇO vinda da QRY0390 (classe local, prédio, prefixos). A
+  // QRY0160 não traz classe local, e é ela que diz de qual setor é o endereço —
+  // então a 390 alimenta esse dicionário e a 160 consulta.
+  localInfo: 'local_info'
 };
 
 function irOpenDB(){
@@ -87,6 +91,9 @@ function irOpenDB(){
       }
       if(!db.objectStoreNames.contains(IR_STORES.itemInfo)){
         db.createObjectStore(IR_STORES.itemInfo, {keyPath:'item'});
+      }
+      if(!db.objectStoreNames.contains(IR_STORES.localInfo)){
+        db.createObjectStore(IR_STORES.localInfo, {keyPath:'local'});
       }
     };
     req.onsuccess = ()=>resolve(req.result);
@@ -447,6 +454,16 @@ async function irSalvarItemInfo(linhas){
   await new Promise((res, rej)=>{ const r = store.clear(); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); });
   const CHUNK = 1500;
   for(let i=0;i<linhas.length;i+=CHUNK) await irBulkPut(IR_STORES.itemInfo, linhas.slice(i,i+CHUNK));
+}
+async function irSalvarLocalInfo(linhas){
+  const store = await irTx(IR_STORES.localInfo, 'readwrite');
+  await new Promise((res, rej)=>{ const r = store.clear(); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); });
+  const CHUNK = 1500;
+  for(let i=0;i<linhas.length;i+=CHUNK) await irBulkPut(IR_STORES.localInfo, linhas.slice(i,i+CHUNK));
+}
+async function irGetLocalInfoTodos(){
+  const store = await irTx(IR_STORES.localInfo, 'readonly');
+  return new Promise((res, rej)=>{ const r = store.getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); });
 }
 async function irGetItemInfoTodos(){
   const store = await irTx(IR_STORES.itemInfo, 'readonly');
