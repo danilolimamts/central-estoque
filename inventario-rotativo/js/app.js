@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v123';
+const IR_APP_VERSION = 'v124';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5500,8 +5500,8 @@ function irTransRosca(dentro, fora){
         <text x="${cx}" y="${cx+9}" class="tg-r-cap" text-anchor="middle">parado</text>
       </svg>
       <ul class="tg-leg">
-        <li><i class="prazo"></i>No prazo<b>${irEsc(irTransValorCurto(dentro))}</b></li>
-        <li><i class="atraso"></i>Fora<b>${irEsc(irTransValorCurto(fora))}</b></li>
+        <li><span><i class="prazo"></i>No prazo</span><b>${irEsc(irTransValorCurto(dentro))}</b></li>
+        <li><span><i class="atraso"></i>Fora</span><b class="atraso">${irEsc(irTransValorCurto(fora))}</b></li>
       </ul>
     </div>
   </div>`;
