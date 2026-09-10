@@ -402,14 +402,15 @@ async function runPipeline390({buf390}){
   await irSalvarLocalInfo(linhas.map(l=>({
     local:l.local, desc:l.desc, x1:l.x1, x2:l.x2, clal:l.clal, predio:l.predio, log:l.log
   })));
-  await irSalvarEstoqueLocais(linhas, {
-    fonte:'390', atualizadoEm, importadoEm: new Date().toISOString(),
-    linhas: rows.length, locais: linhas.length,
-    itens: porItem.size,
-    valorTotal, pecasTotal
+  // A QRY0390 grava só as FICHAS (item e endereço). O agregado por endereço é da
+  // QRY0160, que tem a data de movimento — se as duas escrevessem no mesmo lugar,
+  // reimportar a 390 apagaria as datas e a tabela de transitórios voltava a zero.
+  await irSetConfig('estoque390-ficha', {
+    atualizadoEm, importadoEm: new Date().toISOString(),
+    linhas: rows.length, locais: linhas.length, itens: porItem.size, valorTotal, pecasTotal
   });
   post('progress', {stage:'Concluído.', pct:100});
-  self.postMessage({type:'done390', locais: linhas.length, valorTotal, pecasTotal});
+  self.postMessage({type:'done390', locais: linhas.length, itens: porItem.size, valorTotal, pecasTotal});
 }
 
 // Lê e concatena vários arquivos da mesma planilha, deduplicando linhas por uma chave

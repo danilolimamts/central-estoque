@@ -1133,7 +1133,11 @@ table.trans-table td{ padding:6px 9px; border-bottom:1px solid var(--line); }
 table.trans-table tbody tr:nth-child(even){ background:var(--surface2); }
 table.trans-table tbody tr:hover{ background:var(--orange-light); }
 table.trans-table td.mono{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-table.trans-table td:nth-child(2){ text-align:left; }
+/* Código e descrição do transitório à esquerda; só os números vão pra direita. */
+table.trans-table td:nth-child(1), table.trans-table th:nth-child(1),
+table.trans-table td:nth-child(2), table.trans-table th:nth-child(2){ text-align:left; }
+table.trans-table td:nth-child(1){ font-weight:800; }
+.trans-cel-val{ display:block; font-size:9.5px; font-weight:600; color:var(--ink-soft); }
 table.trans-table td:last-child{ font-weight:700; color:var(--blue); }
 table.trans-table tfoot td{
   background:var(--blue-light); color:var(--blue);
@@ -1148,16 +1152,18 @@ table.trans-table td.trans-velho{ color:var(--orange); font-weight:800; }
 table.trans-table td.trans-ganho{ color:var(--success); font-weight:800; }
 .trans-pct{ display:block; font-size:9.5px; font-weight:700; color:var(--ink-soft); }
 
-/* Mini gráfico de valor parado por faixa de idade. Verde dentro do prazo de 48h,
-   laranja depois — a cor repete no cabeçalho da tabela logo abaixo. */
-.tg-wrap{ display:flex; align-items:flex-end; gap:6px; margin:2px 0 14px; padding:10px 12px 6px;
-  background:var(--surface2); border:1px solid var(--line); border-radius:10px; }
-.tg-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:3px; min-width:0; }
-.tg-bar{ width:100%; max-width:54px; border-radius:4px 4px 0 0; background:var(--success); }
-.tg-col.atraso .tg-bar{ background:var(--orange); }
-.tg-val{ font-size:9.5px; font-weight:800; color:var(--ink-soft); font-variant-numeric:tabular-nums; white-space:nowrap; }
-.tg-lbl{ font-size:9.5px; font-weight:800; color:var(--ink-soft); letter-spacing:.03em; }
-.tg-col.atraso .tg-val, .tg-col.atraso .tg-lbl{ color:var(--orange); }
+/* Gráfico de linha do valor parado por faixa de idade. Linha no azul da marca,
+   ponto verde dentro das 48h e laranja depois — a mesma cor do cabeçalho abaixo. */
+.tg-wrap{ margin:2px 0 14px; padding:10px 14px 4px; background:var(--surface2);
+  border:1px solid var(--line); border-radius:10px; }
+.tg-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:2px; }
+.tg-head span{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); }
+.tg-head strong{ font-size:15px; color:var(--blue); font-variant-numeric:tabular-nums; }
+.tg-svg{ display:block; width:100%; height:132px; overflow:visible; }
+.tg-t-val{ font-size:10px; font-weight:800; fill:var(--ink-soft); font-family:inherit; }
+.tg-t-lbl{ font-size:10px; font-weight:800; font-family:inherit; letter-spacing:.03em; }
+.tg-t-lbl.ok{ fill:var(--success); }
+.tg-t-lbl.atraso{ fill:var(--orange); }
 
 table.trans-table th.tg-th-ok{ background:var(--success); }
 table.trans-table th.tg-th-atraso{ background:var(--orange); }
