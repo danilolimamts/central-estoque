@@ -672,12 +672,26 @@ table.sim-table .pos{ color:var(--success); font-weight:700; }
 
 .aud-cab{ display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; margin-bottom:12px; }
 table.aud-table{ width:100%; border-collapse:collapse; font-size:12px; }
-table.aud-table th{ background:var(--surface2); color:var(--ink-soft); font-size:9.5px; font-weight:800;
-  text-transform:uppercase; letter-spacing:.05em; padding:8px 10px; text-align:left; border-bottom:1px solid var(--line); }
-table.aud-table td{ padding:7px 10px; border-bottom:1px solid var(--line); }
-table.aud-table td.mono{ text-align:right; }
-table.aud-table td:nth-child(2), table.aud-table td:nth-child(4){ text-align:left; }
-.aud-vazio{ min-width:130px; border-bottom:1px solid var(--line); }
+table.aud-table th{
+  position:sticky; top:0; z-index:1;
+  background:var(--blue); color:#fff; font-size:9.5px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.05em; padding:9px 10px; text-align:left;
+  white-space:nowrap; border-bottom:none;
+}
+table.aud-table th.num{ text-align:right; }
+table.aud-table td{ padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+table.aud-table tbody tr:nth-child(even){ background:var(--surface2); }
+table.aud-table tbody tr:hover{ background:var(--orange-light); }
+table.aud-table td.mono{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+table.aud-table td:nth-child(1), table.aud-table td:nth-child(2){ text-align:left; }
+table.aud-table .neg{ color:var(--danger); font-weight:700; }
+table.aud-table .pos{ color:var(--success); font-weight:700; }
+.aud-ult{ font-size:10.5px; color:var(--ink-soft); }
+.aud-vazio{ min-width:120px; border-bottom:1px solid var(--line); background:var(--paper); }
+.aud-alerta{
+  font-size:11px; font-weight:700; color:var(--danger); background:var(--danger-light);
+  padding:5px 10px; border-radius:6px;
+}
 
 /* Descrição do item vai completa na auditoria — o auditor precisa reconhecer a
    peça na prateleira, e o resumo "primeira … última palavra" não serve pra isso. */
@@ -711,20 +725,25 @@ table.aud-table td:nth-child(2), table.aud-table td:nth-child(4){ text-align:lef
     white-space:normal; overflow-wrap:anywhere; word-break:break-word; vertical-align:top;
   }
   table.aud-table th{ background:#EEE !important; color:#000 !important; font-size:7.5px;
-    -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    position:static; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  table.aud-table tbody tr:nth-child(even){ background:#FFF !important; }
+  table.aud-table .neg, table.aud-table .pos{ color:#000 !important; }
+  .aud-alerta{ display:none !important; }
+  .aud-ult{ font-size:7.5px; }
   .aud-desc{ min-width:0; }
   .aud-vazio{ border-bottom:1px solid #000 !important; min-width:0; }
 
   /* Item · EAN · Descrição · Local · Desc. Local · Qtde · Qtde Div. · Valor Div. · Contagem */
-  table.aud-t-item th:nth-child(1), table.aud-t-item td:nth-child(1){ width:7%; }
-  table.aud-t-item th:nth-child(2), table.aud-t-item td:nth-child(2){ width:10%; }
-  table.aud-t-item th:nth-child(3), table.aud-t-item td:nth-child(3){ width:26%; }
-  table.aud-t-item th:nth-child(4), table.aud-t-item td:nth-child(4){ width:7%; }
-  table.aud-t-item th:nth-child(5), table.aud-t-item td:nth-child(5){ width:14%; }
-  table.aud-t-item th:nth-child(6), table.aud-t-item td:nth-child(6){ width:6%; }
-  table.aud-t-item th:nth-child(7), table.aud-t-item td:nth-child(7){ width:7%; }
-  table.aud-t-item th:nth-child(8), table.aud-t-item td:nth-child(8){ width:10%; }
-  table.aud-t-item th:nth-child(9), table.aud-t-item td:nth-child(9){ width:13%; }
+  table.aud-t-item th:nth-child(1),  table.aud-t-item td:nth-child(1){ width:6%; }
+  table.aud-t-item th:nth-child(2),  table.aud-t-item td:nth-child(2){ width:9%; }
+  table.aud-t-item th:nth-child(3),  table.aud-t-item td:nth-child(3){ width:22%; }
+  table.aud-t-item th:nth-child(4),  table.aud-t-item td:nth-child(4){ width:6%; }
+  table.aud-t-item th:nth-child(5),  table.aud-t-item td:nth-child(5){ width:11%; }
+  table.aud-t-item th:nth-child(6),  table.aud-t-item td:nth-child(6){ width:5%; }
+  table.aud-t-item th:nth-child(7),  table.aud-t-item td:nth-child(7){ width:6%; }
+  table.aud-t-item th:nth-child(8),  table.aud-t-item td:nth-child(8){ width:9%; }
+  table.aud-t-item th:nth-child(9),  table.aud-t-item td:nth-child(9){ width:15%; }
+  table.aud-t-item th:nth-child(10), table.aud-t-item td:nth-child(10){ width:11%; }
 
   /* Dia · Local · Desc. Local · Inv. · Sobrou · Descrição · Faltou · Descrição · Qtde · Desequil. · Confere */
   table.aud-t-sim th:nth-child(1),  table.aud-t-sim td:nth-child(1){ width:7%; }
