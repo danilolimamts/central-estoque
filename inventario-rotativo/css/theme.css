@@ -1167,6 +1167,7 @@ table.trans-table td.trans-ganho{ color:var(--success); font-weight:800; }
 .tg-svg{ display:block; width:100%; height:auto; overflow:visible; }
 .tg-base{ stroke:var(--line); stroke-width:1; }
 .tg-t-val{ font-size:10px; font-weight:800; fill:var(--ink); font-family:inherit; font-variant-numeric:tabular-nums; }
+.tg-t-val.mini{ font-size:8px; fill:var(--ink-soft); }
 .tg-t-lbl{ font-size:9px; font-weight:800; font-family:inherit; }
 .tg-t-lbl.ok{ fill:var(--success); }
 .tg-t-lbl.atraso{ fill:var(--orange); }
