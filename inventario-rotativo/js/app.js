@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v114';
+const IR_APP_VERSION = 'v115';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5207,9 +5207,10 @@ function irTransCalc(){
     valorTotal += l.valor; pecasTotal += l.qtd; nLocais++;
   }
   for(const g of grupos.values()) g.locais.sort((a,b)=>b.valor-a.valor);
-  // Reversa por último: é o maior volume e o que menos muda de um dia pro outro,
-  // então empurra pra baixo o que precisa de decisão.
-  const ordem = g => g.setor==='IGN' ? 3 : (!g.setor ? 2 : (g.setor==='REV' ? 1 : 0));
+  // Transporte em penúltimo e Reversa por último: são os maiores volumes e os que
+  // menos mudam de um dia pro outro, então empurram pra baixo o que precisa de decisão.
+  const ordem = g => g.setor==='IGN' ? 4 : (!g.setor ? 3
+    : (g.setor==='REV' ? 2 : (g.setor==='TRP' ? 1 : 0)));
   const lista = Array.from(grupos.values()).sort((a,b)=> ordem(a)-ordem(b) || b.valor-a.valor);
   return {lista, valorTotal, pecasTotal, nLocais};
 }
@@ -5356,41 +5357,72 @@ function irTransGanhoPorLocal(){
 
    E uma rosca com o valor dentro e fora do prazo de 48h, que é a leitura de
    gestão: quanto do dinheiro parado já estourou o combinado. */
+/* Curva suave (Catmull-Rom convertido em bézier cúbica) em vez de segmentos retos.
+   Os pontos de controle são grampeados na faixa do plot: sem isso um pico isolado
+   como o D+7 faz a curva estourar pra fora do card. */
+function irTransCurva(pts, yMin, yMax){
+  if(pts.length < 2) return pts.length ? `M${pts[0][0]} ${pts[0][1]}` : '';
+  const cl = v => Math.min(yMax, Math.max(yMin, v));
+  const T = 0.85;
+  let d = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for(let i=0;i<pts.length-1;i++){
+    const p0 = pts[i-1] || pts[i], p1 = pts[i], p2 = pts[i+1], p3 = pts[i+2] || p2;
+    const c1x = p1[0] + (p2[0]-p0[0])/6*T, c1y = cl(p1[1] + (p2[1]-p0[1])/6*T);
+    const c2x = p2[0] - (p3[0]-p1[0])/6*T, c2y = cl(p2[1] - (p3[1]-p1[1])/6*T);
+    d += ` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+/* O viewBox tem proporção fixa e o SVG escala junto (height:auto no CSS). O
+   preserveAspectRatio="none" que estava aqui esticava traço e texto na horizontal
+   — era isso que dava o aspecto borrado. */
 function irTransLinha(vals, titulo, total, fmt, cor){
-  const W = 300, H = 96, padL = 14, padR = 14, padT = 22, padB = 18;
+  const W = 340, H = 132, padL = 18, padR = 18, padT = 30, padB = 22;
   const max = Math.max(...vals, 1);
   const passo = (W - padL - padR) / Math.max(1, vals.length - 1);
-  const y = v => padT + (H - padT - padB) * (1 - v/max);
+  const base = H - padB;
+  const y = v => padT + (base - padT) * (1 - v/max);
   const pts = vals.map((v,i)=>[padL + i*passo, y(v)]);
-  const linha = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-  const area = linha + ` L${pts[pts.length-1][0].toFixed(1)} ${H-padB} L${pts[0][0].toFixed(1)} ${H-padB} Z`;
+  const linha = irTransCurva(pts, padT - 4, base);
+  const area = linha + ` L${pts[pts.length-1][0].toFixed(1)} ${base} L${pts[0][0].toFixed(1)} ${base} Z`;
   const iMax = vals.indexOf(Math.max(...vals));
+  const gid = 'tgg' + Math.random().toString(36).slice(2,8);
   return `<div class="tg-card">
     <div class="tg-head"><span>${irEsc(titulo)}</span><strong>${irEsc(total)}</strong></div>
-    <svg viewBox="0 0 ${W} ${H}" class="tg-svg" preserveAspectRatio="none" role="img" aria-label="${irEsc(titulo)}: ${irEsc(total)}">
-      <path d="${area}" fill="${cor}" opacity=".12"/>
-      <path d="${linha}" fill="none" stroke="${cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-      ${pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i===iMax?4:2.8}"
-        fill="${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'var(--success)':'var(--orange)'}"><title>${irEsc(IR_TRANS_FAIXAS[i])}: ${irEsc(fmt(vals[i]))}</title></circle>`).join('')}
-      ${vals[iMax]>0?`<text x="${pts[iMax][0].toFixed(1)}" y="${Math.max(10,pts[iMax][1]-8).toFixed(1)}" class="tg-t-val" text-anchor="middle">${irEsc(fmt(vals[iMax]))}</text>`:''}
-      ${pts.map((p,i)=>`<text x="${p[0].toFixed(1)}" y="${H-5}" class="tg-t-lbl ${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'ok':'atraso'}" text-anchor="middle">${irEsc(IR_TRANS_FAIXAS[i].replace('D+','+').replace('D0','0'))}</text>`).join('')}
+    <svg viewBox="0 0 ${W} ${H}" class="tg-svg" role="img" aria-label="${irEsc(titulo)}: ${irEsc(total)}">
+      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${cor}" stop-opacity=".28"/>
+        <stop offset="1" stop-color="${cor}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <line x1="${padL-6}" y1="${base}" x2="${W-padL+6}" y2="${base}" class="tg-base"/>
+      <path d="${area}" fill="url(#${gid})"/>
+      <path d="${linha}" fill="none" stroke="${cor}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+      ${pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i===iMax?4.6:3.2}"
+        fill="${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'var(--success)':'var(--orange)'}" stroke="var(--surface2)" stroke-width="1.4"><title>${irEsc(IR_TRANS_FAIXAS[i])}: ${irEsc(fmt(vals[i]))}</title></circle>`).join('')}
+      ${vals[iMax]>0?`<text x="${Math.min(W-padR-4, Math.max(padL+4, pts[iMax][0])).toFixed(1)}" y="${Math.max(13,pts[iMax][1]-10).toFixed(1)}" class="tg-t-val" text-anchor="middle">${irEsc(fmt(vals[iMax]))}</text>`:''}
+      ${pts.map((p,i)=>`<text x="${p[0].toFixed(1)}" y="${H-6}" class="tg-t-lbl ${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'ok':'atraso'}" text-anchor="middle">${irEsc(IR_TRANS_FAIXAS[i].replace('D+','+').replace('D0','0'))}</text>`).join('')}
     </svg>
   </div>`;
 }
+/* Rosca nas cores da casa: azul o que está no prazo, laranja o que estourou.
+   O percentual vai no miolo — a leitura de um anel é sempre "quanto do total",
+   e obrigar o olho a ir até o cabeçalho pra achar o número desperdiça o buraco. */
 function irTransRosca(dentro, fora){
   const total = dentro + fora;
   if(total <= 0) return '';
-  const R = 34, C = 2*Math.PI*R, pctFora = fora/total;
+  const R = 46, C = 2*Math.PI*R, pctFora = fora/total, larg = 20;
   return `<div class="tg-card tg-card-rosca">
     <div class="tg-head"><span>Prazo de ${IR_TRANS_PRAZO_H}h</span><strong class="${pctFora>0?'atraso':''}">${irFmtPct(pctFora)}</strong></div>
     <div class="tg-rosca">
-      <svg viewBox="0 0 88 88" role="img" aria-label="${irFmtPct(pctFora)} do valor fora do prazo">
-        <circle cx="44" cy="44" r="${R}" fill="none" stroke="var(--success)" stroke-width="14"/>
-        <circle cx="44" cy="44" r="${R}" fill="none" stroke="var(--orange)" stroke-width="14"
-          stroke-dasharray="${(C*pctFora).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 44 44)"/>
+      <svg viewBox="0 0 120 120" role="img" aria-label="${irFmtPct(pctFora)} do valor fora do prazo">
+        <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--blue)" stroke-width="${larg}"/>
+        <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--orange)" stroke-width="${larg}"
+          stroke-dasharray="${(C*pctFora).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 60 60)"/>
+        <text x="60" y="56" class="tg-r-num" text-anchor="middle">${irEsc(irFmtPct(pctFora))}</text>
+        <text x="60" y="70" class="tg-r-cap" text-anchor="middle">fora</text>
       </svg>
       <ul class="tg-leg">
-        <li><i class="ok"></i>No prazo<b>${irFmtMoneyCompact(dentro)}</b></li>
+        <li><i class="prazo"></i>No prazo<b>${irFmtMoneyCompact(dentro)}</b></li>
         <li><i class="atraso"></i>Fora<b>${irFmtMoneyCompact(fora)}</b></li>
       </ul>
     </div>
