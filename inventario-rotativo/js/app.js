@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v118';
+const IR_APP_VERSION = 'v119';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5571,11 +5571,11 @@ function irTransPainelSetor(g, logs){
     ${irTransGraficos(totCol, totValFaixa)}
     <div class="table-wrap"><table class="trans-table">
       <thead>
-        <tr><th rowspan="2">Local transitório</th><th rowspan="2">Descrição</th>
+        <tr><th rowspan="2" class="tt-local">Local transitório</th><th rowspan="2" class="tt-desc">Descrição</th>
             <th colspan="${cols.length}">Peças paradas há — prazo de ${IR_TRANS_PRAZO_H}h</th>
-            <th rowspan="2" class="num">Valor por endereço</th>
-            <th rowspan="2" class="num">Prov. duplicidade</th></tr>
-        <tr>${cols.map(l=>`<th class="num ${irTransDentroDoPrazo(l)?'tg-th-ok':'tg-th-atraso'}">${irEsc(l)}</th>`).join('')}</tr>
+            <th rowspan="2" class="num tt-valor">Valor por endereço</th>
+            <th rowspan="2" class="num tt-dup">Prov. duplicidade</th></tr>
+        <tr>${cols.map(l=>`<th class="num tt-dia ${irTransDentroDoPrazo(l)?'tg-th-ok':'tg-th-atraso'}">${irEsc(l)}</th>`).join('')}</tr>
       </thead>
       <tbody>${linhas.map(p=>`<tr>
         <td class="mono">${irEsc(p.x1||'(vazio)')}</td>

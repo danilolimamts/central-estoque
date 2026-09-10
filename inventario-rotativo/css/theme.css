@@ -1125,7 +1125,9 @@ table.trans-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
 table.trans-table thead th{
   background:var(--blue); color:#fff; font-size:9.5px; font-weight:800;
   text-transform:uppercase; letter-spacing:.05em; padding:8px 9px; text-align:left;
-  border-bottom:none; white-space:nowrap; vertical-align:middle;
+  border-bottom:none; vertical-align:middle;
+  /* Com grade fixa o título tem de caber na coluna, não empurrar a vizinha. */
+  white-space:normal; overflow-wrap:anywhere; line-height:1.25;
 }
 table.trans-table thead tr:first-child th{ border-bottom:1px solid rgba(255,255,255,.22); }
 table.trans-table th.num{ text-align:right; }
@@ -1137,10 +1139,15 @@ table.trans-table td.mono{ text-align:right; font-variant-numeric:tabular-nums; 
 table.trans-table td:nth-child(1), table.trans-table th:nth-child(1),
 table.trans-table td:nth-child(2), table.trans-table th:nth-child(2){ text-align:left; }
 table.trans-table td:nth-child(1){ font-weight:800; }
-/* As colunas de dia encolhem até o conteúdo; a sobra de largura vai toda pra
-   Descrição, que é a única que ganha em ser larga. */
-table.trans-table td.mono, table.trans-table th.num{ width:1%; }
-table.trans-table td:nth-child(2), table.trans-table th:nth-child(2){ width:auto; }
+/* Grade fixa em porcentagem. Com largura automática o navegador jogava toda a
+   sobra numa coluna só — era o vazio entre Descrição e D0. Aqui cada coluna
+   recebe a fatia que o conteúdo dela pede, e o total fecha em 100%. */
+table.trans-table{ table-layout:fixed; min-width:980px; }
+table.trans-table th.tt-local{ width:10%; }
+table.trans-table th.tt-desc{ width:16%; }
+table.trans-table th.tt-dia{ width:6.5%; }
+table.trans-table th.tt-valor{ width:12%; }
+table.trans-table th.tt-dup{ width:10%; }
 .trans-cel-val{ display:block; font-size:11.5px; font-weight:700; color:var(--ink-soft); }
 table.trans-table td:last-child{ font-weight:700; color:var(--blue); }
 table.trans-table tfoot td{
