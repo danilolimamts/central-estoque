@@ -43,7 +43,7 @@ const IR = {
   itemDivFiltro:{tipo:'ciclo'}, itemDivSaldo:null,
   // Estoque atual (QRY0390) — independente do ciclo, é a foto do CD agora.
   est390File:null, est390Processing:false, est390Progress:{stage:'', pct:0},
-  est390Meta:null, est390Locais:null, transSetores:null, transExpandido:null,
+  est390Meta:null, est390Ficha:null, est390Locais:null, transSetores:null, transExpandido:null,
   est160File:null, est160Processing:false, est160Progress:{stage:'', pct:0},
   audIgnorarVirtuais:true, audPrefixos:null, transNomes:null,
   // Perdas e Ganhos (QRY410) — independente do ciclo, por ano.
@@ -122,6 +122,7 @@ async function irInit(){
       await irLoadCicloData(IR.cicloAtivo.id);
     }
     IR.est390Meta = await irGetEstoqueMeta();
+    IR.est390Ficha = await irGetConfig('estoque390-ficha');
     IR.transSetores = await irSeedTransSetoresIfEmpty();
     const ign = await irGetConfig('auditoria-ignorar-virtuais');
     if(ign!=null) IR.audIgnorarVirtuais = ign;
@@ -712,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v112';
+const IR_APP_VERSION = 'v113';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2013,6 +2014,7 @@ function irProcessar410(){
         IR.net410Processing = false; worker.terminate();
         for(const ano of msg.anos) await irSaveNet410(ano, msg.resumos[ano]);
         IR.est390Meta = await irGetEstoqueMeta();
+    IR.est390Ficha = await irGetConfig('estoque390-ficha');
     IR.transSetores = await irSeedTransSetoresIfEmpty();
     const ign = await irGetConfig('auditoria-ignorar-virtuais');
     if(ign!=null) IR.audIgnorarVirtuais = ign;
@@ -2054,9 +2056,10 @@ function irProcessarEst390(){
         irShowToast('Erro na QRY0390: '+msg.message, true); irRenderView();
       } else if(msg.type==='done390'){
         IR.est390Processing = false; worker.terminate();
-        IR.est390Meta = await irGetEstoqueMeta();
-        IR.est390Locais = null; IR.est390File = null;
-        irShowToast(irFmtInt(msg.locais)+' endereços atualizados.');
+        IR.est390Ficha = await irGetConfig('estoque390-ficha');
+        IR._itemInfo = null; IR._descLocalTodosCiclos = null; IR._descLocal = null;
+        IR.est390File = null;
+        irShowToast(irFmtInt(msg.itens)+' itens e '+irFmtInt(msg.locais)+' endereços fichados.');
         irRenderView();
       }
     };
@@ -2069,7 +2072,7 @@ function irUpdateProgressUI390(){
   if(st && fi){ st.textContent = IR.est390Progress.stage; fi.style.width = IR.est390Progress.pct+'%'; }
 }
 function irRenderEst390ImportPanel(){
-  const m = IR.est390Meta;
+  const f = IR.est390Ficha;
   return `<div class="panel">
     <h3>Estoque atual (QRY0390)</h3>
     <div class="dz-grid" style="grid-template-columns:1fr;max-width:340px;">
@@ -2088,7 +2091,8 @@ function irRenderEst390ImportPanel(){
         <div class="progress-stage" id="ir-390-stage">${irEsc(IR.est390Progress.stage)}</div>
         <div class="progress-track"><div class="progress-fill orange" id="ir-390-fill" style="width:${IR.est390Progress.pct}%"></div></div>
       </div>` : IR.est390File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessarEst390()">PROCESSAR ESTOQUE</button></div>` : ''}
-    ${m ? `<p class="field-hint" style="margin-top:12px;">${irFmtInt(m.locais)} endereços · ${irFmtInt(m.itens)} itens · ${irFmtInt(m.pecasTotal)} peças · ${irFmtMoney(m.valorTotal)} — importado em ${irEsc(new Date(m.importadoEm).toLocaleString('pt-BR'))}</p>` : ''}
+    <p class="field-hint" style="margin-top:8px;">Alimenta a ficha do item (EAN, descrição, valor unitário, posições) e a do endereço (classe local, prédio). É ela que dá valor e setor pra QRY0160.</p>
+    ${f ? `<p class="field-hint">${irFmtInt(f.locais)} endereços · ${irFmtInt(f.itens)} itens · ${irFmtMoney(f.valorTotal)} — importada em ${irEsc(new Date(f.importadoEm).toLocaleString('pt-BR'))}</p>` : ''}
   </div>`;
 }
 /* ---------- IMPORTAÇÃO DA QRY0160 (PENDÊNCIA DE MOVIMENTAÇÃO) ---------- */
@@ -5273,22 +5277,6 @@ function irTransIdade(locais){
 /* Barrinhas de valor acumulado por idade, acima de cada tabela. A pergunta é
    "quanto dinheiro está represado em cada faixa" — e a resposta em barra se lê
    antes da tabela, que é onde estão os detalhes. */
-function irTransMiniGrafico(porFaixa){
-  const max = Math.max(1, ...IR_TRANS_FAIXAS.map(f=>porFaixa[f]||0));
-  const total = IR_TRANS_FAIXAS.reduce((s,f)=>s+(porFaixa[f]||0), 0);
-  if(total <= 0) return '';
-  return `<div class="tg-wrap" role="img" aria-label="Valor parado por faixa de idade">
-    ${IR_TRANS_FAIXAS.map(f=>{
-      const v = porFaixa[f]||0;
-      const h = Math.max(v>0 ? 4 : 1, Math.round((v/max)*74));
-      return `<div class="tg-col ${irTransDentroDoPrazo(f)?'ok':'atraso'}" title="${irEsc(f)}: ${irFmtMoney(v)}">
-        <span class="tg-val">${v>0?irFmtMoneyCompact(v):''}</span>
-        <span class="tg-bar" style="height:${h}px;"></span>
-        <span class="tg-lbl">${irEsc(f)}</span>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
 function irTransTemData(){
   return (IR.est390Meta||{}).fonte === '160';
 }
@@ -5297,16 +5285,13 @@ function irTransTemData(){
    O ANE é endereço de "não localizado": quando o assistente não acha a peça, ele
    move o saldo pra lá. Se depois a peça aparece em outro endereço, o inventário
    registra GANHO — e o saldo do ANE continua parado, representando um ganho que
-   já foi contabilizado. É o caso de mandar movimentar em vez de sair procurando.
-
-   A conta cruza os itens com NET positivo no ano com as posições em que eles têm
-   saldo hoje, e soma o que está em endereço de transitório. */
+   já foi contabilizado. É o caso de mandar movimentar em vez de sair procurando. */
 async function irTransCarregarGanhos(){
   if(IR._transGanhos || IR._transGanhosLoading) return;
   IR._transGanhosLoading = true;
   try{
     // O NET do ano vem da QRY410 — é o livro fiscal, tem todo ajuste do CD, e é a
-    // base que o usuário usa pra falar de ganho. Só item com saldo POSITIVO entra:
+    // base que a operação usa pra falar de ganho. Só item com saldo POSITIVO entra:
     // item que perdeu no ano não tem duplicidade pra explicar.
     const ano = String(new Date().getFullYear());
     let dados = (IR.div410Cache||{})[ano];
@@ -5350,12 +5335,44 @@ function irTransGanhoPorLocal(){
   IR._transGanhoLocal = m;
   return m;
 }
+/* Gráfico de linha do valor parado por faixa de idade. */
+function irTransMiniGrafico(porFaixa){
+  const vals = IR_TRANS_FAIXAS.map(f=>porFaixa[f]||0);
+  const total = vals.reduce((a,b)=>a+b, 0);
+  if(total <= 0) return '';
+  const W = 720, H = 132, padL = 8, padR = 8, padT = 26, padB = 22;
+  const max = Math.max(...vals);
+  const passo = (W - padL - padR) / Math.max(1, vals.length - 1);
+  const y = v => padT + (H - padT - padB) * (1 - (max ? v/max : 0));
+  const pts = vals.map((v,i)=>[padL + i*passo, y(v)]);
+  const linha = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const area = linha + ` L${pts[pts.length-1][0].toFixed(1)} ${H-padB} L${pts[0][0].toFixed(1)} ${H-padB} Z`;
+  // O ponto vira laranja a partir de D+2, que é onde o prazo de 48h estourou.
+  const cor = f => irTransDentroDoPrazo(f) ? 'var(--success)' : 'var(--orange)';
+  return `<div class="tg-wrap">
+    <div class="tg-head"><span>Valor parado por idade</span><strong>${irFmtMoney(total)}</strong></div>
+    <svg viewBox="0 0 ${W} ${H}" class="tg-svg" preserveAspectRatio="none" role="img"
+         aria-label="Valor parado por faixa de idade, total ${irEsc(irFmtMoney(total))}">
+      <defs><linearGradient id="tgGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--blue)" stop-opacity=".22"/>
+        <stop offset="100%" stop-color="var(--blue)" stop-opacity="0"/>
+      </linearGradient></defs>
+      <path d="${area}" fill="url(#tgGrad)"/>
+      <path d="${linha}" fill="none" stroke="var(--blue)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4.5"
+        fill="${cor(IR_TRANS_FAIXAS[i])}" stroke="var(--surface)" stroke-width="2"><title>${irEsc(IR_TRANS_FAIXAS[i])}: ${irEsc(irFmtMoney(vals[i]))}</title></circle>`).join('')}
+      ${pts.map((p,i)=>vals[i]>0?`<text x="${p[0].toFixed(1)}" y="${(p[1]-11).toFixed(1)}" class="tg-t-val" text-anchor="middle">${irEsc(irFmtMoneyCompact(vals[i]))}</text>`:'').join('')}
+      ${pts.map((p,i)=>`<text x="${p[0].toFixed(1)}" y="${H-6}" class="tg-t-lbl ${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'ok':'atraso'}" text-anchor="middle">${irEsc(IR_TRANS_FAIXAS[i])}</text>`).join('')}
+    </svg>
+  </div>`;
+}
 function irRenderTransitorios(){
   if(!IR.est390Locais){ irCarregarEstoque390(); return irDivCarregando(); }
   if(!IR._itemInfo){ irCarregarItemInfo().then(()=>irRenderView()); return irDivCarregando(); }
   if(!IR._transGanhos){ irTransCarregarGanhos(); return irDivCarregando(); }
   if(!IR.est390Locais.length){
-    return irEmptyState('Sem estoque importado', 'Importe a QRY0390 na aba Importação para montar o controle de transitórios.',
+    return irEmptyState('Sem estoque importado',
+      'Importe a QRY0390 (ficha dos itens) e depois a QRY0160 (saldo com data de movimento) na aba Importação.',
       "irSwitchTab('importacao')", 'Ir para Importação');
   }
   const c = irTransCalc();
@@ -5420,7 +5437,7 @@ function irTransPainelSetor(g, logs){
       ${cell('Provável duplicidade', ganhoSetor>0?irFmtMoney(ganhoSetor):'—',
         ganhoSetor>0 ? irFmtPct(g.valor?ganhoSetor/g.valor:0)+' do saldo · ganho no NET do ano' : 'nada a movimentar')}
     </div>
-    ${comData ? irTransMiniGrafico(totValFaixa) : `<p class="field-hint">Importe a QRY0160 na aba Importação para abrir as colunas por idade do saldo.</p>`}
+    ${irTransMiniGrafico(totValFaixa)}
     <div class="table-wrap"><table class="trans-table">
       <thead>
         <tr><th rowspan="2">Local transitório</th><th rowspan="2">Descrição</th>
@@ -5433,14 +5450,16 @@ function irTransPainelSetor(g, logs){
         <td class="mono">${irEsc(p.x1||'(vazio)')}</td>
         <td><input class="trans-nome" value="${irEsc(irTransNome(p.x1))}" title="Nome do transitório — dá pra editar"
              onchange="irTransSetNome('${irEsc(p.x1)}', this.value)"></td>
-        ${cols.map(l=>`<td class="mono ${p.cel[l]?(irTransDentroDoPrazo(l)?'trans-ok':'trans-atraso'):''}">${p.cel[l]?irFmtInt(p.cel[l]):'0'}</td>`).join('')}
+        ${cols.map(l=>`<td class="mono ${p.cel[l]?(irTransDentroDoPrazo(l)?'trans-ok':'trans-atraso'):''}">${
+          p.cel[l] ? irFmtInt(p.cel[l])+'<span class="trans-cel-val">'+irFmtMoneyCompact(p.celValor[l]||0)+'</span>' : '0'}</td>`).join('')}
         <td class="mono">${irFmtMoney(p.valor)}</td>
         <td class="mono ${p.ganhoValor>0?'trans-ganho':''}" title="Saldo que pode estar duplicado: item com ganho no NET do ano da QRY410 e saldo parado aqui">${
           p.ganhoValor>0 ? irFmtMoney(p.ganhoValor)+'<span class="trans-pct">'+irFmtPct(p.valor?p.ganhoValor/p.valor:0)+'</span>' : '—'}</td>
       </tr>`).join('')}</tbody>
       <tfoot><tr>
         <td colspan="2"><strong>Total</strong></td>
-        ${cols.map(l=>`<td class="mono"><strong>${totCol[l]?irFmtInt(totCol[l]):'0'}</strong></td>`).join('')}
+        ${cols.map(l=>`<td class="mono"><strong>${totCol[l]?irFmtInt(totCol[l]):'0'}</strong>${
+          totCol[l]?'<span class="trans-cel-val">'+irFmtMoneyCompact(totValFaixa[l]||0)+'</span>':''}</td>`).join('')}
         <td class="mono"><strong>${irFmtMoney(g.valor)}</strong></td>
         <td class="mono"><strong>${ganhoSetor>0?irFmtMoney(ganhoSetor):'—'}</strong></td>
       </tr></tfoot>
