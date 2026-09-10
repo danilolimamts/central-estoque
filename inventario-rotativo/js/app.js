@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v124';
+const IR_APP_VERSION = 'v125';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5472,12 +5472,12 @@ function irTransValorCurto(n){
   return 'R$'+Math.round(n).toLocaleString('pt-BR');
 }
 /* Rosca nas cores da casa: azul o que está no prazo, laranja o que estourou.
-   Rótulo de dados em cada fatia (o percentual, inteiro) e o total no miolo — sem
-   isso o anel obriga a ir até a legenda pra saber o tamanho de cada pedaço. */
+   Rótulo de dados em cada fatia (o percentual, inteiro). O miolo fica vazio: o
+   total já está no KPI do topo do painel, e repetido ali só apertava o anel. */
 function irTransRosca(dentro, fora){
   const total = dentro + fora;
   if(total <= 0) return '';
-  const cx = 84, R = 62, C = 2*Math.PI*R, larg = 30, pctFora = fora/total;
+  const cx = 84, R = 60, C = 2*Math.PI*R, larg = 44, pctFora = fora/total;
   const pctTxt = p => Math.round(p*100)+'%';
   // Rótulo no meio da banda da fatia. A laranja começa às 12h e cresce no sentido
   // horário; a azul ocupa o que sobra.
@@ -5496,8 +5496,6 @@ function irTransRosca(dentro, fora){
           stroke-dasharray="${(C*pctFora).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${cx} ${cx})"/>
         ${rot(pctFora, 0, 'sobre-laranja')}
         ${rot(1-pctFora, pctFora, 'sobre-azul')}
-        <text x="${cx}" y="${cx-7}" class="tg-r-num" text-anchor="middle">${irEsc(irTransValorCurto(total))}</text>
-        <text x="${cx}" y="${cx+9}" class="tg-r-cap" text-anchor="middle">parado</text>
       </svg>
       <ul class="tg-leg">
         <li><span><i class="prazo"></i>No prazo</span><b>${irEsc(irTransValorCurto(dentro))}</b></li>
