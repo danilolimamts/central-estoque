@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v117';
+const IR_APP_VERSION = 'v118';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5380,7 +5380,7 @@ function irTransCurva(pts, yMin, yMax){
    preserveAspectRatio="none" que estava aqui esticava traço e texto na horizontal
    — era isso que dava o aspecto borrado. */
 function irTransLinha(vals, titulo, total, fmt, cor, fmtCurto){
-  const W = 340, H = 132, padL = 18, padR = 18, padT = 30, padB = 22;
+  const W = 368, H = 128, padL = 16, padR = 16, padT = 32, padB = 21;
   const max = Math.max(...vals, 1);
   const passo = (W - padL - padR) / Math.max(1, vals.length - 1);
   const base = H - padB;
@@ -5408,8 +5408,18 @@ function irTransLinha(vals, titulo, total, fmt, cor, fmtCurto){
         // se sobrepõem — são oito dias em pouco mais de 300px de viewBox.
         const cheio = i===iMax;
         const txt = cheio ? fmt(vals[i]) : fmtCurto(vals[i]);
-        const x = Math.min(W-padR+4, Math.max(padL-4, p[0]));
-        return `<text x="${x.toFixed(1)}" y="${Math.max(cheio?13:11, p[1]-(cheio?11:9)).toFixed(1)}"
+        const fs = cheio ? 10 : 8;
+        // Largura estimada do texto (o SVG não mede antes de desenhar): metade
+        // dela é o quanto o rótulo precisa de folga de cada lado pra não vazar
+        // do card — foi o que aconteceu com o valor cheio no D+7.
+        const meia = txt.length * fs * 0.30;
+        // Um pico vizinho passa por cima do rótulo. Empurra pro lado contrário
+        // à subida antes de grampear na caixa.
+        const sobe = (j) => pts[j] && pts[j][1] < p[1] - 14;
+        let x = p[0] + (sobe(i+1) ? -7 : (sobe(i-1) ? 7 : 0));
+        x = Math.min(W - meia - 1, Math.max(meia + 1, x));
+        const yTxt = Math.max(fs + 2, p[1] - (cheio ? 11 : 8));
+        return `<text x="${x.toFixed(1)}" y="${yTxt.toFixed(1)}"
           class="tg-t-val ${cheio?'':'mini'}" text-anchor="middle">${irEsc(txt)}</text>`;
       }).join('')}
       ${pts.map((p,i)=>`<text x="${p[0].toFixed(1)}" y="${H-6}" class="tg-t-lbl ${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'ok':'atraso'}" text-anchor="middle">${irEsc(IR_TRANS_FAIXAS[i].replace('D+','+').replace('D0','0'))}</text>`).join('')}
@@ -5550,9 +5560,6 @@ function irTransPainelSetor(g, logs){
   return `<div class="panel">
     <div class="ofe-head">
       <h3>${irEsc(IR_TRANS_SETOR_NOME[g.setor]||g.setor)}</h3>
-      <div class="ofe-acoes">
-        <button class="btn btn-secondary" onclick="irTransExportar('${irEsc(g.setor)}')">Excel</button>
-      </div>
     </div>
     <div class="ofe-resumo trans-kpis">
       ${cell('Parado', irFmtMoney(g.valor), irFmtInt(g.qtd)+' peças')}
@@ -5672,17 +5679,10 @@ async function irBaixarBoletimTransitorios(){
     <div class="rp-body">
       ${setores.map(g=>rpSectionTitle('📦', IR_TRANS_SETOR_NOME[g.setor]||g.setor,
         irFmtMoney(g.valor)+' · '+irFmtInt(g.qtd)+' peças · '+irFmtInt(g.locais.length)+' endereços')+tabela(g)).join('')}
-      <p class="rp-footer">Prazo do transitório: ${IR_TRANS_PRAZO_H}h — verde está no prazo, laranja passou. D+ é o saldo parado há mais de 7 dias.<br>"Prov. duplicidade" é o saldo de itens que fecharam o ano com ganho no NET da QRY410 — movimentar resolve, procurar não.<br>Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · gerado pelo módulo Inventário.</p>
+      <p class="rp-footer">Prazo do transitório: ${IR_TRANS_PRAZO_H}h — verde está no prazo, laranja passou. D+${IR_TRANS_FAIXA_MAX} é acumulativo: sete dias ou mais.<br>"Prov. duplicidade" é o saldo de itens que fecharam o ano com ganho no NET da QRY410 — movimentar resolve, procurar não.<br>Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · gerado pelo módulo Inventário.</p>
     </div>
   </div>`;
   irBaixarBoletimImagem(html, 'Transitorios_'+new Date().toISOString().slice(0,10)+'.png');
-}
-function irTransExportar(setor){
-  const g = irTransCalc().lista.find(x=>x.setor===setor);
-  if(!g) return;
-  irDivBaixarPlanilha(['Local','Descrição','Prefixo','Classe','Prédio','Peças','Itens','Valor'],
-    g.locais.map(l=>[l.local, l.desc, l.x1, l.clal, l.predio, l.qtd, l.itens, l.valor]),
-    'transitorios_'+setor.replace(/\W+/g,'_'));
 }
 
 /* ============================================================
