@@ -726,7 +726,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v134';
+const IR_APP_VERSION = 'v135';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2133,7 +2133,22 @@ function irAvulsaEstado(id){
       : 'nunca importada';
   }
   const anos = IR.net410Anos || [];
-  return anos.length ? 'anos: '+anos.join(', ') : 'nunca importada';
+  if(!anos.length) return 'nunca importada';
+  // Linhas lidas e hora da importação. É o que responde "reimportei e o número não
+  // mudou": se o total de linhas sai igual duas vezes seguidas, o arquivo é o
+  // mesmo — a planilha atualizou a consulta mas não foi salva, ou a extração não
+  // trouxe nada novo. Sem esse número, não dá pra separar isso de um bug na tela.
+  const d = IR.net410Data;
+  const partes = ['anos: '+anos.join(', ')];
+  if(d && d.totalLinhas != null) partes.push(irFmtInt(d.totalLinhas)+' linhas em '+d.ano);
+  if(d && d.processedAt) partes.push('lida '+irFmtDataHora(d.processedAt));
+  return partes.join(' · ');
+}
+// Data e hora curtas, pra comparar duas importações seguidas.
+function irFmtDataHora(s){
+  const dt = new Date(s);
+  if(isNaN(dt.getTime())) return '—';
+  return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
 }
 function irRenderBasesAvulsas(){
   const temFicha = !!(IR._itemInfo && IR._itemInfo.size);
@@ -2330,15 +2345,21 @@ async function irPastaMarcar(baseId){
    O bloco do ciclo NÃO é processado sozinho de propósito: ele depende do número
    do ciclo e da data de abertura, que são decisão de quem importa. O que dá pra
    automatizar é encher os campos de arquivo — o usuário confere e clica. */
-async function irPastaAtualizar(){
+async function irPastaAtualizar(forcar){
   if(IR.pastaProcessando) return;
   const pend = irPastaPendentes();
-  if(!pend.length){ irShowToast('Nenhuma base nova na pasta.'); return; }
+  if(!forcar && !pend.length){ irShowToast('Nenhuma base nova na pasta.'); return; }
   IR.pastaProcessando = true; irRenderView();
   const feitas = [];
   try{
     for(const base of IR_PASTA_BASES){
-      if(!base.auto || !irPastaNovo(base.id)) continue;
+      if(!base.auto) continue;
+      // "Reimportar tudo" ignora a data do arquivo. A checagem por data economiza
+      // processamento, mas cria um beco: se a planilha atualizou a consulta sem
+      // salvar, a data não muda, a base fica "em dia" e não há como forçar —
+      // exatamente a situação de reimportar três vezes e o número não mudar.
+      if(!forcar && !irPastaNovo(base.id)) continue;
+      if(!IR.pastaArquivos[base.id]) continue;
       const arq = IR.pastaArquivos[base.id];
       let ok = false;
       if(base.id === '390'){ IR.est390File = arq.file; ok = await irProcessarEst390(); }
@@ -2423,6 +2444,8 @@ function irRenderPastaPanel(){
     <div class="form-actions">
       <button class="btn btn-primary" onclick="irPastaAtualizar()" ${IR.pastaProcessando||!pend.length?'disabled':''}>${
         IR.pastaProcessando ? 'Atualizando...' : pend.length ? 'Atualizar '+pend.length+' base(s)' : 'Tudo em dia'}</button>
+      <button class="btn btn-secondary" onclick="irPastaAtualizar(true)" ${IR.pastaProcessando?'disabled':''}
+        title="Reprocessa 390, 160 e 410 mesmo que a data do arquivo não tenha mudado">Reimportar tudo</button>
     </div>
   </div>`;
 }
