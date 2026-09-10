@@ -707,7 +707,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v132';
+const IR_APP_VERSION = 'v133';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2245,7 +2245,17 @@ async function irPastaVarrer(){
   let visitadas = 0, estourou = false;
   const guardar = (base, file, caminho)=>{
     const atual = achados[base];
-    if(!atual || file.lastModified > atual.file.lastModified) achados[base] = {file, pasta:caminho};
+    if(!atual){ achados[base] = {file, pasta:caminho, copias:1}; return; }
+    achados[base].copias++;
+    if(file.lastModified > atual.file.lastModified){ achados[base].file = file; achados[base].pasta = caminho; return; }
+    if(file.lastModified < atual.file.lastModified) return;
+    // Empate de data: é o mesmo arquivo copiado pra mais de uma pasta de ciclo.
+    // Sem critério, ficava a primeira alfabética — "Ciclo 1" ganhava do "Ciclo 3"
+    // e o caminho exibido apontava a pasta errada. Compara numérico, então
+    // "Ciclo 3" > "Ciclo 10" > "Ciclo 1" e o caminho bate com o ciclo em curso.
+    if(caminho.localeCompare(atual.pasta, 'pt-BR', {numeric:true}) > 0){
+      achados[base].file = file; achados[base].pasta = caminho;
+    }
   };
   const lerDir = async (dir, caminho, profundidade)=>{
     if(visitadas++ > IR_PASTA_MAX_DIRS){ estourou = true; return; }
@@ -2367,7 +2377,8 @@ function irRenderPastaPanel(){
     return `<tr class="${novo?'pasta-novo':''}">
       <td><strong>${irEsc(b.label)}</strong><span class="pasta-desc">${irEsc(b.desc)}</span></td>
       <td class="mono">${arq
-        ? irEsc(arq.file.name) + '<span class="pasta-caminho">' + irEsc(arq.pasta) + '</span>'
+        ? irEsc(arq.file.name) + '<span class="pasta-caminho">' + irEsc(arq.pasta)
+          + (arq.copias > 1 ? ` <em class="pasta-copias">+${arq.copias-1} em outra pasta</em>` : '') + '</span>'
         : '<span class="pasta-falta">não encontrado</span>'}</td>
       <td class="mono">${arq ? irEsc(irPastaQuando(b.id)) : '—'}</td>
       <td>${!arq ? '—' : novo
