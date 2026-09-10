@@ -344,14 +344,31 @@ function irScrollVBarsToEnd(){
 /* ============================================================
    IMPORTAÇÃO
    ============================================================ */
+/* Como cada base é reconhecida pelo NOME do arquivo. Um lugar só, usado pelo
+   import manual e pela pasta conectada — dois lugares seria dois lugares pra
+   esquecer de atualizar quando alguém renomeia uma extração.
+
+   Os padrões são frouxos de propósito: o nome que sai do Snowflake é editado por
+   quem baixa. "QRY0390" vira "QRY390 - Estoque Atual" e a 410 vira "NET - Livro
+   Fiscal", sem número nenhum — por isso o apelido entra no padrão junto do
+   código. */
+const IR_PAT = {
+  p390:  /0?390/i,
+  p160:  /0?160/i,
+  p410:  /(^|[^0-9])410([^0-9]|$)|livro\s*fiscal|\bnet\b/i,
+  p843:  /0?843/i,
+  pCong: /congelad|espelho/i,
+  p278:  /278/i,
+  p051:  /0?051|zbiq/i
+};
 const IR_FILE_TYPES = [
   // QRY0390 é opcional: o estoque é rotativo (vivo) e hoje não entra em nenhum cálculo
   // de indicador — não faz sentido travar o processamento do ciclo esperando por ela.
-  {key:'f390', label:'QRY0390', desc:'Estoque por Local (opcional)', pattern:/0390/i, optional:true},
-  {key:'f843', label:'QRY0843', desc:'Produtividade (peças, locais, itens e divergências)', pattern:/0843/i},
-  {key:'fCong', label:'Base Congelada', desc:'Locais congelados do ciclo (planilha manual)', pattern:/congelad|espelho/i},
-  {key:'f278', label:'SIGEQ278', desc:'Preço de custo/compra por item', pattern:/278/i},
-  {key:'f051', label:'ZBIQ0051', desc:'Item pai x componente (kits/múltiplos), S/N de valoração', pattern:/0051|zbiq/i}
+  {key:'f390', label:'QRY0390', desc:'Estoque por Local (opcional)', pattern:IR_PAT.p390, optional:true},
+  {key:'f843', label:'QRY0843', desc:'Produtividade (peças, locais, itens e divergências)', pattern:IR_PAT.p843},
+  {key:'fCong', label:'Base Congelada', desc:'Locais congelados do ciclo (planilha manual)', pattern:IR_PAT.pCong},
+  {key:'f278', label:'SIGEQ278', desc:'Preço de custo/compra por item', pattern:IR_PAT.p278},
+  {key:'f051', label:'ZBIQ0051', desc:'Item pai x componente (kits/múltiplos), S/N de valoração', pattern:IR_PAT.p051}
 ];
 // Slots que aceitam vários arquivos dentro do MESMO ciclo (concatenados e deduplicados
 // no worker) — úteis quando a extração de origem tem limite de linhas/tempo e precisa
@@ -416,6 +433,7 @@ function irRenderImportacao(){
     return html;
   };
   return `
+    ${irRenderAvisoJanela()}
     ${irRenderPastaPanel()}
     <div class="panel" ondragover="event.preventDefault()" ondrop="irOnDropMulti(event)">
       <h3>Ciclo rotativo</h3>
@@ -456,57 +474,30 @@ function irRenderImportacao(){
       }
     </div>
     ${irRenderBasesAvulsas()}
-    ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
   `;
 }
-function irRenderUltimoProcessamento(){
+/* O painel de "último processamento" saiu da tela: KPIs e o diagnóstico linha a
+   linha da 843 são coisa de investigação, não de rotina. O que ficou é o único
+   pedaço que não era diagnóstico — o aviso de que a janela do ciclo está
+   descartando contagem. Sem ele o número simplesmente congela a cada nova
+   importação, sem nenhuma pista do porquê, que foi exatamente o que levou a
+   criar esse bloco. */
+function irRenderAvisoJanela(){
   const m = IR.importMeta;
-  return `<div class="panel"><h3>Último processamento — ${irCicloLabel(IR.cicloAtivo)}</h3>
-    <div class="kpi-grid">
-      <div class="kpi-card"><div class="num mono">${irFmtInt(m.totalLocaisCongelados)}</div><div class="label">Locais congelados</div></div>
-      <div class="kpi-card orange"><div class="num mono">${irFmtInt(m.totalDivergencias)}</div><div class="label">Itens divergentes</div></div>
-      <div class="kpi-card"><div class="num mono">${irFmtInt(m.totalContagens)}</div><div class="label">Contagens processadas</div></div>
-    </div>
-    <p class="field-hint">Processado em ${new Date(m.processedAt).toLocaleString('pt-BR')}</p>
-    ${irRenderDiagnosticoIngestao(m)}
-  </div>`;
-}
-/* Mostra o que a 843 trouxe e o que foi descartado, linha a linha de motivo. Existe
-   porque, sem isso, quando a janela do ciclo já passou o número simplesmente "congela"
-   a cada nova importação, sem nenhuma pista do porquê — foi exatamente o que aconteceu
-   ao investigar os locais pendentes que não atualizavam. */
-function irRenderDiagnosticoIngestao(m){
-  if(m.totalLinhas843==null) return '<p class="field-hint" style="color:var(--orange);">Diagnóstico da 843 indisponível — reprocesse o ciclo para gerá-lo.</p>';
+  if(!m || m.totalLinhas843 == null) return '';
   const hoje = new Date().toISOString().slice(0,10);
   const janelaVencida = m.janelaTermino && m.janelaTermino < hoje;
   const perdendoContagem = m.dataMaisRecenteForaDaJanela && m.dataMaisRecenteAceita &&
                            m.dataMaisRecenteForaDaJanela > m.dataMaisRecenteAceita;
-  const linha = (rot, val, alerta) => `<tr><td>${rot}</td><td class="mono" style="text-align:right;${alerta?'color:var(--danger);font-weight:700;':''}">${val}</td></tr>`;
+  if(!janelaVencida && !perdendoContagem) return '';
   const d = s => s ? irFmtDate(s) : '—';
-  return `
-    ${(janelaVencida || perdendoContagem) ? `<div class="callout callout-warn">
-      <strong>⚠️ A janela deste ciclo está barrando contagens.</strong>
-      O ciclo vai de <b>${d(m.janelaAbertura)}</b> até <b>${d(m.janelaTermino)}</b>, e a 843 traz contagem
-      de até <b>${d(m.dataMaisRecenteForaDaJanela)}</b> que ficou de fora por estar depois do término previsto.
-      Tudo que for contado a partir de agora vai continuar sendo ignorado e os números não vão mudar.
-      <b>Corrija o Término Previsto do ciclo</b> na tela de ciclos e reprocesse.
-    </div>` : ''}
-    <div class="table-wrap" style="margin-top:10px;"><table class="table-dense">
-      <thead><tr><th>Diagnóstico da QRY0843</th><th style="text-align:right;">Valor</th></tr></thead>
-      <tbody>
-        ${linha('Janela do ciclo', d(m.janelaAbertura)+' → '+d(m.janelaTermino), janelaVencida)}
-        ${linha('Motor de cálculo', 'v'+(m.motor||'antiga — reprocesse'), (m.motor||0) < IR_INDICADORES_VERSION)}
-        ${linha('Linhas lidas na planilha', irFmtInt(m.totalLinhas843))}
-        ${linha('Contagens aceitas', irFmtInt(m.totalContagens))}
-        ${linha('Descartadas — fora da janela do ciclo', irFmtInt(m.linhasForaDaJanela||0), perdendoContagem)}
-        ${linha('Descartadas — motivo fora do NET', irFmtInt(m.linhasForaDoNet||0))}
-        ${linha('Descartadas — não liquidadas', irFmtInt(m.linhasNaoLiquidadas||0))}
-        ${linha('Descartadas — sem data utilizável', irFmtInt(m.linhasSemDataDescartadas||0))}
-        ${linha('Locais só com Rodada 1 (sem contagem física)', irFmtInt(m.visitasSemContagemFisica||0))}
-        ${linha('Contagem mais recente ACEITA', d(m.dataMaisRecenteAceita))}
-        ${linha('Contagem mais recente DESCARTADA por data', d(m.dataMaisRecenteForaDaJanela), perdendoContagem)}
-      </tbody>
-    </table></div>`;
+  return `<div class="callout callout-warn">
+    <strong>⚠️ A janela deste ciclo está barrando contagens.</strong>
+    O ciclo vai de <b>${d(m.janelaAbertura)}</b> até <b>${d(m.janelaTermino)}</b>, e a 843 traz contagem
+    de até <b>${d(m.dataMaisRecenteForaDaJanela)}</b> que ficou de fora por estar depois do término previsto.
+    Tudo que for contado a partir de agora vai continuar sendo ignorado e os números não vão mudar.
+    <b>Corrija o Término Previsto do ciclo</b> na tela de ciclos e reprocesse.
+  </div>`;
 }
 /* Aviso do ciclo lido da 843. Diz de onde veio a leitura e se ela vai criar um
    ciclo novo ou regravar um que já existe — regravar por engano era o risco de
@@ -716,7 +707,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v131';
+const IR_APP_VERSION = 'v132';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2172,13 +2163,13 @@ const IR_PASTA_SUPORTA = typeof window !== 'undefined' && typeof window.showDire
 /* Cada base e como reconhecê-la pelo nome do arquivo. Os padrões do bloco do
    ciclo são os mesmos do IR_FILE_TYPES de propósito — um só lugar pra errar. */
 const IR_PASTA_BASES = [
-  {id:'390', label:'QRY0390', desc:'Estoque por endereço', pattern:/0390/i, auto:true},
-  {id:'160', label:'QRY0160', desc:'Data de movimento',    pattern:/0160/i, auto:true},
-  {id:'410', label:'QRY410',  desc:'Perdas e ganhos',      pattern:/(^|[^0-9])410([^0-9]|$)/i, auto:true},
-  {id:'843', label:'QRY0843', desc:'Ajustes do ciclo',     pattern:/0843/i, slot:'f843'},
-  {id:'cong',label:'Base Congelada', desc:'Locais do ciclo', pattern:/congelad|espelho/i, slot:'fCong'},
-  {id:'278', label:'SIGEQ278', desc:'Custo médio',         pattern:/278/i, slot:'f278'},
-  {id:'051', label:'ZBIQ0051', desc:'Item pai × componente', pattern:/0051|zbiq/i, slot:'f051'}
+  {id:'390', label:'QRY0390', desc:'Estoque por endereço', pattern:IR_PAT.p390, auto:true},
+  {id:'160', label:'QRY0160', desc:'Data de movimento',    pattern:IR_PAT.p160, auto:true},
+  {id:'410', label:'QRY410',  desc:'Perdas e ganhos',      pattern:IR_PAT.p410, auto:true},
+  {id:'843', label:'QRY0843', desc:'Ajustes do ciclo',     pattern:IR_PAT.p843, slot:'f843'},
+  {id:'cong',label:'Base Congelada', desc:'Locais do ciclo', pattern:IR_PAT.pCong, slot:'fCong'},
+  {id:'278', label:'SIGEQ278', desc:'Custo médio',         pattern:IR_PAT.p278, slot:'f278'},
+  {id:'051', label:'ZBIQ0051', desc:'Item pai × componente', pattern:IR_PAT.p051, slot:'f051'}
 ];
 function irPastaBaseDe(nome){
   if(!/\.xlsx?$/i.test(nome)) return null;
