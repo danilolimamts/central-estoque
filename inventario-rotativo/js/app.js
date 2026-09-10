@@ -44,6 +44,7 @@ const IR = {
   // Estoque atual (QRY0390) — independente do ciclo, é a foto do CD agora.
   est390File:null, est390Processing:false, est390Progress:{stage:'', pct:0},
   est390Meta:null, est390Locais:null, transSetores:null, transExpandido:null,
+  audIgnorarVirtuais:true, audPrefixos:null,
   // Perdas e Ganhos (QRY410) — independente do ciclo, por ano.
   net410Anos:[], net410AnoSel:null, net410MesSel:null, net410Data:null, net410File:null,
   net410Processing:false, net410Progress:{stage:'', pct:0},
@@ -121,6 +122,9 @@ async function irInit(){
     }
     IR.est390Meta = await irGetEstoqueMeta();
     IR.transSetores = await irSeedTransSetoresIfEmpty();
+    const ign = await irGetConfig('auditoria-ignorar-virtuais');
+    if(ign!=null) IR.audIgnorarVirtuais = ign;
+    IR.audPrefixos = await irGetConfig('auditoria-prefixos');
     IR.net410Anos = await irGetAllNet410Anos();
     if(IR.net410Anos.length){
       IR.net410AnoSel = IR.net410Anos[0];
@@ -705,7 +709,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v107';
+const IR_APP_VERSION = 'v108';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2007,6 +2011,9 @@ function irProcessar410(){
         for(const ano of msg.anos) await irSaveNet410(ano, msg.resumos[ano]);
         IR.est390Meta = await irGetEstoqueMeta();
     IR.transSetores = await irSeedTransSetoresIfEmpty();
+    const ign = await irGetConfig('auditoria-ignorar-virtuais');
+    if(ign!=null) IR.audIgnorarVirtuais = ign;
+    IR.audPrefixos = await irGetConfig('auditoria-prefixos');
     IR.net410Anos = await irGetAllNet410Anos();
         IR.net410File = null;
         IR.net410AnoSel = msg.anos[0];
@@ -4420,7 +4427,7 @@ async function irDivGerarAuditoria(){
     const porItem = new Map(itens.map(i=>[i.item, i]));
     const cicloId = (IR.cicloAtivo||{}).id;
     const linhas = [];
-    let semEstoque = 0, semDescricao = 0;
+    let semEstoque = 0, semDescricao = 0, ocultosVirtuais = 0;
     for(const item of sel){
       const g = porItem.get(item);
       if(!g) continue;
@@ -4432,8 +4439,11 @@ async function irDivGerarAuditoria(){
       const ondeDivergiu = g.locais.filter(d=>d.diferenca!==0);
       // Onde foi a ÚLTIMA divergência dentro do filtro: é o endereço mais fresco,
       // e o primeiro lugar onde o auditor deve olhar.
-      const ult = ondeDivergiu.slice().sort((a,b)=>
-        String(irDivDiaDa(b)).localeCompare(String(irDivDiaDa(a))))[0];
+      const porData = ondeDivergiu.slice().sort((a,b)=>
+        String(irDivDiaDa(b)).localeCompare(String(irDivDiaDa(a))));
+      // O endereço de correção não é onde a peça estava: procura o último ANTES
+      // dele. Se todos forem de correção, aí sim mostra o que tem.
+      const ult = porData.find(d=>!irAudEhCorrecao(d.local)) || porData[0];
       const ultimaDiv = ult
         ? ult.local + (irDescLocal(ult.local) ? ' · '+irDescLocal(ult.local) : '') + ' · ' + irFmtDate(irDivDiaDa(ult))
         : '';
@@ -4459,7 +4469,10 @@ async function irDivGerarAuditoria(){
         }
         continue;
       }
-      for(const s of est.locais){
+      const posicoes = IR.audIgnorarVirtuais===false ? est.locais
+        : est.locais.filter(x=>!irAudEhVirtual(x.local, x.desc));
+      if(!posicoes.length && est.locais.length) ocultosVirtuais += est.locais.length;
+      for(const s of (posicoes.length ? posicoes : est.locais)){
         // A QRY0390 nova traz a descrição do endereço junto com o saldo — é a
         // fonte mais confiável, porque cobre todo o CD e não só o que foi
         // congelado em algum ciclo.
@@ -4475,7 +4488,7 @@ async function irDivGerarAuditoria(){
     IR.divAuditoria = {
       geradoEm: new Date().toLocaleString('pt-BR'),
       escopo: irDivEscopoLabel(),
-      itens: sel.length, linhas, semEstoque, semDescricao,
+      itens: sel.length, linhas, semEstoque, semDescricao, ocultosVirtuais,
       // Sem ficha da 390 não há EAN nem saldo por endereço — é a causa mais comum
       // de a folha sair capenga, e o aviso evita procurar bug onde não tem.
       semFicha: !(IR._itemInfo && IR._itemInfo.size)
@@ -4495,7 +4508,8 @@ function irDivExportarAuditoria(){
   const cols = g.tipo==='similares'
     ? [['dia','Dia'],['local','Local'],['descricaoLocal','Desc. Local'],['inventario','Inv.'],
        ['itemSobra','Sobrou'],['nomeSobra','Descrição (sobrou)'],['itemFalta','Faltou'],
-       ['nomeFalta','Descrição (faltou)'],['qtd','Qtde'],['desequilibrio','Desequil.']]
+       ['nomeFalta','Descrição (faltou)'],['qtd','Qtde'],['desequilibrio','Desequil.'],
+       ['ondeConferir','Onde Conferir']]
     : [['item','Item'],['ean','EAN'],['descricao','Descrição'],['local','Local'],
        ['descricaoLocal','Desc. Local'],['saldo','Qtde'],['diferenca','Qtde Div.'],['valor','Valor Div.'],
        ['ultimaDiv','Últ. Divergência']];
@@ -4754,16 +4768,18 @@ function irRenderDivAuditoria(){
     </div>
     <div class="aud-cab">
       <div class="ofe-filtro"><label>Data</label><input type="date" id="ir-aud-data" value="${new Date().toISOString().slice(0,10)}"></div>
+      <label class="ofe-check"><input type="checkbox" ${IR.audIgnorarVirtuais!==false?'checked':''} onchange="irAudToggleVirtuais()">
+        Ocultar ${irEsc(irAudPrefixos('virtual').join(', '))}</label>
       ${g.semFicha ? `<span class="aud-alerta">Sem a QRY0390 importada: a folha sai sem EAN e sem saldo por endereço. Importe o estoque na aba Importação.</span>` : ''}
       <span class="field-hint">${sim
         ? `${irFmtInt(g.itens)} ${g.itens===1?'par':'pares'} · ${irEsc(g.escopo)}`
-        : `${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}`}</span>
+        : `${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}${g.ocultosVirtuais?` · ${irFmtInt(g.ocultosVirtuais)} só em endereço virtual`:''}`}</span>
     </div>
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
       <table class="aud-table ${sim?'aud-t-sim':'aud-t-item'}">
         ${sim ? `<thead><tr><th>Dia</th><th>Local</th><th>Desc. Local</th><th>Inv.</th>
           <th>Sobrou</th><th>Descrição</th><th>Faltou</th><th>Descrição</th>
-          <th>Qtde</th><th>Desequil.</th><th>Confere</th></tr></thead>
+          <th class="num">Qtde</th><th class="num">Desequil.</th><th>Onde conferir</th><th>Confere</th></tr></thead>
         <tbody>${g.linhas.map(l=>`<tr>
           <td class="mono">${irFmtDate(l.dia)}</td>
           <td class="mono">${irEsc(l.local)}</td>
@@ -4775,6 +4791,7 @@ function irRenderDivAuditoria(){
           <td class="aud-desc">${irEsc(l.nomeFalta)}</td>
           <td class="mono">${irFmtInt(l.qtd)}</td>
           <td class="mono ${l.desequilibrio<0?'neg':'pos'}">${Math.abs(l.desequilibrio)<0.005?'':(l.desequilibrio>0?'+':'')+irFmtMoney(l.desequilibrio)}</td>
+          <td class="aud-ult">${irEsc(l.ondeConferir||'')}${l.correcao?`<span class="sim-desc">${irEsc(l.correcao)}</span>`:''}</td>
           <td class="aud-vazio"></td>
         </tr>`).join('')}</tbody>` : `<thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local</th><th>Desc. Local</th>
           <th class="num">Qtde</th><th class="num">Qtde Div.</th><th class="num">Valor Div.</th>
@@ -4859,6 +4876,24 @@ async function irDivGerarAuditoriaSimilares(){
   if(!pares.length){ irShowToast('Nenhum par de similares no filtro.', true); return; }
   try{
     await irCarregarDescLocaisTodosCiclos();
+    await irCarregarItemInfo();
+    /* O par sai do endereço onde a contagem bateu, e às vezes esse endereço é de
+       correção — não adianta mandar o auditor pra lá. "Onde conferir" traz as
+       posições em que os dois códigos têm saldo hoje, que é onde as etiquetas
+       podem estar trocadas de verdade. */
+    const ondeConferir = p => {
+      const pos = [];
+      for(const it of [p.itemSobra, p.itemFalta]){
+        const info = irItemInfo(it);
+        for(const l of ((info && info.locais) || [])){
+          if(irAudEhCorrecao(l.local, l.desc)) continue;
+          if(IR.audIgnorarVirtuais!==false && irAudEhVirtual(l.local, l.desc)) continue;
+          pos.push(l.local + (l.desc ? ' · '+l.desc : ''));
+          if(pos.length>=4) break;
+        }
+      }
+      return Array.from(new Set(pos)).join(' | ');
+    };
     IR.divAuditoria = {
       tipo:'similares',
       geradoEm: new Date().toLocaleString('pt-BR'),
@@ -4867,7 +4902,9 @@ async function irDivGerarAuditoriaSimilares(){
       linhas: irDivSimOrdenarPares(pares).map(p=>({
         dia:p.dia, local:p.local, descricaoLocal:irDescLocal(p.local), inventario:p.inventario,
         itemSobra:p.itemSobra, nomeSobra:p.nomeSobra||'', itemFalta:p.itemFalta, nomeFalta:p.nomeFalta||'',
-        qtd:p.qtd, desequilibrio:p.desequilibrio
+        qtd:p.qtd, desequilibrio:p.desequilibrio,
+        correcao: irAudEhCorrecao(p.local) ? 'endereço de correção' : '',
+        ondeConferir: ondeConferir(p)
       }))
     };
     irRenderView();
@@ -4895,6 +4932,36 @@ function irDivExportarSimilares(){
   const f = IR.divSimFiltro || {};
   const sufixo = (f.de||f.ate) ? (f.de||'inicio')+'_a_'+(f.ate||'hoje') : 'todos';
   irDivBaixarPlanilha(cab, linhas, 'similares_trocados_'+sufixo);
+}
+/* Endereços que não servem de destino de auditoria.
+
+   CORREÇÃO (AIR, AIN, AEE, REC ...): não é onde a peça está, é onde o ajuste foi
+   lançado. Apontar o auditor pra lá é mandá-lo conferir o próprio lançamento.
+
+   VIRTUAL (DS, GAI): endereço de passagem, guarda o que vai entrar e sair. O saldo
+   ali é real mas não é conferível como prateleira.
+
+   As duas listas são editáveis e o filtro pode ser desligado inteiro — tem dia em
+   que é justamente no transitório que se quer olhar. */
+const IR_AUD_PREF_CORRECAO_PADRAO = ['AIR','AIN','AEE','REC','INS','ARI'];
+const IR_AUD_PREF_VIRTUAL_PADRAO  = ['DS','GAI'];
+function irAudPrefixos(tipo){
+  const salvo = IR.audPrefixos && IR.audPrefixos[tipo];
+  return salvo || (tipo==='correcao' ? IR_AUD_PREF_CORRECAO_PADRAO : IR_AUD_PREF_VIRTUAL_PADRAO);
+}
+// Prefixo do endereço = primeira palavra da descrição (AIR LOG 001 00 -> AIR).
+// Quando não há descrição, não dá pra classificar e o endereço passa.
+function irAudPrefixoDe(local, desc){
+  const d = String(desc || irDescLocal(local) || '').trim();
+  return d ? d.split(/\s+/)[0].toUpperCase() : '';
+}
+function irAudEhCorrecao(local, desc){ return irAudPrefixos('correcao').includes(irAudPrefixoDe(local, desc)); }
+function irAudEhVirtual(local, desc){ return irAudPrefixos('virtual').includes(irAudPrefixoDe(local, desc)); }
+async function irAudToggleVirtuais(){
+  IR.audIgnorarVirtuais = IR.audIgnorarVirtuais===false;
+  await irSetConfig('auditoria-ignorar-virtuais', IR.audIgnorarVirtuais);
+  irShowToast(IR.audIgnorarVirtuais ? 'Endereços virtuais ocultos.' : 'Endereços virtuais visíveis.');
+  irRenderView();
 }
 function irDivFecharAuditoria(){ IR.divAuditoria = null; irRenderView(); }
 function irRenderDivergencias(){
