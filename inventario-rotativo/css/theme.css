@@ -1274,9 +1274,13 @@ table.pasta-table thead th{ background:transparent; font-size:9.5px; font-weight
   padding:7px 9px; border-bottom:1px solid var(--line); cursor:default; }
 table.pasta-table td{ padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:middle; }
 table.pasta-table tr:last-child td{ border-bottom:none; }
-table.pasta-table td.mono{ font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--ink-soft); }
+table.pasta-table td.mono{ font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--ink); }
 table.pasta-table tr.pasta-novo td.mono{ color:var(--ink); }
 .pasta-desc{ display:block; font-size:10.5px; font-weight:500; color:var(--ink-soft); margin-top:1px; }
+/* Caminho de onde o arquivo veio: é o que denuncia uma escolha errada quando a
+   mesma base existe em duas pastas. */
+.pasta-caminho{ display:block; font-size:10.5px; font-weight:500; color:var(--ink-soft);
+  margin-top:2px; white-space:normal; word-break:break-word; }
 .pasta-falta{ color:var(--ink-soft); font-style:italic; }
 .pasta-tag{ display:inline-block; font-size:9.5px; font-weight:800; text-transform:uppercase;
   letter-spacing:.05em; padding:2px 8px; border-radius:20px; }

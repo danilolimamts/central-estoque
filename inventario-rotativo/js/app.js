@@ -720,7 +720,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v129';
+const IR_APP_VERSION = 'v130';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2198,30 +2198,50 @@ async function irPastaDesconectar(){
 
    Quando a mesma base aparece em dois lugares, vence a MAIS RECENTE. É o que
    resolve a pasta do ciclo fechado esquecida ao lado da do ciclo aberto. */
+/* Varre a pasta escolhida e as subpastas até IR_PASTA_NIVEIS de profundidade.
+   Não dá pra assumir uma estrutura: cada área organiza do seu jeito — por
+   finalidade ("01. Inventário Rotativo", "02. Endereços Transitórios", "03.
+   Net"), por ciclo, ou tudo solto. Varrer fundo cobre todas, e o limite de
+   pastas visitadas evita passear por uma árvore gigante do OneDrive.
+
+   Quando a mesma base aparece em mais de um lugar, vence a MAIS RECENTE — é o
+   que resolve o ciclo fechado ao lado do aberto. Por isso a tabela mostra o
+   caminho de cada arquivo: é ali que se enxerga uma escolha errada. */
+const IR_PASTA_NIVEIS = 4;
+const IR_PASTA_MAX_DIRS = 600;
 async function irPastaVarrer(){
   const h = IR.pastaHandle;
   if(!h) return;
   const achados = {};
-  const guardar = (base, file, ondeVeio)=>{
+  let visitadas = 0, estourou = false;
+  const guardar = (base, file, caminho)=>{
     const atual = achados[base];
-    if(!atual || file.lastModified > atual.file.lastModified) achados[base] = {file, pasta:ondeVeio};
+    if(!atual || file.lastModified > atual.file.lastModified) achados[base] = {file, pasta:caminho};
   };
-  const lerDir = async (dir, rotulo, profundidade)=>{
+  const lerDir = async (dir, caminho, profundidade)=>{
+    if(visitadas++ > IR_PASTA_MAX_DIRS){ estourou = true; return; }
+    const subs = [];
     for await (const entry of dir.values()){
       if(entry.kind === 'file'){
         const base = irPastaBaseDe(entry.name);
         if(!base) continue;
-        try{ guardar(base, await entry.getFile(), rotulo); }catch(err){ /* só na nuvem ou sem permissão */ }
-      } else if(entry.kind === 'directory' && profundidade > 0 && !entry.name.startsWith('.')){
-        await lerDir(entry, entry.name, profundidade - 1);
+        // Arquivo temporário do Excel (~$algo.xlsx) não é planilha de verdade.
+        if(entry.name.startsWith('~$')) continue;
+        try{ guardar(base, await entry.getFile(), caminho); }catch(err){ /* só na nuvem ou sem permissão */ }
+      } else if(entry.kind === 'directory' && profundidade > 0
+                && !entry.name.startsWith('.') && !entry.name.startsWith('~')){
+        subs.push(entry);
       }
     }
+    for(const sub of subs) await lerDir(sub, caminho + ' › ' + sub.name, profundidade - 1);
   };
   try{
-    await lerDir(h, h.name, 1);
+    await lerDir(h, h.name, IR_PASTA_NIVEIS);
     IR.pastaArquivos = achados;
     IR.pastaVarridoEm = new Date().toISOString();
-    IR.pastaErro = null;
+    IR.pastaErro = estourou
+      ? 'A pasta tem muitas subpastas; parei em '+IR_PASTA_MAX_DIRS+'. Se faltar alguma base, conecte uma pasta mais específica.'
+      : null;
   }catch(err){
     IR.pastaErro = 'Não consegui ler a pasta: '+(err && err.message || err);
   }
@@ -2317,7 +2337,9 @@ function irRenderPastaPanel(){
     const novo = irPastaNovo(b.id);
     return `<tr class="${novo?'pasta-novo':''}">
       <td><strong>${irEsc(b.label)}</strong><span class="pasta-desc">${irEsc(b.desc)}</span></td>
-      <td class="mono">${arq ? irEsc(arq.file.name) : '<span class="pasta-falta">não encontrado</span>'}</td>
+      <td class="mono">${arq
+        ? irEsc(arq.file.name) + '<span class="pasta-caminho">' + irEsc(arq.pasta) + '</span>'
+        : '<span class="pasta-falta">não encontrado</span>'}</td>
       <td class="mono">${arq ? irEsc(irPastaQuando(b.id)) : '—'}</td>
       <td>${!arq ? '—' : novo
         ? `<span class="pasta-tag nova">${b.auto ? 'atualiza' : 'preenche'}</span>`
