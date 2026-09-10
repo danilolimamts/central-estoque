@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v116';
+const IR_APP_VERSION = 'v117';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5252,14 +5252,17 @@ function irTransLogsPresentes(){
 }
 /* Faixas de idade do saldo, contadas do dia do último movimento até hoje. É a
    pendência de movimentação: D0 é o que entrou hoje e ainda pode sair sozinho;
-   D+ é o que está parado há uma semana ou mais e ninguém foi buscar. */
-const IR_TRANS_FAIXAS = ['D0','D+1','D+2','D+3','D+4','D+5','D+6','D+7','D+'];
+   D+7 é acumulativo — sete dias OU MAIS. A faixa aberta "D+" que existia depois
+   dele saía do gráfico e da tabela sem dizer de quantos dias estava falando, o
+   que não serve pra cobrar responsável. Saldo sem data cai em D+7 pelo mesmo
+   motivo: se ninguém sabe quando entrou, é caso de cobrança, não de folga. */
+const IR_TRANS_FAIXAS = ['D0','D+1','D+2','D+3','D+4','D+5','D+6','D+7'];
 const IR_TRANS_FAIXA_MAX = 7;
 function irTransFaixa(dia, hoje){
-  if(!dia) return 'D+';
+  if(!dia) return 'D+'+IR_TRANS_FAIXA_MAX;
   const d = Math.round((hoje - Date.parse(dia+'T00:00:00')) / 86400000);
   if(d <= 0) return 'D0';
-  if(d > IR_TRANS_FAIXA_MAX) return 'D+';
+  if(d >= IR_TRANS_FAIXA_MAX) return 'D+'+IR_TRANS_FAIXA_MAX;
   return 'D+'+d;
 }
 /* Prazo do transitório: 48 horas. D0 e D+1 estão dentro; de D+2 em diante o saldo
@@ -5376,7 +5379,7 @@ function irTransCurva(pts, yMin, yMax){
 /* O viewBox tem proporção fixa e o SVG escala junto (height:auto no CSS). O
    preserveAspectRatio="none" que estava aqui esticava traço e texto na horizontal
    — era isso que dava o aspecto borrado. */
-function irTransLinha(vals, titulo, total, fmt, cor){
+function irTransLinha(vals, titulo, total, fmt, cor, fmtCurto){
   const W = 340, H = 132, padL = 18, padR = 18, padT = 30, padB = 22;
   const max = Math.max(...vals, 1);
   const passo = (W - padL - padR) / Math.max(1, vals.length - 1);
@@ -5399,7 +5402,16 @@ function irTransLinha(vals, titulo, total, fmt, cor){
       <path d="${linha}" fill="none" stroke="${cor}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
       ${pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i===iMax?4.6:3.2}"
         fill="${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'var(--success)':'var(--orange)'}" stroke="var(--surface2)" stroke-width="1.4"><title>${irEsc(IR_TRANS_FAIXAS[i])}: ${irEsc(fmt(vals[i]))}</title></circle>`).join('')}
-      ${vals[iMax]>0?`<text x="${Math.min(W-padR-4, Math.max(padL+4, pts[iMax][0])).toFixed(1)}" y="${Math.max(13,pts[iMax][1]-10).toFixed(1)}" class="tg-t-val" text-anchor="middle">${irEsc(fmt(vals[iMax]))}</text>`:''}
+      ${pts.map((p,i)=>{
+        if(!(vals[i]>0)) return '';
+        // O máximo leva o valor cheio; os demais vão compactos, senão os rótulos
+        // se sobrepõem — são oito dias em pouco mais de 300px de viewBox.
+        const cheio = i===iMax;
+        const txt = cheio ? fmt(vals[i]) : fmtCurto(vals[i]);
+        const x = Math.min(W-padR+4, Math.max(padL-4, p[0]));
+        return `<text x="${x.toFixed(1)}" y="${Math.max(cheio?13:11, p[1]-(cheio?11:9)).toFixed(1)}"
+          class="tg-t-val ${cheio?'':'mini'}" text-anchor="middle">${irEsc(txt)}</text>`;
+      }).join('')}
       ${pts.map((p,i)=>`<text x="${p[0].toFixed(1)}" y="${H-6}" class="tg-t-lbl ${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'ok':'atraso'}" text-anchor="middle">${irEsc(IR_TRANS_FAIXAS[i].replace('D+','+').replace('D0','0'))}</text>`).join('')}
     </svg>
   </div>`;
@@ -5409,6 +5421,10 @@ function irTransLinha(vals, titulo, total, fmt, cor){
    e obrigar o olho a ir até o cabeçalho pra achar o número desperdiça o buraco. */
 /* Compacto sem casa decimal: no rótulo dentro do anel e na legenda o centavo não
    decide nada, e "R$20,1K" só rouba espaço de fonte. */
+function irTransNumCurto(n){
+  n = n||0;
+  return Math.abs(n)>=10000 ? Math.round(n/1000).toLocaleString('pt-BR')+'K' : irFmtInt(n);
+}
 function irTransValorCurto(n){
   n = n||0;
   const abs = Math.abs(n);
@@ -5469,8 +5485,8 @@ function irTransGraficos(porFaixaQtd, porFaixaValor){
   let dentro=0, fora=0;
   IR_TRANS_FAIXAS.forEach((f,i)=>{ if(irTransDentroDoPrazo(f)) dentro += vs[i]; else fora += vs[i]; });
   return `<div class="tg-wrap">
-    ${irTransLinha(qs, 'Peças por idade', irFmtInt(totQ), irFmtInt, 'var(--blue)')}
-    ${irTransLinha(vs, 'Valor por idade', irFmtMoney(totV), irFmtMoney, 'var(--orange)')}
+    ${irTransLinha(qs, 'Peças por idade', irFmtInt(totQ), irFmtInt, 'var(--blue)', irTransNumCurto)}
+    ${irTransLinha(vs, 'Valor por idade', irFmtMoney(totV), irFmtMoney, 'var(--orange)', irTransValorCurto)}
     ${irTransRosca(dentro, fora)}
   </div>`;
 }
