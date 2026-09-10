@@ -239,8 +239,17 @@ const IR_TAB_SECAO = {
   historico:'Análise', comparativo:'Análise', indicadores:'Análise',
   importacao:'Sistema', configuracoes:'Sistema'
 };
+/* Abas que não são do ciclo rotativo. Transitórios lê o estoque de hoje pela
+   QRY0160 — não tem ciclo, não tem contagem, e carimbar "Ciclo 3/2026" no topo
+   dizia uma coisa que não é verdade ali. O contexto certo é a data do estoque. */
+const IR_TAB_SEM_CICLO = new Set(['transitorios']);
 function irEyebrowTexto(tab){
   const secao = IR_TAB_SECAO[tab] || '';
+  if(IR_TAB_SEM_CICLO.has(tab)){
+    const m = IR.est390Meta || {};
+    const quando = m.importadoEm ? 'Estoque de '+new Date(m.importadoEm).toLocaleDateString('pt-BR') : '';
+    return [secao, quando].filter(Boolean).join(' · ');
+  }
   const ciclo = IR.cicloAtivo ? irCicloLabel(IR.cicloAtivo) : '';
   return [secao, ciclo].filter(Boolean).join(' · ');
 }
@@ -252,6 +261,11 @@ function irSwitchTab(tab){
   document.getElementById('tabSubtitle').textContent = sub;
   const eb = document.getElementById('tabEyebrow');
   if(eb) eb.textContent = irEyebrowTexto(tab);
+  // Filtro de ciclo e mês só faz sentido onde existe ciclo. Em Transitórios ele
+  // ficava no topo sem efeito nenhum sobre a tela, sugerindo um recorte que a
+  // aba não faz.
+  const filtros = document.getElementById('topbarFilters');
+  if(filtros) filtros.hidden = IR_TAB_SEM_CICLO.has(tab);
   irRenderCycleBadge();
   irRenderView();
   irCloseSidebarMobile();
@@ -728,7 +742,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v137';
+const IR_APP_VERSION = 'v138';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -6080,7 +6094,7 @@ async function irBaixarBoletimTransitorios(){
     </div>
     <div class="rp-body">
       ${setores.map(g=>irTransPainelSetor(g, logs, true)).join('')}
-      <p class="rp-footer">Prazo do transitório: ${IR_TRANS_PRAZO_H}h — verde está no prazo, laranja passou. D+${IR_TRANS_FAIXA_MAX} é acumulativo: sete dias ou mais.<br>"Prov. duplicidade" é o saldo de itens que fecharam o ano com ganho no NET da QRY410 — movimentar resolve, procurar não.<br>Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · gerado pelo módulo Inventário.</p>
+      <p class="rp-footer">Prazo do transitório: ${IR_TRANS_PRAZO_H}h — verde está no prazo, laranja passou. D+${IR_TRANS_FAIXA_MAX} é acumulativo: sete dias ou mais.<br>"Prov. duplicidade" é o saldo de itens que fecharam o ano com ganho no NET da QRY410 — movimentar resolve, procurar não.<br>Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · Controle de Transitórios.</p>
     </div>
   </div>`;
   irBaixarBoletimImagem(html, 'Transitorios_'+new Date().toISOString().slice(0,10)+'.png',
