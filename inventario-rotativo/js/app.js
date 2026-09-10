@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v127';
+const IR_APP_VERSION = 'v128';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5616,18 +5616,18 @@ function irTransPainelSetor(g, logs, estatico){
         <td>${estatico ? irEsc(irTransNome(p.x1))
           : `<input class="trans-nome" value="${irEsc(irTransNome(p.x1))}" title="Nome do transitório — dá pra editar"
              onchange="irTransSetNome('${irEsc(p.x1)}', this.value)">`}</td>
-        ${cols.map(l=>`<td class="mono ${p.cel[l]?(irTransDentroDoPrazo(l)?'trans-ok':'trans-atraso'):''}">${
+        ${cols.map(l=>`<td class="mono tt-c-dia ${p.cel[l]?(irTransDentroDoPrazo(l)?'trans-ok':'trans-atraso'):''}">${
           p.cel[l] ? irFmtInt(p.cel[l])+'<span class="trans-cel-val">'+irFmtMoneyCompact(p.celValor[l]||0)+'</span>' : '0'}</td>`).join('')}
-        <td class="mono">${irFmtMoney(p.valor)}</td>
-        <td class="mono ${p.ganhoValor>0?'trans-ganho':''}" title="Saldo que pode estar duplicado: item com ganho no NET do ano da QRY410 e saldo parado aqui">${
+        <td class="mono tt-c-num">${irFmtMoney(p.valor)}</td>
+        <td class="mono tt-c-num ${p.ganhoValor>0?'trans-ganho':''}" title="Saldo que pode estar duplicado: item com ganho no NET do ano da QRY410 e saldo parado aqui">${
           p.ganhoValor>0 ? irFmtMoney(p.ganhoValor)+'<span class="trans-pct">'+irFmtPct(p.valor?p.ganhoValor/p.valor:0)+'</span>' : '—'}</td>
       </tr>`).join('')}</tbody>
       <tfoot><tr>
         <td colspan="2"><strong>Total</strong></td>
-        ${cols.map(l=>`<td class="mono"><strong>${totCol[l]?irFmtInt(totCol[l]):'0'}</strong>${
+        ${cols.map(l=>`<td class="mono tt-c-dia"><strong>${totCol[l]?irFmtInt(totCol[l]):'0'}</strong>${
           totCol[l]?'<span class="trans-cel-val">'+irFmtMoneyCompact(totValFaixa[l]||0)+'</span>':''}</td>`).join('')}
-        <td class="mono"><strong>${irFmtMoney(g.valor)}</strong></td>
-        <td class="mono"><strong>${ganhoSetor>0?irFmtMoney(ganhoSetor):'—'}</strong></td>
+        <td class="mono tt-c-num"><strong>${irFmtMoney(g.valor)}</strong></td>
+        <td class="mono tt-c-num"><strong>${ganhoSetor>0?irFmtMoney(ganhoSetor):'—'}</strong></td>
       </tr></tfoot>
     </table></div>
   </div>`;
