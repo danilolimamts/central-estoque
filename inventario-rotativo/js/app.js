@@ -90,6 +90,24 @@ function irFmtDate(s){
    "Ciclo 1" de anos diferentes (mesmo número, ciclos distintos). */
 function irCicloAno(c){ const d = new Date(c.dataAbertura); return isNaN(d.getTime()) ? null : d.getFullYear(); }
 function irCicloLabel(c){ const ano = irCicloAno(c); return `Ciclo ${c.numero}${ano?'/'+ano:''}`; }
+// Ordem cronológica de um ciclo: ano e número juntos num número só, pra comparar.
+function irCicloOrdem(c){ return (irCicloAno(c)||0) * 10 + (c.numero||0); }
+/* Status do ciclo, derivado em vez de lido cru do registro. Todo ciclo era
+   gravado como "aberto" e só fechava se alguém clicasse em "Encerrar" — então
+   os ciclos 1 e 2 continuavam aparecendo como abertos depois do 3 começar, que
+   não descreve a realidade: os ciclos são trimestrais e sequenciais, começar um
+   é fechar o anterior. Existindo ciclo mais novo, este está encerrado; o mais
+   novo é o único cujo status gravado ainda vale (dá pra encerrar à mão quando
+   ele termina e o seguinte ainda não começou). */
+function irCicloStatus(c){
+  if(!c) return 'encerrado';
+  const ordem = irCicloOrdem(c);
+  const temMaisNovo = (IR.ciclos||[]).some(o => irCicloOrdem(o) > ordem);
+  return temMaisNovo ? 'encerrado' : (c.status || 'aberto');
+}
+function irCicloMaisNovo(lista){
+  return (lista||[]).slice().sort((a,b)=>irCicloOrdem(b)-irCicloOrdem(a))[0] || null;
+}
 function irShowToast(msg, isError){
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -121,7 +139,7 @@ async function irInit(){
     IR.net410Padroes = await irSeedNet410PadroesIgnoradosIfEmpty();
     IR.ciclos = await irGetAllCiclos();
     if(IR.ciclos.length){
-      IR.cicloAtivo = IR.ciclos.find(c=>c.status==='aberto') || IR.ciclos[0];
+      IR.cicloAtivo = IR.ciclos.find(c=>irCicloStatus(c)==='aberto') || irCicloMaisNovo(IR.ciclos) || IR.ciclos[0];
       await irLoadCicloData(IR.cicloAtivo.id);
     }
     IR.est390Meta = await irGetEstoqueMeta();
@@ -278,9 +296,11 @@ function irRenderCycleBadge(){
   if(!IR.ciclos.length){ badge.innerHTML = 'Nenhum ciclo ativo'; return; }
   // Sempre em dropdown, mesmo com um único ciclo — assim o seletor não "aparece do
   // nada" quando o segundo ciclo for processado.
-  const ordenados = IR.ciclos.slice().sort((a,b)=>b.numero-a.numero);
+  // Ordena por ano E número: só pelo número, "Ciclo 4/2025" subia acima do
+  // "Ciclo 3/2026" e o ciclo em curso aparecia no meio da lista.
+  const ordenados = IR.ciclos.slice().sort((a,b)=>irCicloOrdem(b)-irCicloOrdem(a));
   badge.innerHTML = `<select id="cycleFilterSelect" onchange="irFiltrarCiclo(this.value)" title="Filtrar por ciclo">
-    ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id ? 'selected' : ''}>${irCicloLabel(c)} — ${c.status==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
+    ${ordenados.map(c=>`<option value="${c.id}" ${IR.cicloAtivo && c.id===IR.cicloAtivo.id ? 'selected' : ''}>${irCicloLabel(c)} — ${irCicloStatus(c)==='aberto'?'Aberto':'Encerrado'}</option>`).join('')}
   </select>`;
   irRenderMonthFilter();
 }
@@ -685,6 +705,16 @@ async function irProcessar(){
       } else if(msg.type==='done'){
         IR.processing = false; worker.terminate();
         await irSaveCiclo(ciclo);
+        // Processar um ciclo fecha os anteriores no registro, não só na exibição.
+        // A data de encerramento vira a abertura deste, que é o que de fato
+        // aconteceu: o ciclo anterior acabou quando o novo começou.
+        const ordemNovo = irCicloOrdem(ciclo);
+        for(const velho of IR.ciclos){
+          if(irCicloOrdem(velho) >= ordemNovo || velho.status === 'encerrado') continue;
+          velho.status = 'encerrado';
+          if(!velho.dataEncerramento) velho.dataEncerramento = ciclo.dataAbertura;
+          await irSaveCiclo(velho);
+        }
         IR.files = {f390:null, f843:[null,null,null,null], fCong:[null,null,null,null], f278:[null,null,null,null], f051:[null,null,null,null]};
         IR.ciclos = await irGetAllCiclos();
         IR.cicloAtivo = IR.ciclos.find(c=>c.id===cicloId);
@@ -742,7 +772,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v138';
+const IR_APP_VERSION = 'v139';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -1838,7 +1868,7 @@ function irGerarRelatorioEmail(){
     <div class="rp-hero">
       <div class="rp-hero-top">
         <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
-        <div class="rp-hero-status">${c.status==='aberto'?'Ciclo em andamento':'Ciclo encerrado'}</div>
+        <div class="rp-hero-status">${irCicloStatus(c)==='aberto'?'Ciclo em andamento':'Ciclo encerrado'}</div>
       </div>
       <div class="rp-hero-badge">Boletim de Inventário</div>
       <h1>Andamento do ${irCicloLabel(c)}</h1>
@@ -2703,11 +2733,11 @@ function irRenderGestaoCiclo(){
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div>
-          <h3 style="margin-bottom:4px;">${irCicloLabel(c)} — ${c.status==='aberto'?'Aberto':'Encerrado'}</h3>
+          <h3 style="margin-bottom:4px;">${irCicloLabel(c)} — ${irCicloStatus(c)==='aberto'?'Aberto':'Encerrado'}</h3>
           <p class="field-hint">Abertura: ${irFmtDate(c.dataAbertura)} · Término previsto: ${irFmtDate(c.dataPrevistaTermino)}${c.dataEncerramento?' · Encerrado em: '+irFmtDate(c.dataEncerramento):''}</p>
         </div>
         <div class="form-actions" style="margin:0;">
-          ${c.status==='aberto' ? `<button class="btn btn-secondary" onclick="irEncerrarCiclo()">Encerrar ciclo</button>` : ''}
+          ${irCicloStatus(c)==='aberto' ? `<button class="btn btn-secondary" onclick="irEncerrarCiclo()">Encerrar ciclo</button>` : ''}
           <button class="btn btn-primary" onclick="irSwitchTab('importacao')">Atualizar dados do ciclo</button>
         </div>
       </div>
@@ -6108,9 +6138,9 @@ function irRenderHistorico(){
   if(!IR.ciclos.length) return irEmptyState('Nenhum ciclo no histórico', 'Processe o primeiro ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
   return `<div class="panel"><h3>Linha do tempo</h3>
     <div class="table-wrap"><table><thead><tr><th>Ciclo</th><th>Status</th><th>Abertura</th><th>Término previsto</th><th>Encerrado em</th><th></th></tr></thead>
-    <tbody>${IR.ciclos.map(c=>`<tr>
+    <tbody>${IR.ciclos.slice().sort((a,b)=>irCicloOrdem(b)-irCicloOrdem(a)).map(c=>`<tr>
       <td class="mono">${c.numero}${irCicloAno(c)?'/'+irCicloAno(c):''}</td>
-      <td><span class="tag ${c.status==='aberto'?'tag-orange':'tag-good'}">${c.status==='aberto'?'Aberto':'Encerrado'}</span></td>
+      <td><span class="tag ${irCicloStatus(c)==='aberto'?'tag-orange':'tag-good'}">${irCicloStatus(c)==='aberto'?'Aberto':'Encerrado'}</span></td>
       <td>${irFmtDate(c.dataAbertura)}</td><td>${irFmtDate(c.dataPrevistaTermino)}</td><td>${irFmtDate(c.dataEncerramento)}</td>
       <td><button class="btn-link" onclick="irSelecionarCiclo('${c.id}')">Ver indicadores</button></td>
     </tr>`).join('')}</tbody></table></div>
