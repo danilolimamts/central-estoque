@@ -44,6 +44,8 @@ const IR = {
   // Estoque atual (QRY0390) — independente do ciclo, é a foto do CD agora.
   est390File:null, est390Processing:false, est390Progress:{stage:'', pct:0},
   est390Meta:null, est390Locais:null, transSetores:null, transExpandido:null,
+  est160File:null, est160Processing:false, est160Progress:{stage:'', pct:0},
+  audIgnorarVirtuais:true, audPrefixos:null,
   // Perdas e Ganhos (QRY410) — independente do ciclo, por ano.
   net410Anos:[], net410AnoSel:null, net410MesSel:null, net410Data:null, net410File:null,
   net410Processing:false, net410Progress:{stage:'', pct:0},
@@ -121,6 +123,9 @@ async function irInit(){
     }
     IR.est390Meta = await irGetEstoqueMeta();
     IR.transSetores = await irSeedTransSetoresIfEmpty();
+    const ign = await irGetConfig('auditoria-ignorar-virtuais');
+    if(ign!=null) IR.audIgnorarVirtuais = ign;
+    IR.audPrefixos = await irGetConfig('auditoria-prefixos');
     IR.net410Anos = await irGetAllNet410Anos();
     if(IR.net410Anos.length){
       IR.net410AnoSel = IR.net410Anos[0];
@@ -445,6 +450,7 @@ function irRenderImportacao(){
     </div>
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
     ${irRenderEst390ImportPanel()}
+    ${irRender160ImportPanel()}
     ${irRenderNet410ImportPanel()}
   `;
 }
@@ -705,7 +711,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v107';
+const IR_APP_VERSION = 'v109';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2007,6 +2013,9 @@ function irProcessar410(){
         for(const ano of msg.anos) await irSaveNet410(ano, msg.resumos[ano]);
         IR.est390Meta = await irGetEstoqueMeta();
     IR.transSetores = await irSeedTransSetoresIfEmpty();
+    const ign = await irGetConfig('auditoria-ignorar-virtuais');
+    if(ign!=null) IR.audIgnorarVirtuais = ign;
+    IR.audPrefixos = await irGetConfig('auditoria-prefixos');
     IR.net410Anos = await irGetAllNet410Anos();
         IR.net410File = null;
         IR.net410AnoSel = msg.anos[0];
@@ -2078,6 +2087,63 @@ function irRenderEst390ImportPanel(){
         <div class="progress-track"><div class="progress-fill orange" id="ir-390-fill" style="width:${IR.est390Progress.pct}%"></div></div>
       </div>` : IR.est390File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessarEst390()">PROCESSAR ESTOQUE</button></div>` : ''}
     ${m ? `<p class="field-hint" style="margin-top:12px;">${irFmtInt(m.locais)} endereços · ${irFmtInt(m.itens)} itens · ${irFmtInt(m.pecasTotal)} peças · ${irFmtMoney(m.valorTotal)} — importado em ${irEsc(new Date(m.importadoEm).toLocaleString('pt-BR'))}</p>` : ''}
+  </div>`;
+}
+/* ---------- IMPORTAÇÃO DA QRY0160 (PENDÊNCIA DE MOVIMENTAÇÃO) ---------- */
+function irOnFile160(f){ if(!f) return; IR.est160File = f; irRenderView(); }
+function irOnDropFile160(e){ e.preventDefault(); const f = e.dataTransfer.files[0]; if(f) irOnFile160(f); }
+function irRemoveFile160(){ IR.est160File = null; irRenderView(); }
+function irProcessar160(){
+  if(IR.est160Processing || !IR.est160File) return;
+  IR.est160Processing = true; IR.est160Progress = {stage:'Lendo arquivo...', pct:0};
+  irRenderView();
+  IR.est160File.arrayBuffer().then(buf=>{
+    const worker = irNovoWorker();
+    worker.onmessage = async ev=>{
+      const msg = ev.data;
+      if(msg.type==='progress'){ IR.est160Progress = {stage:msg.stage, pct:msg.pct}; irUpdateProgressUI160(); }
+      else if(msg.type==='error160'){
+        IR.est160Processing = false; worker.terminate();
+        irShowToast('Erro na QRY0160: '+msg.message, true); irRenderView();
+      } else if(msg.type==='done160'){
+        IR.est160Processing = false; worker.terminate();
+        IR.est390Meta = await irGetEstoqueMeta();
+        IR.est390Locais = null; IR.est160File = null;
+        irShowToast(irFmtInt(msg.locais)+' endereços com data de movimento.');
+        irRenderView();
+      }
+    };
+    worker.onerror = ()=>{ worker.terminate(); IR.est160Processing=false; irShowToast('Falha no processamento da QRY0160.', true); irRenderView(); };
+    worker.postMessage({type:'process160', buf160:buf}, [buf]);
+  });
+}
+function irUpdateProgressUI160(){
+  const st = document.getElementById('ir-160-stage'), fi = document.getElementById('ir-160-fill');
+  if(st && fi){ st.textContent = IR.est160Progress.stage; fi.style.width = IR.est160Progress.pct+'%'; }
+}
+function irRender160ImportPanel(){
+  const m = IR.est390Meta;
+  const temFicha = !!(IR._itemInfo && IR._itemInfo.size);
+  return `<div class="panel">
+    <h3>Pendência de movimentação (QRY0160)</h3>
+    <div class="dz-grid" style="grid-template-columns:1fr;max-width:340px;">
+      <div class="dropzone ${IR.est160File?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropFile160(event)">
+        <input type="file" id="ir-file-160" accept=".xlsx,.xls" style="display:none" onchange="irOnFile160(this.files[0])">
+        <div class="dz-icon">⏱️</div>
+        <div class="dz-title">QRY0160</div>
+        <div class="dz-desc">Estoque com data de movimento</div>
+        ${IR.est160File
+          ? `<div class="dz-file mono">${irEsc(IR.est160File.name)}</div><button class="btn-link" onclick="irRemoveFile160()">Remover</button>`
+          : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-160').click()">Selecionar</button>`}
+      </div>
+    </div>
+    ${!temFicha ? `<p class="field-hint neg">Importe a QRY0390 antes: o valor e o LOG de cada item saem de lá.</p>` : ''}
+    ${IR.est160Processing ? `
+      <div class="progress-wrap">
+        <div class="progress-stage" id="ir-160-stage">${irEsc(IR.est160Progress.stage)}</div>
+        <div class="progress-track"><div class="progress-fill orange" id="ir-160-fill" style="width:${IR.est160Progress.pct}%"></div></div>
+      </div>` : IR.est160File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessar160()">PROCESSAR PENDÊNCIA</button></div>` : ''}
+    ${m && m.fonte==='160' ? `<p class="field-hint" style="margin-top:12px;">${irFmtInt(m.locais)} endereços · ${irFmtInt(m.itens)} itens · ${irFmtInt(m.pecasTotal)} peças · ${irFmtMoney(m.valorTotal)}${m.semFicha?` · ${irFmtInt(m.semFicha)} linhas sem valor (item fora da 390)`:''}</p>` : ''}
   </div>`;
 }
 function irRenderNet410ImportPanel(){
@@ -4420,7 +4486,7 @@ async function irDivGerarAuditoria(){
     const porItem = new Map(itens.map(i=>[i.item, i]));
     const cicloId = (IR.cicloAtivo||{}).id;
     const linhas = [];
-    let semEstoque = 0, semDescricao = 0;
+    let semEstoque = 0, semDescricao = 0, ocultosVirtuais = 0;
     for(const item of sel){
       const g = porItem.get(item);
       if(!g) continue;
@@ -4432,8 +4498,11 @@ async function irDivGerarAuditoria(){
       const ondeDivergiu = g.locais.filter(d=>d.diferenca!==0);
       // Onde foi a ÚLTIMA divergência dentro do filtro: é o endereço mais fresco,
       // e o primeiro lugar onde o auditor deve olhar.
-      const ult = ondeDivergiu.slice().sort((a,b)=>
-        String(irDivDiaDa(b)).localeCompare(String(irDivDiaDa(a))))[0];
+      const porData = ondeDivergiu.slice().sort((a,b)=>
+        String(irDivDiaDa(b)).localeCompare(String(irDivDiaDa(a))));
+      // O endereço de correção não é onde a peça estava: procura o último ANTES
+      // dele. Se todos forem de correção, aí sim mostra o que tem.
+      const ult = porData.find(d=>!irAudEhCorrecao(d.local)) || porData[0];
       const ultimaDiv = ult
         ? ult.local + (irDescLocal(ult.local) ? ' · '+irDescLocal(ult.local) : '') + ' · ' + irFmtDate(irDivDiaDa(ult))
         : '';
@@ -4459,7 +4528,10 @@ async function irDivGerarAuditoria(){
         }
         continue;
       }
-      for(const s of est.locais){
+      const posicoes = IR.audIgnorarVirtuais===false ? est.locais
+        : est.locais.filter(x=>!irAudEhVirtual(x.local, x.desc));
+      if(!posicoes.length && est.locais.length) ocultosVirtuais += est.locais.length;
+      for(const s of (posicoes.length ? posicoes : est.locais)){
         // A QRY0390 nova traz a descrição do endereço junto com o saldo — é a
         // fonte mais confiável, porque cobre todo o CD e não só o que foi
         // congelado em algum ciclo.
@@ -4475,7 +4547,7 @@ async function irDivGerarAuditoria(){
     IR.divAuditoria = {
       geradoEm: new Date().toLocaleString('pt-BR'),
       escopo: irDivEscopoLabel(),
-      itens: sel.length, linhas, semEstoque, semDescricao,
+      itens: sel.length, linhas, semEstoque, semDescricao, ocultosVirtuais,
       // Sem ficha da 390 não há EAN nem saldo por endereço — é a causa mais comum
       // de a folha sair capenga, e o aviso evita procurar bug onde não tem.
       semFicha: !(IR._itemInfo && IR._itemInfo.size)
@@ -4495,7 +4567,8 @@ function irDivExportarAuditoria(){
   const cols = g.tipo==='similares'
     ? [['dia','Dia'],['local','Local'],['descricaoLocal','Desc. Local'],['inventario','Inv.'],
        ['itemSobra','Sobrou'],['nomeSobra','Descrição (sobrou)'],['itemFalta','Faltou'],
-       ['nomeFalta','Descrição (faltou)'],['qtd','Qtde'],['desequilibrio','Desequil.']]
+       ['nomeFalta','Descrição (faltou)'],['qtd','Qtde'],['desequilibrio','Desequil.'],
+       ['ondeConferir','Onde Conferir']]
     : [['item','Item'],['ean','EAN'],['descricao','Descrição'],['local','Local'],
        ['descricaoLocal','Desc. Local'],['saldo','Qtde'],['diferenca','Qtde Div.'],['valor','Valor Div.'],
        ['ultimaDiv','Últ. Divergência']];
@@ -4754,16 +4827,18 @@ function irRenderDivAuditoria(){
     </div>
     <div class="aud-cab">
       <div class="ofe-filtro"><label>Data</label><input type="date" id="ir-aud-data" value="${new Date().toISOString().slice(0,10)}"></div>
+      <label class="ofe-check"><input type="checkbox" ${IR.audIgnorarVirtuais!==false?'checked':''} onchange="irAudToggleVirtuais()">
+        Ocultar ${irEsc(irAudPrefixos('virtual').join(', '))}</label>
       ${g.semFicha ? `<span class="aud-alerta">Sem a QRY0390 importada: a folha sai sem EAN e sem saldo por endereço. Importe o estoque na aba Importação.</span>` : ''}
       <span class="field-hint">${sim
         ? `${irFmtInt(g.itens)} ${g.itens===1?'par':'pares'} · ${irEsc(g.escopo)}`
-        : `${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}`}</span>
+        : `${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}${g.ocultosVirtuais?` · ${irFmtInt(g.ocultosVirtuais)} só em endereço virtual`:''}`}</span>
     </div>
     <div class="table-wrap"><div class="table-scroll" style="max-height:520px;">
       <table class="aud-table ${sim?'aud-t-sim':'aud-t-item'}">
         ${sim ? `<thead><tr><th>Dia</th><th>Local</th><th>Desc. Local</th><th>Inv.</th>
           <th>Sobrou</th><th>Descrição</th><th>Faltou</th><th>Descrição</th>
-          <th>Qtde</th><th>Desequil.</th><th>Confere</th></tr></thead>
+          <th class="num">Qtde</th><th class="num">Desequil.</th><th>Onde conferir</th><th>Confere</th></tr></thead>
         <tbody>${g.linhas.map(l=>`<tr>
           <td class="mono">${irFmtDate(l.dia)}</td>
           <td class="mono">${irEsc(l.local)}</td>
@@ -4775,6 +4850,7 @@ function irRenderDivAuditoria(){
           <td class="aud-desc">${irEsc(l.nomeFalta)}</td>
           <td class="mono">${irFmtInt(l.qtd)}</td>
           <td class="mono ${l.desequilibrio<0?'neg':'pos'}">${Math.abs(l.desequilibrio)<0.005?'':(l.desequilibrio>0?'+':'')+irFmtMoney(l.desequilibrio)}</td>
+          <td class="aud-ult">${irEsc(l.ondeConferir||'')}${l.correcao?`<span class="sim-desc">${irEsc(l.correcao)}</span>`:''}</td>
           <td class="aud-vazio"></td>
         </tr>`).join('')}</tbody>` : `<thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local</th><th>Desc. Local</th>
           <th class="num">Qtde</th><th class="num">Qtde Div.</th><th class="num">Valor Div.</th>
@@ -4859,6 +4935,24 @@ async function irDivGerarAuditoriaSimilares(){
   if(!pares.length){ irShowToast('Nenhum par de similares no filtro.', true); return; }
   try{
     await irCarregarDescLocaisTodosCiclos();
+    await irCarregarItemInfo();
+    /* O par sai do endereço onde a contagem bateu, e às vezes esse endereço é de
+       correção — não adianta mandar o auditor pra lá. "Onde conferir" traz as
+       posições em que os dois códigos têm saldo hoje, que é onde as etiquetas
+       podem estar trocadas de verdade. */
+    const ondeConferir = p => {
+      const pos = [];
+      for(const it of [p.itemSobra, p.itemFalta]){
+        const info = irItemInfo(it);
+        for(const l of ((info && info.locais) || [])){
+          if(irAudEhCorrecao(l.local, l.desc)) continue;
+          if(IR.audIgnorarVirtuais!==false && irAudEhVirtual(l.local, l.desc)) continue;
+          pos.push(l.local + (l.desc ? ' · '+l.desc : ''));
+          if(pos.length>=4) break;
+        }
+      }
+      return Array.from(new Set(pos)).join(' | ');
+    };
     IR.divAuditoria = {
       tipo:'similares',
       geradoEm: new Date().toLocaleString('pt-BR'),
@@ -4867,7 +4961,9 @@ async function irDivGerarAuditoriaSimilares(){
       linhas: irDivSimOrdenarPares(pares).map(p=>({
         dia:p.dia, local:p.local, descricaoLocal:irDescLocal(p.local), inventario:p.inventario,
         itemSobra:p.itemSobra, nomeSobra:p.nomeSobra||'', itemFalta:p.itemFalta, nomeFalta:p.nomeFalta||'',
-        qtd:p.qtd, desequilibrio:p.desequilibrio
+        qtd:p.qtd, desequilibrio:p.desequilibrio,
+        correcao: irAudEhCorrecao(p.local) ? 'endereço de correção' : '',
+        ondeConferir: ondeConferir(p)
       }))
     };
     irRenderView();
@@ -4895,6 +4991,36 @@ function irDivExportarSimilares(){
   const f = IR.divSimFiltro || {};
   const sufixo = (f.de||f.ate) ? (f.de||'inicio')+'_a_'+(f.ate||'hoje') : 'todos';
   irDivBaixarPlanilha(cab, linhas, 'similares_trocados_'+sufixo);
+}
+/* Endereços que não servem de destino de auditoria.
+
+   CORREÇÃO (AIR, AIN, AEE, REC ...): não é onde a peça está, é onde o ajuste foi
+   lançado. Apontar o auditor pra lá é mandá-lo conferir o próprio lançamento.
+
+   VIRTUAL (DS, GAI): endereço de passagem, guarda o que vai entrar e sair. O saldo
+   ali é real mas não é conferível como prateleira.
+
+   As duas listas são editáveis e o filtro pode ser desligado inteiro — tem dia em
+   que é justamente no transitório que se quer olhar. */
+const IR_AUD_PREF_CORRECAO_PADRAO = ['AIR','AIN','AEE','REC','INS','ARI'];
+const IR_AUD_PREF_VIRTUAL_PADRAO  = ['DS','GAI'];
+function irAudPrefixos(tipo){
+  const salvo = IR.audPrefixos && IR.audPrefixos[tipo];
+  return salvo || (tipo==='correcao' ? IR_AUD_PREF_CORRECAO_PADRAO : IR_AUD_PREF_VIRTUAL_PADRAO);
+}
+// Prefixo do endereço = primeira palavra da descrição (AIR LOG 001 00 -> AIR).
+// Quando não há descrição, não dá pra classificar e o endereço passa.
+function irAudPrefixoDe(local, desc){
+  const d = String(desc || irDescLocal(local) || '').trim();
+  return d ? d.split(/\s+/)[0].toUpperCase() : '';
+}
+function irAudEhCorrecao(local, desc){ return irAudPrefixos('correcao').includes(irAudPrefixoDe(local, desc)); }
+function irAudEhVirtual(local, desc){ return irAudPrefixos('virtual').includes(irAudPrefixoDe(local, desc)); }
+async function irAudToggleVirtuais(){
+  IR.audIgnorarVirtuais = IR.audIgnorarVirtuais===false;
+  await irSetConfig('auditoria-ignorar-virtuais', IR.audIgnorarVirtuais);
+  irShowToast(IR.audIgnorarVirtuais ? 'Endereços virtuais ocultos.' : 'Endereços virtuais visíveis.');
+  irRenderView();
 }
 function irDivFecharAuditoria(){ IR.divAuditoria = null; irRenderView(); }
 function irRenderDivergencias(){
@@ -5084,6 +5210,33 @@ function irTransLogsPresentes(){
   const outros = Array.from(vistos).filter(x=>!IR_TRANS_LOGS.includes(x)).sort();
   return conhecidos.concat(outros);
 }
+/* Faixas de idade do saldo, contadas do dia do último movimento até hoje. É a
+   pendência de movimentação: D0 é o que entrou hoje e ainda pode sair sozinho;
+   D+ é o que está parado há uma semana ou mais e ninguém foi buscar. */
+const IR_TRANS_FAIXAS = ['D0','D+1','D+2','D+3','D+4','D+'];
+function irTransFaixa(dia, hoje){
+  if(!dia) return 'D+';
+  const d = Math.round((hoje - Date.parse(dia+'T00:00:00')) / 86400000);
+  if(d <= 0) return 'D0';
+  if(d >= 5) return 'D+';
+  return 'D+'+d;
+}
+// Peças por faixa de idade de um endereço (ou de um grupo de endereços).
+function irTransIdade(locais){
+  const hoje = Date.parse(new Date().toISOString().slice(0,10)+'T00:00:00');
+  const r = {}; let comData = 0;
+  for(const f of IR_TRANS_FAIXAS) r[f] = 0;
+  for(const l of locais){
+    const pd = l.porDia;
+    if(pd && Object.keys(pd).length){
+      for(const dia in pd){ r[irTransFaixa(dia, hoje)] += pd[dia]; comData += pd[dia]; }
+    }
+  }
+  return {faixas:r, comData};
+}
+function irTransTemData(){
+  return (IR.est390Meta||{}).fonte === '160';
+}
 function irRenderTransitorios(){
   if(!IR.est390Locais){ irCarregarEstoque390(); return irDivCarregando(); }
   if(!IR.est390Locais.length){
@@ -5101,7 +5254,7 @@ function irRenderTransitorios(){
       <span class="field-hint">${irFmtMoney(naoClass.valor)} · ${irFmtInt(naoClass.locais.length)} endereços · ${irFmtInt(naoClass.prefixos.size)} prefixos sem setor</span>
     </div>${irTransTabelaPrefixos(naoClass)}</div>` : ''}
     <p class="field-hint">Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · ${irFmtInt(m.locais||0)} endereços no CD · ${irFmtMoney(m.valorTotal||0)} no total.
-    A idade do saldo (D0, D+1, D+4) precisa de uma data de entrada por endereço, que a QRY0390 não traz — só o horário da extração.</p>
+    ${irTransTemData() ? 'Idade do saldo contada da Data Movimento da QRY0160 até hoje.' : 'Importe a QRY0160 na aba Importação para abrir as colunas por idade do saldo — a QRY0390 não traz data de movimento.'}</p>
   `;
 }
 /* Uma tabela por setor, no formato do relatório de pendência: uma linha por
@@ -5109,14 +5262,19 @@ function irRenderTransitorios(){
 function irTransPainelSetor(g, logs){
   const porPrefixo = new Map();
   for(const l of g.locais){
-    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, itens:0, porLog:{}});
+    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, itens:0, porLog:{}, locais:[]});
     const p = porPrefixo.get(l.x1);
-    p.valor += l.valor; p.qtd += l.qtd; p.n++; p.itens += l.itens||0;
+    p.valor += l.valor; p.qtd += l.qtd; p.n++; p.itens += l.itens||0; p.locais.push(l);
     for(const k in (l.porLog||{})) p.porLog[k] = (p.porLog[k]||0) + l.porLog[k];
   }
   const linhas = Array.from(porPrefixo.values()).sort((a,b)=>b.valor-a.valor);
-  const totLog = {};
-  for(const p of linhas) for(const k in p.porLog) totLog[k] = (totLog[k]||0) + p.porLog[k];
+  // Com a QRY0160 importada a tabela abre por IDADE do saldo, que é a pergunta do
+  // relatório de pendência; sem ela, cai pro LOG, que é o que a 390 sabe dizer.
+  const comData = irTransTemData();
+  const cols = comData ? IR_TRANS_FAIXAS : logs;
+  for(const p of linhas) p.cel = comData ? irTransIdade(p.locais).faixas : p.porLog;
+  const totCol = {};
+  for(const p of linhas) for(const k in p.cel) totCol[k] = (totCol[k]||0) + p.cel[k];
   const itens = linhas.reduce((s,p)=>s+p.itens,0);
   const cell = (rot, val, sub) => `<div class="ofe-num">
     <span class="ofe-num-lbl">${irEsc(rot)}</span><strong class="mono">${val}</strong>
@@ -5139,19 +5297,19 @@ function irTransPainelSetor(g, logs){
     <div class="table-wrap"><table class="trans-table">
       <thead>
         <tr><th rowspan="2">Local transitório</th><th rowspan="2">Descrição</th>
-            <th colspan="${logs.length}">Peças por LOG</th>
+            <th colspan="${cols.length}">${comData?'Peças paradas há':'Peças por LOG'}</th>
             <th rowspan="2" class="num">Valor por endereço</th></tr>
-        <tr>${logs.map(l=>`<th class="num">${irEsc(l.replace('LOG ','L'))}</th>`).join('')}</tr>
+        <tr>${cols.map(l=>`<th class="num">${irEsc(comData?l:l.replace('LOG ','L'))}</th>`).join('')}</tr>
       </thead>
       <tbody>${linhas.map(p=>`<tr>
         <td class="mono">${irEsc(p.x1||'(vazio)')}</td>
         <td>${irEsc(irTransNome(p.x1))}</td>
-        ${logs.map(l=>`<td class="mono">${p.porLog[l]?irFmtInt(p.porLog[l]):'0'}</td>`).join('')}
+        ${cols.map(l=>`<td class="mono ${comData&&l==='D+'&&p.cel[l]?'trans-velho':''}">${p.cel[l]?irFmtInt(p.cel[l]):'0'}</td>`).join('')}
         <td class="mono">${irFmtMoney(p.valor)}</td>
       </tr>`).join('')}</tbody>
       <tfoot><tr>
         <td colspan="2"><strong>Total</strong></td>
-        ${logs.map(l=>`<td class="mono"><strong>${totLog[l]?irFmtInt(totLog[l]):'0'}</strong></td>`).join('')}
+        ${cols.map(l=>`<td class="mono"><strong>${totCol[l]?irFmtInt(totCol[l]):'0'}</strong></td>`).join('')}
         <td class="mono"><strong>${irFmtMoney(g.valor)}</strong></td>
       </tr></tfoot>
     </table></div>

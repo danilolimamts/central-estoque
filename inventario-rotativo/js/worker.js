@@ -157,6 +157,9 @@ self.onmessage = async (e)=>{
   } else if(msg.type === 'process390'){
     try{ await runPipeline390(msg); }
     catch(err){ self.postMessage({type:'error390', message: err.message||String(err)}); }
+  } else if(msg.type === 'process160'){
+    try{ await runPipeline160(msg); }
+    catch(err){ self.postMessage({type:'error160', message: err.message||String(err)}); }
   } else if(msg.type === 'detect843'){
     try{ self.postMessage({type:'done843detect', ...detectarCiclo843(msg.bufs843)}); }
     catch(err){ self.postMessage({type:'done843detect', erro: err.message||String(err)}); }
@@ -225,6 +228,74 @@ function detectarCiclo843(bufs){
 }
 function post(type, data){ self.postMessage({type, ...data}); }
 
+/* QRY0160 — estoque por restrição. Mesma foto da 390, mas com DATA MOVIMENTO por
+   item x endereço x unidade de estoque: é a única base que diz HÁ QUANTO TEMPO o
+   saldo está ali, e sem isso não existe pendência de movimentação (D0, D+1, D+4).
+   O que ela não tem — valor unitário e LOG — vem da ficha do item da 390. */
+const ALIAS_160 = {
+  item: ['Item'], descricao: ['Descrição item','Descricao item'], ean: ['EAN','Ean'],
+  local: ['Local'], endereco: ['Endereço','Endereco'],
+  x1: ['X1'], x2: ['X2'], x3: ['X3'], x4: ['X4'],
+  restricao: ['Restrição','Restricao'], qtd: ['Qt'], qtdRom: ['Qt Rom'],
+  operador: ['Operador'], dataMovimento: ['Data Movimento'], dataLimite: ['Data Limite'],
+  numEstoque: ['Num. Estoque','Num Estoque']
+};
+async function runPipeline160({buf160}){
+  post('progress', {stage:'Lendo QRY0160...', pct:5});
+  const wb = XLSX.read(buf160, {type:'array', cellDates:true});
+  const rows = sheetToRows(wb);
+  if(!rows.length) throw new Error('QRY0160: planilha vazia.');
+  const r = buildAliasResolver(Object.keys(rows[0]), ALIAS_160);
+  validateColumns(r, ['item','local','qtd','dataMovimento'], 'QRY0160');
+
+  post('progress', {stage:'Lendo a ficha dos itens (QRY0390)...', pct:12});
+  const ficha = new Map((await irGetItemInfoTodos()).map(f=>[f.item, f]));
+
+  post('progress', {stage:'Agregando '+rows.length+' linha(s) por endereço...', pct:20});
+  const porLocal = new Map();
+  let valorTotal = 0, pecasTotal = 0, semFicha = 0, n = 0;
+  const itensVistos = new Set();
+  for(const row of rows){
+    if(++n % 20000 === 0) post('progress', {stage:'Linha '+n+' de '+rows.length+'...', pct:20+Math.round(n/rows.length*60)});
+    const local = irNormItemKey(getVal(row, r.local));
+    if(!local) continue;
+    const item = irNormItemKey(getVal(row, r.item));
+    const qtd = parseNumber(getVal(row, r.qtd));
+    const f = item ? ficha.get(item) : null;
+    if(item && !f) semFicha++;
+    const valor = qtd * ((f && f.valorUnitario) || 0);
+    const d = parseDateVal(getVal(row, r.dataMovimento));
+    const dia = d && !isNaN(d.getTime()) ? isoDateTime(d).slice(0,10) : '';
+    let g = porLocal.get(local);
+    if(!g){
+      g = {local,
+        desc: String(getVal(row, r.endereco) ?? '').trim(),
+        x1: String(getVal(row, r.x1) ?? '').trim(),
+        x2: String(getVal(row, r.x2) ?? '').trim(),
+        clal:'', predio:'', log:'',
+        qtd:0, valor:0, itens:0, porLog:{}, porDia:{}, _itens:new Set()};
+      porLocal.set(local, g);
+    }
+    g.qtd += qtd; g.valor += valor;
+    if(dia) g.porDia[dia] = (g.porDia[dia] || 0) + qtd;
+    const lg = (f && f.log) || 'S/CAD';
+    g.porLog[lg] = (g.porLog[lg] || 0) + qtd;
+    if(!g.log) g.log = lg;
+    if(item){ g._itens.add(item); itensVistos.add(item); }
+    valorTotal += valor; pecasTotal += qtd;
+  }
+  const linhas = Array.from(porLocal.values()).map(g=>{ g.itens = g._itens.size; delete g._itens; return g; });
+
+  post('progress', {stage:'Gravando estoque no IndexedDB...', pct:88});
+  await irSalvarEstoqueLocais(linhas, {
+    fonte:'160', importadoEm: new Date().toISOString(),
+    linhas: rows.length, locais: linhas.length, itens: itensVistos.size,
+    valorTotal, pecasTotal, semFicha
+  });
+  post('progress', {stage:'Concluído.', pct:100});
+  self.postMessage({type:'done160', locais: linhas.length, valorTotal, pecasTotal, semFicha, itens: itensVistos.size});
+}
+
 /* ---------- QRY0390 — ESTOQUE ATUAL POR ENDEREÇO ----------
    A extração virou automática (Snowflake) e não depende mais de ciclo: é a foto
    do CD agora. Aqui ela é agregada por ENDEREÇO — 98 mil linhas de item x local
@@ -261,6 +332,7 @@ async function runPipeline390({buf390}){
         // valorizado tem preço zero por regra, não por falta de dado.
         valorUnitario: parseNumber(getVal(row, r.valorUnitario)),
         valoriza: String(getVal(row, r.valoriza) ?? '').trim().toUpperCase(),
+        log: String(getVal(row, r.log) ?? '').trim(),
         // Endereços onde o item tem saldo HOJE. Guardado aqui, e não só no
         // processamento do ciclo, pra auditoria enxergar o estoque atual sem
         // depender de quando o ciclo foi processado nem de a 390 ter sido anexada.
@@ -318,7 +390,7 @@ async function runPipeline390({buf390}){
   });
   await irSalvarItemInfo(fichas);
   await irSalvarEstoqueLocais(linhas, {
-    atualizadoEm, importadoEm: new Date().toISOString(),
+    fonte:'390', atualizadoEm, importadoEm: new Date().toISOString(),
     linhas: rows.length, locais: linhas.length,
     itens: porItem.size,
     valorTotal, pecasTotal

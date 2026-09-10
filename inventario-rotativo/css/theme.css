@@ -1128,3 +1128,4 @@ table.trans-table td{ padding:6px 9px; border-bottom:1px solid var(--line); }
 table.trans-table td.mono{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 table.trans-table td:nth-child(2){ text-align:left; }
 table.trans-table tfoot td{ background:var(--surface2); border-top:2px solid var(--line); border-bottom:none; }
+table.trans-table td.trans-velho{ color:var(--danger); font-weight:800; }
