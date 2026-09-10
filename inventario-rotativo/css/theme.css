@@ -689,7 +689,7 @@ table.sim-table .pos{ color:var(--success); font-weight:700; }
 table.aud-table{ width:100%; border-collapse:collapse; font-size:12px; }
 table.aud-table th{
   position:sticky; top:0; z-index:1;
-  background:var(--blue); color:#fff; font-size:9.5px; font-weight:800;
+  background:var(--blue); color:#fff; font-size:10.5px; font-weight:800;
   text-transform:uppercase; letter-spacing:.05em; padding:9px 10px; text-align:left;
   white-space:nowrap; border-bottom:none;
 }
@@ -1156,7 +1156,7 @@ table.ofe-sub tr.ofe-fora{ opacity:.55; }
 .trans-kpis .ofe-num.trans-kpi-dup strong{ color:var(--danger); }
 table.trans-table{ width:100%; border-collapse:collapse; font-size:13.5px; }
 table.trans-table thead th{
-  background:var(--blue); color:#fff; font-size:9.5px; font-weight:800;
+  background:var(--blue); color:#fff; font-size:10.5px; font-weight:800;
   text-transform:uppercase; letter-spacing:.05em; padding:8px 9px; text-align:left;
   border-bottom:none; vertical-align:middle;
   /* Com grade fixa o título tem de caber na coluna, não empurrar a vizinha. */
@@ -1181,7 +1181,7 @@ table.trans-table th.tt-desc{ width:16%; }
 table.trans-table th.tt-dia{ width:6.5%; }
 table.trans-table th.tt-valor{ width:12%; }
 table.trans-table th.tt-dup{ width:10%; }
-.trans-cel-val{ display:block; font-size:12px; font-weight:700; color:var(--ink-soft); }
+.trans-cel-val{ display:block; font-size:13px; font-weight:700; color:var(--ink-soft); }
 table.trans-table td:last-child{ font-weight:700; color:var(--blue); }
 table.trans-table tfoot td{
   background:var(--blue-light); color:var(--blue);
@@ -1198,7 +1198,7 @@ table.trans-table td.trans-velho{ color:var(--orange); font-weight:800; }
    não se confunde com o laranja do estouro de prazo das colunas de dia. */
 table.trans-table td.trans-ganho{ color:var(--danger); font-weight:800; }
 table.trans-table td.trans-ganho .trans-pct{ color:var(--danger); opacity:.75; }
-.trans-pct{ display:block; font-size:12px; font-weight:700; color:var(--ink-soft); }
+.trans-pct{ display:block; font-size:13px; font-weight:700; color:var(--ink-soft); }
 
 /* Três leituras pequenas lado a lado: peças por idade, valor por idade e a rosca
    do prazo. Cada linha na sua escala — num eixo só, a de menor magnitude vira
