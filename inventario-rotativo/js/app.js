@@ -699,13 +699,13 @@ function irKpiBlock(theme, icon, title, tilesHtml){
     <div class="kpi-block-body">${tilesHtml}</div>
   </div>`;
 }
-const IR_INDICADORES_VERSION = 15; // mantido em sincronia com worker.js
+const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
 /* Versão do app, em sincronia com o CACHE_VERSION do sw.js. Ela vai na URL do
    Worker porque o navegador guarda js/worker.js no cache HTTP por conta própria:
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v106';
+const IR_APP_VERSION = 'v107';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -3885,13 +3885,17 @@ async function irCarregarDivEscopo(){
   const anos410 = Array.from(new Set(anos.concat([String(new Date().getFullYear())])));
   const falta410 = anos410.filter(a=>!(IR.div410Cache||{})[a]);
   if(falta410.length) await irDivCarregar410(falta410);
+  // A ficha da 390 entra aqui, e não só na hora de gerar a auditoria: ela é a
+  // terceira fonte de preço, então sem ela a lista mostrava R$ 0,00 num item que
+  // a auditoria, gerada depois, já valorava — dois números diferentes na mesma tela.
+  await irCarregarItemInfo();
 }
 /* A aba só desenha quando os dois caches estão prontos: as divergências do escopo
    e a QRY410 dos anos que ele toca. Antes ela desenhava na hora com o que tinha em
    memória (só o ciclo ativo, valorado pela 278) e se redesenhava sozinha quando o
    resto chegava — o número piscava e trocava na frente do usuário. */
 function irDivEscopoPronto(){
-  if(!IR.divAnoCache || IR.divEscopoDados===null) return false;
+  if(!IR.divAnoCache || IR.divEscopoDados===null || !IR._itemInfo) return false;
   const anos = irDivAnosDoEscopo();
   if(IR.divAnoCache.ano !== anos.join(',')) return false;
   const anos410 = Array.from(new Set(anos.concat([String(new Date().getFullYear())])));
@@ -4037,7 +4041,14 @@ function irDivPrecoDa(d){
     for(const m of g.meses){ if(m <= mes) anterior = m; else break; }
     if(anterior) return {preco: g.porMes.get(anterior), origem:'410 ant.'};
   }
-  return {preco: d.precoUnitario||0, origem: (d.precoUnitario||0) ? '278' : 'zero'};
+  if(d.precoUnitario) return {preco: d.precoUnitario, origem:'278'};
+  // Terceira fonte: o preço unitário da QRY0390, que é o custo de hoje e existe
+  // pra praticamente todo item com saldo. Sem ela, item fora da 410 e sem preço
+  // na 278 aparecia divergindo R$ 0,00 — e um item de valor zero era tratado
+  // como se não tivesse divergência de dinheiro nenhuma.
+  const info = irItemInfo(d.item);
+  if(info && info.valorUnitario) return {preco: info.valorUnitario, origem:'390'};
+  return {preco: 0, origem: (info && info.valoriza==='N') ? 'não valora' : 'sem preço'};
 }
 function irDivValorDa(d){
   const {preco, origem} = irDivPrecoDa(d);
@@ -4113,14 +4124,21 @@ function irDivCalcItens(){
     const noPeriodo = base.campo==='netQtd' ? g.netQtd : g.netValor;
     const noAnoBase = base.campo==='netQtd' ? a.netQtd : a.netValor;
     const relevante = Math.abs(noPeriodo) >= corte;
-    // Compensado = pesou no escopo, mas o ano desmancha. Erro de contagem houve;
-    // perda não. Não é ofensor.
-    //
-    // O piso existe porque com corte 0 o teste "|ano| < corte" nunca era
-    // verdadeiro: item que ganhou 15 mil num ciclo e perdeu 15 mil em outro
-    // fechava o ano em zero e mesmo assim aparecia como ofensor.
+    /* Compensado = pesou no escopo, mas o ano desmancha. Erro de contagem houve;
+       perda não. Não é ofensor.
+
+       A conta é pelo VALOR: item que ganhou 15 mil num ciclo e perdeu 15 mil em
+       outro fecha o ano em zero e sai da lista, mesmo que as peças não batam.
+
+       Mas item que não tem preço em fonte nenhuma vale zero SEMPRE, no período e
+       no ano — pelo valor ele seria "compensado" por construção, e sumia da
+       auditoria mesmo tendo peça divergente de verdade. Quando não há valor em
+       lugar nenhum, quem decide é a quantidade do ano. */
     const zero = base.campo==='netQtd' ? 0.5 : 0.005;
-    const compensado = relevante && Math.abs(noAnoBase) < Math.max(corte, zero);
+    const temBase = Math.abs(noPeriodo) > zero || Math.abs(noAnoBase) > zero;
+    const compensado = relevante && (temBase
+      ? Math.abs(noAnoBase) < Math.max(corte, zero)
+      : Math.abs(a.netQtd) < 0.5);
     return {...g,
       nLocais: g.locais.length,
       netQtdAno: a.netQtd, netValorAno: a.netValor,
@@ -4412,6 +4430,13 @@ async function irDivGerarAuditoria(){
       // Onde o item divergiu no período — é o endereço que o auditor confere
       // primeiro, e ele não é necessariamente um dos que têm saldo hoje.
       const ondeDivergiu = g.locais.filter(d=>d.diferenca!==0);
+      // Onde foi a ÚLTIMA divergência dentro do filtro: é o endereço mais fresco,
+      // e o primeiro lugar onde o auditor deve olhar.
+      const ult = ondeDivergiu.slice().sort((a,b)=>
+        String(irDivDiaDa(b)).localeCompare(String(irDivDiaDa(a))))[0];
+      const ultimaDiv = ult
+        ? ult.local + (irDescLocal(ult.local) ? ' · '+irDescLocal(ult.local) : '') + ' · ' + irFmtDate(irDivDiaDa(ult))
+        : '';
       // Estoque atual: primeiro a ficha da QRY0390 avulsa, que é a foto de hoje e
       // já vem com a descrição do endereço; o do ciclo entra só como reserva, pra
       // quem ainda não importou a 390 nova.
@@ -4426,11 +4451,11 @@ async function irDivGerarAuditoria(){
         semEstoque++;
         for(const d of ondeDivergiu){
           linhas.push({item, ean, descricao:descricaoItem, local:d.local, descricaoLocal:irDescLocal(d.local),
-            saldo:null, diferenca:g.netQtd, valor:g.netValor});
+            saldo:null, diferenca:g.netQtd, valor:g.netValor, ultimaDiv});
         }
         if(!ondeDivergiu.length){
           linhas.push({item, ean, descricao:descricaoItem, local:'', descricaoLocal:'',
-            saldo:null, diferenca:g.netQtd, valor:g.netValor});
+            saldo:null, diferenca:g.netQtd, valor:g.netValor, ultimaDiv});
         }
         continue;
       }
@@ -4444,13 +4469,16 @@ async function irDivGerarAuditoria(){
         // código do local já basta pro auditor achar, e um rótulo no lugar da
         // descrição só polui a folha impressa.
         linhas.push({item, ean, descricao:descricaoItem, local:s.local,
-          descricaoLocal: desc, saldo:s.qtd, diferenca:g.netQtd, valor:g.netValor});
+          descricaoLocal: desc, saldo:s.qtd, diferenca:g.netQtd, valor:g.netValor, ultimaDiv});
       }
     }
     IR.divAuditoria = {
       geradoEm: new Date().toLocaleString('pt-BR'),
       escopo: irDivEscopoLabel(),
-      itens: sel.length, linhas, semEstoque, semDescricao
+      itens: sel.length, linhas, semEstoque, semDescricao,
+      // Sem ficha da 390 não há EAN nem saldo por endereço — é a causa mais comum
+      // de a folha sair capenga, e o aviso evita procurar bug onde não tem.
+      semFicha: !(IR._itemInfo && IR._itemInfo.size)
     };
     irRenderView();
     const el = document.querySelector('.aud-panel');
@@ -4469,7 +4497,8 @@ function irDivExportarAuditoria(){
        ['itemSobra','Sobrou'],['nomeSobra','Descrição (sobrou)'],['itemFalta','Faltou'],
        ['nomeFalta','Descrição (faltou)'],['qtd','Qtde'],['desequilibrio','Desequil.']]
     : [['item','Item'],['ean','EAN'],['descricao','Descrição'],['local','Local'],
-       ['descricaoLocal','Desc. Local'],['saldo','Qtde'],['diferenca','Qtde Div.'],['valor','Valor Div.']];
+       ['descricaoLocal','Desc. Local'],['saldo','Qtde'],['diferenca','Qtde Div.'],['valor','Valor Div.'],
+       ['ultimaDiv','Últ. Divergência']];
   const cab = cols.map(c=>c[1]).concat(['Contagem','Data']);
   const linhas = g.linhas.map(l=>cols.map(([k])=>l[k]==null?'':l[k]).concat(['', data]));
   // Colunas de dinheiro saem formatadas como moeda na planilha — número cru vira
@@ -4725,6 +4754,7 @@ function irRenderDivAuditoria(){
     </div>
     <div class="aud-cab">
       <div class="ofe-filtro"><label>Data</label><input type="date" id="ir-aud-data" value="${new Date().toISOString().slice(0,10)}"></div>
+      ${g.semFicha ? `<span class="aud-alerta">Sem a QRY0390 importada: a folha sai sem EAN e sem saldo por endereço. Importe o estoque na aba Importação.</span>` : ''}
       <span class="field-hint">${sim
         ? `${irFmtInt(g.itens)} ${g.itens===1?'par':'pares'} · ${irEsc(g.escopo)}`
         : `${irFmtInt(g.itens)} ${g.itens===1?'item':'itens'} · ${irFmtInt(g.linhas.length)} ${g.linhas.length===1?'local':'locais'} · ${irEsc(g.escopo)}${g.semEstoque?` · ${irFmtInt(g.semEstoque)} sem saldo no CD, apontados pro local do ajuste`:''}`}</span>
@@ -4747,7 +4777,8 @@ function irRenderDivAuditoria(){
           <td class="mono ${l.desequilibrio<0?'neg':'pos'}">${Math.abs(l.desequilibrio)<0.005?'':(l.desequilibrio>0?'+':'')+irFmtMoney(l.desequilibrio)}</td>
           <td class="aud-vazio"></td>
         </tr>`).join('')}</tbody>` : `<thead><tr><th>Item</th><th>EAN</th><th>Descrição</th><th>Local</th><th>Desc. Local</th>
-          <th>Qtde</th><th>Qtde Div.</th><th>Valor Div.</th><th>Contagem</th></tr></thead>
+          <th class="num">Qtde</th><th class="num">Qtde Div.</th><th class="num">Valor Div.</th>
+          <th>Últ. divergência</th><th>Contagem</th></tr></thead>
         <tbody>${g.linhas.map(l=>`<tr>
           <td class="mono">${irEsc(l.item)}</td>
           <td class="mono">${irEsc(l.ean||'')}</td>
@@ -4757,6 +4788,7 @@ function irRenderDivAuditoria(){
           <td class="mono">${l.saldo!=null?irFmtInt(l.saldo):''}</td>
           <td class="mono ${l.diferenca<0?'neg':'pos'}">${l.diferenca>0?'+':''}${irFmtInt(l.diferenca)}</td>
           <td class="mono ${l.valor<0?'neg':'pos'}">${l.valor>0?'+':''}${irFmtMoney(l.valor)}</td>
+          <td class="aud-ult">${irEsc(l.ultimaDiv||'')}</td>
           <td class="aud-vazio"></td>
         </tr>`).join('')}</tbody>`}
       </table>

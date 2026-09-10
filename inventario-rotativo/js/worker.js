@@ -10,7 +10,7 @@ importScripts('./db.js');
 
 // Incrementar sempre que um campo novo for adicionado aos indicadores — a UI usa isso
 // pra avisar quando os dados salvos são de antes do ciclo ser reprocessado.
-const IR_INDICADORES_VERSION = 15;
+const IR_INDICADORES_VERSION = 16;
 
 function parseNumber(v){
   if(v===undefined || v===null || v==='') return 0;
@@ -256,6 +256,11 @@ async function runPipeline390({buf390}){
       porItem.set(item, {item,
         ean: String(getVal(row, r.ean) ?? '').trim(),
         descricao: String(getVal(row, r.descricao) ?? '').trim(),
+        // Preço unitário da 390: terceira fonte de valor, depois da 410 e da 278.
+        // VALORIZA diz se o item carrega valor — componente marcado como não
+        // valorizado tem preço zero por regra, não por falta de dado.
+        valorUnitario: parseNumber(getVal(row, r.valorUnitario)),
+        valoriza: String(getVal(row, r.valoriza) ?? '').trim().toUpperCase(),
         // Endereços onde o item tem saldo HOJE. Guardado aqui, e não só no
         // processamento do ciclo, pra auditoria enxergar o estoque atual sem
         // depender de quando o ciclo foi processado nem de a 390 ter sido anexada.
