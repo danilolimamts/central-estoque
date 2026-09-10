@@ -711,7 +711,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v110';
+const IR_APP_VERSION = 'v111';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5250,8 +5250,56 @@ function irTransIdade(locais){
 function irTransTemData(){
   return (IR.est390Meta||{}).fonte === '160';
 }
+/* Quanto do saldo parado em transitório é ganho do NET.
+
+   O ANE é endereço de "não localizado": quando o assistente não acha a peça, ele
+   move o saldo pra lá. Se depois a peça aparece em outro endereço, o inventário
+   registra GANHO — e o saldo do ANE continua parado, representando um ganho que
+   já foi contabilizado. É o caso de mandar movimentar em vez de sair procurando.
+
+   A conta cruza os itens com NET positivo no ano com as posições em que eles têm
+   saldo hoje, e soma o que está em endereço de transitório. */
+async function irTransCarregarGanhos(){
+  if(IR._transGanhos || IR._transGanhosLoading) return;
+  IR._transGanhosLoading = true;
+  try{
+    const ano = String(new Date().getFullYear());
+    const ciclos = irDivCiclosDoAno(ano);
+    const listas = await Promise.all(ciclos.map(c=>irGetByCiclo(IR_STORES.divergencias, c.id)));
+    const porItem = new Map();
+    for(const d of irDivLinhasValidas(listas.flat())){
+      porItem.set(d.item, (porItem.get(d.item)||0) + d.diferenca);
+    }
+    // Só os que fecharam o ano POSITIVO: item que perdeu não tem ganho pra explicar.
+    IR._transGanhos = new Map(Array.from(porItem.entries()).filter(([,q])=>q>0));
+    IR._transGanhosAno = ano;
+  }catch(err){ IR._transGanhos = new Map(); }
+  finally{ IR._transGanhosLoading = false; irRenderView(); }
+}
+// local -> {qtd, valor} do saldo que pertence a item com ganho no ano.
+function irTransGanhoPorLocal(){
+  if(IR._transGanhoLocal) return IR._transGanhoLocal;
+  const m = new Map();
+  const ganhos = IR._transGanhos;
+  if(ganhos && ganhos.size && IR._itemInfo){
+    for(const [item] of ganhos){
+      const info = IR._itemInfo.get(irDivNormItem(item));
+      if(!info || !info.locais) continue;
+      const preco = info.valorUnitario || 0;
+      for(const l of info.locais){
+        if(!m.has(l.local)) m.set(l.local, {qtd:0, valor:0});
+        const g = m.get(l.local);
+        g.qtd += l.qtd; g.valor += l.qtd * preco;
+      }
+    }
+  }
+  IR._transGanhoLocal = m;
+  return m;
+}
 function irRenderTransitorios(){
   if(!IR.est390Locais){ irCarregarEstoque390(); return irDivCarregando(); }
+  if(!IR._itemInfo){ irCarregarItemInfo().then(()=>irRenderView()); return irDivCarregando(); }
+  if(!IR._transGanhos){ irTransCarregarGanhos(); return irDivCarregando(); }
   if(!IR.est390Locais.length){
     return irEmptyState('Sem estoque importado', 'Importe a QRY0390 na aba Importação para montar o controle de transitórios.',
       "irSwitchTab('importacao')", 'Ir para Importação');
@@ -5261,6 +5309,10 @@ function irRenderTransitorios(){
   const logs = irTransLogsPresentes();
   const naoClass = c.lista.find(g=>!g.setor);
   return `
+    <div class="ofe-head" style="margin-bottom:12px;">
+      <h3 style="margin:0;">Transitórios</h3>
+      <button class="btn btn-primary" onclick="irBaixarBoletimTransitorios()">📥 Boletim para e-mail</button>
+    </div>
     ${c.lista.filter(g=>g.setor).map(g=>irTransPainelSetor(g, logs)).join('')}
     ${naoClass ? `<div class="panel"><div class="ofe-head">
       <h3>Não classificado</h3>
@@ -5275,9 +5327,11 @@ function irRenderTransitorios(){
 function irTransPainelSetor(g, logs){
   const porPrefixo = new Map();
   for(const l of g.locais){
-    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, itens:0, porLog:{}, locais:[]});
+    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, itens:0, porLog:{}, locais:[], ganhoValor:0, ganhoQtd:0});
     const p = porPrefixo.get(l.x1);
     p.valor += l.valor; p.qtd += l.qtd; p.n++; p.itens += l.itens||0; p.locais.push(l);
+    const gl = irTransGanhoPorLocal().get(l.local);
+    if(gl){ p.ganhoValor += gl.valor; p.ganhoQtd += gl.qtd; }
     for(const k in (l.porLog||{})) p.porLog[k] = (p.porLog[k]||0) + l.porLog[k];
   }
   const linhas = Array.from(porPrefixo.values()).sort((a,b)=>b.valor-a.valor);
@@ -5289,29 +5343,30 @@ function irTransPainelSetor(g, logs){
   const totCol = {};
   for(const p of linhas) for(const k in p.cel) totCol[k] = (totCol[k]||0) + p.cel[k];
   const itens = linhas.reduce((s,p)=>s+p.itens,0);
+  const ganhoSetor = linhas.reduce((s,p)=>s+p.ganhoValor,0);
   const cell = (rot, val, sub) => `<div class="ofe-num">
     <span class="ofe-num-lbl">${irEsc(rot)}</span><strong class="mono">${val}</strong>
     ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}</div>`;
-  const aberto = IR.transExpandido===g.setor;
   return `<div class="panel">
     <div class="ofe-head">
       <h3>${irEsc(IR_TRANS_SETOR_NOME[g.setor]||g.setor)}</h3>
       <div class="ofe-acoes">
         <button class="btn btn-secondary" onclick="irTransExportar('${irEsc(g.setor)}')">Excel</button>
-        <button class="btn-link" onclick="irTransToggle('${irEsc(g.setor)}')">${aberto?'Fechar endereços':'Ver endereços'}</button>
       </div>
     </div>
     <div class="ofe-resumo trans-kpis">
       ${cell('Parado', irFmtMoney(g.valor), irFmtInt(g.qtd)+' peças')}
       ${cell('Endereços', irFmtInt(g.locais.length), irFmtInt(linhas.length)+(linhas.length===1?' transitório':' transitórios'))}
       ${cell('Itens', irFmtInt(itens), 'distintos por endereço')}
-      ${cell('Maior transitório', irEsc(linhas[0]?irTransNome(linhas[0].x1):'—'), linhas[0]?irFmtMoney(linhas[0].valor):'')}
+      ${cell('Ganho no NET parado', ganhoSetor>0?irFmtMoney(ganhoSetor):'—',
+        ganhoSetor>0 ? irFmtPct(g.valor?ganhoSetor/g.valor:0)+' do saldo · já contabilizado' : 'nada a movimentar')}
     </div>
     <div class="table-wrap"><table class="trans-table">
       <thead>
         <tr><th rowspan="2">Local transitório</th><th rowspan="2">Descrição</th>
             <th colspan="${cols.length}">${comData?'Peças paradas há':'Peças por LOG'}</th>
-            <th rowspan="2" class="num">Valor por endereço</th></tr>
+            <th rowspan="2" class="num">Valor por endereço</th>
+            <th rowspan="2" class="num">Ganho no NET</th></tr>
         <tr>${cols.map(l=>`<th class="num">${irEsc(comData?l:l.replace('LOG ','L'))}</th>`).join('')}</tr>
       </thead>
       <tbody>${linhas.map(p=>`<tr>
@@ -5319,25 +5374,16 @@ function irTransPainelSetor(g, logs){
         <td>${irEsc(irTransNome(p.x1))}</td>
         ${cols.map(l=>`<td class="mono ${comData&&l==='D+'&&p.cel[l]?'trans-velho':''}">${p.cel[l]?irFmtInt(p.cel[l]):'0'}</td>`).join('')}
         <td class="mono">${irFmtMoney(p.valor)}</td>
+        <td class="mono ${p.ganhoValor>0?'trans-ganho':''}" title="Saldo de itens que fecharam o ano com ganho no inventário">${
+          p.ganhoValor>0 ? irFmtMoney(p.ganhoValor)+'<span class="trans-pct">'+irFmtPct(p.valor?p.ganhoValor/p.valor:0)+'</span>' : '—'}</td>
       </tr>`).join('')}</tbody>
       <tfoot><tr>
         <td colspan="2"><strong>Total</strong></td>
         ${cols.map(l=>`<td class="mono"><strong>${totCol[l]?irFmtInt(totCol[l]):'0'}</strong></td>`).join('')}
         <td class="mono"><strong>${irFmtMoney(g.valor)}</strong></td>
+        <td class="mono"><strong>${ganhoSetor>0?irFmtMoney(ganhoSetor):'—'}</strong></td>
       </tr></tfoot>
     </table></div>
-    ${aberto ? `<div class="table-wrap" style="margin-top:10px;"><div class="table-scroll" style="max-height:420px;">
-      <table class="conc-table">
-        <thead><tr><th>Local</th><th>Descrição</th><th class="num">Peças</th><th class="num">Itens</th><th class="num">Valor</th></tr></thead>
-        <tbody>${g.locais.slice(0,400).map(l=>`<tr>
-          <td class="mono">${irEsc(l.local)}</td>
-          <td>${irEsc(l.desc||'')}</td>
-          <td class="mono">${irFmtInt(l.qtd)}</td>
-          <td class="mono">${irFmtInt(l.itens)}</td>
-          <td class="mono">${irFmtMoney(l.valor)}</td>
-        </tr>`).join('')}</tbody>
-      </table>
-    </div></div>` : ''}
   </div>`;
 }
 /* Os prefixos sem setor, com o botão de classificar em cada linha. É por aqui que
@@ -5367,6 +5413,59 @@ function irTransTabelaPrefixos(g){
       </tr>`).join('')}</tbody>
     </table>
   </div></div>`;
+}
+/* Boletim em imagem pros gestores: a mesma folha que já sai do NET e do ranking,
+   com uma tabela por setor. Vai por e-mail, então precisa se explicar sozinha —
+   por isso o total do CD, a data da base e a legenda do D+ vêm junto. */
+async function irBaixarBoletimTransitorios(){
+  const c = irTransCalc();
+  const m = IR.est390Meta || {};
+  const cols = irTransTemData() ? IR_TRANS_FAIXAS : irTransLogsPresentes();
+  const setores = c.lista.filter(g=>g.setor && g.setor!=='IGN');
+  const tabela = g => {
+    const porPrefixo = new Map();
+    for(const l of g.locais){
+      if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, ganho:0, locais:[]});
+      const p = porPrefixo.get(l.x1); p.valor += l.valor; p.locais.push(l);
+      const gl = irTransGanhoPorLocal().get(l.local); if(gl) p.ganho += gl.valor;
+    }
+    const linhas = Array.from(porPrefixo.values()).sort((a,b)=>b.valor-a.valor);
+    for(const p of linhas) p.cel = irTransTemData() ? irTransIdade(p.locais).faixas : {};
+    const tot = {}; for(const p of linhas) for(const k in p.cel) tot[k] = (tot[k]||0)+p.cel[k];
+    const ganhoSetor = linhas.reduce((s,p)=>s+p.ganho,0);
+    return `<div class="rp-panel"><table class="rp-table rp-table-dense">
+      <thead><tr><th>Local</th><th>Descrição</th>${cols.map(x=>`<th>${irEsc(x)}</th>`).join('')}<th>Valor</th><th>Ganho no NET</th></tr></thead>
+      <tbody>${linhas.map(p=>`<tr>
+        <td style="font-weight:700;">${irEsc(p.x1)}</td>
+        <td>${irEsc(irTransNome(p.x1))}</td>
+        ${cols.map(x=>`<td>${p.cel[x]?irFmtInt(p.cel[x]):'0'}</td>`).join('')}
+        <td style="font-weight:700;">${irFmtMoney(p.valor)}</td>
+        <td>${p.ganho>0?irFmtMoney(p.ganho):'—'}</td>
+      </tr>`).join('')}
+      <tr style="background:#EEF1F8;font-weight:800;">
+        <td colspan="2">Total</td>
+        ${cols.map(x=>`<td>${tot[x]?irFmtInt(tot[x]):'0'}</td>`).join('')}
+        <td>${irFmtMoney(g.valor)}</td><td>${ganhoSetor>0?irFmtMoney(ganhoSetor):'—'}</td>
+      </tr></tbody></table></div>`;
+  };
+  const html = `<div class="rp-page">
+    <div class="rp-hero">
+      <div class="rp-hero-top">
+        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <div class="rp-hero-status">${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleDateString('pt-BR') : '')}</div>
+      </div>
+      <div class="rp-hero-badge">Pendência de Movimentação</div>
+      <h1>Transitórios por setor</h1>
+      <p>Loja do Mecânico · Centro de Distribuição Cajamar</p>
+      <div class="rp-hero-meta"><span>${irFmtMoney(c.valorTotal)} parados · ${irFmtInt(c.pecasTotal)} peças · ${irFmtInt(c.nLocais)} endereços</span></div>
+    </div>
+    <div class="rp-body">
+      ${setores.map(g=>rpSectionTitle('📦', IR_TRANS_SETOR_NOME[g.setor]||g.setor,
+        irFmtMoney(g.valor)+' · '+irFmtInt(g.qtd)+' peças · '+irFmtInt(g.locais.length)+' endereços')+tabela(g)).join('')}
+      <p class="rp-footer">${irTransTemData()?'D+ é o saldo parado há mais de 7 dias. ':''}"Ganho no NET" é o saldo de itens que já fecharam o ano com ganho no inventário — movimentar resolve, procurar não.<br>Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · gerado pelo módulo Inventário.</p>
+    </div>
+  </div>`;
+  irBaixarBoletimImagem(html, 'Transitorios_'+new Date().toISOString().slice(0,10)+'.png');
 }
 function irTransExportar(setor){
   const g = irTransCalc().lista.find(x=>x.setor===setor);
