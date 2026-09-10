@@ -772,7 +772,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v139';
+const IR_APP_VERSION = 'v140';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -1867,7 +1867,7 @@ function irGerarRelatorioEmail(){
   const html = `<div class="rp-page">
     <div class="rp-hero">
       <div class="rp-hero-top">
-        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <img src="brand/Logo_LDM_hor_branco.png" alt="Loja do Mecânico" class="rp-hero-logo">
         <div class="rp-hero-status">${irCicloStatus(c)==='aberto'?'Ciclo em andamento':'Ciclo encerrado'}</div>
       </div>
       <div class="rp-hero-badge">Boletim de Inventário</div>
@@ -3715,7 +3715,7 @@ function irExportarRankingImagem(){
   const html = `<div class="rp-page">
     <div class="rp-hero">
       <div class="rp-hero-top">
-        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <img src="brand/Logo_LDM_hor_branco.png" alt="Loja do Mecânico" class="rp-hero-logo">
         <div class="rp-hero-status">${irEsc(periodoTxt)}</div>
       </div>
       <div class="rp-hero-badge">Ranking da Equipe</div>
@@ -3786,7 +3786,7 @@ function irCompartilharProdutividade(){
   const html = `<div class="rp-page">
     <div class="rp-hero">
       <div class="rp-hero-top">
-        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <img src="brand/Logo_LDM_hor_branco.png" alt="Loja do Mecânico" class="rp-hero-logo">
         <div class="rp-hero-status">${irEsc(periodoTxt)}</div>
       </div>
       <div class="rp-hero-badge">Produtividade da Equipe</div>
@@ -3938,7 +3938,7 @@ async function irBaixarAuditoriaNetImagem(){
   const html = `<div class="rp-page">
     <div class="rp-hero">
       <div class="rp-hero-top">
-        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <img src="brand/Logo_LDM_hor_branco.png" alt="Loja do Mecânico" class="rp-hero-logo">
       </div>
       <div class="rp-hero-badge">Auditoria Direcionada</div>
       <h1>Top ${g.n} itens de ${irEsc(g.mesLabel)}</h1>
@@ -6114,7 +6114,7 @@ async function irBaixarBoletimTransitorios(){
   const html = `<div class="rp-page rp-page-wide">
     <div class="rp-hero">
       <div class="rp-hero-top">
-        <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
+        <img src="brand/Logo_LDM_hor_branco.png" alt="Loja do Mecânico" class="rp-hero-logo">
         <div class="rp-hero-status">${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleDateString('pt-BR') : '')}</div>
       </div>
       <div class="rp-hero-badge">Pendência de Movimentação</div>
