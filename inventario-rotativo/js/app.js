@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v115';
+const IR_APP_VERSION = 'v116';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5407,23 +5407,46 @@ function irTransLinha(vals, titulo, total, fmt, cor){
 /* Rosca nas cores da casa: azul o que está no prazo, laranja o que estourou.
    O percentual vai no miolo — a leitura de um anel é sempre "quanto do total",
    e obrigar o olho a ir até o cabeçalho pra achar o número desperdiça o buraco. */
+/* Compacto sem casa decimal: no rótulo dentro do anel e na legenda o centavo não
+   decide nada, e "R$20,1K" só rouba espaço de fonte. */
+function irTransValorCurto(n){
+  n = n||0;
+  const abs = Math.abs(n);
+  if(abs>=1000000) return 'R$'+Math.round(n/1000000).toLocaleString('pt-BR')+'M';
+  if(abs>=1000) return 'R$'+Math.round(n/1000).toLocaleString('pt-BR')+'K';
+  return 'R$'+Math.round(n).toLocaleString('pt-BR');
+}
+/* Rosca nas cores da casa: azul o que está no prazo, laranja o que estourou.
+   Rótulo de dados em cada fatia (o percentual, inteiro) e o total no miolo — sem
+   isso o anel obriga a ir até a legenda pra saber o tamanho de cada pedaço. */
 function irTransRosca(dentro, fora){
   const total = dentro + fora;
   if(total <= 0) return '';
-  const R = 46, C = 2*Math.PI*R, pctFora = fora/total, larg = 20;
+  const cx = 84, R = 62, C = 2*Math.PI*R, larg = 30, pctFora = fora/total;
+  const pctTxt = p => Math.round(p*100)+'%';
+  // Rótulo no meio da banda da fatia. A laranja começa às 12h e cresce no sentido
+  // horário; a azul ocupa o que sobra.
+  const rot = (pct, inicio, classe) => {
+    if(pct < .08) return '';                        // fatia fina: o texto não caberia
+    const ang = (inicio + pct/2) * 2*Math.PI - Math.PI/2;
+    return `<text x="${(cx + R*Math.cos(ang)).toFixed(1)}" y="${(cx + R*Math.sin(ang)).toFixed(1)}"
+      class="tg-r-fatia ${classe}" text-anchor="middle" dominant-baseline="central">${pctTxt(pct)}</text>`;
+  };
   return `<div class="tg-card tg-card-rosca">
-    <div class="tg-head"><span>Prazo de ${IR_TRANS_PRAZO_H}h</span><strong class="${pctFora>0?'atraso':''}">${irFmtPct(pctFora)}</strong></div>
+    <div class="tg-head"><span>Prazo de ${IR_TRANS_PRAZO_H}h</span><strong class="${pctFora>0?'atraso':''}">${pctTxt(pctFora)} fora</strong></div>
     <div class="tg-rosca">
-      <svg viewBox="0 0 120 120" role="img" aria-label="${irFmtPct(pctFora)} do valor fora do prazo">
-        <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--blue)" stroke-width="${larg}"/>
-        <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--orange)" stroke-width="${larg}"
-          stroke-dasharray="${(C*pctFora).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 60 60)"/>
-        <text x="60" y="56" class="tg-r-num" text-anchor="middle">${irEsc(irFmtPct(pctFora))}</text>
-        <text x="60" y="70" class="tg-r-cap" text-anchor="middle">fora</text>
+      <svg viewBox="0 0 ${cx*2} ${cx*2}" role="img" aria-label="${pctTxt(pctFora)} do valor fora do prazo">
+        <circle cx="${cx}" cy="${cx}" r="${R}" fill="none" stroke="var(--blue)" stroke-width="${larg}"/>
+        <circle cx="${cx}" cy="${cx}" r="${R}" fill="none" stroke="var(--orange)" stroke-width="${larg}"
+          stroke-dasharray="${(C*pctFora).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${cx} ${cx})"/>
+        ${rot(pctFora, 0, 'sobre-laranja')}
+        ${rot(1-pctFora, pctFora, 'sobre-azul')}
+        <text x="${cx}" y="${cx-7}" class="tg-r-num" text-anchor="middle">${irEsc(irTransValorCurto(total))}</text>
+        <text x="${cx}" y="${cx+9}" class="tg-r-cap" text-anchor="middle">parado</text>
       </svg>
       <ul class="tg-leg">
-        <li><i class="prazo"></i>No prazo<b>${irFmtMoneyCompact(dentro)}</b></li>
-        <li><i class="atraso"></i>Fora<b>${irFmtMoneyCompact(fora)}</b></li>
+        <li><i class="prazo"></i>No prazo<b>${irEsc(irTransValorCurto(dentro))}</b></li>
+        <li><i class="atraso"></i>Fora<b>${irEsc(irTransValorCurto(fora))}</b></li>
       </ul>
     </div>
   </div>`;
