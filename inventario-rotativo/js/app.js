@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v113';
+const IR_APP_VERSION = 'v114';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2058,6 +2058,7 @@ function irProcessarEst390(){
         IR.est390Processing = false; worker.terminate();
         IR.est390Ficha = await irGetConfig('estoque390-ficha');
         IR._itemInfo = null; IR._descLocalTodosCiclos = null; IR._descLocal = null;
+        IR._transGanhos = null; IR._transGanhoLocal = null;
         IR.est390File = null;
         irShowToast(irFmtInt(msg.itens)+' itens e '+irFmtInt(msg.locais)+' endereços fichados.');
         irRenderView();
@@ -2115,6 +2116,7 @@ function irProcessar160(){
         IR.est160Processing = false; worker.terminate();
         IR.est390Meta = await irGetEstoqueMeta();
         IR.est390Locais = null; IR.est160File = null;
+        IR._transGanhos = null; IR._transGanhoLocal = null;
         irShowToast(irFmtInt(msg.locais)+' endereços com data de movimento.');
         irRenderView();
       }
@@ -5135,23 +5137,22 @@ const IR_TRANS_SETOR_NOME = {
 function irTransSetorDe(l){
   const clal = String(l.clal||'').trim().toUpperCase();
   if(IR_TRANS_SETORES.includes(clal)) return clal;
+  // Sem classe cadastrada não há setor. O palpite por prefixo saiu: ele colocava
+  // endereço no setor errado (RES caía em Controle de Estoque sem ser C.E) e
+  // escondia justamente o que precisa ser corrigido no cadastro do WMS. O ajuste
+  // manual continua valendo, mas só pra quem o usuário apontou de propósito.
   return (IR.transSetores||{})[l.x1] || '';
 }
 // Palpite inicial, a partir do que o próprio endereço diz. Serve pra tela nascer
 // útil; o usuário corrige o que estiver errado e a correção fica salva.
-const IR_TRANS_SEED = {
-  REV:'REV', PIC:'REV', BMS:'REV', RML:'REV', FAT:'REV', QBR:'REV', TRI:'REV',
-  ANE:'INB', AVA:'INB', REC:'INB', BUF:'INB',
-  OUT:'OUT', EXP:'OUT', CAR:'OUT',
-  GAI:'IGN', DOC:'TRP',   // GAI é expedição em uso — não é saldo parado
-  DEV:'C.E', DS:'C.E', PAL:'C.E', BLO:'C.E', LIT:'C.E', INV:'C.E',
-  ATI:'C.E', ROT:'C.E', CAN:'C.E', INA:'C.E', MEZ:'C.E', RES:'C.E', EPI:'C.E'
-};
+/* Só o que o usuário mandou desconsiderar de propósito. O resto vem da classe
+   local do WMS — palpite por prefixo colocava endereço no setor errado. */
+const IR_TRANS_SEED = { GAI:'IGN' };
 /* O palpite inicial evolui — GAI virou expedição depois que o usuário explicou o
    que ele é. Quando isso acontece, o mapa salvo precisa receber a correção sem
    atropelar o que o usuário classificou à mão: por isso as escolhas dele ficam
    numa lista separada, e o seed só sobrescreve prefixo que ele nunca tocou. */
-const IR_TRANS_SEED_V = 2;
+const IR_TRANS_SEED_V = 3;
 async function irSeedTransSetoresIfEmpty(){
   const salvo = await irGetConfig('transitorio-setores');
   if(!salvo){
@@ -5161,9 +5162,13 @@ async function irSeedTransSetoresIfEmpty(){
   }
   const versao = await irGetConfig('transitorio-setores-v');
   if(versao === IR_TRANS_SEED_V) return salvo;
+  /* Recomeça do zero, mantendo só o que o usuário apontou de propósito. Merge
+     simples não bastava: o palpite antigo por prefixo (RES em Controle de
+     Estoque, TRI em Reversa...) continuava gravado e mandava endereço pro setor
+     errado mesmo depois de a regra passar a ser a classe local do WMS. */
   const doUsuario = new Set(await irGetConfig('transitorio-setores-user') || []);
-  const mapa = Object.assign({}, salvo);
-  for(const pref in IR_TRANS_SEED) if(!doUsuario.has(pref)) mapa[pref] = IR_TRANS_SEED[pref];
+  const mapa = Object.assign({}, IR_TRANS_SEED);
+  for(const pref in salvo) if(doUsuario.has(pref)) mapa[pref] = salvo[pref];
   await irSetConfig('transitorio-setores', mapa);
   await irSetConfig('transitorio-setores-v', IR_TRANS_SEED_V);
   return mapa;
@@ -5202,7 +5207,9 @@ function irTransCalc(){
     valorTotal += l.valor; pecasTotal += l.qtd; nLocais++;
   }
   for(const g of grupos.values()) g.locais.sort((a,b)=>b.valor-a.valor);
-  const ordem = g => g.setor==='IGN' ? 2 : (g.setor ? 0 : 1);
+  // Reversa por último: é o maior volume e o que menos muda de um dia pro outro,
+  // então empurra pra baixo o que precisa de decisão.
+  const ordem = g => g.setor==='IGN' ? 3 : (!g.setor ? 2 : (g.setor==='REV' ? 1 : 0));
   const lista = Array.from(grupos.values()).sort((a,b)=> ordem(a)-ordem(b) || b.valor-a.valor);
   return {lista, valorTotal, pecasTotal, nLocais};
 }
@@ -5306,7 +5313,13 @@ async function irTransCarregarGanhos(){
     }
     IR._transGanhos = new Map(Array.from(porItem.entries()).filter(([,q])=>q>0));
     IR._transGanhosAno = ano;
-  }catch(err){ IR._transGanhos = new Map(); }
+    // Diagnóstico: sem isso, "prov. duplicidade" zerada é indistinguível de
+    // "não tem duplicidade" — e o motivo quase sempre é a QRY410 não importada.
+    IR._transGanhosDiag = {
+      ano, tem410: !!(dados && !dados.vazio && (dados.porMes||[]).length),
+      itens410: porItem.size, comGanho: IR._transGanhos.size
+    };
+  }catch(err){ IR._transGanhos = new Map(); IR._transGanhosDiag = {erro:String(err)}; }
   finally{ IR._transGanhosLoading = false; irRenderView(); }
 }
 // local -> {qtd, valor} do saldo que pertence a item com ganho no ano.
@@ -5335,35 +5348,75 @@ function irTransGanhoPorLocal(){
   IR._transGanhoLocal = m;
   return m;
 }
-/* Gráfico de linha do valor parado por faixa de idade. */
-function irTransMiniGrafico(porFaixa){
-  const vals = IR_TRANS_FAIXAS.map(f=>porFaixa[f]||0);
-  const total = vals.reduce((a,b)=>a+b, 0);
-  if(total <= 0) return '';
-  const W = 720, H = 132, padL = 8, padR = 8, padT = 26, padB = 22;
-  const max = Math.max(...vals);
+/* Três leituras lado a lado, pequenas.
+
+   Duas linhas — peças e valor — porque a mesma faixa pode ter muita peça barata
+   ou pouca peça cara, e a decisão muda. Cada uma na sua escala; comparar as duas
+   num eixo só achataria a de menor magnitude.
+
+   E uma rosca com o valor dentro e fora do prazo de 48h, que é a leitura de
+   gestão: quanto do dinheiro parado já estourou o combinado. */
+function irTransLinha(vals, titulo, total, fmt, cor){
+  const W = 300, H = 96, padL = 14, padR = 14, padT = 22, padB = 18;
+  const max = Math.max(...vals, 1);
   const passo = (W - padL - padR) / Math.max(1, vals.length - 1);
-  const y = v => padT + (H - padT - padB) * (1 - (max ? v/max : 0));
+  const y = v => padT + (H - padT - padB) * (1 - v/max);
   const pts = vals.map((v,i)=>[padL + i*passo, y(v)]);
   const linha = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
   const area = linha + ` L${pts[pts.length-1][0].toFixed(1)} ${H-padB} L${pts[0][0].toFixed(1)} ${H-padB} Z`;
-  // O ponto vira laranja a partir de D+2, que é onde o prazo de 48h estourou.
-  const cor = f => irTransDentroDoPrazo(f) ? 'var(--success)' : 'var(--orange)';
-  return `<div class="tg-wrap">
-    <div class="tg-head"><span>Valor parado por idade</span><strong>${irFmtMoney(total)}</strong></div>
-    <svg viewBox="0 0 ${W} ${H}" class="tg-svg" preserveAspectRatio="none" role="img"
-         aria-label="Valor parado por faixa de idade, total ${irEsc(irFmtMoney(total))}">
-      <defs><linearGradient id="tgGrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="var(--blue)" stop-opacity=".22"/>
-        <stop offset="100%" stop-color="var(--blue)" stop-opacity="0"/>
-      </linearGradient></defs>
-      <path d="${area}" fill="url(#tgGrad)"/>
-      <path d="${linha}" fill="none" stroke="var(--blue)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-      ${pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4.5"
-        fill="${cor(IR_TRANS_FAIXAS[i])}" stroke="var(--surface)" stroke-width="2"><title>${irEsc(IR_TRANS_FAIXAS[i])}: ${irEsc(irFmtMoney(vals[i]))}</title></circle>`).join('')}
-      ${pts.map((p,i)=>vals[i]>0?`<text x="${p[0].toFixed(1)}" y="${(p[1]-11).toFixed(1)}" class="tg-t-val" text-anchor="middle">${irEsc(irFmtMoneyCompact(vals[i]))}</text>`:'').join('')}
-      ${pts.map((p,i)=>`<text x="${p[0].toFixed(1)}" y="${H-6}" class="tg-t-lbl ${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'ok':'atraso'}" text-anchor="middle">${irEsc(IR_TRANS_FAIXAS[i])}</text>`).join('')}
+  const iMax = vals.indexOf(Math.max(...vals));
+  return `<div class="tg-card">
+    <div class="tg-head"><span>${irEsc(titulo)}</span><strong>${irEsc(total)}</strong></div>
+    <svg viewBox="0 0 ${W} ${H}" class="tg-svg" preserveAspectRatio="none" role="img" aria-label="${irEsc(titulo)}: ${irEsc(total)}">
+      <path d="${area}" fill="${cor}" opacity=".12"/>
+      <path d="${linha}" fill="none" stroke="${cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i===iMax?4:2.8}"
+        fill="${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'var(--success)':'var(--orange)'}"><title>${irEsc(IR_TRANS_FAIXAS[i])}: ${irEsc(fmt(vals[i]))}</title></circle>`).join('')}
+      ${vals[iMax]>0?`<text x="${pts[iMax][0].toFixed(1)}" y="${Math.max(10,pts[iMax][1]-8).toFixed(1)}" class="tg-t-val" text-anchor="middle">${irEsc(fmt(vals[iMax]))}</text>`:''}
+      ${pts.map((p,i)=>`<text x="${p[0].toFixed(1)}" y="${H-5}" class="tg-t-lbl ${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'ok':'atraso'}" text-anchor="middle">${irEsc(IR_TRANS_FAIXAS[i].replace('D+','+').replace('D0','0'))}</text>`).join('')}
     </svg>
+  </div>`;
+}
+function irTransRosca(dentro, fora){
+  const total = dentro + fora;
+  if(total <= 0) return '';
+  const R = 34, C = 2*Math.PI*R, pctFora = fora/total;
+  return `<div class="tg-card tg-card-rosca">
+    <div class="tg-head"><span>Prazo de ${IR_TRANS_PRAZO_H}h</span><strong class="${pctFora>0?'atraso':''}">${irFmtPct(pctFora)}</strong></div>
+    <div class="tg-rosca">
+      <svg viewBox="0 0 88 88" role="img" aria-label="${irFmtPct(pctFora)} do valor fora do prazo">
+        <circle cx="44" cy="44" r="${R}" fill="none" stroke="var(--success)" stroke-width="14"/>
+        <circle cx="44" cy="44" r="${R}" fill="none" stroke="var(--orange)" stroke-width="14"
+          stroke-dasharray="${(C*pctFora).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 44 44)"/>
+      </svg>
+      <ul class="tg-leg">
+        <li><i class="ok"></i>No prazo<b>${irFmtMoneyCompact(dentro)}</b></li>
+        <li><i class="atraso"></i>Fora<b>${irFmtMoneyCompact(fora)}</b></li>
+      </ul>
+    </div>
+  </div>`;
+}
+/* Por que a duplicidade deu zero. São três motivos possíveis e cada um tem uma
+   ação diferente — dizer só "nada a movimentar" mandaria o usuário procurar bug
+   onde só falta importar uma planilha. */
+function irTransDiagDuplicidade(){
+  const d = IR._transGanhosDiag || {};
+  if(!d.tem410) return 'importe a QRY410 do ano na aba Importação';
+  if(!d.comGanho) return 'nenhum item com ganho no NET de '+(d.ano||'');
+  if(!(IR._itemInfo && IR._itemInfo.size)) return 'importe a QRY0390 para saber onde os itens estão';
+  return 'nada a movimentar';
+}
+function irTransGraficos(porFaixaQtd, porFaixaValor){
+  const qs = IR_TRANS_FAIXAS.map(f=>porFaixaQtd[f]||0);
+  const vs = IR_TRANS_FAIXAS.map(f=>porFaixaValor[f]||0);
+  const totQ = qs.reduce((a,b)=>a+b,0), totV = vs.reduce((a,b)=>a+b,0);
+  if(totQ<=0 && totV<=0) return '';
+  let dentro=0, fora=0;
+  IR_TRANS_FAIXAS.forEach((f,i)=>{ if(irTransDentroDoPrazo(f)) dentro += vs[i]; else fora += vs[i]; });
+  return `<div class="tg-wrap">
+    ${irTransLinha(qs, 'Peças por idade', irFmtInt(totQ), irFmtInt, 'var(--blue)')}
+    ${irTransLinha(vs, 'Valor por idade', irFmtMoney(totV), irFmtMoney, 'var(--orange)')}
+    ${irTransRosca(dentro, fora)}
   </div>`;
 }
 function irRenderTransitorios(){
@@ -5435,9 +5488,9 @@ function irTransPainelSetor(g, logs){
       ${cell('Endereços', irFmtInt(g.locais.length), irFmtInt(linhas.length)+(linhas.length===1?' transitório':' transitórios'))}
       ${cell('Itens', irFmtInt(itens), 'distintos por endereço')}
       ${cell('Provável duplicidade', ganhoSetor>0?irFmtMoney(ganhoSetor):'—',
-        ganhoSetor>0 ? irFmtPct(g.valor?ganhoSetor/g.valor:0)+' do saldo · ganho no NET do ano' : 'nada a movimentar')}
+        ganhoSetor>0 ? irFmtPct(g.valor?ganhoSetor/g.valor:0)+' do saldo · ganho no NET do ano' : irTransDiagDuplicidade())}
     </div>
-    ${irTransMiniGrafico(totValFaixa)}
+    ${irTransGraficos(totCol, totValFaixa)}
     <div class="table-wrap"><table class="trans-table">
       <thead>
         <tr><th rowspan="2">Local transitório</th><th rowspan="2">Descrição</th>
@@ -5513,23 +5566,24 @@ async function irBaixarBoletimTransitorios(){
     const totVal = {};
     for(const p of linhas){
       const id = irTransIdade(p.locais);
-      p.cel = id.faixas;
+      p.cel = id.faixas; p.celValor = id.valores;
       for(const f of cols) totVal[f] = (totVal[f]||0) + (id.valores[f]||0);
     }
     const tot = {}; for(const p of linhas) for(const k in p.cel) tot[k] = (tot[k]||0)+p.cel[k];
     const ganhoSetor = linhas.reduce((s,p)=>s+p.ganho,0);
-    return irTransMiniGrafico(totVal) + `<div class="rp-panel"><table class="rp-table rp-table-dense">
+    return irTransGraficos(tot, totVal) + `<div class="rp-panel"><table class="rp-table rp-table-dense">
       <thead><tr><th>Local</th><th>Descrição</th>${cols.map(x=>`<th>${irEsc(x)}</th>`).join('')}<th>Valor</th><th>Prov. duplicidade</th></tr></thead>
       <tbody>${linhas.map(p=>`<tr>
         <td style="font-weight:700;">${irEsc(p.x1)}</td>
         <td>${irEsc(irTransNome(p.x1))}</td>
-        ${cols.map(x=>`<td style="${p.cel[x]?(irTransDentroDoPrazo(x)?'color:#1F8A52;font-weight:700;':'color:#FA4616;font-weight:800;'):''}">${p.cel[x]?irFmtInt(p.cel[x]):'0'}</td>`).join('')}
+        ${cols.map(x=>`<td style="${p.cel[x]?(irTransDentroDoPrazo(x)?'color:#1F8A52;font-weight:700;':'color:#FA4616;font-weight:800;'):''}">${
+          p.cel[x] ? irFmtInt(p.cel[x])+'<br><span style="font-size:9px;color:#6B7280;font-weight:600;">'+irFmtMoneyCompact(p.celValor[x]||0)+'</span>' : '0'}</td>`).join('')}
         <td style="font-weight:700;">${irFmtMoney(p.valor)}</td>
         <td>${p.ganho>0?irFmtMoney(p.ganho):'—'}</td>
       </tr>`).join('')}
       <tr style="background:#EEF1F8;font-weight:800;">
         <td colspan="2">Total</td>
-        ${cols.map(x=>`<td>${tot[x]?irFmtInt(tot[x]):'0'}</td>`).join('')}
+        ${cols.map(x=>`<td>${tot[x]?irFmtInt(tot[x]):'0'}${tot[x]?'<br><span style="font-size:9px;font-weight:600;">'+irFmtMoneyCompact(totVal[x]||0)+'</span>':''}</td>`).join('')}
         <td>${irFmtMoney(g.valor)}</td><td>${ganhoSetor>0?irFmtMoney(ganhoSetor):'—'}</td>
       </tr></tbody></table></div>`;
   };
