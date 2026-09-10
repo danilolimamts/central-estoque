@@ -4,7 +4,7 @@
    network-first para os arquivos do app (nunca esconde updates),
    cache só como fallback offline.
    ============================================================ */
-const CACHE_VERSION = 'inventario-rotativo-v139';
+const CACHE_VERSION = 'inventario-rotativo-v140';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -17,7 +17,9 @@ const PRECACHE_URLS = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './brand/Logo_LDM_hor_2.png',
-  './brand/Logo_LDM_vert.png'
+  './brand/Logo_LDM_vert.png',
+  './brand/Logo_LDM_hor_branco.png',
+  './brand/Logo_LDM_vert_branco.png'
 ];
 
 self.addEventListener('install', (event)=>{

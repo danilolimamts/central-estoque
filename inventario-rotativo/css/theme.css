@@ -129,12 +129,15 @@ button{ font-family:inherit; cursor:pointer; }
 .sidebar .brand{ display:flex; align-items:center; gap:8px; padding:16px 14px; border-bottom:1px solid rgba(255,255,255,.12); flex-shrink:0; }
 .brand-text{ min-width:0; flex:1; }
 .sidebar.collapsed .brand-text{ display:none; }
-.brand-logo-chip{ background:#fff; border-radius:10px; padding:8px 12px; display:flex; align-items:center;
-  justify-content:center; flex:1; min-width:0; box-shadow:0 2px 6px rgba(0,0,0,.15); }
-.brand-logo-img{ height:74px; width:auto; display:block; }
+/* Logo branca direto no azul, sem caixa. A caixa branca era um retângulo
+   estranho dentro de um menu azul, e a versão branca do logo é a mesma arte
+   monocromática — só troca a tinta. Os arquivos brancos são gerados em 4x pra
+   a redução no navegador sair nítida também em tela HiDPI. */
+.brand-logo-img{ height:104px; width:auto; display:block; margin:0 auto; }
+.sidebar.collapsed .brand-logo-img{ display:none; }
 .sidebar .brand-name{ font-weight:700; font-size:12px; line-height:1.25; white-space:normal; overflow-wrap:break-word; color:rgba(255,255,255,.9); min-width:0; flex:1; }
 .sidebar .brand-sub{ font-size:10px; color:rgba(255,255,255,.6); white-space:nowrap; }
-.sidebar.collapsed .brand-logo-chip{ display:none; }
+
 /* Recolhido, o menu só escondia o texto por overflow:hidden — os rótulos saíam
    cortados no meio da palavra e o ícone continuava encostado na esquerda. Aqui o
    texto some de fato e sobra o ícone, centralizado. */
@@ -175,9 +178,7 @@ button{ font-family:inherit; cursor:pointer; }
   background:linear-gradient(100deg, var(--blue) 0%, #062A9E 55%, #0B3ACB 100%);
   flex-shrink:0; flex-wrap:wrap;
 }
-.topbar-logo-chip{ background:#fff; border-radius:10px; padding:7px 11px; display:flex;
-  align-items:center; flex-shrink:0; align-self:center; box-shadow:0 2px 8px rgba(0,0,0,.18); }
-.topbar-logo{ height:44px; width:auto; display:block; }
+.topbar-logo{ height:52px; width:auto; display:block; flex-shrink:0; align-self:center; }
 .topbar-titles{ min-width:0; }
 .topbar-eyebrow{ font-size:9.5px; font-weight:800; letter-spacing:.12em;
   text-transform:uppercase; color:#FF8A63; white-space:nowrap; }
@@ -215,7 +216,7 @@ button{ font-family:inherit; cursor:pointer; }
 .tb-filter select:focus, .tb-filter #cycleFilterSelect:focus{ outline:none; }
 #cycleFilterSelect{ background:transparent; border:none; color:inherit; font-size:12.5px; font-weight:800; font-family:inherit; cursor:pointer; padding:0; }
 @media(max-width:900px){
-  .topbar-logo{ height:30px; }
+  .topbar-logo{ height:36px; }
   .topbar-filters{ width:100%; margin-left:0; }
   .tb-filter{ flex:1; min-width:0; }
 }
@@ -890,6 +891,14 @@ table.aud-table .pos{ color:var(--success); font-weight:700; }
 .rp-page.rp-page-wide .panel:last-of-type{ margin-bottom:6px; }
 /* Sem isto o media query de 1100px do dash empilha os três cards na captura. */
 .rp-page.rp-page-wide .tg-wrap{ grid-template-columns:1.15fr 1.15fr minmax(180px,.54fr); }
+/* No boletim o SVG sai no tamanho natural (o do viewBox), sem escalar. Escalado,
+   a caixa CSS cresce mas o html2canvas desenha na altura do atributo width/height
+   — o eixo com os rótulos de dia caía fora do recorte e a curva parecia
+   empurrada pra baixo. Em tamanho natural não há o que dar errado. */
+.rp-page.rp-page-wide .tg-svg,
+.rp-page.rp-page-wide .tg-rosca svg{ width:auto; height:auto; max-width:100%; margin-inline:auto; }
+.rp-page.rp-page-wide .tg-card{ align-items:center; }
+.rp-page.rp-page-wide .tg-head{ width:100%; }
 .rp-page.rp-page-wide .table-wrap{ overflow:visible; }
 .rp-page.rp-page-wide .trans-table{ min-width:0; }
 
@@ -964,7 +973,10 @@ input, select, textarea{ width:100%; border:1px solid var(--line); border-radius
 .rp-hero{ background:#001A72; color:#fff; padding:34px 40px 26px; position:relative; }
 .rp-hero::after{ content:''; position:absolute; left:0; right:0; bottom:0; height:4px; background:linear-gradient(90deg,#FA4616,#FF7A4D,#FA4616); }
 .rp-hero-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
-.rp-hero-logo{ display:block; height:42px; width:auto; filter:brightness(0) invert(1); }
+/* Arquivo branco de verdade em vez de filter: o html2canvas, que gera a imagem
+   do boletim, não aplica filtros CSS — a logo saía laranja no e-mail e branca na
+   tela. */
+.rp-hero-logo{ display:block; height:48px; width:auto; }
 .rp-hero-status{ font-size:10px; font-weight:700; letter-spacing:.04em; color:#D7DEEC; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); padding:4px 10px; border-radius:100px; }
 .rp-hero-badge{ display:inline-block; color:#FF7A4D; font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; margin-bottom:12px; }
 .rp-hero h1{ font-size:24px; font-weight:700; letter-spacing:-.01em; line-height:1.2; }
