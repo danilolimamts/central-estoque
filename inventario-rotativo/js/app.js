@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v119';
+const IR_APP_VERSION = 'v120';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5529,7 +5529,7 @@ function irRenderTransitorios(){
 }
 /* Uma tabela por setor, no formato do relatório de pendência: uma linha por
    transitório, peças abertas por LOG e o valor parado no endereço. */
-function irTransPainelSetor(g, logs){
+function irTransPainelSetor(g, logs, estatico){
   const porPrefixo = new Map();
   for(const l of g.locais){
     if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, itens:0, porLog:{}, locais:[], ganhoValor:0, ganhoQtd:0});
@@ -5579,8 +5579,9 @@ function irTransPainelSetor(g, logs){
       </thead>
       <tbody>${linhas.map(p=>`<tr>
         <td class="mono">${irEsc(p.x1||'(vazio)')}</td>
-        <td><input class="trans-nome" value="${irEsc(irTransNome(p.x1))}" title="Nome do transitório — dá pra editar"
-             onchange="irTransSetNome('${irEsc(p.x1)}', this.value)"></td>
+        <td>${estatico ? irEsc(irTransNome(p.x1))
+          : `<input class="trans-nome" value="${irEsc(irTransNome(p.x1))}" title="Nome do transitório — dá pra editar"
+             onchange="irTransSetNome('${irEsc(p.x1)}', this.value)">`}</td>
         ${cols.map(l=>`<td class="mono ${p.cel[l]?(irTransDentroDoPrazo(l)?'trans-ok':'trans-atraso'):''}">${
           p.cel[l] ? irFmtInt(p.cel[l])+'<span class="trans-cel-val">'+irFmtMoneyCompact(p.celValor[l]||0)+'</span>' : '0'}</td>`).join('')}
         <td class="mono">${irFmtMoney(p.valor)}</td>
@@ -5625,47 +5626,17 @@ function irTransTabelaPrefixos(g){
     </table>
   </div></div>`;
 }
-/* Boletim em imagem pros gestores: a mesma folha que já sai do NET e do ranking,
-   com uma tabela por setor. Vai por e-mail, então precisa se explicar sozinha —
-   por isso o total do CD, a data da base e a legenda do D+ vêm junto. */
+/* Boletim em imagem pros gestores: é o MESMO painel da tela, reaproveitado por
+   setor, e não uma segunda montagem parecida. Duas montagens é como o boletim
+   ficou pra trás dos ajustes do dash — gráfico empilhado, tabela com outra grade.
+   Aqui a única diferença é o nome do transitório sair como texto no lugar do
+   campo editável, que numa imagem viraria uma caixa de formulário. */
 async function irBaixarBoletimTransitorios(){
   const c = irTransCalc();
   const m = IR.est390Meta || {};
-  const cols = IR_TRANS_FAIXAS;
+  const logs = irTransLogsPresentes();
   const setores = c.lista.filter(g=>g.setor && g.setor!=='IGN');
-  const tabela = g => {
-    const porPrefixo = new Map();
-    for(const l of g.locais){
-      if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, ganho:0, locais:[]});
-      const p = porPrefixo.get(l.x1); p.valor += l.valor; p.locais.push(l);
-      const gl = irTransGanhoPorLocal().get(l.local); if(gl) p.ganho += gl.valor;
-    }
-    const linhas = Array.from(porPrefixo.values()).sort((a,b)=>b.valor-a.valor);
-    const totVal = {};
-    for(const p of linhas){
-      const id = irTransIdade(p.locais);
-      p.cel = id.faixas; p.celValor = id.valores;
-      for(const f of cols) totVal[f] = (totVal[f]||0) + (id.valores[f]||0);
-    }
-    const tot = {}; for(const p of linhas) for(const k in p.cel) tot[k] = (tot[k]||0)+p.cel[k];
-    const ganhoSetor = linhas.reduce((s,p)=>s+p.ganho,0);
-    return irTransGraficos(tot, totVal) + `<div class="rp-panel"><table class="rp-table rp-table-dense">
-      <thead><tr><th>Local</th><th>Descrição</th>${cols.map(x=>`<th>${irEsc(x)}</th>`).join('')}<th>Valor</th><th>Prov. duplicidade</th></tr></thead>
-      <tbody>${linhas.map(p=>`<tr>
-        <td style="font-weight:700;">${irEsc(p.x1)}</td>
-        <td>${irEsc(irTransNome(p.x1))}</td>
-        ${cols.map(x=>`<td style="${p.cel[x]?(irTransDentroDoPrazo(x)?'color:#1F8A52;font-weight:700;':'color:#FA4616;font-weight:800;'):''}">${
-          p.cel[x] ? irFmtInt(p.cel[x])+'<br><span style="font-size:9px;color:#6B7280;font-weight:600;">'+irFmtMoneyCompact(p.celValor[x]||0)+'</span>' : '0'}</td>`).join('')}
-        <td style="font-weight:700;">${irFmtMoney(p.valor)}</td>
-        <td>${p.ganho>0?irFmtMoney(p.ganho):'—'}</td>
-      </tr>`).join('')}
-      <tr style="background:#EEF1F8;font-weight:800;">
-        <td colspan="2">Total</td>
-        ${cols.map(x=>`<td>${tot[x]?irFmtInt(tot[x]):'0'}${tot[x]?'<br><span style="font-size:9px;font-weight:600;">'+irFmtMoneyCompact(totVal[x]||0)+'</span>':''}</td>`).join('')}
-        <td>${irFmtMoney(g.valor)}</td><td>${ganhoSetor>0?irFmtMoney(ganhoSetor):'—'}</td>
-      </tr></tbody></table></div>`;
-  };
-  const html = `<div class="rp-page">
+  const html = `<div class="rp-page rp-page-wide">
     <div class="rp-hero">
       <div class="rp-hero-top">
         <img src="brand/Logo_LDM_hor_2.png" alt="Loja do Mecânico" class="rp-hero-logo">
@@ -5677,8 +5648,7 @@ async function irBaixarBoletimTransitorios(){
       <div class="rp-hero-meta"><span>${irFmtMoney(c.valorTotal)} parados · ${irFmtInt(c.pecasTotal)} peças · ${irFmtInt(c.nLocais)} endereços</span></div>
     </div>
     <div class="rp-body">
-      ${setores.map(g=>rpSectionTitle('📦', IR_TRANS_SETOR_NOME[g.setor]||g.setor,
-        irFmtMoney(g.valor)+' · '+irFmtInt(g.qtd)+' peças · '+irFmtInt(g.locais.length)+' endereços')+tabela(g)).join('')}
+      ${setores.map(g=>irTransPainelSetor(g, logs, true)).join('')}
       <p class="rp-footer">Prazo do transitório: ${IR_TRANS_PRAZO_H}h — verde está no prazo, laranja passou. D+${IR_TRANS_FAIXA_MAX} é acumulativo: sete dias ou mais.<br>"Prov. duplicidade" é o saldo de itens que fecharam o ano com ganho no NET da QRY410 — movimentar resolve, procurar não.<br>Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · gerado pelo módulo Inventário.</p>
     </div>
   </div>`;

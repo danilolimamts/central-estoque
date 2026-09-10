@@ -835,6 +835,23 @@ table.aud-table .pos{ color:var(--success); font-weight:700; }
 .rp-page .podio-nome, .rp-page .podio-num{ color:#1D1F2A; }
 .rp-page .podio-lbl, .rp-page .podio-sub{ color:#6B7280; }
 
+/* O boletim de transitórios reaproveita os painéis da tela. Duas coisas precisam
+   ser fixadas aqui: a paleta (a captura tem de sair clara mesmo com o app no
+   modo escuro) e a largura, porque o html2canvas recalcula as media queries pela
+   largura da folha — a .tg-wrap caía no fallback de uma coluna e os três
+   gráficos saíam empilhados. */
+.rp-page.rp-page-wide{ width:1200px; max-width:1200px;
+  --paper:#F4F5F7; --surface:#FFFFFF; --surface2:#EEF0F4;
+  --ink:#1D1F2A; --ink-soft:#6B7280; --line:#D5D8E0;
+  --blue-light:#E8ECF7; --orange-light:#FFEDE7; }
+.rp-page.rp-page-wide .panel{ background:#fff; border:1px solid #C9CEDB; box-shadow:0 3px 10px rgba(16,24,40,.10);
+  margin-bottom:18px; }
+.rp-page.rp-page-wide .panel:last-of-type{ margin-bottom:6px; }
+/* Sem isto o media query de 1100px do dash empilha os três cards na captura. */
+.rp-page.rp-page-wide .tg-wrap{ grid-template-columns:1.1fr 1.1fr minmax(212px,.66fr); }
+.rp-page.rp-page-wide .table-wrap{ overflow:visible; }
+.rp-page.rp-page-wide .trans-table{ min-width:0; }
+
 /* ---------- HEATMAP ---------- */
 .heatmap{ display:grid; gap:3px; }
 .heatmap-cell{ aspect-ratio:1; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; color:#fff; }
@@ -1187,7 +1204,10 @@ table.trans-table td.trans-ganho{ color:var(--success); font-weight:800; }
 .tg-t-lbl.atraso{ fill:var(--orange); }
 .tg-card-rosca{ padding-bottom:10px; display:flex; flex-direction:column; }
 .tg-rosca{ display:flex; align-items:center; justify-content:center; gap:10px; flex:1; }
-.tg-rosca svg{ width:148px; height:148px; flex:none; }
+/* O anel encolhe junto quando o card é estreito (é o caso da folha do boletim,
+   mais apertada que a tela); com largura travada ele empurrava a legenda pra
+   fora do card. */
+.tg-rosca svg{ width:148px; max-width:48%; height:auto; aspect-ratio:1; flex:none; }
 .tg-r-num{ font-size:22px; font-weight:800; fill:var(--ink); font-family:inherit; font-variant-numeric:tabular-nums; }
 .tg-r-cap{ font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; fill:var(--ink-soft); font-family:inherit; }
 .tg-r-fatia{ font-size:14px; font-weight:800; font-family:inherit; font-variant-numeric:tabular-nums; fill:#fff; }
