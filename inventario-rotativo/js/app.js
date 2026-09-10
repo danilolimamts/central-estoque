@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v120';
+const IR_APP_VERSION = 'v121';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5332,6 +5332,17 @@ function irTransGanhoPorLocal(){
   const m = new Map();
   const ganhos = IR._transGanhos;
   if(ganhos && ganhos.size && IR._itemInfo){
+    // Só endereço de transitório entra no rateio. A ficha da 390 traz TODOS os
+    // endereços do item, ordenados do maior saldo pro menor, e o rateio gastava o
+    // ganho do ano nos endereços de picking — que vêm primeiro e são bem maiores —
+    // antes de chegar no ANE/CAN da vez. Era por isso que a coluna vinha zerada
+    // mesmo com a QRY410 importada: a pergunta aqui é quanto do ganho PODE estar
+    // parado num transitório, então o transitório é quem atende primeiro.
+    const transitorios = new Set();
+    for(const g of irTransCalc().lista){
+      if(!g.setor || g.setor==='IGN') continue;
+      for(const l of g.locais) transitorios.add(l.local);
+    }
     for(const [item, ganhoQtd] of ganhos){
       const info = IR._itemInfo.get(irDivNormItem(item));
       if(!info || !info.locais) continue;
@@ -5341,6 +5352,7 @@ function irTransGanhoPorLocal(){
       let restante = ganhoQtd;
       for(const l of info.locais){
         if(restante <= 0) break;
+        if(!transitorios.has(l.local)) continue;
         const q = Math.min(l.qtd, restante);
         restante -= q;
         if(!m.has(l.local)) m.set(l.local, {qtd:0, valor:0});
