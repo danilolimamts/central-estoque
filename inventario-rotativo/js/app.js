@@ -728,7 +728,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v136';
+const IR_APP_VERSION = 'v137';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2161,8 +2161,18 @@ function irAvulsaEstado(id){
   const d = IR.net410Data;
   const partes = ['anos: '+anos.join(', ')];
   if(d && d.totalLinhas != null) partes.push(irFmtInt(d.totalLinhas)+' linhas em '+d.ano);
+  // Data do movimento mais recente DENTRO do arquivo. É o que responde de vez
+  // "reimportei e não mudou": a 410 vem de um dataflow com atualização própria,
+  // então o arquivo pode estar salvo hoje e mesmo assim não ter movimento novo.
+  // Sem esse dado, a única saída era abrir a planilha e procurar a última data.
+  const ultimo = irNet410UltimoMovimento(d);
+  if(ultimo) partes.push('movimento até '+irFmtDate(ultimo));
   if(d && d.processedAt) partes.push('lida '+irFmtDataHora(d.processedAt));
   return partes.join(' · ');
+}
+function irNet410UltimoMovimento(d){
+  const dias = (d && d.porDia) || [];
+  return dias.length ? dias[dias.length-1].dia : null;
 }
 // Data e hora curtas, pra comparar duas importações seguidas.
 function irFmtDataHora(s){
