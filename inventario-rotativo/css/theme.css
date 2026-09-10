@@ -863,7 +863,7 @@ table.aud-table .pos{ color:var(--success); font-weight:700; }
   margin-bottom:18px; }
 .rp-page.rp-page-wide .panel:last-of-type{ margin-bottom:6px; }
 /* Sem isto o media query de 1100px do dash empilha os três cards na captura. */
-.rp-page.rp-page-wide .tg-wrap{ grid-template-columns:1.1fr 1.1fr minmax(212px,.66fr); }
+.rp-page.rp-page-wide .tg-wrap{ grid-template-columns:1.15fr 1.15fr minmax(180px,.54fr); }
 .rp-page.rp-page-wide .table-wrap{ overflow:visible; }
 .rp-page.rp-page-wide .trans-table{ min-width:0; }
 
@@ -1206,7 +1206,7 @@ table.trans-table td.trans-ganho .trans-pct{ color:var(--danger); opacity:.75; }
 /* A rosca precisa de bem menos largura que as linhas: sobrava vazio na lateral
    dela e faltava respiro nos rótulos dos gráficos. align-items:stretch deixa os
    três cards com a mesma altura. */
-.tg-wrap{ display:grid; grid-template-columns:1.12fr 1.12fr minmax(188px,.6fr); gap:10px;
+.tg-wrap{ display:grid; grid-template-columns:1.15fr 1.15fr minmax(172px,.52fr); gap:10px;
   align-items:stretch; margin:2px 0 14px; }
 .tg-card{ background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:9px 11px 6px; min-width:0; }
 .tg-head{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:2px; }
@@ -1223,20 +1223,23 @@ table.trans-table td.trans-ganho .trans-pct{ color:var(--danger); opacity:.75; }
 .tg-t-lbl.ok{ fill:var(--success); }
 .tg-t-lbl.atraso{ fill:var(--orange); }
 .tg-card-rosca{ padding-bottom:10px; display:flex; flex-direction:column; }
-.tg-rosca{ display:flex; align-items:center; justify-content:center; gap:10px; flex:1; }
-/* O anel encolhe junto quando o card é estreito (é o caso da folha do boletim,
-   mais apertada que a tela); com largura travada ele empurrava a legenda pra
-   fora do card. */
-.tg-rosca svg{ width:148px; max-width:48%; height:auto; aspect-ratio:1; flex:none; }
+/* Anel em cima, legenda embaixo em duas colunas: lado a lado a legenda disputava
+   largura com o anel e as duas coisas ficavam apertadas. */
+.tg-rosca{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; flex:1; }
+.tg-rosca svg{ width:122px; max-width:100%; height:auto; aspect-ratio:1; flex:none; }
 .tg-r-num{ font-size:22px; font-weight:800; fill:var(--ink); font-family:inherit; font-variant-numeric:tabular-nums; }
 .tg-r-cap{ font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; fill:var(--ink-soft); font-family:inherit; }
 .tg-r-fatia{ font-size:14px; font-weight:800; font-family:inherit; font-variant-numeric:tabular-nums; fill:#fff; }
-.tg-leg{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; min-width:0; }
-.tg-leg li{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ink-soft); white-space:nowrap; }
-.tg-leg i{ width:10px; height:10px; border-radius:3px; flex:none; }
+.tg-leg{ list-style:none; margin:0; padding:0; display:flex; width:100%; }
+.tg-leg li{ flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:3px; }
+.tg-leg li + li{ border-left:1px solid var(--line); }
+.tg-leg li span{ display:flex; align-items:center; gap:5px; font-size:9.5px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); white-space:nowrap; }
+.tg-leg i{ width:9px; height:9px; border-radius:50%; flex:none; }
 .tg-leg i.prazo{ background:var(--blue); }
 .tg-leg i.atraso{ background:var(--orange); }
-.tg-leg b{ margin-left:auto; color:var(--ink); font-variant-numeric:tabular-nums; }
+.tg-leg b{ font-size:13.5px; color:var(--ink); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.tg-leg b.atraso{ color:var(--orange); }
 @media (max-width:1100px){ .tg-wrap{ grid-template-columns:1fr; } }
 
 table.trans-table th.tg-th-ok{ background:var(--success); }
