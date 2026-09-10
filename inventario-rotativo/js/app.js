@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v125';
+const IR_APP_VERSION = 'v126';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5421,14 +5421,15 @@ function irTransLinha(vals, titulo, total, fmt, cor, fmtCurto){
   const gid = 'tgg' + Math.random().toString(36).slice(2,8);
   return `<div class="tg-card">
     <div class="tg-head"><span>${irEsc(titulo)}</span><strong>${irEsc(total)}</strong></div>
-    <svg viewBox="0 0 ${W} ${H}" class="tg-svg" role="img" aria-label="${irEsc(titulo)}: ${irEsc(total)}">
+    <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="tg-svg" shape-rendering="geometricPrecision"
+      role="img" aria-label="${irEsc(titulo)}: ${irEsc(total)}">
       <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="${cor}" stop-opacity=".28"/>
         <stop offset="1" stop-color="${cor}" stop-opacity="0"/>
       </linearGradient></defs>
       <line x1="${padL-6}" y1="${base}" x2="${W-padL+6}" y2="${base}" class="tg-base"/>
       <path d="${area}" fill="url(#${gid})"/>
-      <path d="${linha}" fill="none" stroke="${cor}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="${linha}" fill="none" stroke="${cor}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
       ${pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i===iMax?4.6:3.2}"
         fill="${irTransDentroDoPrazo(IR_TRANS_FAIXAS[i])?'var(--success)':'var(--orange)'}" stroke="var(--surface2)" stroke-width="1.4"><title>${irEsc(IR_TRANS_FAIXAS[i])}: ${irEsc(fmt(vals[i]))}</title></circle>`).join('')}
       ${pts.map((p,i)=>{
@@ -5490,7 +5491,8 @@ function irTransRosca(dentro, fora){
   return `<div class="tg-card tg-card-rosca">
     <div class="tg-head"><span>Prazo de ${IR_TRANS_PRAZO_H}h</span><strong class="${pctFora>0?'atraso':''}">${pctTxt(pctFora)} fora</strong></div>
     <div class="tg-rosca">
-      <svg viewBox="0 0 ${cx*2} ${cx*2}" role="img" aria-label="${pctTxt(pctFora)} do valor fora do prazo">
+      <svg viewBox="0 0 ${cx*2} ${cx*2}" width="${cx*2}" height="${cx*2}" shape-rendering="geometricPrecision"
+        role="img" aria-label="${pctTxt(pctFora)} do valor fora do prazo">
         <circle cx="${cx}" cy="${cx}" r="${R}" fill="none" stroke="var(--blue)" stroke-width="${larg}"/>
         <circle cx="${cx}" cy="${cx}" r="${R}" fill="none" stroke="var(--orange)" stroke-width="${larg}"
           stroke-dasharray="${(C*pctFora).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${cx} ${cx})"/>

@@ -1216,9 +1216,11 @@ table.trans-table td.trans-ganho .trans-pct{ color:var(--danger); opacity:.75; }
 .tg-head strong{ font-size:13px; color:var(--blue); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .tg-head strong.atraso{ color:var(--orange); }
 /* height:auto + viewBox com proporção fixa: o SVG escala inteiro, sem esticar
-   traço nem texto na horizontal. */
-.tg-svg{ display:block; width:100%; height:auto; overflow:visible; }
-.tg-base{ stroke:var(--line); stroke-width:1; }
+   traço nem texto na horizontal. Nada de overflow:visible: o desenho todo cabe
+   dentro do viewBox, e o html2canvas (que gera o boletim em imagem) recorta o
+   SVG pela caixa dele — o que vazasse sairia cortado no e-mail. */
+.tg-svg{ display:block; width:100%; height:auto; overflow:hidden; }
+.tg-base{ stroke:var(--line); stroke-width:1.2; }
 .tg-t-val{ font-size:10px; font-weight:800; fill:var(--ink); font-family:inherit; font-variant-numeric:tabular-nums; }
 .tg-t-val.mini{ font-size:8px; fill:var(--ink-soft); }
 .tg-t-lbl{ font-size:9px; font-weight:800; font-family:inherit; }
