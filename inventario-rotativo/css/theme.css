@@ -1153,7 +1153,8 @@ table.ofe-sub tr.ofe-fora{ opacity:.55; }
    semana — é o único número da tabela que pede ação. */
 .trans-kpis{ margin-bottom:12px; }
 .trans-kpis .ofe-num strong{ color:var(--blue); }
-table.trans-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+.trans-kpis .ofe-num.trans-kpi-dup strong{ color:var(--danger); }
+table.trans-table{ width:100%; border-collapse:collapse; font-size:13.5px; }
 table.trans-table thead th{
   background:var(--blue); color:#fff; font-size:9.5px; font-weight:800;
   text-transform:uppercase; letter-spacing:.05em; padding:8px 9px; text-align:left;
@@ -1180,7 +1181,7 @@ table.trans-table th.tt-desc{ width:16%; }
 table.trans-table th.tt-dia{ width:6.5%; }
 table.trans-table th.tt-valor{ width:12%; }
 table.trans-table th.tt-dup{ width:10%; }
-.trans-cel-val{ display:block; font-size:11.5px; font-weight:700; color:var(--ink-soft); }
+.trans-cel-val{ display:block; font-size:12px; font-weight:700; color:var(--ink-soft); }
 table.trans-table td:last-child{ font-weight:700; color:var(--blue); }
 table.trans-table tfoot td{
   background:var(--blue-light); color:var(--blue);
@@ -1192,8 +1193,12 @@ table.trans-table td.trans-velho{ color:var(--orange); font-weight:800; }
 :root[data-theme="dark"] table.trans-table tfoot td{ color:var(--ink); }
 /* Saldo em transitório que pertence a item já com ganho no NET: movimentar
    resolve, procurar não. */
-table.trans-table td.trans-ganho{ color:var(--success); font-weight:800; }
-.trans-pct{ display:block; font-size:11.5px; font-weight:700; color:var(--ink-soft); }
+/* Duplicidade provável não é notícia boa: é saldo que pode estar contado duas
+   vezes. Em verde lia como meta batida — vai no vermelho de alerta, que também
+   não se confunde com o laranja do estouro de prazo das colunas de dia. */
+table.trans-table td.trans-ganho{ color:var(--danger); font-weight:800; }
+table.trans-table td.trans-ganho .trans-pct{ color:var(--danger); opacity:.75; }
+.trans-pct{ display:block; font-size:12px; font-weight:700; color:var(--ink-soft); }
 
 /* Três leituras pequenas lado a lado: peças por idade, valor por idade e a rosca
    do prazo. Cada linha na sua escala — num eixo só, a de menor magnitude vira

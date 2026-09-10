@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v122';
+const IR_APP_VERSION = 'v123';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5587,7 +5587,7 @@ function irTransPainelSetor(g, logs, estatico){
   for(const p of linhas) for(const k in p.cel) totCol[k] = (totCol[k]||0) + p.cel[k];
   const itens = linhas.reduce((s,p)=>s+p.itens,0);
   const ganhoSetor = linhas.reduce((s,p)=>s+p.ganhoValor,0);
-  const cell = (rot, val, sub) => `<div class="ofe-num">
+  const cell = (rot, val, sub, classe) => `<div class="ofe-num${classe?' '+classe:''}">
     <span class="ofe-num-lbl">${irEsc(rot)}</span><strong class="mono">${val}</strong>
     ${sub?`<span class="ofe-num-sub">${irEsc(sub)}</span>`:''}</div>`;
   return `<div class="panel">
@@ -5599,7 +5599,8 @@ function irTransPainelSetor(g, logs, estatico){
       ${cell('Endereços', irFmtInt(g.locais.length), irFmtInt(linhas.length)+(linhas.length===1?' transitório':' transitórios'))}
       ${cell('Itens', irFmtInt(itens), 'distintos por endereço')}
       ${cell('Provável duplicidade', ganhoSetor>0?irFmtMoney(ganhoSetor):'—',
-        ganhoSetor>0 ? irFmtPct(g.valor?ganhoSetor/g.valor:0)+' do saldo · ganho no NET do ano' : irTransDiagDuplicidade())}
+        ganhoSetor>0 ? irFmtPct(g.valor?ganhoSetor/g.valor:0)+' do saldo · ganho no NET do ano' : irTransDiagDuplicidade(),
+        ganhoSetor>0 ? 'trans-kpi-dup' : '')}
     </div>
     ${irTransGraficos(totCol, totValFaixa)}
     <div class="table-wrap"><table class="trans-table">
