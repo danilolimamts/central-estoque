@@ -713,7 +713,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v121';
+const IR_APP_VERSION = 'v122';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2013,14 +2013,21 @@ function irProcessar410(){
       } else if(msg.type==='done410'){
         IR.net410Processing = false; worker.terminate();
         for(const ano of msg.anos) await irSaveNet410(ano, msg.resumos[ano]);
+        // Tudo que foi derivado da 410 antiga precisa cair aqui. Faltava: quem
+        // abrisse Transitórios antes de importar guardava um div410Cache marcado
+        // "vazio" e um _transGanhos vazio, e o irTransCarregarGanhos devolvia na
+        // primeira linha por já ter os dois preenchidos — a prov. duplicidade
+        // ficava zerada mesmo depois da importação, até dar F5 na página.
+        IR.div410Cache = null;
+        IR._transGanhos = null; IR._transGanhoLocal = null; IR._transGanhosDiag = null;
         IR.est390Meta = await irGetEstoqueMeta();
-    IR.est390Ficha = await irGetConfig('estoque390-ficha');
-    IR.transSetores = await irSeedTransSetoresIfEmpty();
-    const ign = await irGetConfig('auditoria-ignorar-virtuais');
-    if(ign!=null) IR.audIgnorarVirtuais = ign;
-    IR.audPrefixos = await irGetConfig('auditoria-prefixos');
-    IR.transNomes = await irGetConfig('transitorio-nomes') || {};
-    IR.net410Anos = await irGetAllNet410Anos();
+        IR.est390Ficha = await irGetConfig('estoque390-ficha');
+        IR.transSetores = await irSeedTransSetoresIfEmpty();
+        const ign = await irGetConfig('auditoria-ignorar-virtuais');
+        if(ign!=null) IR.audIgnorarVirtuais = ign;
+        IR.audPrefixos = await irGetConfig('auditoria-prefixos');
+        IR.transNomes = await irGetConfig('transitorio-nomes') || {};
+        IR.net410Anos = await irGetAllNet410Anos();
         IR.net410File = null;
         IR.net410AnoSel = msg.anos[0];
         IR.net410Data = await irGetNet410(IR.net410AnoSel);
@@ -2058,7 +2065,7 @@ function irProcessarEst390(){
         IR.est390Processing = false; worker.terminate();
         IR.est390Ficha = await irGetConfig('estoque390-ficha');
         IR._itemInfo = null; IR._descLocalTodosCiclos = null; IR._descLocal = null;
-        IR._transGanhos = null; IR._transGanhoLocal = null;
+        IR._transGanhos = null; IR._transGanhoLocal = null; IR._transGanhosDiag = null;
         IR.est390File = null;
         irShowToast(irFmtInt(msg.itens)+' itens e '+irFmtInt(msg.locais)+' endereços fichados.');
         irRenderView();
@@ -2116,7 +2123,7 @@ function irProcessar160(){
         IR.est160Processing = false; worker.terminate();
         IR.est390Meta = await irGetEstoqueMeta();
         IR.est390Locais = null; IR.est160File = null;
-        IR._transGanhos = null; IR._transGanhoLocal = null;
+        IR._transGanhos = null; IR._transGanhoLocal = null; IR._transGanhosDiag = null;
         irShowToast(irFmtInt(msg.locais)+' endereços com data de movimento.');
         irRenderView();
       }
@@ -5343,9 +5350,19 @@ function irTransGanhoPorLocal(){
       if(!g.setor || g.setor==='IGN') continue;
       for(const l of g.locais) transitorios.add(l.local);
     }
+    // Contadores do cruzamento. Uma coluna zerada tem quatro causas possíveis e
+    // cada uma se resolve de um jeito; sem medir onde a corrente arrebenta, a
+    // única saída é chutar qual base reimportar.
+    const d = IR._transGanhosDiag = IR._transGanhosDiag || {};
+    d.locaisTransitorios = transitorios.size;
+    d.fichas390 = IR._itemInfo.size;
+    d.comFicha = 0; d.comEndereco = 0; d.comTransitorio = 0;
     for(const [item, ganhoQtd] of ganhos){
       const info = IR._itemInfo.get(irDivNormItem(item));
       if(!info || !info.locais) continue;
+      d.comFicha++;
+      if(info.locais.length) d.comEndereco++;
+      if(info.locais.some(l=>transitorios.has(l.local))) d.comTransitorio++;
       const preco = info.valorUnitario || 0;
       // A duplicidade não pode ser maior que o ganho do ano nem que o saldo do
       // endereço: o excedente é estoque legítimo, não sobra duplicada.
@@ -5494,9 +5511,13 @@ function irTransRosca(dentro, fora){
    onde só falta importar uma planilha. */
 function irTransDiagDuplicidade(){
   const d = IR._transGanhosDiag || {};
-  if(!d.tem410) return 'importe a QRY410 do ano na aba Importação';
-  if(!d.comGanho) return 'nenhum item com ganho no NET de '+(d.ano||'');
-  if(!(IR._itemInfo && IR._itemInfo.size)) return 'importe a QRY0390 para saber onde os itens estão';
+  if(d.erro) return 'erro ao ler a QRY410: '+d.erro;
+  if(!d.tem410) return 'importe a QRY410 de '+(d.ano||'')+' na aba Importação';
+  if(!d.comGanho) return 'nenhum item com ganho no NET de '+(d.ano||'')+' ('+(d.itens410||0)+' itens na 410)';
+  if(!d.fichas390) return 'importe a QRY0390: é a única base que diz em que endereço o item está';
+  if(!d.comFicha) return 'nenhum dos '+d.comGanho+' itens com ganho está na QRY0390 — reimporte a 390 (ela é do dia)';
+  if(!d.comEndereco) return 'os '+d.comFicha+' itens com ganho não têm saldo em nenhum endereço do CD';
+  if(!d.comTransitorio) return 'os '+d.comFicha+' itens com ganho têm saldo no CD, mas nenhum em transitório';
   return 'nada a movimentar';
 }
 function irTransGraficos(porFaixaQtd, porFaixaValor){
