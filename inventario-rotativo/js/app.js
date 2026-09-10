@@ -43,6 +43,8 @@ const IR = {
   itemDivFiltro:{tipo:'ciclo'}, itemDivSaldo:null,
   // Estoque atual (QRY0390) — independente do ciclo, é a foto do CD agora.
   est390File:null, est390Processing:false, est390Progress:{stage:'', pct:0},
+  pastaHandle:null, pastaArquivos:null, pastaUltimo:null, pastaPerm:null,
+  pastaProcessando:false, pastaVarridoEm:null, pastaErro:null,
   est390Meta:null, est390Ficha:null, est390Locais:null, transSetores:null, transExpandido:null,
   est160File:null, est160Processing:false, est160Progress:{stage:'', pct:0},
   audIgnorarVirtuais:true, audPrefixos:null, transNomes:null,
@@ -137,6 +139,10 @@ async function irInit(){
   }catch(e){ console.error('Falha ao iniciar', e); }
   irMostrarVersao();
   irSwitchTab('dashboard');
+  // Fora do try acima e sem await: se a pasta conectada falhar (permissão
+  // revogada, política nova, arquivo só na nuvem), isso não pode impedir o app
+  // de abrir — é conveniência, não dependência.
+  irPastaCarregar().catch(()=>{});
 }
 async function irLoadCicloData(cicloId){
   IR.indicadores = await irGetIndicadores(cicloId);
@@ -451,6 +457,7 @@ function irRenderImportacao(){
       }
     </div>
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
+    ${irRenderPastaPanel()}
     ${irRenderEst390ImportPanel()}
     ${irRender160ImportPanel()}
     ${irRenderNet410ImportPanel()}
@@ -713,7 +720,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v128';
+const IR_APP_VERSION = 'v129';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -1998,10 +2005,11 @@ function irSetNet410MesDefault(){
 }
 function irSetNet410Mes(mes){ IR.net410MesSel = mes; irRenderView(); }
 function irProcessar410(){
-  if(IR.net410Processing || !IR.net410File) return;
+  if(IR.net410Processing || !IR.net410File) return Promise.resolve(false);
   IR.net410Processing = true; IR.net410Progress = {stage:'Lendo arquivo...', pct:0};
   irRenderView();
   const file = IR.net410File;
+  let _fim; const _p = new Promise(r=>{ _fim = r; });
   file.arrayBuffer().then(buf410=>{
     const worker = irNovoWorker();
     worker.onmessage = async (e)=>{
@@ -2009,7 +2017,7 @@ function irProcessar410(){
       if(msg.type==='progress'){ IR.net410Progress = {stage:msg.stage, pct:msg.pct}; irUpdateProgressUI410(); }
       else if(msg.type==='error410'){
         IR.net410Processing=false; worker.terminate();
-        irShowToast('Erro no processamento da QRY410: '+msg.message, true); irRenderView();
+        irShowToast('Erro no processamento da QRY410: '+msg.message, true); irRenderView(); _fim(false);
       } else if(msg.type==='done410'){
         IR.net410Processing = false; worker.terminate();
         for(const ano of msg.anos) await irSaveNet410(ano, msg.resumos[ano]);
@@ -2033,14 +2041,15 @@ function irProcessar410(){
         IR.net410Data = await irGetNet410(IR.net410AnoSel);
         irSetNet410MesDefault();
         irShowToast('✓ QRY410 processada: '+msg.anos.map(a=>a+'').join(', ')+'.');
-        irRenderView();
+        irRenderView(); _fim(true);
       }
     };
-    worker.onerror = (err)=>{ IR.net410Processing=false; irShowToast('Erro no worker (QRY410): '+err.message, true); irRenderView(); };
+    worker.onerror = (err)=>{ IR.net410Processing=false; irShowToast('Erro no worker (QRY410): '+err.message, true); irRenderView(); _fim(false); };
     worker.postMessage({type:'process410', buf410}, [buf410]);
   }).catch(err=>{
-    IR.net410Processing=false; irShowToast('Erro ao ler arquivo: '+err.message, true); irRenderView();
+    IR.net410Processing=false; irShowToast('Erro ao ler arquivo: '+err.message, true); irRenderView(); _fim(false);
   });
+  return _p;
 }
 /* Painel de importação da QRY410 — fica na aba Importação (não na NET) pra não mexer
    no layout do Dashboard/NET com mais um dropzone. Processamento independente do
@@ -2049,10 +2058,15 @@ function irProcessar410(){
 function irOnFile390Est(f){ if(!f) return; IR.est390File = f; irRenderView(); }
 function irOnDropFile390Est(e){ e.preventDefault(); const f = e.dataTransfer.files[0]; if(f) irOnFile390Est(f); }
 function irRemoveFile390Est(){ IR.est390File = null; irRenderView(); }
+/* Devolve uma promessa que resolve quando o worker termina (ou falha). Sem isso
+   não dá pra encadear 390 -> 160 -> 410 na ordem certa: as três são assíncronas
+   e disparar as três de uma vez faria a 160 ler fichas que a 390 ainda não
+   gravou. Resolve também no erro — quem encadeia decide se segue. */
 function irProcessarEst390(){
-  if(IR.est390Processing || !IR.est390File) return;
+  if(IR.est390Processing || !IR.est390File) return Promise.resolve(false);
   IR.est390Processing = true; IR.est390Progress = {stage:'Lendo arquivo...', pct:0};
   irRenderView();
+  let _fim; const _p = new Promise(r=>{ _fim = r; });
   IR.est390File.arrayBuffer().then(buf=>{
     const worker = irNovoWorker();
     worker.onmessage = async ev=>{
@@ -2060,7 +2074,7 @@ function irProcessarEst390(){
       if(msg.type==='progress'){ IR.est390Progress = {stage:msg.stage, pct:msg.pct}; irUpdateProgressUI390(); }
       else if(msg.type==='error390'){
         IR.est390Processing = false; worker.terminate();
-        irShowToast('Erro na QRY0390: '+msg.message, true); irRenderView();
+        irShowToast('Erro na QRY0390: '+msg.message, true); irRenderView(); _fim(false);
       } else if(msg.type==='done390'){
         IR.est390Processing = false; worker.terminate();
         IR.est390Ficha = await irGetConfig('estoque390-ficha');
@@ -2068,12 +2082,13 @@ function irProcessarEst390(){
         IR._transGanhos = null; IR._transGanhoLocal = null; IR._transGanhosDiag = null;
         IR.est390File = null;
         irShowToast(irFmtInt(msg.itens)+' itens e '+irFmtInt(msg.locais)+' endereços fichados.');
-        irRenderView();
+        irRenderView(); _fim(true);
       }
     };
-    worker.onerror = ()=>{ worker.terminate(); IR.est390Processing=false; irShowToast('Falha no processamento da QRY0390.', true); irRenderView(); };
+    worker.onerror = ()=>{ worker.terminate(); IR.est390Processing=false; irShowToast('Falha no processamento da QRY0390.', true); irRenderView(); _fim(false); };
     worker.postMessage({type:'process390', buf390:buf}, [buf]);
-  });
+  }).catch(err=>{ IR.est390Processing=false; irShowToast('Erro ao ler a QRY0390: '+err.message, true); irRenderView(); _fim(false); });
+  return _p;
 }
 function irUpdateProgressUI390(){
   const st = document.getElementById('ir-390-stage'), fi = document.getElementById('ir-390-fill');
@@ -2103,14 +2118,243 @@ function irRenderEst390ImportPanel(){
     ${f ? `<p class="field-hint">${irFmtInt(f.locais)} endereços · ${irFmtInt(f.itens)} itens · ${irFmtMoney(f.valorTotal)} — importada em ${irEsc(new Date(f.importadoEm).toLocaleString('pt-BR'))}</p>` : ''}
   </div>`;
 }
+
+/* ============================================================
+   PASTA CONECTADA (File System Access API)
+   ============================================================
+   O import manual continua sendo o caminho oficial. Isto aqui só tira do
+   usuário a parte chata: achar sete arquivos em duas pastas, toda semana, na
+   ordem certa. Ele autoriza a pasta uma vez, o navegador guarda a permissão e
+   o dash passa a ler os arquivos sozinho.
+
+   Só existe em navegador baseado em Chromium (Chrome/Edge no desktop) e pode
+   ser desligado por política de grupo. Por isso NADA aqui é obrigatório: se a
+   API não existe, o botão não aparece e a tela de importação segue igual. */
+const IR_PASTA_SUPORTA = typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
+/* Cada base e como reconhecê-la pelo nome do arquivo. Os padrões do bloco do
+   ciclo são os mesmos do IR_FILE_TYPES de propósito — um só lugar pra errar. */
+const IR_PASTA_BASES = [
+  {id:'390', label:'QRY0390', desc:'Estoque por endereço', pattern:/0390/i, auto:true},
+  {id:'160', label:'QRY0160', desc:'Data de movimento',    pattern:/0160/i, auto:true},
+  {id:'410', label:'QRY410',  desc:'Perdas e ganhos',      pattern:/(^|[^0-9])410([^0-9]|$)/i, auto:true},
+  {id:'843', label:'QRY0843', desc:'Ajustes do ciclo',     pattern:/0843/i, slot:'f843'},
+  {id:'cong',label:'Base Congelada', desc:'Locais do ciclo', pattern:/congelad|espelho/i, slot:'fCong'},
+  {id:'278', label:'SIGEQ278', desc:'Custo médio',         pattern:/278/i, slot:'f278'},
+  {id:'051', label:'ZBIQ0051', desc:'Item pai × componente', pattern:/0051|zbiq/i, slot:'f051'}
+];
+function irPastaBaseDe(nome){
+  if(!/\.xlsx?$/i.test(nome)) return null;
+  const b = IR_PASTA_BASES.find(x=>x.pattern.test(nome));
+  return b ? b.id : null;
+}
+/* Autorização da pasta. O handle sobrevive a fechar o navegador, mas a
+   permissão pode voltar pra "prompt" — e reconceder exige clique do usuário,
+   não dá pra fazer sozinho no carregamento da página. */
+async function irPastaPermissao(handle, pedir){
+  if(!handle || !handle.queryPermission) return 'granted';
+  let st = await handle.queryPermission({mode:'read'});
+  if(st !== 'granted' && pedir) st = await handle.requestPermission({mode:'read'});
+  return st;
+}
+async function irPastaCarregar(){
+  if(!IR_PASTA_SUPORTA) return;
+  try{
+    const h = await irGetConfig('pasta-handle');
+    if(!h) return;
+    IR.pastaHandle = h;
+    IR.pastaUltimo = await irGetConfig('pasta-ultimo') || {};
+    IR.pastaPerm = await irPastaPermissao(h, false);
+    if(IR.pastaPerm === 'granted') await irPastaVarrer();
+  }catch(err){ IR.pastaErro = String(err && err.message || err); }
+}
+async function irPastaConectar(){
+  if(!IR_PASTA_SUPORTA) return;
+  try{
+    const h = await window.showDirectoryPicker({mode:'read', id:'inv-bases'});
+    IR.pastaHandle = h; IR.pastaPerm = 'granted'; IR.pastaErro = null;
+    await irSetConfig('pasta-handle', h);
+    await irPastaVarrer();
+    irShowToast('Pasta conectada: '+h.name);
+  }catch(err){
+    // Cancelar o seletor é AbortError e não é erro nenhum.
+    if(err && err.name === 'AbortError') return;
+    IR.pastaErro = 'Não consegui abrir a pasta ('+(err && err.name || 'erro')+'). Se a mensagem falar em política, o TI desligou esse recurso no Edge.';
+    irRenderView();
+  }
+}
+async function irPastaReautorizar(){
+  if(!IR.pastaHandle) return;
+  IR.pastaPerm = await irPastaPermissao(IR.pastaHandle, true);
+  if(IR.pastaPerm === 'granted') await irPastaVarrer(); else irRenderView();
+}
+async function irPastaDesconectar(){
+  IR.pastaHandle = null; IR.pastaArquivos = null; IR.pastaErro = null;
+  await irSetConfig('pasta-handle', null);
+  irRenderView();
+}
+/* Varre a pasta escolhida e as subpastas de primeiro nível — é o formato
+   recomendado (_Atual + uma pasta por ciclo) sem obrigar ninguém a ele: quem
+   deixar tudo solto na raiz também funciona.
+
+   Quando a mesma base aparece em dois lugares, vence a MAIS RECENTE. É o que
+   resolve a pasta do ciclo fechado esquecida ao lado da do ciclo aberto. */
+async function irPastaVarrer(){
+  const h = IR.pastaHandle;
+  if(!h) return;
+  const achados = {};
+  const guardar = (base, file, ondeVeio)=>{
+    const atual = achados[base];
+    if(!atual || file.lastModified > atual.file.lastModified) achados[base] = {file, pasta:ondeVeio};
+  };
+  const lerDir = async (dir, rotulo, profundidade)=>{
+    for await (const entry of dir.values()){
+      if(entry.kind === 'file'){
+        const base = irPastaBaseDe(entry.name);
+        if(!base) continue;
+        try{ guardar(base, await entry.getFile(), rotulo); }catch(err){ /* só na nuvem ou sem permissão */ }
+      } else if(entry.kind === 'directory' && profundidade > 0 && !entry.name.startsWith('.')){
+        await lerDir(entry, entry.name, profundidade - 1);
+      }
+    }
+  };
+  try{
+    await lerDir(h, h.name, 1);
+    IR.pastaArquivos = achados;
+    IR.pastaVarridoEm = new Date().toISOString();
+    IR.pastaErro = null;
+  }catch(err){
+    IR.pastaErro = 'Não consegui ler a pasta: '+(err && err.message || err);
+  }
+  irRenderView();
+}
+// Novo = nunca importado por aqui, ou com data de modificação diferente da última vez.
+function irPastaNovo(baseId){
+  const a = (IR.pastaArquivos||{})[baseId];
+  if(!a) return false;
+  const u = (IR.pastaUltimo||{})[baseId];
+  return !u || u.modificadoEm !== a.file.lastModified || u.nome !== a.file.name;
+}
+function irPastaPendentes(){
+  return IR_PASTA_BASES.filter(b=>irPastaNovo(b.id));
+}
+async function irPastaMarcar(baseId){
+  const a = (IR.pastaArquivos||{})[baseId];
+  if(!a) return;
+  IR.pastaUltimo = Object.assign({}, IR.pastaUltimo||{}, {
+    [baseId]: {nome:a.file.name, modificadoEm:a.file.lastModified, importadoEm:new Date().toISOString()}
+  });
+  await irSetConfig('pasta-ultimo', IR.pastaUltimo);
+}
+/* Processa o que mudou, na ordem 390 -> 160 -> 410, uma de cada vez. A ordem
+   não é estética: a 160 lê as fichas que a 390 grava, e disparar as duas juntas
+   faria a 160 subir sem preço e sem classe local.
+
+   O bloco do ciclo NÃO é processado sozinho de propósito: ele depende do número
+   do ciclo e da data de abertura, que são decisão de quem importa. O que dá pra
+   automatizar é encher os campos de arquivo — o usuário confere e clica. */
+async function irPastaAtualizar(){
+  if(IR.pastaProcessando) return;
+  const pend = irPastaPendentes();
+  if(!pend.length){ irShowToast('Nenhuma base nova na pasta.'); return; }
+  IR.pastaProcessando = true; irRenderView();
+  const feitas = [];
+  try{
+    for(const base of IR_PASTA_BASES){
+      if(!base.auto || !irPastaNovo(base.id)) continue;
+      const arq = IR.pastaArquivos[base.id];
+      let ok = false;
+      if(base.id === '390'){ IR.est390File = arq.file; ok = await irProcessarEst390(); }
+      else if(base.id === '160'){ IR.est160File = arq.file; ok = await irProcessar160(); }
+      else if(base.id === '410'){ IR.net410File = arq.file; ok = await irProcessar410(); }
+      if(ok){ await irPastaMarcar(base.id); feitas.push(base.label); }
+      else break; // uma base que falhou derruba as seguintes, que dependem dela
+    }
+    // Bloco do ciclo: só preenche os campos.
+    let slots = 0;
+    for(const base of IR_PASTA_BASES){
+      if(base.auto || !base.slot) continue;
+      const arq = (IR.pastaArquivos||{})[base.id];
+      if(!arq) continue;
+      if(IR_MULTI_KEYS.has(base.slot)) irAssignFilesToSlots(base.slot, [arq.file]);
+      else IR.files[base.slot] = arq.file;
+      slots++;
+    }
+    if(feitas.length) irShowToast('Atualizado: '+feitas.join(', ')+'.');
+    if(slots) irShowToast(slots+' arquivo(s) do ciclo prontos — confira o número do ciclo e clique em PROCESSAR CICLO.');
+  } finally {
+    IR.pastaProcessando = false; irRenderView();
+  }
+}
+function irPastaQuando(baseId){
+  const a = (IR.pastaArquivos||{})[baseId];
+  if(!a) return '';
+  const d = new Date(a.file.lastModified);
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+}
+function irRenderPastaPanel(){
+  if(!IR_PASTA_SUPORTA) return '';
+  if(!IR.pastaHandle){
+    return `<div class="panel pasta-panel">
+      <div class="ofe-head"><h3>Pasta conectada</h3></div>
+      <p class="field-hint">Autorize a pasta das planilhas uma vez e o dash passa a buscar os arquivos sozinho — sem procurar arquivo a cada importação.</p>
+      ${IR.pastaErro ? `<p class="pasta-erro">${irEsc(IR.pastaErro)}</p>` : ''}
+      <div class="form-actions"><button class="btn btn-primary" onclick="irPastaConectar()">Conectar pasta</button></div>
+    </div>`;
+  }
+  if(IR.pastaPerm !== 'granted'){
+    return `<div class="panel pasta-panel">
+      <div class="ofe-head"><h3>Pasta conectada</h3></div>
+      <p class="field-hint">O navegador precisa que você confirme o acesso a <strong>${irEsc(IR.pastaHandle.name)}</strong> nesta sessão.</p>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="irPastaReautorizar()">Permitir acesso</button>
+        <button class="btn btn-secondary" onclick="irPastaDesconectar()">Desconectar</button>
+      </div>
+    </div>`;
+  }
+  const pend = irPastaPendentes();
+  const linha = b=>{
+    const arq = (IR.pastaArquivos||{})[b.id];
+    const novo = irPastaNovo(b.id);
+    return `<tr class="${novo?'pasta-novo':''}">
+      <td><strong>${irEsc(b.label)}</strong><span class="pasta-desc">${irEsc(b.desc)}</span></td>
+      <td class="mono">${arq ? irEsc(arq.file.name) : '<span class="pasta-falta">não encontrado</span>'}</td>
+      <td class="mono">${arq ? irEsc(irPastaQuando(b.id)) : '—'}</td>
+      <td>${!arq ? '—' : novo
+        ? `<span class="pasta-tag nova">${b.auto ? 'atualiza' : 'preenche'}</span>`
+        : '<span class="pasta-tag ok">em dia</span>'}</td>
+    </tr>`;
+  };
+  return `<div class="panel pasta-panel">
+    <div class="ofe-head">
+      <h3>Pasta conectada</h3>
+      <div class="ofe-acoes">
+        <button class="btn btn-secondary" onclick="irPastaVarrer()">Reler pasta</button>
+        <button class="btn btn-secondary" onclick="irPastaDesconectar()">Desconectar</button>
+      </div>
+    </div>
+    <p class="field-hint"><strong class="mono">${irEsc(IR.pastaHandle.name)}</strong>${
+      IR.pastaVarridoEm ? ' · lida às '+irEsc(new Date(IR.pastaVarridoEm).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})) : ''}</p>
+    ${IR.pastaErro ? `<p class="pasta-erro">${irEsc(IR.pastaErro)}</p>` : ''}
+    <div class="table-wrap"><table class="pasta-table">
+      <thead><tr><th>Base</th><th>Arquivo na pasta</th><th>Modificado em</th><th>Situação</th></tr></thead>
+      <tbody>${IR_PASTA_BASES.map(linha).join('')}</tbody>
+    </table></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="irPastaAtualizar()" ${IR.pastaProcessando||!pend.length?'disabled':''}>${
+        IR.pastaProcessando ? 'Atualizando...' : pend.length ? 'Atualizar '+pend.length+' base(s)' : 'Tudo em dia'}</button>
+    </div>
+  </div>`;
+}
+
 /* ---------- IMPORTAÇÃO DA QRY0160 (PENDÊNCIA DE MOVIMENTAÇÃO) ---------- */
 function irOnFile160(f){ if(!f) return; IR.est160File = f; irRenderView(); }
 function irOnDropFile160(e){ e.preventDefault(); const f = e.dataTransfer.files[0]; if(f) irOnFile160(f); }
 function irRemoveFile160(){ IR.est160File = null; irRenderView(); }
 function irProcessar160(){
-  if(IR.est160Processing || !IR.est160File) return;
+  if(IR.est160Processing || !IR.est160File) return Promise.resolve(false);
   IR.est160Processing = true; IR.est160Progress = {stage:'Lendo arquivo...', pct:0};
   irRenderView();
+  let _fim; const _p = new Promise(r=>{ _fim = r; });
   IR.est160File.arrayBuffer().then(buf=>{
     const worker = irNovoWorker();
     worker.onmessage = async ev=>{
@@ -2118,19 +2362,20 @@ function irProcessar160(){
       if(msg.type==='progress'){ IR.est160Progress = {stage:msg.stage, pct:msg.pct}; irUpdateProgressUI160(); }
       else if(msg.type==='error160'){
         IR.est160Processing = false; worker.terminate();
-        irShowToast('Erro na QRY0160: '+msg.message, true); irRenderView();
+        irShowToast('Erro na QRY0160: '+msg.message, true); irRenderView(); _fim(false);
       } else if(msg.type==='done160'){
         IR.est160Processing = false; worker.terminate();
         IR.est390Meta = await irGetEstoqueMeta();
         IR.est390Locais = null; IR.est160File = null;
         IR._transGanhos = null; IR._transGanhoLocal = null; IR._transGanhosDiag = null;
         irShowToast(irFmtInt(msg.locais)+' endereços com data de movimento.');
-        irRenderView();
+        irRenderView(); _fim(true);
       }
     };
-    worker.onerror = ()=>{ worker.terminate(); IR.est160Processing=false; irShowToast('Falha no processamento da QRY0160.', true); irRenderView(); };
+    worker.onerror = ()=>{ worker.terminate(); IR.est160Processing=false; irShowToast('Falha no processamento da QRY0160.', true); irRenderView(); _fim(false); };
     worker.postMessage({type:'process160', buf160:buf}, [buf]);
-  });
+  }).catch(err=>{ IR.est160Processing=false; irShowToast('Erro ao ler a QRY0160: '+err.message, true); irRenderView(); _fim(false); });
+  return _p;
 }
 function irUpdateProgressUI160(){
   const st = document.getElementById('ir-160-stage'), fi = document.getElementById('ir-160-fill');

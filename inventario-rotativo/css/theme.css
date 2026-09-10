@@ -1260,3 +1260,25 @@ table.trans-table td.trans-atraso{ color:var(--orange); font-weight:800; }
 }
 .trans-nome:hover{ border-color:var(--line); }
 .trans-nome:focus{ border-color:var(--orange); background:var(--surface); outline:none; }
+
+
+/* ---------- PASTA CONECTADA (aba Importação) ---------- */
+.pasta-panel .field-hint{ margin-bottom:10px; }
+.pasta-erro{ font-size:12px; color:var(--danger); background:var(--danger-light);
+  border-radius:6px; padding:8px 10px; margin:8px 0; }
+table.pasta-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+/* O thead global pinta de laranja; aqui a tabela é uma lista de conferência,
+   não um destaque — cabeçalho discreto sobre a própria superfície do painel. */
+table.pasta-table thead th{ background:transparent; font-size:9.5px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); text-align:left;
+  padding:7px 9px; border-bottom:1px solid var(--line); cursor:default; }
+table.pasta-table td{ padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:middle; }
+table.pasta-table tr:last-child td{ border-bottom:none; }
+table.pasta-table td.mono{ font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--ink-soft); }
+table.pasta-table tr.pasta-novo td.mono{ color:var(--ink); }
+.pasta-desc{ display:block; font-size:10.5px; font-weight:500; color:var(--ink-soft); margin-top:1px; }
+.pasta-falta{ color:var(--ink-soft); font-style:italic; }
+.pasta-tag{ display:inline-block; font-size:9.5px; font-weight:800; text-transform:uppercase;
+  letter-spacing:.05em; padding:2px 8px; border-radius:20px; }
+.pasta-tag.nova{ background:var(--orange-light); color:#C83812; }
+.pasta-tag.ok{ background:var(--blue-light); color:var(--blue-soft); }
