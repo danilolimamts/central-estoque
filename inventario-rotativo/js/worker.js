@@ -275,11 +275,16 @@ async function runPipeline160({buf160}){
         x1: String(getVal(row, r.x1) ?? '').trim() || fl.x1 || '',
         x2: String(getVal(row, r.x2) ?? '').trim() || fl.x2 || '',
         clal: fl.clal || '', predio: fl.predio || '', log:'',
-        qtd:0, valor:0, itens:0, porLog:{}, porDia:{}, _itens:new Set()};
+        // porDia guarda peças E valor: o gráfico de acúmulo por idade é em reais,
+        // e sem o valor por dia não dá pra montar sem reprocessar tudo de novo.
+        qtd:0, valor:0, itens:0, porLog:{}, porDia:{}, porDiaValor:{}, _itens:new Set()};
       porLocal.set(local, g);
     }
     g.qtd += qtd; g.valor += valor;
-    if(dia) g.porDia[dia] = (g.porDia[dia] || 0) + qtd;
+    if(dia){
+      g.porDia[dia] = (g.porDia[dia] || 0) + qtd;
+      g.porDiaValor[dia] = (g.porDiaValor[dia] || 0) + valor;
+    }
     const lg = (f && f.log) || 'S/CAD';
     g.porLog[lg] = (g.porLog[lg] || 0) + qtd;
     if(!g.log) g.log = lg;

@@ -1147,3 +1147,25 @@ table.trans-table td.trans-velho{ color:var(--orange); font-weight:800; }
    resolve, procurar não. */
 table.trans-table td.trans-ganho{ color:var(--success); font-weight:800; }
 .trans-pct{ display:block; font-size:9.5px; font-weight:700; color:var(--ink-soft); }
+
+/* Mini gráfico de valor parado por faixa de idade. Verde dentro do prazo de 48h,
+   laranja depois — a cor repete no cabeçalho da tabela logo abaixo. */
+.tg-wrap{ display:flex; align-items:flex-end; gap:6px; margin:2px 0 14px; padding:10px 12px 6px;
+  background:var(--surface2); border:1px solid var(--line); border-radius:10px; }
+.tg-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:3px; min-width:0; }
+.tg-bar{ width:100%; max-width:54px; border-radius:4px 4px 0 0; background:var(--success); }
+.tg-col.atraso .tg-bar{ background:var(--orange); }
+.tg-val{ font-size:9.5px; font-weight:800; color:var(--ink-soft); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.tg-lbl{ font-size:9.5px; font-weight:800; color:var(--ink-soft); letter-spacing:.03em; }
+.tg-col.atraso .tg-val, .tg-col.atraso .tg-lbl{ color:var(--orange); }
+
+table.trans-table th.tg-th-ok{ background:var(--success); }
+table.trans-table th.tg-th-atraso{ background:var(--orange); }
+table.trans-table td.trans-ok{ color:var(--success); font-weight:700; }
+table.trans-table td.trans-atraso{ color:var(--orange); font-weight:800; }
+.trans-nome{
+  width:100%; min-width:120px; border:1px solid transparent; background:transparent;
+  color:var(--ink); font:inherit; font-size:12px; padding:2px 4px; border-radius:5px;
+}
+.trans-nome:hover{ border-color:var(--line); }
+.trans-nome:focus{ border-color:var(--orange); background:var(--surface); outline:none; }
