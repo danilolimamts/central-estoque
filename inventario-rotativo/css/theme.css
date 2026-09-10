@@ -1286,3 +1286,28 @@ table.pasta-table tr.pasta-novo td.mono{ color:var(--ink); }
   letter-spacing:.05em; padding:2px 8px; border-radius:20px; }
 .pasta-tag.nova{ background:var(--orange-light); color:#C83812; }
 .pasta-tag.ok{ background:var(--blue-light); color:var(--blue-soft); }
+
+
+/* ---------- BASES FORA DO CICLO (aba Importação) ---------- */
+/* Três cartões iguais, na ordem de importação. Antes eram três painéis
+   inteiros com títulos e parágrafos diferentes pra fazer a mesma coisa. */
+.av-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+@media (max-width:900px){ .av-grid{ grid-template-columns:1fr; } }
+.av-card{ border:1px solid var(--line); border-radius:10px; background:var(--surface2);
+  padding:13px 14px; display:flex; flex-direction:column; gap:9px; min-width:0; }
+.av-card.has-file{ border-color:var(--orange); background:var(--orange-light); }
+.av-top{ display:flex; align-items:center; gap:9px; }
+.av-icone{ font-size:20px; line-height:1; }
+.av-nome{ min-width:0; }
+.av-nome strong{ display:block; font-size:13.5px; }
+.av-nome span{ display:block; font-size:11px; color:var(--ink-soft); }
+.av-estado{ font-size:11px; color:var(--ink-soft); font-variant-numeric:tabular-nums;
+  border-top:1px solid var(--line); padding-top:8px; }
+.av-arquivo{ font-size:11px; color:var(--ink); word-break:break-all; }
+.av-acoes{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:auto; }
+.av-acoes .btn{ font-size:12px; padding:7px 14px; }
+.av-prog{ margin:0; }
+.av-aviso{ font-size:11px; color:var(--danger); margin:0; }
+.imp-secao{ margin-top:18px; padding-top:14px; border-top:1px solid var(--line); }
+.imp-secao strong{ font-size:10.5px; font-weight:800; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--ink-soft); }

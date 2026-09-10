@@ -416,8 +416,9 @@ function irRenderImportacao(){
     return html;
   };
   return `
+    ${irRenderPastaPanel()}
     <div class="panel" ondragover="event.preventDefault()" ondrop="irOnDropMulti(event)">
-      <h3>Importar planilhas</h3>
+      <h3>Ciclo rotativo</h3>
       <input type="file" id="ir-file-all" accept=".xlsx,.xls" multiple style="display:none" onchange="irOnPickMultiAll(this.files)">
       <div class="imp-drop" ondragover="event.preventDefault()" ondrop="irOnDropMulti(event)"
            onclick="document.getElementById('ir-file-all').click()">
@@ -425,9 +426,7 @@ function irRenderImportacao(){
         <strong>Arraste todas as planilhas de uma vez</strong>
         <span>Cada arquivo é reconhecido pelo nome e vai pro lugar certo, inclusive quando vem em partes. Ou clique pra escolher.</span>
       </div>
-      ${faltando.length
-        ? `<p class="field-hint imp-faltando">Faltam: ${faltando.map(t=>irEsc(t.label)).join(', ')}.</p>`
-        : `<p class="field-hint imp-pronto">Todas as planilhas obrigatórias estão aqui.</p>`}
+      ${faltando.length ? '' : `<p class="field-hint imp-pronto">Todas as planilhas obrigatórias estão aqui.</p>`}
       <div class="imp-lista">${IR_FILE_TYPES.map(linha).join('')}</div>
       ${irRenderCicloDetectado()}
       <div class="two-col" style="margin-top:4px;">
@@ -456,11 +455,8 @@ function irRenderImportacao(){
           : `<p class="field-hint" style="margin-top:14px;">Faltam ${faltando.map(t=>irEsc(t.label)).join(', ')} pra liberar o processamento.</p>`
       }
     </div>
+    ${irRenderBasesAvulsas()}
     ${IR.importMeta ? irRenderUltimoProcessamento() : ''}
-    ${irRenderPastaPanel()}
-    ${irRenderEst390ImportPanel()}
-    ${irRender160ImportPanel()}
-    ${irRenderNet410ImportPanel()}
   `;
 }
 function irRenderUltimoProcessamento(){
@@ -516,7 +512,7 @@ function irRenderDiagnosticoIngestao(m){
    ciclo novo ou regravar um que já existe — regravar por engano era o risco de
    deixar o número no chute do usuário. */
 function irRenderCicloDetectado(){
-  const cabecalho = '<p class="field-hint" style="margin-top:16px;"><strong>Ciclo deste processamento</strong> — lido da QRY0843 anexada. Confira e corrija se precisar; cada combinação número + ano vira um ciclo separado no Histórico.</p>';
+  const cabecalho = '<p class="field-hint imp-secao"><strong>Ciclo deste processamento</strong></p>';
   if(IR.detectandoCiclo) return cabecalho+'<p class="field-hint">Lendo a QRY0843 pra identificar o ciclo...</p>';
   const d = IR.cicloDetectado;
   if(!d) return cabecalho;
@@ -720,7 +716,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v130';
+const IR_APP_VERSION = 'v131';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2094,28 +2090,70 @@ function irUpdateProgressUI390(){
   const st = document.getElementById('ir-390-stage'), fi = document.getElementById('ir-390-fill');
   if(st && fi){ st.textContent = IR.est390Progress.stage; fi.style.width = IR.est390Progress.pct+'%'; }
 }
-function irRenderEst390ImportPanel(){
-  const f = IR.est390Ficha;
-  return `<div class="panel">
-    <h3>Estoque atual (QRY0390)</h3>
-    <div class="dz-grid" style="grid-template-columns:1fr;max-width:340px;">
-      <div class="dropzone ${IR.est390File?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropFile390Est(event)">
-        <input type="file" id="ir-file-390-est" accept=".xlsx,.xls" style="display:none" onchange="irOnFile390Est(this.files[0])">
-        <div class="dz-icon">📦</div>
-        <div class="dz-title">QRY0390</div>
-        <div class="dz-desc">Estoque por endereço</div>
-        ${IR.est390File
-          ? `<div class="dz-file mono">${irEsc(IR.est390File.name)}</div><button class="btn-link" onclick="irRemoveFile390Est()">Remover</button>`
-          : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-390-est').click()">Selecionar</button>`}
+
+/* As três bases que não pertencem a ciclo nenhum, num painel só. Antes eram três
+   painéis inteiros, cada um com título, parágrafo explicativo e dropzone — três
+   maneiras visualmente diferentes de fazer a mesma coisa, empilhadas embaixo do
+   bloco do ciclo. Aqui viram três cartões iguais, na ordem em que precisam ser
+   importadas, cada um mostrando o que já tem carregado. */
+const IR_AVULSAS = [
+  {id:'390', icone:'📦', titulo:'QRY0390', sub:'Estoque por endereço', input:'ir-file-390-est',
+   onFile:'irOnFile390Est', onDrop:'irOnDropFile390Est', remove:'irRemoveFile390Est',
+   processa:'irProcessarEst390', botao:'Processar estoque', arquivo:()=>IR.est390File,
+   rodando:()=>IR.est390Processing, prog:()=>IR.est390Progress, idStage:'ir-390-stage', idFill:'ir-390-fill'},
+  {id:'160', icone:'⏱️', titulo:'QRY0160', sub:'Data de movimento', input:'ir-file-160',
+   onFile:'irOnFile160', onDrop:'irOnDropFile160', remove:'irRemoveFile160',
+   processa:'irProcessar160', botao:'Processar pendência', arquivo:()=>IR.est160File,
+   rodando:()=>IR.est160Processing, prog:()=>IR.est160Progress, idStage:'ir-160-stage', idFill:'ir-160-fill'},
+  {id:'410', icone:'📄', titulo:'QRY410', sub:'Perdas e ganhos', input:'ir-file-410',
+   onFile:'irOnFile410', onDrop:'irOnDropFile410', remove:'irRemoveFile410',
+   processa:'irProcessar410', botao:'Processar QRY410', arquivo:()=>IR.net410File,
+   rodando:()=>IR.net410Processing, prog:()=>IR.net410Progress, idStage:'ir-410-stage', idFill:'ir-410-fill'}
+];
+// O que cada base já tem no banco — uma linha, para saber se vale reimportar.
+function irAvulsaEstado(id){
+  if(id==='390'){
+    const f = IR.est390Ficha;
+    return f ? irFmtInt(f.locais)+' endereços · '+irFmtInt(f.itens)+' itens · '+irFmtDate(f.importadoEm) : 'nunca importada';
+  }
+  if(id==='160'){
+    const m = IR.est390Meta;
+    return (m && m.fonte==='160')
+      ? irFmtInt(m.locais)+' endereços · '+irFmtInt(m.pecasTotal)+' peças · '+irFmtDate(m.importadoEm)
+      : 'nunca importada';
+  }
+  const anos = IR.net410Anos || [];
+  return anos.length ? 'anos: '+anos.join(', ') : 'nunca importada';
+}
+function irRenderBasesAvulsas(){
+  const temFicha = !!(IR._itemInfo && IR._itemInfo.size);
+  const cartao = b=>{
+    const arq = b.arquivo(), rodando = b.rodando(), prog = b.prog();
+    return `<div class="av-card ${arq?'has-file':''}">
+      <div class="av-top">
+        <span class="av-icone">${b.icone}</span>
+        <div class="av-nome"><strong>${irEsc(b.titulo)}</strong><span>${irEsc(b.sub)}</span></div>
       </div>
-    </div>
-    ${IR.est390Processing ? `
-      <div class="progress-wrap">
-        <div class="progress-stage" id="ir-390-stage">${irEsc(IR.est390Progress.stage)}</div>
-        <div class="progress-track"><div class="progress-fill orange" id="ir-390-fill" style="width:${IR.est390Progress.pct}%"></div></div>
-      </div>` : IR.est390File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessarEst390()">PROCESSAR ESTOQUE</button></div>` : ''}
-    <p class="field-hint" style="margin-top:8px;">Alimenta a ficha do item (EAN, descrição, valor unitário, posições) e a do endereço (classe local, prédio). É ela que dá valor e setor pra QRY0160.</p>
-    ${f ? `<p class="field-hint">${irFmtInt(f.locais)} endereços · ${irFmtInt(f.itens)} itens · ${irFmtMoney(f.valorTotal)} — importada em ${irEsc(new Date(f.importadoEm).toLocaleString('pt-BR'))}</p>` : ''}
+      <div class="av-estado">${irEsc(irAvulsaEstado(b.id))}</div>
+      <input type="file" id="${b.input}" accept=".xlsx,.xls" style="display:none" onchange="${b.onFile}(this.files[0])">
+      ${rodando ? `
+        <div class="progress-wrap av-prog">
+          <div class="progress-stage" id="${b.idStage}">${irEsc(prog.stage)}</div>
+          <div class="progress-track"><div class="progress-fill orange" id="${b.idFill}" style="width:${prog.pct}%"></div></div>
+        </div>`
+      : arq ? `
+        <div class="av-arquivo mono">${irEsc(arq.name)}</div>
+        <div class="av-acoes">
+          <button class="btn btn-primary" onclick="${b.processa}()">${irEsc(b.botao)}</button>
+          <button class="btn-link" onclick="${b.remove}()">Remover</button>
+        </div>`
+      : `<div class="av-acoes"><button class="btn btn-secondary" onclick="document.getElementById('${b.input}').click()">Selecionar</button></div>`}
+      ${b.id==='160' && !temFicha ? `<p class="av-aviso">Importe a QRY0390 antes: o valor e o LOG saem de lá.</p>` : ''}
+    </div>`;
+  };
+  return `<div class="panel">
+    <div class="ofe-head"><h3>Bases fora do ciclo</h3></div>
+    <div class="av-grid" ondragover="event.preventDefault()">${IR_AVULSAS.map(cartao).join('')}</div>
   </div>`;
 }
 
@@ -2402,54 +2440,6 @@ function irProcessar160(){
 function irUpdateProgressUI160(){
   const st = document.getElementById('ir-160-stage'), fi = document.getElementById('ir-160-fill');
   if(st && fi){ st.textContent = IR.est160Progress.stage; fi.style.width = IR.est160Progress.pct+'%'; }
-}
-function irRender160ImportPanel(){
-  const m = IR.est390Meta;
-  const temFicha = !!(IR._itemInfo && IR._itemInfo.size);
-  return `<div class="panel">
-    <h3>Pendência de movimentação (QRY0160)</h3>
-    <div class="dz-grid" style="grid-template-columns:1fr;max-width:340px;">
-      <div class="dropzone ${IR.est160File?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropFile160(event)">
-        <input type="file" id="ir-file-160" accept=".xlsx,.xls" style="display:none" onchange="irOnFile160(this.files[0])">
-        <div class="dz-icon">⏱️</div>
-        <div class="dz-title">QRY0160</div>
-        <div class="dz-desc">Estoque com data de movimento</div>
-        ${IR.est160File
-          ? `<div class="dz-file mono">${irEsc(IR.est160File.name)}</div><button class="btn-link" onclick="irRemoveFile160()">Remover</button>`
-          : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-160').click()">Selecionar</button>`}
-      </div>
-    </div>
-    ${!temFicha ? `<p class="field-hint neg">Importe a QRY0390 antes: o valor e o LOG de cada item saem de lá.</p>` : ''}
-    ${IR.est160Processing ? `
-      <div class="progress-wrap">
-        <div class="progress-stage" id="ir-160-stage">${irEsc(IR.est160Progress.stage)}</div>
-        <div class="progress-track"><div class="progress-fill orange" id="ir-160-fill" style="width:${IR.est160Progress.pct}%"></div></div>
-      </div>` : IR.est160File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessar160()">PROCESSAR PENDÊNCIA</button></div>` : ''}
-    ${m && m.fonte==='160' ? `<p class="field-hint" style="margin-top:12px;">${irFmtInt(m.locais)} endereços · ${irFmtInt(m.itens)} itens · ${irFmtInt(m.pecasTotal)} peças · ${irFmtMoney(m.valorTotal)}${m.semFicha?` · ${irFmtInt(m.semFicha)} linhas sem valor (item fora da 390)`:''}</p>` : ''}
-  </div>`;
-}
-function irRenderNet410ImportPanel(){
-  const dz = `<div class="dropzone ${IR.net410File?'has-file':''}" ondragover="event.preventDefault()" ondrop="irOnDropFile410(event)">
-    <input type="file" id="ir-file-410" accept=".xlsx,.xls" style="display:none" onchange="irOnFile410(this.files[0])">
-    <div class="dz-icon">📄</div>
-    <div class="dz-title">QRY410</div>
-    <div class="dz-desc">Perdas e ganhos no CD</div>
-    ${IR.net410File
-      ? `<div class="dz-file mono">${irEsc(IR.net410File.name)}</div><button class="btn-link" onclick="irRemoveFile410()">Remover</button>`
-      : `<button class="btn btn-secondary" onclick="document.getElementById('ir-file-410').click()">Selecionar</button>`}
-  </div>`;
-  return `<div class="panel">
-    <h3>Perdas e Ganhos no CD (QRY410)</h3>
-    <p class="field-hint" style="margin-bottom:14px;">Independente do ciclo rotativo — organizado por ano, a partir da Data do Movimento. Não precisa esperar processar um ciclo: importe aqui quando quiser atualizar. O resultado aparece na aba NET.</p>
-    <div class="dz-grid" style="grid-template-columns:1fr;max-width:340px;">${dz}</div>
-    ${IR.net410Processing ? `
-      <div class="progress-wrap">
-        <div class="progress-stage">${irEsc(IR.net410Progress.stage)}</div>
-        <div class="progress-track"><div class="progress-fill orange" style="width:${IR.net410Progress.pct}%"></div></div>
-      </div>` : IR.net410File ? `<div class="form-actions"><button class="btn btn-primary" onclick="irProcessar410()">PROCESSAR QRY410</button></div>` : ''
-    }
-    ${IR.net410Anos.length ? `<p class="field-hint" style="margin-top:12px;">Anos já processados: ${IR.net410Anos.join(', ')} — <a href="#" onclick="irSwitchTab('ciclo');return false;">ver na aba NET</a>.</p>` : ''}
-  </div>`;
 }
 function irRenderNet410Panel(){
   const d = IR.net410Data;
