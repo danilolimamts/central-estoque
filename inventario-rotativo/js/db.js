@@ -353,17 +353,43 @@ async function irDeleteNet410LegendaItem(id){
 // Semeia a legenda com os padrões de fábrica (IR_410_LEGENDA, de rules.js) na
 // primeira vez que alguém abre a tela — depois disso, o que está no IndexedDB
 // manda, o usuário pode editar/adicionar/remover à vontade.
+/* Versão da semente da legenda. Quando um motivo novo entra no padrão de fábrica,
+   sobe um número aqui e ele é acrescentado UMA VEZ às legendas que já existem —
+   quem já usa o dash não ficaria sabendo de outro jeito, porque a semente só
+   roda em banco vazio. Só uma vez porque o usuário pode apagar um motivo de
+   propósito, e ressuscitá-lo a cada carregamento seria pior do que não ter
+   acrescentado. */
+const IR_410_LEGENDA_V = 2;
 async function irSeedNet410LegendaIfEmpty(){
   const existing = await irGetNet410LegendaAll();
-  if(existing.length) return existing;
-  const store = await irTx(IR_STORES.net410Legenda, 'readwrite');
-  await new Promise((resolve, reject)=>{
-    IR_410_LEGENDA.forEach(l=>store.put({...l}));
-    const tx = store.transaction;
-    tx.oncomplete = ()=>resolve();
-    tx.onerror = ()=>reject(tx.error);
-  });
-  return irGetNet410LegendaAll();
+  if(!existing.length){
+    const store = await irTx(IR_STORES.net410Legenda, 'readwrite');
+    await new Promise((resolve, reject)=>{
+      IR_410_LEGENDA.forEach(l=>store.put({...l}));
+      const tx = store.transaction;
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+    await irSetConfig('net410-legenda-v', IR_410_LEGENDA_V);
+    return irGetNet410LegendaAll();
+  }
+  const versao = await irGetConfig('net410-legenda-v');
+  if((versao||0) < IR_410_LEGENDA_V){
+    const tem = new Set(existing.map(l=>String(l.id).toUpperCase()));
+    const faltando = IR_410_LEGENDA.filter(l=>!tem.has(String(l.id).toUpperCase()));
+    if(faltando.length){
+      const store = await irTx(IR_STORES.net410Legenda, 'readwrite');
+      await new Promise((resolve, reject)=>{
+        faltando.forEach(l=>store.put({...l}));
+        const tx = store.transaction;
+        tx.oncomplete = ()=>resolve();
+        tx.onerror = ()=>reject(tx.error);
+      });
+    }
+    await irSetConfig('net410-legenda-v', IR_410_LEGENDA_V);
+    return irGetNet410LegendaAll();
+  }
+  return existing;
 }
 
 /* ---------- Itens ignorados na análise de distorção do NET ---------- */
