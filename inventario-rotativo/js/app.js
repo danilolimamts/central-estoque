@@ -772,7 +772,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v141';
+const IR_APP_VERSION = 'v142';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5627,7 +5627,7 @@ function irTransCalc(){
     const setor = irTransSetorDe(l);
     if(!grupos.has(setor)) grupos.set(setor, {setor, valor:0, qtd:0, locais:[], prefixos:new Set()});
     const g = grupos.get(setor);
-    g.valor += l.valor; g.qtd += l.qtd; g.locais.push(l); g.prefixos.add(l.x1);
+    g.valor += l.valor; g.qtd += l.qtd; g.locais.push(l); g.prefixos.add(irTransChave(l));
     if(setor==='IGN') continue; // desconsiderado não entra no total de transitório
     valorTotal += l.valor; pecasTotal += l.qtd; nLocais++;
   }
@@ -5654,9 +5654,25 @@ const IR_TRANS_NOMES = {
 /* O nome do transitório é editável: a lista de fábrica cobre o que apareceu no
    relatório do usuário, mas só quem opera sabe que SEG é seguro. O que ele digita
    fica salvo e vale por cima do padrão. */
+/* Chave do transitório: X1 + X2. Só o X1 juntava numa linha coisas de finalidade
+   diferente — "CAN SAC" e "CAN MCL" são os dois cancelamento, mas um é SAC e o
+   outro MCL, e o saldo parado de cada um é cobrado de gente diferente. */
+function irTransChave(l){
+  const x1 = String(l.x1||'').trim(), x2 = String(l.x2||'').trim();
+  return x2 ? x1+' '+x2 : x1;
+}
+/* Nome do transitório. Procura primeiro pela chave inteira ("CAN SAC"), depois
+   pelo X1 sozinho — assim os nomes já cadastrados por prefixo continuam valendo
+   pras duas linhas até alguém dar um nome específico a cada uma. */
 function irTransNome(p){
-  const meu = (IR.transNomes||{})[p];
-  return (meu!=null && meu!=='') ? meu : (IR_TRANS_NOMES[p] || p);
+  const chave = String(p||'').trim();
+  const meu = (IR.transNomes||{})[chave];
+  if(meu!=null && meu!=='') return meu;
+  if(IR_TRANS_NOMES[chave]) return IR_TRANS_NOMES[chave];
+  const x1 = chave.split(' ')[0];
+  const meuX1 = (IR.transNomes||{})[x1];
+  if(meuX1!=null && meuX1!=='') return meuX1;
+  return IR_TRANS_NOMES[x1] || chave;
 }
 async function irTransSetNome(prefixo, nome){
   const mapa = Object.assign({}, IR.transNomes||{});
@@ -5996,7 +6012,7 @@ function irRenderTransitorios(){
     ${c.lista.filter(g=>g.setor && g.setor!=='IGN').map(g=>irTransPainelSetor(g, logs)).join('')}
     ${naoClass ? `<div class="panel"><div class="ofe-head">
       <h3>Não classificado</h3>
-      <span class="field-hint">${irFmtMoney(naoClass.valor)} · ${irFmtInt(naoClass.locais.length)} endereços · ${irFmtInt(naoClass.prefixos.size)} prefixos. Cadastre a classe local (TSF, C.E, INB, OUT, TRP, REV) no WMS e eles entram sozinhos; até lá, dá pra apontar o setor aqui.</span>
+      <span class="field-hint">${irFmtMoney(naoClass.valor)} · ${irFmtInt(naoClass.locais.length)} endereços · ${irFmtInt(naoClass.prefixos.size)} transitórios. Cadastre a classe local (TSF, C.E, INB, OUT, TRP, REV) no WMS e eles entram sozinhos; até lá, dá pra apontar o setor aqui.</span>
     </div>${irTransTabelaPrefixos(naoClass)}</div>` : ''}
     <p class="field-hint">Estoque de ${irEsc(m.importadoEm ? new Date(m.importadoEm).toLocaleString('pt-BR') : '—')} · ${irFmtInt(m.locais||0)} endereços no CD · ${irFmtMoney(m.valorTotal||0)} no total.
     ${irTransTemData() ? 'Idade do saldo contada da Data Movimento da QRY0160 até hoje.' : 'Importe a QRY0160 na aba Importação para abrir as colunas por idade do saldo — a QRY0390 não traz data de movimento.'}</p>
@@ -6007,8 +6023,9 @@ function irRenderTransitorios(){
 function irTransPainelSetor(g, logs, estatico){
   const porPrefixo = new Map();
   for(const l of g.locais){
-    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, itens:0, porLog:{}, locais:[], ganhoValor:0, ganhoQtd:0});
-    const p = porPrefixo.get(l.x1);
+    const chave = irTransChave(l);
+    if(!porPrefixo.has(chave)) porPrefixo.set(chave, {x1:chave, valor:0, qtd:0, n:0, itens:0, porLog:{}, locais:[], ganhoValor:0, ganhoQtd:0});
+    const p = porPrefixo.get(chave);
     p.valor += l.valor; p.qtd += l.qtd; p.n++; p.itens += l.itens||0; p.locais.push(l);
     const gl = irTransGanhoPorLocal().get(l.local);
     if(gl){ p.ganhoValor += gl.valor; p.ganhoQtd += gl.qtd; }
@@ -6079,14 +6096,15 @@ function irTransPainelSetor(g, logs, estatico){
 function irTransTabelaPrefixos(g){
   const porPrefixo = new Map();
   for(const l of g.locais){
-    if(!porPrefixo.has(l.x1)) porPrefixo.set(l.x1, {x1:l.x1, valor:0, qtd:0, n:0, ex:l.desc, clal:new Set()});
-    const p = porPrefixo.get(l.x1); p.valor += l.valor; p.qtd += l.qtd; p.n++;
+    const chave = irTransChave(l);
+    if(!porPrefixo.has(chave)) porPrefixo.set(chave, {x1:chave, prefixo:l.x1, valor:0, qtd:0, n:0, ex:l.desc, clal:new Set()});
+    const p = porPrefixo.get(chave); p.valor += l.valor; p.qtd += l.qtd; p.n++;
     if(l.clal) p.clal.add(l.clal);
   }
   const lista = Array.from(porPrefixo.values()).sort((a,b)=>b.valor-a.valor);
   return `<div class="table-wrap"><div class="table-scroll" style="max-height:420px;">
     <table class="conc-table">
-      <thead><tr><th>Prefixo</th><th>Exemplo</th><th>Classe no WMS</th><th class="num">Endereços</th><th class="num">Peças</th><th class="num">Valor</th><th>Setor</th></tr></thead>
+      <thead><tr><th>Local transitório</th><th>Exemplo</th><th>Classe no WMS</th><th class="num">Endereços</th><th class="num">Peças</th><th class="num">Valor</th><th>Setor</th></tr></thead>
       <tbody>${lista.map(p=>`<tr>
         <td class="mono">${irEsc(p.x1||'(vazio)')}</td>
         <td>${irEsc(p.ex||'')}</td>
@@ -6094,7 +6112,7 @@ function irTransTabelaPrefixos(g){
         <td class="mono">${irFmtInt(p.n)}</td>
         <td class="mono">${irFmtInt(p.qtd)}</td>
         <td class="mono">${irFmtMoney(p.valor)}</td>
-        <td><select onchange="irTransSetPrefixo('${irEsc(p.x1)}', this.value)">
+        <td><select onchange="irTransSetPrefixo('${irEsc(p.prefixo||p.x1)}', this.value)">
           <option value="">—</option>
           ${IR_TRANS_SETORES.map(x=>`<option value="${x}">${irEsc(IR_TRANS_SETOR_NOME[x]||x)}</option>`).join('')}
         </select></td>
