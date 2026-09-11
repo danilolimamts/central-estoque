@@ -882,7 +882,7 @@ table.aud-table .pos{ color:var(--success); font-weight:700; }
    modo escuro) e a largura, porque o html2canvas recalcula as media queries pela
    largura da folha — a .tg-wrap caía no fallback de uma coluna e os três
    gráficos saíam empilhados. */
-.rp-page.rp-page-wide{ width:1200px; max-width:1200px;
+.rp-page.rp-page-wide{ width:1660px; max-width:1660px;
   --paper:#F4F5F7; --surface:#FFFFFF; --surface2:#EEF0F4;
   --ink:#1D1F2A; --ink-soft:#6B7280; --line:#D5D8E0;
   --blue-light:#E8ECF7; --orange-light:#FFEDE7; }
@@ -895,8 +895,9 @@ table.aud-table .pos{ color:var(--success); font-weight:700; }
    a caixa CSS cresce mas o html2canvas desenha na altura do atributo width/height
    — o eixo com os rótulos de dia caía fora do recorte e a curva parecia
    empurrada pra baixo. Em tamanho natural não há o que dar errado. */
-.rp-page.rp-page-wide .tg-svg,
-.rp-page.rp-page-wide .tg-rosca svg{ width:auto; height:auto; max-width:100%; margin-inline:auto; }
+.rp-page.rp-page-wide .tg-svg{ width:100%; height:auto; }
+.rp-page.rp-page-wide .tg-rosca svg,
+.rp-page.rp-page-wide .tg-rosca img{ width:auto; height:auto; max-width:100%; margin-inline:auto; }
 .rp-page.rp-page-wide .tg-card{ align-items:center; }
 .rp-page.rp-page-wide .tg-head{ width:100%; }
 .rp-page.rp-page-wide .table-wrap{ overflow:visible; }
@@ -1219,12 +1220,18 @@ table.trans-table td:nth-child(1){ font-weight:800; }
 /* Grade fixa em porcentagem. Com largura automática o navegador jogava toda a
    sobra numa coluna só — era o vazio entre Descrição e D0. Aqui cada coluna
    recebe a fatia que o conteúdo dela pede, e o total fecha em 100%. */
-table.trans-table{ table-layout:fixed; min-width:980px; }
-table.trans-table th.tt-local{ width:10%; }
-table.trans-table th.tt-desc{ width:16%; }
-table.trans-table th.tt-dia{ width:6.5%; }
-table.trans-table th.tt-valor{ width:12%; }
-table.trans-table th.tt-dup{ width:10%; }
+/* Largura mínima dimensionada pelo valor por extenso: "R$ 39.567,69" pede ~95px
+   por coluna de dia. Abaixo disso o .table-wrap rola na horizontal, que é
+   melhor do que espremer o número até ele quebrar. */
+table.trans-table{ table-layout:fixed; min-width:1500px; }
+table.trans-table th.tt-local{ width:8%; }
+table.trans-table th.tt-desc{ width:12.5%; }
+table.trans-table th.tt-dia{ width:7.5%; }
+table.trans-table th.tt-valor{ width:11.5%; }
+table.trans-table th.tt-dup{ width:8%; }
+/* A coluna de dia carrega o valor por extenso; cada pixel de recuo aqui é
+   pixel a menos pro número. */
+table.trans-table td.tt-c-dia, table.trans-table th.tt-dia{ padding-inline:5px; }
 .trans-cel-val{ display:block; font-size:13.5px; font-weight:700; color:var(--ink-soft); }
 table.trans-table td:last-child{ font-weight:700; color:var(--blue); }
 table.trans-table tfoot td{
