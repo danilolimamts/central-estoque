@@ -748,7 +748,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v146';
+const IR_APP_VERSION = 'v147';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -776,8 +776,6 @@ function irRenderDashDateFilterBar(){
 function irRenderDashboard(){
   const ind = IR.indicadores;
   if(!ind) return irEmptyState('Sem indicadores', 'Processe o ciclo na Importação.', "irSwitchTab('importacao')", 'Ir para Importação');
-  if(!IR.itemDivSaldo) IR.itemDivSaldo = irCalcItemSaldo(IR.divergencias);
-  const itemSaldo = IR.itemDivSaldo;
   if(IR.comparativoCiclos===null) irCarregarComparativoCiclos(); // async — re-renderiza quando chegar
   // Cada bloco tem sempre 3 bullets, no mesmo formato: ícone + acurácia (com meta),
   // + volume principal, + divergência/pendência. Os demais indicadores (itens
@@ -819,22 +817,14 @@ function irRenderDashboard(){
       ${irRenderSaudeEstoquePanel(ind)}
       ${irRenderStatusInventarioPanel(ind)}
     </div>
-    ${irRenderDashDateFilterBar()}
-    ${irRenderDashProdutividade()}
     ${irRenderPorLogPanel(ind)}
     ${irRenderContadosPorDiaPanel(ind)}
     ${irRenderDivergentesPorDiaPanel(ind)}
     ${irRenderItensSemPrecoPanel(ind)}
     ${irRenderCancelamentoImpactoPanel(ind)}
-    ${irRenderItemDivEscopoBar()}
-    <div class="bi-grid-2">
-      ${irRenderTopItensPanel(itemSaldo, 'pecas')}
-      ${irRenderTopItensPanel(itemSaldo, 'valor')}
-    </div>
     ${irRenderLogTablePanel(ind)}
     ${irRenderComparativoCiclosPanel(ind)}
     ${irRenderEvolucaoMensalPanel(ind)}
-    ${irRenderCalendarioPanel(ind)}
   `;
 }
 /* ============================================================
@@ -1392,8 +1382,12 @@ function irBuildAcuraciaCiclosSvg(rows, opts){
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">${metaLine}${bars}${labels}${xLabels}</svg>`;
 }
 function irRenderComparativoCiclosPanel(){
-  const pares = IR.comparativoCiclos;
-  if(!pares || pares.length<1) return '';
+  // Só os ciclos do ano em curso. Misturar 2025 com 2026 numa barra ao lado da
+  // outra sugere comparação que não existe: mudam meta, escopo e equipe entre um
+  // ano e outro, e o ciclo velho só empurrava os do ano pra fora da tela.
+  const ano = irCicloAno(IR.cicloAtivo);
+  const pares = (IR.comparativoCiclos||[]).filter(({ciclo}) => irCicloAno(ciclo) === ano);
+  if(!pares.length) return '';
   const rows = pares.map(({ciclo,ind})=>({
     label: irCicloLabel(ciclo),
     pecas: ind?ind.acuraciaPecas:null, locais: ind?ind.acuraciaLocal:null, valor: ind?ind.acuraciaValor:null
@@ -1413,8 +1407,8 @@ function irRenderComparativoCiclosPanel(){
     valorDivergente += ind.valorDivergenteAbsoluto||0;
   }
   return `<div class="panel">
-    <h3>Comparativo de Acurácias entre Ciclos</h3>
-    <p class="panel-sub">Peças, Locais e Valor de cada ciclo já processado, com a meta de ${irFmtPct(IR_META_ACURACIA)}.</p>
+    <h3>Comparativo de Acurácias entre Ciclos — ${irEsc(String(ano))}</h3>
+    <p class="panel-sub">Peças, Locais e Valor de cada ciclo de ${irEsc(String(ano))}, com a meta de ${irFmtPct(IR_META_ACURACIA)}.</p>
     ${irBuildAcuraciaCiclosSvg(rows, {meta:IR_META_ACURACIA})}
     <div class="cmp-legend">
       <span><span class="cmp-dot" style="background:#FA4616;"></span>Peças</span>
@@ -1423,12 +1417,12 @@ function irRenderComparativoCiclosPanel(){
     </div>
     <div class="kpi-blocks" style="margin-top:14px;">
       ${irKpiBlock('orange','📦','Peças',
-        irKpiTile('🎯', pecasContadas>0?irFmtPct(1-pecasDivergentes/pecasContadas):'—', 'Acurácia Geral', '', 'todos os ciclos') +
-        irKpiTile('📦', irFmtInt(pecasContadas), 'Contadas', '', 'todos os ciclos') +
+        irKpiTile('🎯', pecasContadas>0?irFmtPct(1-pecasDivergentes/pecasContadas):'—', 'Acurácia Geral', '', 'ciclos de '+ano) +
+        irKpiTile('📦', irFmtInt(pecasContadas), 'Contadas', '', 'ciclos de '+ano) +
         irKpiTile('⚠️', irFmtInt(pecasDivergentes), 'Divergentes', 'bad', ''))}
       ${irKpiBlock('blue','📍','Locais',
-        irKpiTile('🎯', locaisContados>0?irFmtPct(1-locaisDivergentes/locaisContados):'—', 'Acurácia Geral', '', 'todos os ciclos') +
-        irKpiTile('📍', irFmtInt(locaisContados), 'Contados', '', 'todos os ciclos') +
+        irKpiTile('🎯', locaisContados>0?irFmtPct(1-locaisDivergentes/locaisContados):'—', 'Acurácia Geral', '', 'ciclos de '+ano) +
+        irKpiTile('📍', irFmtInt(locaisContados), 'Contados', '', 'ciclos de '+ano) +
         irKpiTile('⚠️', irFmtInt(locaisDivergentes), 'Divergentes', 'bad', ''))}
       ${irKpiBlock('black','💰','Valor',
         irKpiTile('🎯', temValorContado&&valorContado>0?irFmtPct(1-valorDivergente/valorContado):'—', 'Acurácia Geral', '', temValorContado?'todos os ciclos':'reprocesse o ciclo pra habilitar') +
@@ -1507,14 +1501,45 @@ function irAgruparContadosPorMes(rows, dataAbertura){
     return {mes, label: nomeRaw.charAt(0).toUpperCase()+nomeRaw.slice(1), total};
   });
 }
+/* Acurácia do ANO, somando todos os ciclos daquele ano. Não é média das
+   acurácias dos ciclos: um ciclo pequeno pesaria igual a um grande. Recalcula a
+   partir dos totais — divergente sobre contado — que é a mesma conta do ciclo,
+   só com a base maior. */
+function irAcuraciaDoAno(ano){
+  const pares = (IR.comparativoCiclos||[]).filter(({ciclo}) => irCicloAno(ciclo) === ano);
+  if(!pares.length) return null;
+  let pc=0, pd=0, lc=0, ld=0, vc=0, vd=0, temValor=false;
+  for(const {ind} of pares){
+    if(!ind) continue;
+    pc += ind.pecasContadas||0; pd += ind.pecasDivergentes||0;
+    lc += ind.locaisContadosTotal||0;
+    // locaisDivergentes é campo novo — ciclo antigo cai no equivalente que já existia.
+    ld += ind.locaisDivergentes!=null ? ind.locaisDivergentes
+        : (ind.divergentesPorDia||[]).reduce((x,d)=>x+(d.locais||0),0);
+    if(ind.valorFisicoTotal!=null){ temValor = true; vc += ind.valorFisicoTotal; }
+    vd += ind.valorDivergenteAbsoluto||0;
+  }
+  return {
+    ano, ciclos: pares.length,
+    pecas:  pc>0 ? 1-pd/pc : null,
+    locais: lc>0 ? 1-ld/lc : null,
+    valor:  (temValor && vc>0) ? 1-vd/vc : null
+  };
+}
 function irRenderStatusInventarioPanel(ind){
   // Mesma base do KPI "Andamento" (locaisConcluidos ÷ locaisCongelados) — antes esse
   // donut usava locaisContadosTotal (inclui locais ainda "em contagem", não fechados),
   // o que fazia o % daqui não bater com o card de Andamento do Ciclo.
   const total = ind.locaisCongelados||0, concluidos = ind.locaisConcluidos||0;
   const pct = total>0 ? concluidos/total : 0;
-  const porMes = irAgruparContadosPorMes(ind.contadosPorDia, IR.cicloAtivo && IR.cicloAtivo.dataAbertura);
-  const maxMes = Math.max(1, ...porMes.map(m=>m.total));
+  const ano = irCicloAno(IR.cicloAtivo);
+  const acAno = irAcuraciaDoAno(ano);
+  const linhaAno = (rot, v, cor) => `<div class="status-ano-row">
+    <div class="status-ano-label">${irEsc(rot)}</div>
+    <div class="status-ano-track"><div class="status-ano-fill" style="width:${
+      v==null ? 0 : Math.round(Math.max(0, Math.min(1, v))*100)}%;background:${cor};"></div></div>
+    <div class="status-ano-val mono ${v!=null && v>=IR_META_ACURACIA ? 'good':'bad'}">${v==null?'—':irFmtPct(v)}</div>
+  </div>`;
   return `<div class="panel">
     <h3>Status do Inventário</h3>
     <p class="panel-sub">Percentual de locais concluídos em relação ao total orçado do ciclo.</p>
@@ -1525,13 +1550,12 @@ function irRenderStatusInventarioPanel(ind){
         <div class="status-donut-stat"><div class="n mono good">${irFmtInt(concluidos)}</div><div class="l">Locais concluídos</div></div>
         <div class="status-donut-stat"><div class="n mono bad">${irFmtInt(total-concluidos)}</div><div class="l">Ainda não concluídos</div></div>
       </div>
-      ${porMes.length ? `<div class="status-month-list">
-        <div class="status-month-title">Locais contados por mês</div>
-        ${porMes.map(m=>`<div class="status-month-row">
-          <div class="status-month-label">${irEsc(m.label)}</div>
-          <div class="status-month-track"><div class="status-month-fill" style="width:${Math.round(m.total/maxMes*100)}%;"></div></div>
-          <div class="status-month-val mono">${irFmtInt(m.total)}</div>
-        </div>`).join('')}
+      ${acAno ? `<div class="status-month-list">
+        <div class="status-month-title">Acurácia de ${irEsc(String(ano))} · ${irFmtInt(acAno.ciclos)} ciclo(s)</div>
+        ${linhaAno('Peças',  acAno.pecas,  '#FA4616')}
+        ${linhaAno('Locais', acAno.locais, '#001A72')}
+        ${linhaAno('Valor',  acAno.valor,  '#1D1F2A')}
+        <div class="status-ano-meta">Meta ${irFmtPct(IR_META_ACURACIA)}</div>
       </div>` : ''}
     </div>
   </div>`;
