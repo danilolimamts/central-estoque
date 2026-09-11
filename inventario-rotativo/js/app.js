@@ -505,6 +505,8 @@ function irRenderImportacao(){
       }
     </div>
     ${irRenderBasesAvulsas()}
+    ${(()=>{ const n = irItensSemPrecoResumo();
+      return n ? `<p class="field-hint imp-sem-preco">⚠️ ${irFmtInt(n)} itens divergiram em peça e ficaram sem preço — o valor divergente deles sai R$ 0,00 até a valoração ser corrigida na SIGEQ278 ou na ZBIQ0051.</p>` : ''; })()}
   `;
 }
 /* O painel de "último processamento" saiu da tela: KPIs e o diagnóstico linha a
@@ -748,7 +750,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v147';
+const IR_APP_VERSION = 'v148';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -814,13 +816,12 @@ function irRenderDashboard(){
       ${blocoPecas}${blocoLocais}${blocoValor}${blocoCiclo}
     </div>
     <div class="bi-grid-2">
-      ${irRenderSaudeEstoquePanel(ind)}
+      ${irRenderAcuraciaAnualPanel()}
       ${irRenderStatusInventarioPanel(ind)}
     </div>
     ${irRenderPorLogPanel(ind)}
     ${irRenderContadosPorDiaPanel(ind)}
     ${irRenderDivergentesPorDiaPanel(ind)}
-    ${irRenderItensSemPrecoPanel(ind)}
     ${irRenderCancelamentoImpactoPanel(ind)}
     ${irRenderLogTablePanel(ind)}
     ${irRenderComparativoCiclosPanel(ind)}
@@ -912,12 +913,36 @@ function irEvolucaoMensalBloco(rows, cfg, fmtVal){
     ${irBuildEvolucaoMensalSvg(rows, cfg, fmtVal)}
   </div>`;
 }
+/* Une o porMes de todos os ciclos do ano. Cada ciclo cobre um trimestre, então
+   na prática é concatenação — mas soma por mês mesmo assim, pra um mês que caia
+   na virada de dois ciclos não aparecer duas vezes. A acurácia é recalculada do
+   total somado, não herdada do ciclo. */
+function irPorMesDoAno(ano){
+  const pares = (IR.comparativoCiclos||[]).filter(({ciclo}) => irCicloAno(ciclo) === ano);
+  const acc = new Map();
+  for(const {ind} of pares){
+    for(const m of ((ind&&ind.porMes)||[])){
+      if(!acc.has(m.mes)) acc.set(m.mes, {mes:m.mes, pecasContadas:0, pecasDivergentes:0,
+        locaisContados:0, locaisDivergentes:0, valorContado:0, valorDivergente:0});
+      const a = acc.get(m.mes);
+      a.pecasContadas += m.pecasContadas||0;   a.pecasDivergentes += m.pecasDivergentes||0;
+      a.locaisContados += m.locaisContados||0; a.locaisDivergentes += m.locaisDivergentes||0;
+      a.valorContado += m.valorContado||0;     a.valorDivergente += m.valorDivergente||0;
+    }
+  }
+  return Array.from(acc.values()).sort((x,y)=>x.mes.localeCompare(y.mes)).map(a=>({
+    ...a,
+    acuraciaPecas:  a.pecasContadas>0  ? 1-a.pecasDivergentes/a.pecasContadas   : 0,
+    acuraciaLocal:  a.locaisContados>0 ? 1-a.locaisDivergentes/a.locaisContados : 0,
+    acuraciaValor:  a.valorContado>0   ? 1-a.valorDivergente/a.valorContado     : 0
+  }));
+}
 function irRenderEvolucaoMensalPanel(ind){
-  const meses = (ind && ind.porMes) || [];
+  const meses = irPorMesDoAno(irCicloAno(IR.cicloAtivo));
   if(!meses.length){
     return `<div class="panel">
-      <h3>📅 Acurácia mensal</h3>
-      <p class="field-hint">Reprocesse o ciclo na Importação para habilitar a quebra por mês.</p>
+      <h3>Acurácia mensal</h3>
+      <p class="field-hint">Reprocesse os ciclos na Importação para habilitar a quebra por mês.</p>
     </div>`;
   }
   const linhas = m => ({
@@ -940,8 +965,7 @@ function irRenderEvolucaoMensalPanel(ind){
     </table></div>
   </details>`;
   return `<div class="panel">
-    <h3>📅 Acurácia mensal — Peças, Locais e Valor</h3>
-    <p class="panel-sub">Cada mês tem a coluna do que foi contado e a do que divergiu (mesma escala), com a acurácia do mês na faixa abaixo. O mês de um local é o do fechamento da última rodada — mesma regra dos KPIs do topo (Peças e Valor só com locais concluídos; Locais com todos os contados).</p>
+    <h3>Acurácia mensal</h3>
     ${irEvolucaoMensalBloco(dados.map(d=>d.pecas),  IR_MES_SERIES.pecas,  irFmtInt)}
     ${irEvolucaoMensalBloco(dados.map(d=>d.locais), IR_MES_SERIES.locais, irFmtInt)}
     ${irEvolucaoMensalBloco(dados.map(d=>d.valor),  IR_MES_SERIES.valor,  irFmtMoneyCompact)}
@@ -968,58 +992,33 @@ function irRenderCancelamentoImpactoPanel(ind){
   const diasDecorridos = (c && c.dataAbertura)
     ? irDiasUteisEntre(new Date(c.dataAbertura+'T12:00:00'), hoje) : null;
   const pessoasEquivalentes = (diasDecorridos>0) ? diasPerdidos/diasDecorridos : null;
+  // Quatro números, não doze. Os outros — tentativas, média por tentativa, sem
+  // horário, cobertura da medição, pessoas equivalentes — são aferição do próprio
+  // indicador, não o indicador: interessam quando se duvida do número, e aí se
+  // olha na aba Indicadores.
   return `<div class="panel">
-    <h3>⏱️ Impacto de cancelamentos (recontagem por interrupção)</h3>
-    <p class="panel-sub">Locais em que a contagem foi iniciada em campo mas a rodada terminou cancelada — não fechou porque foi interrompida (ex.: precisava coletar). Essas rodadas não entram em nenhum outro indicador de acurácia; aqui é só o custo da interrupção em si.</p>
+    <h3>Impacto de cancelamentos</h3>
     <div class="kpi-blocks">
-      ${irKpiBlock('black','⏳','Cancelamentos',
-        irKpiTile('📍', irFmtInt(ind.locaisComCancelamento||0), 'Locais Afetados', '', 'com ≥1 cancelamento') +
-        irKpiTile('🔁', irFmtInt(tentativas), 'Tentativas Canceladas', '', 'sessões com início de campo') +
-        irKpiTile('📊', irFmtPct(ind.taxaCancelamento||0), 'Taxa', '', 'sobre locais orçados do ciclo')
-      )}
-      ${irKpiBlock('black','🚧','Como foi cancelado',
-        irKpiTile('✋', irFmtInt(ind.locaisCanceladosInterrompidos||0), 'Interrompidos no Meio', '', 'começou a contar, cancelou antes de bater') +
-        irKpiTile('💥', irFmtInt(bateram), 'Bateram e Cancelamos', 'bad', 'contagem pronta, jogada fora') +
-        irKpiTile('♻️', afetados>0?irFmtPct(bateram/afetados):'—', 'Trabalho Jogado Fora', bateram>0?'bad':'', 'dos locais afetados')
-      )}
-      ${irKpiBlock('black','⏱️','Tempo Perdido',
-        irKpiTile('⏱️', ind.horasPerdidasCancelamento?irFmtNum(ind.horasPerdidasCancelamento,1)+'h':'—', 'Horas Perdidas', '', comHorario+' de '+tentativas+' com início e fim registrados') +
-        irKpiTile('📐', (comHorario && ind.horasPerdidasCancelamento)?irFmtNum((ind.horasPerdidasCancelamento*60)/comHorario,0)+' min':'—', 'Média por Tentativa', '', 'entre as com horário completo') +
-        irKpiTile('❓', irFmtInt(tentativas-comHorario), 'Sem Horário Completo', '', 'sem Data Fim Contagem')
-      )}
-      ${irKpiBlock('black','🧑','Custo em Pessoas',
-        irKpiTile('📅', horas?irFmtNum(diasPerdidos,1)+' dias':'—', 'Dias de Produtividade Perdidos', '', 'jornada de 8h/dia') +
-        irKpiTile('🧑\u200d🏭', pessoasEquivalentes!=null?irFmtNum(pessoasEquivalentes,1):'—', 'Pessoas Equivalentes', '', diasDecorridos!=null?'em '+irFmtInt(diasDecorridos)+' dias úteis do ciclo':'ciclo sem data de abertura') +
-        irKpiTile('🔎', tentativas>0?irFmtPct(comHorario/tentativas):'—', 'Cobertura da Medição', comHorario/tentativas<0.5?'bad':'', 'o tempo perdido real é maior')
+      ${irKpiBlock('black','⏱️','Recontagem por interrupção',
+        irKpiTile('📍', irFmtInt(ind.locaisComCancelamento||0), 'Locais Afetados', '', '') +
+        irKpiTile('📊', irFmtPct(ind.taxaCancelamento||0), 'Taxa', (ind.taxaCancelamento||0)>0.1?'bad':'', 'sobre os locais do ciclo') +
+        irKpiTile('💥', irFmtInt(bateram), 'Contagem Jogada Fora', bateram>0?'bad':'', 'bateu e foi cancelada') +
+        irKpiTile('📅', horas?irFmtNum(diasPerdidos,1)+' dias':'—', 'Produtividade Perdida', '', 'jornada de 8h')
       )}
     </div>
   </div>`;
 }
-// Itens que divergiram em peça mas não tiveram preço encontrado na SIGEQ278/ZBIQ0051 —
-// o valor divergente desses fica R$ 0,00 mesmo com peça/local realmente divergente.
-// Diagnóstico direto pro usuário ir corrigir a valoração na origem, em vez de ficar
-// perguntando por que um dia com contagem aparece zerado no gráfico de valor.
-function irRenderItensSemPrecoPanel(ind){
-  const itens = ind.itensSemPreco||[];
-  if(!itens.length) return '';
-  return `<div class="panel">
-    <h3>⚠️ Itens divergentes sem preço encontrado</h3>
-    <p class="panel-sub">${irFmtInt(ind.itensSemPrecoTotal||itens.length)} itens divergiram em peça mas não têm preço encontrado (nem próprio na SIGEQ278, nem do item pai via ZBIQ0051) — o valor divergente desses fica R$ 0,00 até corrigir a valoração na origem. Componentes "N" da 051 não entram aqui (são zerados por design, não é lacuna de dado). Mostrando os ${itens.length} com mais peças divergentes.</p>
-    <div class="table-wrap table-scroll" style="max-height:320px;"><table class="table-dense">
-      <thead><tr><th>Item</th><th>Descrição</th><th>Peças Divergentes</th><th>Locais</th></tr></thead>
-      <tbody>${itens.map(i=>`<tr>
-        <td class="mono">${irEsc(i.item)}</td>
-        <td>${irEsc(i.nome||'—')}</td>
-        <td class="mono">${irFmtInt(i.pecasDivergentes)}</td>
-        <td class="mono">${irFmtInt(i.locais)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>
-  </div>`;
+
+/* Quantos itens divergiram em peça sem preço encontrado. Era uma tabela inteira
+   no Dashboard; virou uma linha na Importação, que é onde se resolve — o
+   problema é de base (SIGEQ278/ZBIQ0051), não de inventário. Componentes "N" da
+   051 não entram: são zerados por design, não é lacuna de dado. */
+function irItensSemPrecoResumo(){
+  const ind = IR.indicadores;
+  if(!ind) return null;
+  const total = ind.itensSemPrecoTotal || (ind.itensSemPreco||[]).length || 0;
+  return total > 0 ? total : null;
 }
-// Quebra da Acurácia Peças por status do local — diagnóstico pra separar divergência
-// real (local já convergido/fechado) de instabilidade temporária (local ainda em
-// contagem, que muda de rodada a cada reprocessamento e ainda não é o número final).
-const IR_META_DIARIA = 962;
 function irRenderCalendarioPanel(ind){
   const rows = ind.contadosPorDia||[];
   if(!rows.length) return '';
@@ -1526,20 +1525,37 @@ function irAcuraciaDoAno(ano){
     valor:  (temValor && vc>0) ? 1-vd/vc : null
   };
 }
+/* Acurácia anual num painel próprio, no lugar do medidor de Saúde do Estoque —
+   que era média das três e escondia qual delas estava fora da meta. O título não
+   leva o ano: ele muda sozinho todo janeiro, e carimbá-lo obrigaria a lembrar
+   disso. O ano aparece como dado, no rodapé. */
+function irRenderAcuraciaAnualPanel(){
+  const ano = irCicloAno(IR.cicloAtivo);
+  const ac = irAcuraciaDoAno(ano);
+  if(!ac) return '';
+  const linha = (rot, v, cor) => `<div class="acan-row">
+    <div class="acan-label">${irEsc(rot)}</div>
+    <div class="acan-track">
+      <div class="acan-fill" style="width:${v==null?0:Math.round(Math.max(0,Math.min(1,v))*100)}%;background:${cor};"></div>
+      <div class="acan-meta" style="left:${Math.round(IR_META_ACURACIA*100)}%;"></div>
+    </div>
+    <div class="acan-val mono ${v!=null && v>=IR_META_ACURACIA ? 'good':'bad'}">${v==null?'—':irFmtPct(v)}</div>
+  </div>`;
+  return `<div class="panel">
+    <h3>Acurácia Anual</h3>
+    ${linha('Peças',  ac.pecas,  '#FA4616')}
+    ${linha('Locais', ac.locais, '#001A72')}
+    ${linha('Valor',  ac.valor,  '#1D1F2A')}
+    <p class="field-hint acan-pe">${irEsc(String(ano))} · ${irFmtInt(ac.ciclos)} ciclo(s) · meta ${irFmtPct(IR_META_ACURACIA)}</p>
+  </div>`;
+}
 function irRenderStatusInventarioPanel(ind){
   // Mesma base do KPI "Andamento" (locaisConcluidos ÷ locaisCongelados) — antes esse
   // donut usava locaisContadosTotal (inclui locais ainda "em contagem", não fechados),
   // o que fazia o % daqui não bater com o card de Andamento do Ciclo.
   const total = ind.locaisCongelados||0, concluidos = ind.locaisConcluidos||0;
   const pct = total>0 ? concluidos/total : 0;
-  const ano = irCicloAno(IR.cicloAtivo);
-  const acAno = irAcuraciaDoAno(ano);
-  const linhaAno = (rot, v, cor) => `<div class="status-ano-row">
-    <div class="status-ano-label">${irEsc(rot)}</div>
-    <div class="status-ano-track"><div class="status-ano-fill" style="width:${
-      v==null ? 0 : Math.round(Math.max(0, Math.min(1, v))*100)}%;background:${cor};"></div></div>
-    <div class="status-ano-val mono ${v!=null && v>=IR_META_ACURACIA ? 'good':'bad'}">${v==null?'—':irFmtPct(v)}</div>
-  </div>`;
+
   return `<div class="panel">
     <h3>Status do Inventário</h3>
     <p class="panel-sub">Percentual de locais concluídos em relação ao total orçado do ciclo.</p>
@@ -1550,13 +1566,7 @@ function irRenderStatusInventarioPanel(ind){
         <div class="status-donut-stat"><div class="n mono good">${irFmtInt(concluidos)}</div><div class="l">Locais concluídos</div></div>
         <div class="status-donut-stat"><div class="n mono bad">${irFmtInt(total-concluidos)}</div><div class="l">Ainda não concluídos</div></div>
       </div>
-      ${acAno ? `<div class="status-month-list">
-        <div class="status-month-title">Acurácia de ${irEsc(String(ano))} · ${irFmtInt(acAno.ciclos)} ciclo(s)</div>
-        ${linhaAno('Peças',  acAno.pecas,  '#FA4616')}
-        ${linhaAno('Locais', acAno.locais, '#001A72')}
-        ${linhaAno('Valor',  acAno.valor,  '#1D1F2A')}
-        <div class="status-ano-meta">Meta ${irFmtPct(IR_META_ACURACIA)}</div>
-      </div>` : ''}
+
     </div>
   </div>`;
 }
