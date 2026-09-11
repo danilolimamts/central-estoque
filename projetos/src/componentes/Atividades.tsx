@@ -28,6 +28,9 @@ interface Props {
   aoAbrir: (p: Projeto) => void;
   recarregar: () => Promise<void>;
   recarregarConfig: () => Promise<void>;
+  /* Verdadeiro quando este projeto tem esteira propria; falso quando
+     esta usando a do modulo. Muda onde a configuracao e gravada. */
+  esteiraPropria?: boolean;
 }
 
 
@@ -45,7 +48,7 @@ interface CartaoDeAtividade extends CartaoDoQuadro {
    quiser arrastar. O nome das atividades vem do proprio projeto:
    "Melhorias" no Bseller, "Frentes" ou "Etapas" em outro. */
 export default function Atividades({
-  pai, projetos, pessoas, aoAbrir, recarregar, recarregarConfig,
+  pai, projetos, pessoas, aoAbrir, recarregar, recarregarConfig, esteiraPropria = false,
 }: Props) {
   const permissoes = usePermissoes();
   const configSituacoes = useSituacoes();
@@ -135,7 +138,7 @@ export default function Atividades({
   async function reordenar(chave: string, direcao: -1 | 1) {
     try {
       setErro(null);
-      await salvarSituacoes(moverSituacao(configSituacoes, chave, direcao));
+      await salvarSituacoes(moverSituacao(configSituacoes, chave, direcao), esteiraPropria ? pai.id : null);
       await recarregarConfig();
     } catch (falha) {
       setErro(mensagemDeErro(falha));
@@ -457,6 +460,7 @@ export default function Atividades({
       <ConfigStatus
         aberto={configAberta} situacoes={configSituacoes}
         emUso={Array.from(new Set(filhos.map((f) => f.status)))}
+        projeto={pai} propria={esteiraPropria}
         aoFechar={() => setConfigAberta(false)} recarregar={recarregarConfig}
       />
 

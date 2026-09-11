@@ -25,7 +25,7 @@ import {
 } from '@/dominio/regras';
 import type { Marco, Pessoa, Projeto, StatusProjeto, StatusTarefa, Tarefa } from '@/dominio/tipos';
 import { STATUS_TAREFA, rotuloStatusTarefa } from '@/dominio/tipos';
-import { useSituacoes } from '@/estado/configuracao';
+import { ContextoSituacoes, useSituacoes, useSituacoesDoProjeto } from '@/estado/configuracao';
 import { situacoesVisiveis } from '@/dominio/situacoes';
 
 interface Props {
@@ -62,6 +62,11 @@ export default function DetalheProjeto({
      pertencem a cada atividade, e so aparecem la dentro. */
   const grupo = ehRaiz(projeto);
   const permissoes = usePermissoes();
+  /* A esteira deste projeto: a propria, se ele tiver, senao a do
+     modulo. Um estudo e uma melhoria do BSeller nao percorrem as mesmas
+     etapas, e cada projeto pode ter a sua fila. */
+  const globais = useSituacoes();
+  const esteira = useSituacoesDoProjeto(projeto.id, globais);
   const podeMexer = permissoes.podeEditar(projeto);
   /* Com atividades dentro, o avanco vem da conclusao delas: percentual
      digitado no projeto envelhece e ninguem lembra de corrigir. */
@@ -84,6 +89,8 @@ export default function DetalheProjeto({
   }
 
   return (
+    /* Tudo o que esta dentro do projeto enxerga a esteira dele. */
+    <ContextoSituacoes.Provider value={esteira.situacoes}>
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <button className="font-bold text-roxo-escuro hover:underline" onClick={aoVoltar}>← Voltar</button>
@@ -217,7 +224,9 @@ export default function DetalheProjeto({
       {grupo && (
         <Atividades
           pai={projeto} projetos={projetos} pessoas={pessoas}
-          aoAbrir={aoAbrir} recarregar={recarregar} recarregarConfig={recarregarConfig}
+          aoAbrir={aoAbrir} recarregar={recarregar}
+          esteiraPropria={esteira.propria}
+          recarregarConfig={async () => { await esteira.recarregar(); await recarregarConfig(); }}
         />
       )}
 
@@ -439,6 +448,7 @@ export default function DetalheProjeto({
         recarregar={async () => { await dados.recarregar(); await recarregar(); }}
       />
     </div>
+    </ContextoSituacoes.Provider>
   );
 }
 
