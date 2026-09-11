@@ -772,7 +772,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v142';
+const IR_APP_VERSION = 'v143';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -5916,6 +5916,18 @@ function irTransLinha(vals, titulo, total, fmt, cor, fmtCurto){
 }
 /* Compacto sem casa decimal: no rótulo dentro do anel e na legenda o centavo não
    decide nada, e "R$20,1K" só rouba espaço de fonte. */
+/* Valor da célula da tabela de transitórios, com duas casas. O compacto de uma
+   casa (R$10,6K) arredonda demais pra quem cobra o responsável pelo saldo. Fica
+   compacto mesmo assim porque a coluna do dia tem 83px — valor cheio
+   ("R$ 10.640,00") não cabe sem estreitar as outras colunas. */
+function irTransValorCel(n){
+  n = n||0;
+  const abs = Math.abs(n);
+  const f = v => v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  if(abs >= 1000000) return 'R$'+f(n/1000000)+'M';
+  if(abs >= 1000) return 'R$'+f(n/1000)+'K';
+  return 'R$'+f(n);
+}
 function irTransNumCurto(n){
   n = n||0;
   return Math.abs(n)>=10000 ? Math.round(n/1000).toLocaleString('pt-BR')+'K' : irFmtInt(n);
@@ -6076,7 +6088,7 @@ function irTransPainelSetor(g, logs, estatico){
           : `<input class="trans-nome" value="${irEsc(irTransNome(p.x1))}" title="Nome do transitório — dá pra editar"
              onchange="irTransSetNome('${irEsc(p.x1)}', this.value)">`}</td>
         ${cols.map(l=>`<td class="mono tt-c-dia ${p.cel[l]?(irTransDentroDoPrazo(l)?'trans-ok':'trans-atraso'):''}">${
-          p.cel[l] ? irFmtInt(p.cel[l])+'<span class="trans-cel-val">'+irFmtMoneyCompact(p.celValor[l]||0)+'</span>' : '0'}</td>`).join('')}
+          p.cel[l] ? irFmtInt(p.cel[l])+'<span class="trans-cel-val">'+irTransValorCel(p.celValor[l]||0)+'</span>' : '0'}</td>`).join('')}
         <td class="mono tt-c-num">${irFmtMoney(p.valor)}</td>
         <td class="mono tt-c-num ${p.ganhoValor>0?'trans-ganho':''}" title="Saldo que pode estar duplicado: item com ganho no NET do ano da QRY410 e saldo parado aqui">${
           p.ganhoValor>0 ? irFmtMoney(p.ganhoValor)+'<span class="trans-pct">'+irFmtPct(p.valor?p.ganhoValor/p.valor:0)+'</span>' : '—'}</td>
@@ -6084,7 +6096,7 @@ function irTransPainelSetor(g, logs, estatico){
       <tfoot><tr>
         <td colspan="2"><strong>Total</strong></td>
         ${cols.map(l=>`<td class="mono tt-c-dia"><strong>${totCol[l]?irFmtInt(totCol[l]):'0'}</strong>${
-          totCol[l]?'<span class="trans-cel-val">'+irFmtMoneyCompact(totValFaixa[l]||0)+'</span>':''}</td>`).join('')}
+          totCol[l]?'<span class="trans-cel-val">'+irTransValorCel(totValFaixa[l]||0)+'</span>':''}</td>`).join('')}
         <td class="mono tt-c-num"><strong>${irFmtMoney(g.valor)}</strong></td>
         <td class="mono tt-c-num"><strong>${ganhoSetor>0?irFmtMoney(ganhoSetor):'—'}</strong></td>
       </tr></tfoot>
