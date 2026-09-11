@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Aviso, Modal, Selo } from '@/componentes/ui';
 import { mensagemDeErro } from '@/estado/dados';
-import { salvarSituacoes } from '@/estado/configuracao';
+import { apagarSituacoesDoProjeto, salvarSituacoes } from '@/estado/configuracao';
 import { SITUACOES_PADRAO, chaveNova, definirSituacoes, percentualDaSituacao, situacoes } from '@/dominio/situacoes';
 import type { Significado, Situacao } from '@/dominio/situacoes';
 
 interface Props {
   aberto: boolean;
   situacoes: Situacao[];
+  /* O projeto aberto. A esteira pode ser dele ou do modulo inteiro, e e
+     isto que decide onde a configuracao vai ser gravada. */
+  projeto?: { id: string; nome: string };
+  propria?: boolean;
   /* Situações que já têm atividade: apagar uma delas deixaria cartão
      órfão, então a tela impede e explica. */
   emUso: string[];
@@ -25,7 +29,9 @@ const CORES = ['#9E86D8', '#2F6FE0', '#C79212', '#B0568F', '#2E8B57', '#D2453A',
 
 const situacoesDoRegistro = () => situacoes();
 
-export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recarregar }: Props) {
+export default function ConfigStatus({
+  aberto, situacoes, emUso, projeto, propria = false, aoFechar, recarregar,
+}: Props) {
   const [rascunho, setRascunho] = useState<Situacao[]>(situacoes);
   const [novo, setNovo] = useState('');
   const [erro, setErro] = useState<string | null>(null);
@@ -76,6 +82,38 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
     setRascunho((atual) => atual.filter((s) => s.chave !== chave));
   }
 
+  /* Passar a esteira propria: grava a lista atual na chave do projeto.
+     A partir dai, mexer aqui nao encosta mais no resto do modulo. */
+  async function separarDoModulo() {
+    if (!projeto) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      await salvarSituacoes(rascunho, projeto.id);
+      await recarregar();
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function voltarAoModulo() {
+    if (!projeto) return;
+    if (!confirm(`"${projeto.nome}" volta a usar a esteira do módulo. As atividades continuam onde estão. Confirma?`)) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      await apagarSituacoesDoProjeto(projeto.id);
+      await recarregar();
+      aoFechar();
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   async function salvar() {
     if (rascunho.every((s) => !s.usar)) {
       setErro('Deixe pelo menos uma situação ligada, senão não há para onde mover uma atividade.');
@@ -84,7 +122,10 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
     setSalvando(true);
     setErro(null);
     try {
-      await salvarSituacoes(rascunho.map((s) => ({ ...s, rotulo: s.rotulo.trim() || s.chave })));
+      await salvarSituacoes(
+        rascunho.map((s) => ({ ...s, rotulo: s.rotulo.trim() || s.chave })),
+        propria && projeto ? projeto.id : null,
+      );
       await recarregar();
       aoFechar();
     } catch (falha) {
@@ -96,13 +137,36 @@ export default function ConfigStatus({ aberto, situacoes, emUso, aoFechar, recar
 
   return (
     <Modal aberto={aberto} aoFechar={aoFechar} titulo="Situações das atividades" largura="max-w-3xl">
+      {/* De quem e esta esteira. Sem esta linha, mexer aqui parecia
+          sempre mexer no modulo inteiro. */}
+      {projeto && (
+        <div className={`mb-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs ${
+          propria ? 'border-roxo-claro bg-roxo-suave' : 'border-linha bg-papel'
+        }`}>
+          <span className="flex-1">
+            {propria
+              ? <>Esta é a esteira <strong>só de “{projeto.nome}”</strong>. Mexer aqui não altera os outros projetos.</>
+              : <>Este projeto usa a <strong>esteira do módulo</strong>. O que você mudar aqui vale para todos os projetos.</>}
+          </span>
+          {propria ? (
+            <button className="font-bold text-tinta-suave hover:text-vermelho" onClick={() => void voltarAoModulo()} disabled={salvando}>
+              Voltar a usar a do módulo
+            </button>
+          ) : (
+            <button className="botao-neutro py-1 text-[11px]" onClick={() => void separarDoModulo()} disabled={salvando}>
+              Criar esteira só deste projeto
+            </button>
+          )}
+        </div>
+      )}
+
       <p className="mb-3 text-sm text-tinta-suave">
         Crie as situações do seu processo, renomeie e escolha a cor. A <strong>ordem desta
         lista</strong> é a ordem das colunas no quadro e da lista ordenada por situação: use ▲▼
         para, por exemplo, deixar <em>Concluído</em> por último. No próprio quadro as setas
         ‹ › do cabeçalho fazem o mesmo. O <strong>significado</strong> é o que muda conta: só a
         situação marcada como concluída entra no avanço, e a cancelada sai da conta. Vale para
-        todo mundo que abre o módulo. Marque <strong>Chamado</strong> na situação em que o
+        todo mundo que abre {propria ? 'este projeto' : 'o módulo'}. Marque <strong>Chamado</strong> na situação em que o
         chamado passa a existir: dali para a frente a atividade conta como já pedida ao BSeller
         na faixa de números, mesmo sem o número anotado.
       </p>

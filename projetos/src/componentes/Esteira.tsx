@@ -9,6 +9,12 @@ import type { Cobertura } from '@/dominio/cobertura';
    tanto no painel (a carteira inteira) quanto dentro de um projeto (as
    atividades dele) — por isso vive num componente so. */
 export default function Esteira({ numeros, plural }: { numeros: Cobertura; plural: string }) {
+  /* Projeto que nao trabalha com chamado (um estudo, uma obra) nunca vai
+     ter numero de chamado nem situacao marcada como tal: mostrar dois
+     cartoes travados em zero so ocupa espaco e faz a tela parecer
+     quebrada. Some sozinho, sem configuracao. */
+  const usaChamado = numeros.comChamado > 0 || numeros.aAbrir > 0;
+
   const cartoes = [
     {
       rotulo: 'Documentadas',
@@ -18,12 +24,14 @@ export default function Esteira({ numeros, plural }: { numeros: Cobertura; plura
     },
     {
       rotulo: 'Com chamado aberto',
+      chamado: true,
       parte: numeros.comChamado,
       cor: '#2F6FE0',
       ajuda: `${plural} com o número do chamado anotado ou já numa situação a partir da abertura do chamado`,
     },
     {
       rotulo: 'Prontas para abrir chamado',
+      chamado: true,
       parte: numeros.aAbrir,
       cor: '#C79212',
       ajuda: 'documentadas e ainda sem chamado: a fila do que dá para pedir',
@@ -34,10 +42,13 @@ export default function Esteira({ numeros, plural }: { numeros: Cobertura; plura
       cor: '#2E8B57',
       ajuda: `${plural} numa situação marcada como concluída`,
     },
-  ];
+  ].filter((c) => usaChamado || !c.chamado);
 
   return (
-    <div data-guia="esteira" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+    <div
+      data-guia="esteira"
+      className={`grid gap-2 sm:grid-cols-2 ${cartoes.length > 2 ? 'xl:grid-cols-4' : ''}`}
+    >
       {cartoes.map((c) => (
         <div key={c.rotulo} className="rounded-lg bg-white px-3 py-2 shadow-card" title={c.ajuda}>
           <p className="text-[11px] font-bold uppercase tracking-wider text-tinta-suave">{c.rotulo}</p>

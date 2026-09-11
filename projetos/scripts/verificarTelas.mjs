@@ -190,15 +190,30 @@ pagina.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
 await pagina.route('**/rest/v1/**', async (rota) => {
   const caminho = new URL(rota.request().url()).pathname.split('/').pop() ?? '';
   const linhas = porTabela[caminho] ?? [];
-  /* Gravacao da configuracao: a ordem das colunas so pode ser conferida
-     se a simulacao guardar o que o app mandou e devolver na releitura. */
-  if (caminho === 'configuracoes' && rota.request().method() !== 'GET') {
-    const corpo = JSON.parse(rota.request().postData() ?? '[]');
-    for (const linha of [].concat(corpo)) {
-      const i = configuracoes.findIndex((c) => c.chave === linha.chave);
-      if (i < 0) configuracoes.push(linha); else configuracoes[i] = linha;
+  /* Configuracao: a simulacao guarda o que o app grava e devolve na
+     releitura, filtrando por chave. Sem o filtro, a leitura de uma
+     chave so traria a tabela inteira e a tela reclamaria de ter achado
+     mais de uma linha. */
+  if (caminho === 'configuracoes') {
+    const metodo = rota.request().method();
+    const chave = (new URL(rota.request().url()).searchParams.get('chave') ?? '').replace('eq.', '');
+    if (metodo === 'DELETE') {
+      const i = configuracoes.findIndex((c) => c.chave === chave);
+      if (i >= 0) configuracoes.splice(i, 1);
+      await rota.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      return;
     }
-    await rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(configuracoes) });
+    if (metodo !== 'GET') {
+      const corpo = JSON.parse(rota.request().postData() ?? '[]');
+      for (const linha of [].concat(corpo)) {
+        const i = configuracoes.findIndex((c) => c.chave === linha.chave);
+        if (i < 0) configuracoes.push(linha); else configuracoes[i] = linha;
+      }
+      await rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(configuracoes) });
+      return;
+    }
+    const achadas = chave ? configuracoes.filter((c) => c.chave === chave) : configuracoes;
+    await rota.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(achadas) });
     return;
   }
   const parametros = new URL(rota.request().url()).searchParams;
@@ -303,6 +318,18 @@ for (const [arquivo, aba] of telas) {
   await pagina.getByRole('button', { name: aba, exact: true }).click();
   await pagina.waitForTimeout(500);
   await pagina.screenshot({ path: `verificacao-${arquivo}.png`, fullPage: true });
+}
+
+/* No painel a faixa cobre a carteira inteira, e ali ha projeto com
+   chamado: os quatro cartoes aparecem. */
+await pagina.getByRole('button', { name: 'Painel', exact: true }).click();
+await pagina.waitForTimeout(600);
+const faixaDoPainel = (await pagina.textContent('body')) ?? '';
+for (const rotulo of ['Documentadas', 'Com chamado aberto', 'Prontas para abrir chamado', 'Concluídas']) {
+  if (!faixaDoPainel.includes(rotulo)) {
+    console.error(`FALHOU: o painel não trouxe o cartão "${rotulo}".`);
+    process.exitCode = 1;
+  }
 }
 
 // Detalhe: abre pela linha da carteira.
@@ -559,9 +586,18 @@ if (!((await pagina.textContent('body')) ?? '').includes('Melhoria Sistêmica Bs
    se responde quantas melhorias ja foram documentadas e quantas ja
    viraram chamado. */
 const corpoDaEsteira = (await pagina.textContent('body')) ?? '';
-for (const rotulo of ['Documentadas', 'Com chamado aberto', 'Prontas para abrir chamado', 'Concluídas']) {
+for (const rotulo of ['Documentadas', 'Concluídas']) {
   if (!corpoDaEsteira.includes(rotulo)) {
     console.error(`FALHOU: a faixa da esteira não trouxe "${rotulo}".`);
+    process.exitCode = 1;
+  }
+}
+/* Projeto que nao trabalha com chamado (um estudo, uma obra) nao deve
+   carregar dois cartoes travados em zero. Nenhuma melhoria deste
+   guarda-chuva tem chamado. */
+for (const rotulo of ['Com chamado aberto', 'Prontas para abrir chamado']) {
+  if (corpoDaEsteira.includes(rotulo)) {
+    console.error(`FALHOU: "${rotulo}" não deveria aparecer num projeto sem chamado.`);
     process.exitCode = 1;
   }
 }
@@ -620,12 +656,26 @@ await pagina.screenshot({ path: 'verificacao-filtros.png', fullPage: true });
 await pagina.getByRole('button', { name: 'Situações', exact: false }).first().click();
 await pagina.waitForTimeout(400);
 const configuracao = (await pagina.textContent('body')) ?? '';
-for (const campo of ['Situações das atividades', 'Nova situação', 'Em risco', 'Concluída']) {
+for (const campo of ['Situações das atividades', 'Nova situação', 'Em risco', 'Concluída', 'esteira do módulo']) {
   if (!configuracao.includes(campo)) {
     console.error(`FALHOU: a configuração de situações não tem "${campo}".`);
     process.exitCode = 1;
   }
 }
+/* Esteira propria do projeto: separar do modulo grava na chave dele, e
+   a janela passa a dizer que o que se mexe ali nao sai deste projeto. */
+await pagina.getByRole('button', { name: 'Criar esteira só deste projeto' }).click();
+await pagina.waitForTimeout(700);
+const depoisDeSeparar = (await pagina.textContent('body')) ?? '';
+if (!depoisDeSeparar.includes('Voltar a usar a do módulo')) {
+  console.error('FALHOU: o projeto deveria ficar com esteira própria depois de separar do módulo.');
+  process.exitCode = 1;
+}
+if (!configuracoes.some((c) => c.chave.startsWith('status_projeto:'))) {
+  console.error(`FALHOU: a esteira do projeto não foi gravada na chave dele — ${JSON.stringify(configuracoes.map((c) => c.chave))}.`);
+  process.exitCode = 1;
+}
+
 await pagina.screenshot({ path: 'verificacao-config-status.png', fullPage: true });
 
 /* Ordem das colunas: as setas do cabecalho do quadro gravam a
