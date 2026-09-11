@@ -772,7 +772,7 @@ const IR_INDICADORES_VERSION = 16; // mantido em sincronia com worker.js
    depois de um deploy, a página já vinha nova e o Worker continuava sendo o
    antigo, então o ciclo era reprocessado com o motor velho e o número não mudava.
    Com a versão na query, cada deploy é uma URL nova e o cache não alcança. */
-const IR_APP_VERSION = 'v143';
+const IR_APP_VERSION = 'v144';
 function irNovoWorker(){ return new Worker('js/worker.js?v=' + IR_APP_VERSION); }
 // Versão no rodapé do menu: sem ela não dá pra saber, olhando a tela, se o
 // navegador está com a build nova depois de um deploy.
@@ -2000,6 +2000,9 @@ async function irRasterizarSVGs(raiz, escala){
       const saida = document.createElement('img');
       saida.src = cv.toDataURL('image/png');
       saida.width = w; saida.height = h;
+      // Herda a classe do SVG pra o CSS da folha continuar mandando no tamanho.
+      // Escalar agora é seguro: é PNG a 3x, não mais um SVG pra ele interpretar.
+      saida.className = svg.getAttribute('class') || '';
       saida.style.cssText = svg.getAttribute('style') || '';
       saida.style.display = 'block';
       svg.replaceWith(saida);
@@ -5916,17 +5919,12 @@ function irTransLinha(vals, titulo, total, fmt, cor, fmtCurto){
 }
 /* Compacto sem casa decimal: no rótulo dentro do anel e na legenda o centavo não
    decide nada, e "R$20,1K" só rouba espaço de fonte. */
-/* Valor da célula da tabela de transitórios, com duas casas. O compacto de uma
-   casa (R$10,6K) arredonda demais pra quem cobra o responsável pelo saldo. Fica
-   compacto mesmo assim porque a coluna do dia tem 83px — valor cheio
-   ("R$ 10.640,00") não cabe sem estreitar as outras colunas. */
+/* Valor da célula da tabela de transitórios, por extenso e com centavos — o
+   mesmo formato da coluna "valor por endereço". Compacto (R$10,6K) arredondava
+   demais pra quem usa a tabela pra cobrar o responsável pelo saldo. As colunas
+   de dia foram alargadas pra caber. */
 function irTransValorCel(n){
-  n = n||0;
-  const abs = Math.abs(n);
-  const f = v => v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-  if(abs >= 1000000) return 'R$'+f(n/1000000)+'M';
-  if(abs >= 1000) return 'R$'+f(n/1000)+'K';
-  return 'R$'+f(n);
+  return irFmtMoney(n||0);
 }
 function irTransNumCurto(n){
   n = n||0;
