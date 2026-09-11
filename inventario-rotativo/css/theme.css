@@ -174,16 +174,12 @@ button{ font-family:inherit; cursor:pointer; }
    cor de marca, não superfície — por isso tudo que fica em cima dela declara a
    própria cor, sem depender do token de tinta do tema. */
 .topbar{
-  display:flex; align-items:flex-end; gap:16px; padding:15px 24px 14px;
+  display:flex; align-items:center; gap:16px; padding:16px 24px;
   background:linear-gradient(100deg, var(--blue) 0%, #062A9E 55%, #0B3ACB 100%);
   flex-shrink:0; flex-wrap:wrap;
 }
-.topbar-logo{ height:52px; width:auto; display:block; flex-shrink:0; align-self:center; }
 .topbar-titles{ min-width:0; }
-.topbar-eyebrow{ font-size:9.5px; font-weight:800; letter-spacing:.12em;
-  text-transform:uppercase; color:#FF8A63; white-space:nowrap; }
-.topbar-eyebrow:empty{ display:none; }
-.topbar h1{ font-size:19px; font-weight:800; color:#fff; letter-spacing:-.01em; margin-top:2px; }
+.topbar h1{ font-size:19px; font-weight:800; color:#fff; letter-spacing:-.01em; }
 /* A frase descritiva sai da barra: o eyebrow diz onde se está e de que ciclo são
    os números, que é o que se procura no topo. O elemento fica pra quem lê tela. */
 .topbar p{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
@@ -216,7 +212,6 @@ button{ font-family:inherit; cursor:pointer; }
 .tb-filter select:focus, .tb-filter #cycleFilterSelect:focus{ outline:none; }
 #cycleFilterSelect{ background:transparent; border:none; color:inherit; font-size:12.5px; font-weight:800; font-family:inherit; cursor:pointer; padding:0; }
 @media(max-width:900px){
-  .topbar-logo{ height:36px; }
   .topbar-filters{ width:100%; margin-left:0; }
   .tb-filter{ flex:1; min-width:0; }
 }
