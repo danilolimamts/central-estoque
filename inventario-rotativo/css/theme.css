@@ -1355,13 +1355,16 @@ table.pasta-table tr.pasta-novo td.mono{ color:var(--ink); }
 .trans-dest-form label{ margin:0 0 3px; }
 @media (max-width:900px){ .trans-dest-form{ grid-template-columns:1fr; } }
 
-/* ---------- ACURÁCIA DO ANO (Status do Inventário) ---------- */
-/* Ocupa o lugar de "locais contados por mês" e reaproveita a coluna dele. */
-.status-ano-row{ display:grid; grid-template-columns:54px 1fr 52px; align-items:center; gap:8px; margin-bottom:7px; }
-.status-ano-label{ font-size:11.5px; color:var(--ink-soft); font-weight:600; }
-.status-ano-track{ height:8px; border-radius:5px; background:var(--surface2); overflow:hidden; }
-.status-ano-fill{ height:100%; border-radius:5px; }
-.status-ano-val{ font-size:12px; font-weight:800; text-align:right; font-variant-numeric:tabular-nums; }
-.status-ano-val.good{ color:var(--success); }
-.status-ano-val.bad{ color:var(--danger); }
-.status-ano-meta{ font-size:10.5px; color:var(--ink-soft); margin-top:6px; }
+/* ---------- ACURÁCIA ANUAL (painel próprio da home) ---------- */
+/* Barra por métrica com o traço da meta em cima: dá pra ver de relance qual das
+   três está fora, que é o que a média única do medidor antigo escondia. */
+.acan-row{ display:grid; grid-template-columns:58px 1fr 58px; align-items:center; gap:10px; margin:12px 0; }
+.acan-label{ font-size:12.5px; color:var(--ink-soft); font-weight:700; }
+.acan-track{ position:relative; height:14px; border-radius:8px; background:var(--surface2); }
+.acan-fill{ height:100%; border-radius:8px; }
+.acan-meta{ position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink-soft); opacity:.55; }
+.acan-val{ font-size:15px; font-weight:800; text-align:right; font-variant-numeric:tabular-nums; }
+.acan-val.good{ color:var(--success); }
+.acan-val.bad{ color:var(--danger); }
+.acan-pe{ margin-top:14px; }
+.imp-sem-preco{ color:var(--danger); margin-top:10px; }
